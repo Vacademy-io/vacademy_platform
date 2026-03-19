@@ -55,5 +55,6 @@ public class EnquiryDetailsResponseDTO {
         private String name;
         private Date dob;
         private String gender;
+        private String destinationPackageSessionId;
     }
 }

@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption; // Added
@@ -94,6 +95,13 @@ public class UserPlanService {
     @Autowired
     @Lazy
     private ReferralMappingService referralMappingService;
+
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository paymentPlanRepository;
 
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
@@ -371,6 +379,18 @@ public class UserPlanService {
             // Process pending referral benefits after payment confirmation
             // This sends referrer reward emails that were deferred during enrollment
             referralMappingService.processReferralBenefitsIfApplicable(userPlan);
+
+            // B2B: For PAID SUB_ORG plans, create scoped FREE invites after payment confirmation
+            if (EnrollInviteTag.SUB_ORG.name().equals(enrollInvite.getTag())
+                    && enrollInvite.getSubOrgId() != null) {
+                logger.info("PAID SUB_ORG plan activated. Creating scoped free invites for sub-org={}",
+                        enrollInvite.getSubOrgId());
+                PaymentPlan paymentPlan = null;
+                if (StringUtils.hasText(userPlan.getPaymentPlanId())) {
+                    paymentPlan = paymentPlanRepository.findById(userPlan.getPaymentPlanId()).orElse(null);
+                }
+                subOrgSubscriptionService.createScopedFreeInvites(enrollInvite, userPlan, paymentPlan);
+            }
 
             // Send enrollment notifications after successful PAID enrollment
 

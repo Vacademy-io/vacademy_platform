@@ -26,6 +26,23 @@ public class QuizSlide {
 
     private String title;
 
+    @Column(name = "time_limit_in_minutes")
+    private Integer timeLimitInMinutes;
+
+    @Builder.Default
+    @Column(name = "marks_per_question")
+    private Double marksPerQuestion = 1.0;
+
+    @Builder.Default
+    @Column(name = "negative_marking")
+    private Double negativeMarking = 0.0;
+
+    @Column(name = "pass_percentage")
+    private Double passPercentage;
+
+    @Column(name = "re_attempt_count")
+    private Integer reAttemptCount;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -38,6 +55,11 @@ public class QuizSlide {
     public QuizSlide(QuizSlideDTO quizSlideDTO) {
         this.id = quizSlideDTO.getId();
         this.title = quizSlideDTO.getTitle();
+        this.timeLimitInMinutes = quizSlideDTO.getTimeLimitInMinutes();
+        this.marksPerQuestion = quizSlideDTO.getMarksPerQuestion() != null ? quizSlideDTO.getMarksPerQuestion() : 1.0;
+        this.negativeMarking = quizSlideDTO.getNegativeMarking() != null ? quizSlideDTO.getNegativeMarking() : 0.0;
+        this.passPercentage = quizSlideDTO.getPassPercentage();
+        this.reAttemptCount = quizSlideDTO.getReAttemptCount();
         if (quizSlideDTO.getDescription() != null) {
             this.descriptionRichText = new RichTextData(quizSlideDTO.getDescription());
         }

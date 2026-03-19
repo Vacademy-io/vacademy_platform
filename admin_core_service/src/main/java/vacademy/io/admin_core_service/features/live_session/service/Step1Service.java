@@ -61,7 +61,9 @@ public class Step1Service {
         handleDeletedSchedules(request);
 
         // Step 2: Get all existing schedules (excluding already deleted ones)
-        List<SessionSchedule> existingSchedules = scheduleRepository.findBySessionId(session.getId());
+        List<SessionSchedule> existingSchedules = scheduleRepository.findBySessionId(session.getId()).stream()
+                .filter(s -> !LiveSessionStatus.DELETED.name().equalsIgnoreCase(s.getStatus()))
+                .toList();
         LocalDate today = LocalDate.now();
 
         // Separate past and future schedules
@@ -109,6 +111,43 @@ public class Step1Service {
                         .toList();
                 existingSchedules = existingSchedules.stream()
                         .filter(s -> !schedulesToDeleteForRemovedDays.contains(s.getId()))
+                        .toList();
+            }
+
+            // Step 4a2: Handle TIME SLOT REMOVAL - Delete future schedules for time slots
+            // that are no longer in the request (for days that ARE still in the request)
+            java.util.Map<String, java.util.Set<java.sql.Time>> requestedStartTimesByDay = new java.util.HashMap<>();
+            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
+                String day = dto.getDay().toUpperCase();
+                requestedStartTimesByDay
+                        .computeIfAbsent(day, k -> new java.util.HashSet<>())
+                        .add(java.sql.Time.valueOf(dto.getStartTime()));
+            }
+
+            List<String> schedulesToDeleteForRemovedTimeSlots = futureSchedules.stream()
+                    .filter(s -> s.getRecurrenceKey() != null
+                            && requestedDays.contains(s.getRecurrenceKey().toUpperCase())
+                            && s.getStartTime() != null)
+                    .filter(s -> {
+                        java.util.Set<java.sql.Time> requestedTimes =
+                                requestedStartTimesByDay.get(s.getRecurrenceKey().toUpperCase());
+                        return requestedTimes == null || !requestedTimes.contains(s.getStartTime());
+                    })
+                    .map(SessionSchedule::getId)
+                    .toList();
+
+            if (!schedulesToDeleteForRemovedTimeSlots.isEmpty()) {
+                System.out.println("Deleting " + schedulesToDeleteForRemovedTimeSlots.size()
+                        + " future schedules for removed time slots");
+                scheduleNotificationRepository.disableNotificationsByScheduleIds(
+                        schedulesToDeleteForRemovedTimeSlots, "DISABLED");
+                scheduleRepository.deleteAllById(schedulesToDeleteForRemovedTimeSlots);
+                // Remove from our working lists to prevent stale data
+                futureSchedules = futureSchedules.stream()
+                        .filter(s -> !schedulesToDeleteForRemovedTimeSlots.contains(s.getId()))
+                        .toList();
+                existingSchedules = existingSchedules.stream()
+                        .filter(s -> !schedulesToDeleteForRemovedTimeSlots.contains(s.getId()))
                         .toList();
             }
 
@@ -165,10 +204,13 @@ public class Step1Service {
                 }
 
                 String dayOfWeek = dto.getDay().toUpperCase();
+                Time dtoStartTime = Time.valueOf(dto.getStartTime());
 
-                // Get existing schedules for this day (including past ones for reference)
+                // Get existing schedules for this day AND start_time
+                // (to correctly handle multiple time slots on the same day)
                 List<SessionSchedule> existingSchedulesForDay = existingSchedules.stream()
-                        .filter(s -> s.getRecurrenceKey() != null && s.getRecurrenceKey().equalsIgnoreCase(dayOfWeek))
+                        .filter(s -> s.getRecurrenceKey() != null && s.getRecurrenceKey().equalsIgnoreCase(dayOfWeek)
+                                && s.getStartTime() != null && s.getStartTime().equals(dtoStartTime))
                         .sorted((a, b) -> toLocalDate(a.getMeetingDate()).compareTo(toLocalDate(b.getMeetingDate())))
                         .toList();
 
@@ -227,9 +269,15 @@ public class Step1Service {
                         schedule.setCustomMeetingLink(
                                 dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
                         schedule.setLinkType(dto.getLink() != null
-                                ? getLinkTypeFromUrl(dto.getLink())
-                                : getLinkTypeFromUrl(request.getDefaultMeetLink()));
+                                ? resolveScheduleLinkType(dto.getLink(), request.getLinkType())
+                                : resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
                         schedule.setCustomWaitingRoomMediaId(null);
+
+                        if (dto.getDefaultClassLink() != null) {
+                            schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                            schedule.setDefaultClassName(dto.getDefaultClassName());
+                            schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+                        }
 
                         scheduleRepository.save(schedule);
                         System.out.println("Created new schedule for " + dayOfWeek + " on " + current);
@@ -265,9 +313,15 @@ public class Step1Service {
                             schedule.setCustomMeetingLink(
                                     dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
                             schedule.setLinkType(dto.getLink() != null
-                                    ? getLinkTypeFromUrl(dto.getLink())
-                                    : getLinkTypeFromUrl(request.getDefaultMeetLink()));
+                                    ? resolveScheduleLinkType(dto.getLink(), request.getLinkType())
+                                    : resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
                             schedule.setCustomWaitingRoomMediaId(null);
+
+                            if (dto.getDefaultClassLink() != null) {
+                                schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                                schedule.setDefaultClassName(dto.getDefaultClassName());
+                                schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+                            }
 
                             scheduleRepository.save(schedule);
                             System.out.println(
@@ -300,10 +354,13 @@ public class Step1Service {
 
         if (dto.getLink() != null) {
             schedule.setCustomMeetingLink(dto.getLink());
-            schedule.setLinkType(getLinkTypeFromUrl(dto.getLink()));
+            schedule.setLinkType(resolveScheduleLinkType(dto.getLink(), request.getLinkType()));
         } else if (request.getDefaultMeetLink() != null) {
             schedule.setCustomMeetingLink(request.getDefaultMeetLink());
-            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+            schedule.setLinkType(resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
+        } else if (request.getLinkType() != null && !request.getLinkType().isBlank()) {
+            // No link provided (e.g. BBB auto-creates later) — use explicit linkType
+            schedule.setLinkType(request.getLinkType());
         }
 
         if (dto.getThumbnailFileId() != null) {
@@ -391,6 +448,16 @@ public class Step1Service {
         session.setAllowPlayPause(request.isAllowPlayPause());
         if (request.getTimeZone() != null)
             session.setTimezone(request.getTimeZone());
+
+        // Save BBB meeting config as JSON
+        if (request.getBbbConfig() != null) {
+            try {
+                session.setBbbConfigJson(new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(request.getBbbConfig()));
+            } catch (Exception e) {
+                System.out.println("Failed to serialize BBB config: " + e.getMessage());
+            }
+        }
 
         session.setCreatedByUserId(user.getUserId());
 
@@ -499,7 +566,7 @@ public class Step1Service {
             schedule.setStartTime(Time.valueOf(startLocalTime));
             schedule.setLastEntryTime(Time.valueOf(lastEntryLocalTime));
             schedule.setCustomMeetingLink(request.getDefaultMeetLink());
-            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+            schedule.setLinkType(resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
             schedule.setCustomWaitingRoomMediaId(null);
             schedule.setThumbnailFileId(request.getThumbnailFileId());
             schedule.setDailyAttendance(false); // default for single schedule
@@ -546,10 +613,12 @@ public class Step1Service {
         // Update meeting link and link type
         if (dto.getLink() != null) {
             schedule.setCustomMeetingLink(dto.getLink());
-            schedule.setLinkType(getLinkTypeFromUrl(dto.getLink()));
+            schedule.setLinkType(resolveScheduleLinkType(dto.getLink(), request.getLinkType()));
         } else if (request.getDefaultMeetLink() != null) {
             schedule.setCustomMeetingLink(request.getDefaultMeetLink());
-            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+            schedule.setLinkType(resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
+        } else if (request.getLinkType() != null && !request.getLinkType().isBlank()) {
+            schedule.setLinkType(request.getLinkType());
         }
 
         // Update other fields
@@ -578,9 +647,25 @@ public class Step1Service {
             return LinkType.ZOOM.name();
         } else if (lowerLink.contains("meet.google.com")) {
             return LinkType.GMEET.name();
+        } else if (List.of("meeting.zoho.com", "meeting.zoho.in", "meeting.zoho.eu").stream()
+                .anyMatch(lowerLink::contains)) {
+            return LinkType.ZOHO_MEETING.name();
         } else {
             return LinkType.RECORDED.name();
         }
+    }
+
+    /**
+     * Resolve schedule-level linkType: use URL-based detection first,
+     * but fall back to the explicit request linkType when URL is empty/unknown.
+     * This handles providers like BBB where the meeting link is auto-created later.
+     */
+    public static String resolveScheduleLinkType(String link, String requestLinkType) {
+        String fromUrl = getLinkTypeFromUrl(link);
+        if ("UNKNOWN".equals(fromUrl) && requestLinkType != null && !requestLinkType.isBlank()) {
+            return requestLinkType;
+        }
+        return fromUrl;
     }
 
     private LocalDate getNextOrSameDay(LocalDate startDate, String dayOfWeekStr) {

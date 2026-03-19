@@ -24,6 +24,7 @@ class MessageType(str, Enum):
     TOOL_RESULT = "tool_result"
     QUIZ = "quiz"  # Contains quiz data for practice mode
     QUIZ_FEEDBACK = "quiz_feedback"  # Contains quiz results and feedback
+    SUMMARY = "summary"  # Hierarchical conversation summary
 
 
 class MessageIntent(str, Enum):
@@ -31,6 +32,14 @@ class MessageIntent(str, Enum):
     DOUBT = "doubt"        # User has a question/doubt about content
     PRACTICE = "practice"  # User wants to practice/take a quiz
     GENERAL = "general"    # Regular conversation (default)
+
+
+class Attachment(BaseModel):
+    """File attachment for multimodal messages."""
+    type: str = Field(..., description="Attachment type: 'image' or 'video'")
+    url: str = Field(..., description="URL of the attachment")
+    mime_type: Optional[str] = Field(None, description="MIME type, e.g., 'image/png'")
+    name: Optional[str] = Field(None, description="Optional file name")
 
 
 class SessionStatus(str, Enum):
@@ -215,7 +224,15 @@ class SendMessageRequest(BaseModel):
         None,
         description="Quiz answers when submitting a completed quiz"
     )
-    
+    idempotency_key: Optional[str] = Field(
+        None,
+        description="Optional UUID to prevent duplicate message processing"
+    )
+    attachments: Optional[List[Attachment]] = Field(
+        None,
+        description="Optional image/video attachments for multimodal messages"
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -380,6 +397,7 @@ __all__ = [
     "ContextType",
     "MessageType",
     "MessageIntent",
+    "Attachment",
     "SessionStatus",
     "AIStatus",
     "QuizQuestion",

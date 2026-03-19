@@ -100,4 +100,14 @@ public class AuthController {
         boolean isValid = authManager.verifyGenericWhatsAppOtp(authRequestDTO);
         return ResponseEntity.ok(isValid);
     }
+
+    /**
+     * Verify generic WhatsApp OTP and login the user.
+     * Verifies the OTP, finds the user by phone number,
+     * and returns access + refresh tokens.
+     */
+    @PostMapping("/verify-generic-whatsapp-otp-login")
+    public JwtResponseDto verifyGenericWhatsAppOtpAndLogin(@RequestBody AuthRequestDto authRequestDTO) {
+        return authManager.verifyGenericWhatsAppOtpAndLogin(authRequestDTO);
+    }
 }

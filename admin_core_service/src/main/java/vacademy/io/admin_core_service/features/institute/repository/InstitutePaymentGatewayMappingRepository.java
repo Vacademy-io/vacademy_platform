@@ -18,4 +18,6 @@ public interface InstitutePaymentGatewayMappingRepository
      */
     Optional<InstitutePaymentGatewayMapping> findFirstByInstituteIdAndStatusInOrderByCreatedAtDesc(String instituteId,
             List<String> status);
+
+    List<InstitutePaymentGatewayMapping> findAllByInstituteIdAndStatusIn(String instituteId, List<String> status);
 }

@@ -100,11 +100,17 @@ async def send_message(
     - AI will evaluate and provide personalized feedback
     """
     try:
+        attachments_list = None
+        if request.attachments:
+            attachments_list = [att.model_dump() for att in request.attachments]
+
         message_id, ai_status = await service.send_message(
             session_id=session_id,
             message=request.message,
             intent=request.intent,
             quiz_submission=request.quiz_submission,
+            idempotency_key=request.idempotency_key,
+            attachments=attachments_list,
         )
         
         return SendMessageResponse(

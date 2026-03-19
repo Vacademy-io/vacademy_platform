@@ -28,17 +28,19 @@ public class ShortUrlManagementService {
      * @param destinationUrl The full URL where the short link should redirect
      * @param source         The entity type (e.g., "ENROLL_INVITE", "COUPON_CODE")
      * @param sourceId       The unique ID of the entity
+     * @param instituteId    The unique ID of the institute
      * @return The generated short URL, or null if creation failed
      */
-    public String createShortUrl(String destinationUrl, String source, String sourceId) {
+    public String createShortUrl(String destinationUrl, String source, String sourceId, String instituteId) {
         try {
             String shortCode = shortLinkIntegrationService.generateRandomCode();
             String shortUrl = shortLinkIntegrationService.createShortLink(
                     shortCode,
                     destinationUrl,
                     source,
-                    sourceId);
-            logger.info("Created short URL for {} with ID: {}", source, sourceId);
+                    sourceId,
+                    instituteId);
+            logger.info("Created short URL for {} with ID: {} and Institute ID: {}", source, sourceId, instituteId);
             return shortUrl;
         } catch (Exception e) {
             logger.error("Failed to create short URL for {} with ID: {}", source, sourceId, e);
@@ -106,17 +108,25 @@ public class ShortUrlManagementService {
      * @param source          The entity type
      * @param sourceId        The unique ID of the entity
      * @param currentShortUrl The current short URL (null if creating new)
+     * @param instituteId     The unique ID of the institute
      * @return The short URL (existing or newly created)
      */
     public String createOrUpdateShortUrl(String destinationUrl, String source, String sourceId,
-            String currentShortUrl) {
+            String currentShortUrl, String instituteId) {
         if (currentShortUrl == null || currentShortUrl.isEmpty()) {
             // Create new short URL
-            return createShortUrl(destinationUrl, source, sourceId);
+            return createShortUrl(destinationUrl, source, sourceId, instituteId);
         } else {
             // Update existing short URL
             boolean updated = updateShortUrl(destinationUrl, source, sourceId, currentShortUrl);
             return updated ? currentShortUrl : null;
         }
+    }
+
+    /**
+     * Reconstructs the absolute URL for an existing short code dynamically.
+     */
+    public String getAbsoluteShortUrl(String instituteId, String shortCode) {
+        return shortLinkIntegrationService.buildAbsoluteUrl(instituteId, shortCode);
     }
 }

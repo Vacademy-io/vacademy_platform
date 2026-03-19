@@ -49,8 +49,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/live-session/get-earliest-schedule-id/**",
             "/admin-core-service/live-session/get-registration-data/**",
             "/admin-core-service/live-session/check-email-registration/**",
-            "/admin-core-service/live-session/guest/get-session-by-schedule-id/**",
-            "/admin-core-service/live-session/mark-guest-attendance",
+            "/admin-core-service/live-session/guest/**",
             "/admin-core-service/course/ai/v1/**",
             "/admin-core-service/payments/webhook/callback/**",
             "/admin-core-service/v1/learner/enroll/**",
@@ -83,7 +82,12 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/applicant/v1/enquiry/**",
             "/admin-core-service/v1/applicant/**",
             "/admin-core-service/enrollment-policy/**",
-            "/admin-core-service/v1/admission/submit"
+            "/admin-core-service/v1/admission/submit",
+            // BBB server-to-server callback (no JWT — called by BigBlueButton when meeting ends)
+            "/admin-core-service/live-sessions/provider/meeting/bbb-callback",
+            // BBB recording upload (server-to-server from BBB post-publish script, auth via X-BBB-Secret header)
+            "/admin-core-service/live-sessions/provider/meeting/recording/init-upload",
+            "/admin-core-service/live-sessions/provider/meeting/recording/complete"
 
     };
     @Autowired

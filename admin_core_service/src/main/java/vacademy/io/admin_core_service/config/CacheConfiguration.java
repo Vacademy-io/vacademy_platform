@@ -123,6 +123,20 @@ public class CacheConfiguration {
                                 "learnerDashboard",
                                 caffeineCache2mBuilder().build());
 
+                // Super Admin caches
+                CaffeineCache superAdminInstituteList = new CaffeineCache(
+                                "superAdminInstituteList",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache superAdminInstituteDetail = new CaffeineCache(
+                                "superAdminInstituteDetail",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache superAdminPlatformDashboard = new CaffeineCache(
+                                "superAdminPlatformDashboard",
+                                caffeineCache5mBuilder().build());
+                CaffeineCache superAdminInstituteCourses = new CaffeineCache(
+                                "superAdminInstituteCourses",
+                                caffeineCache2mBuilder().build());
+
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
                                 facultyByPackageSessions,
@@ -147,7 +161,11 @@ public class CacheConfiguration {
                                 timeRangeLogs,
                                 userDetails,
                                 liveAndUpcomingSessions,
-                                learnerDashboard));
+                                learnerDashboard,
+                                superAdminInstituteList,
+                                superAdminInstituteDetail,
+                                superAdminPlatformDashboard,
+                                superAdminInstituteCourses));
 
                 return cacheManager;
         }

@@ -16,6 +16,7 @@ public class CorsConfig implements WebMvcConfigurer {
                 .allowedOriginPatterns(
                     "http://localhost:*", // All localhost ports
                     "https://*.vacademy.io", 
+                    "https://*.shikshanation.com", 
                     "https://*.codecircle.org",// All vacademy.io subdomains
                     "https://*.vacademy-platform.pages.dev" // All Cloudflare Pages subdomains
                 )

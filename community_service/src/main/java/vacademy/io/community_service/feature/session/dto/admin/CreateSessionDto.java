@@ -19,4 +19,7 @@ public class CreateSessionDto {
     private Boolean allowChat = true;
     private Integer defaultSecondsForQuestion = 60;
     private Integer studentAttempts = 1;
+    private Integer pointsPerCorrectAnswer = 10;
+    private Boolean negativeMarkingEnabled = false;
+    private Double negativeMarksPerWrongAnswer = 0.0;
 }

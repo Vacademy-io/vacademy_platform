@@ -40,10 +40,24 @@ public class LiveSessionLogs {
     @Column(columnDefinition = "TEXT")
     private String details;
 
+    /**
+     * ISO-8601 join time from the meeting provider (e.g. Zoho).
+     * Includes provider-specific timezone offsets dynamically if returned.
+     * Populated by the hourly sync scheduler.
+     */
+    @Column(name = "provider_join_time", length = 50)
+    private String providerJoinTime;
+
+    /**
+     * Total minutes the attendee was in the meeting, from provider data.
+     * Useful for queries like "most-attended student".
+     */
+    @Column(name = "provider_total_duration_minutes")
+    private Integer providerTotalDurationMinutes;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 
-    @Column(name = "updated_at", insertable = false, updatable = false)
+    @Column(name = "updated_at")
     private Timestamp updatedAt;
 }
-

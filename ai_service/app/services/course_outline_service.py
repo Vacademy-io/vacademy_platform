@@ -17,6 +17,7 @@ from .api_key_resolver import ApiKeyResolver
 from .token_usage_service import TokenUsageService
 from .institute_settings_service import InstituteSettingsService
 from ..models.ai_token_usage import ApiProvider, RequestType
+from ..core.exceptions import PaymentRequiredError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -392,11 +393,14 @@ class CourseOutlineGenerationService:
                     "explanation": outline_response.explanation if 'outline_response' in locals() else "Error occurred"
                 })
 
+        except PaymentRequiredError:
+            # Re-raise so the router can return a proper 402 response to the caller
+            raise
         except Exception as e:
             yield f"[Error] Failed to generate outline: {str(e)}"
 
     async def generate_content_from_coursetree(
-        self, course_tree: dict, request_id: str, institute_id: Optional[str] = None, user_id: Optional[str] = None
+        self, course_tree: dict, request_id: str, institute_id: Optional[str] = None, user_id: Optional[str] = None, language: Optional[str] = "English"
     ) -> AsyncGenerator[str, None]:
         """
         Generate content for todos in an existing coursetree.
@@ -448,10 +452,10 @@ class CourseOutlineGenerationService:
                     logger.warning(f"Failed to parse todo: {str(e)}, skipping")
                     continue
             
-            # Filter todos to only process DOCUMENT, ASSESSMENT, VIDEO, VIDEO_CODE, AI_VIDEO, and AI_VIDEO_CODE types
+            # Filter todos to only process content types (excludes structural types like CHAPTER, MODULE, etc.)
             content_todos = [
-                todo for todo in todos 
-                if todo.type in ["DOCUMENT", "ASSESSMENT", "VIDEO", "VIDEO_CODE", "AI_VIDEO", "AI_VIDEO_CODE"]
+                todo for todo in todos
+                if todo.type in ["DOCUMENT", "ASSESSMENT", "VIDEO", "VIDEO_CODE", "AI_VIDEO", "AI_VIDEO_CODE", "AI_SLIDES", "AI_STORYBOOK"]
             ]
             
             if not content_todos:
@@ -493,42 +497,180 @@ class CourseOutlineGenerationService:
                 self._content_generation_service._user_id = extracted_user_id or self._content_generation_service._user_id
                 self._content_generation_service._db_session = self._db_session or self._content_generation_service._db_session
             
-            # Process todos in order so "Homework Solutions" can use the generated "Homework Questions" content
-            generated_content_by_path = {}
+            # Inject request-level language into todo metadata if not already set
+            effective_language = language or "English"
             for todo in content_todos:
-                try:
-                    logger.info(f"Starting content generation for todo: {todo.path} (Type: {todo.type})")
-                    async for content_update in self._content_generation_service.generate_content_for_todo(
-                        todo, generated_content_by_path
-                    ):
-                        yield content_update
-                        # Accumulate generated content so solution slides can use homework content
+                if todo.metadata is None:
+                    todo.metadata = {}
+                if not todo.metadata.get("language"):
+                    todo.metadata["language"] = effective_language
+
+            # ── Parallel content generation with dependency awareness ──
+            # Separate independent todos from dependent homework→solution pairs.
+            # Independent todos run concurrently (semaphore-limited); dependent pairs run sequentially.
+            CONCURRENCY = 5  # Max parallel LLM calls (tune based on API rate limits)
+            semaphore = asyncio.Semaphore(CONCURRENCY)
+
+            independent_todos = []
+            dependent_pairs = []  # list of (homework_todo, solution_todo)
+
+            i = 0
+            while i < len(content_todos):
+                todo = content_todos[i]
+                title_lower = (todo.title or todo.name or "").lower()
+
+                # Check if this is a homework slide followed by its solution
+                is_homework = (
+                    "assignment -" in title_lower
+                    or "homework questions" in title_lower
+                )
+                if is_homework and i + 1 < len(content_todos):
+                    next_todo = content_todos[i + 1]
+                    next_title_lower = (next_todo.title or next_todo.name or "").lower()
+                    if "assignment solutions" in next_title_lower or "homework solutions" in next_title_lower:
+                        dependent_pairs.append((todo, next_todo))
+                        i += 2
+                        continue
+
+                independent_todos.append(todo)
+                i += 1
+
+            logger.info(
+                f"Content generation plan: {len(independent_todos)} independent todos (concurrency={CONCURRENCY}), "
+                f"{len(dependent_pairs)} dependent homework→solution pairs (sequential)"
+            )
+
+            generated_content_by_path = {}
+
+            # ── Phase 1: Stream independent todos in parallel via queue ──
+            # Using a queue so events are yielded to the SSE stream in real-time
+            # as each slide completes, rather than buffering until all are done.
+            if independent_todos:
+                logger.info(f"Phase 1: Processing {len(independent_todos)} independent todos in parallel...")
+                event_queue: asyncio.Queue = asyncio.Queue()
+                _SENTINEL = object()  # Signals all tasks are done
+
+                async def _process_todo_to_queue(todo: Todo):
+                    """Generate content for one todo and push events to the queue."""
+                    async with semaphore:
                         try:
-                            data = json.loads(content_update)
-                            if (
-                                data.get("type") == "SLIDE_CONTENT_UPDATE"
-                                and data.get("status")
-                                and "contentData" in data
+                            logger.info(f"Starting content generation for todo: {todo.path} (Type: {todo.type})")
+                            async for content_update in self._content_generation_service.generate_content_for_todo(
+                                todo, generated_content_by_path
                             ):
-                                generated_content_by_path[data["path"]] = data["contentData"]
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-                    logger.info(f"Completed content generation for todo: {todo.path}")
-                except Exception as e:
-                    logger.error(f"Error processing todo {todo.path}: {str(e)}")
-                    error_response = json.dumps({
-                        "type": "SLIDE_CONTENT_ERROR",
-                        "path": todo.path,
-                        "status": False,
-                        "actionType": todo.action_type,
-                        "slideType": todo.type,
-                        "errorMessage": f"Failed to generate content: {str(e)}",
-                        "contentData": "Error generating content for this slide. Please try again or contact support.",
-                    })
-                    yield error_response
-            
+                                await event_queue.put(content_update)
+                            logger.info(f"Completed content generation for todo: {todo.path}")
+                        except Exception as e:
+                            logger.error(f"Error processing todo {todo.path}: {str(e)}")
+                            error_response = json.dumps({
+                                "type": "SLIDE_CONTENT_ERROR",
+                                "path": todo.path,
+                                "status": False,
+                                "actionType": todo.action_type,
+                                "slideType": todo.type,
+                                "errorMessage": f"Failed to generate content: {str(e)}",
+                                "contentData": "Error generating content for this slide. Please try again or contact support.",
+                            })
+                            await event_queue.put(error_response)
+
+                # Start all tasks
+                tasks = [
+                    asyncio.create_task(_process_todo_to_queue(todo))
+                    for todo in independent_todos
+                ]
+
+                # Watchdog: wait for all tasks, then push sentinel
+                async def _signal_done():
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    await event_queue.put(_SENTINEL)
+
+                asyncio.create_task(_signal_done())
+
+                # Yield events in real-time as they arrive from any task
+                while True:
+                    event = await event_queue.get()
+                    if event is _SENTINEL:
+                        break
+                    yield event
+                    # Accumulate generated content for potential downstream use
+                    try:
+                        data = json.loads(event)
+                        if (
+                            data.get("type") == "SLIDE_CONTENT_UPDATE"
+                            and data.get("status")
+                            and "contentData" in data
+                        ):
+                            generated_content_by_path[data["path"]] = data["contentData"]
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            # ── Phase 2: Process dependent homework→solution pairs sequentially ──
+            if dependent_pairs:
+                logger.info(f"Phase 2: Processing {len(dependent_pairs)} homework→solution pairs sequentially...")
+                for homework_todo, solution_todo in dependent_pairs:
+                    # First generate homework questions
+                    try:
+                        logger.info(f"Starting content generation for homework todo: {homework_todo.path}")
+                        async for event in self._content_generation_service.generate_content_for_todo(
+                            homework_todo, generated_content_by_path
+                        ):
+                            yield event
+                            try:
+                                data = json.loads(event)
+                                if (
+                                    data.get("type") == "SLIDE_CONTENT_UPDATE"
+                                    and data.get("status")
+                                    and "contentData" in data
+                                ):
+                                    generated_content_by_path[data["path"]] = data["contentData"]
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                    except Exception as e:
+                        logger.error(f"Error processing homework todo {homework_todo.path}: {str(e)}")
+                        yield json.dumps({
+                            "type": "SLIDE_CONTENT_ERROR",
+                            "path": homework_todo.path,
+                            "status": False,
+                            "actionType": homework_todo.action_type,
+                            "slideType": homework_todo.type,
+                            "errorMessage": f"Failed to generate content: {str(e)}",
+                            "contentData": "Error generating content for this slide.",
+                        })
+
+                    # Then generate solutions (which can reference the homework content)
+                    try:
+                        logger.info(f"Starting content generation for solution todo: {solution_todo.path}")
+                        async for event in self._content_generation_service.generate_content_for_todo(
+                            solution_todo, generated_content_by_path
+                        ):
+                            yield event
+                            try:
+                                data = json.loads(event)
+                                if (
+                                    data.get("type") == "SLIDE_CONTENT_UPDATE"
+                                    and data.get("status")
+                                    and "contentData" in data
+                                ):
+                                    generated_content_by_path[data["path"]] = data["contentData"]
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                    except Exception as e:
+                        logger.error(f"Error processing solution todo {solution_todo.path}: {str(e)}")
+                        yield json.dumps({
+                            "type": "SLIDE_CONTENT_ERROR",
+                            "path": solution_todo.path,
+                            "status": False,
+                            "actionType": solution_todo.action_type,
+                            "slideType": solution_todo.type,
+                            "errorMessage": f"Failed to generate content: {str(e)}",
+                            "contentData": "Error generating content for this slide.",
+                        })
+
             logger.info("All 'todo' content generation tasks have completed.")
             
+        except PaymentRequiredError:
+            # Re-raise so the router can return a proper 402 response to the caller
+            raise
         except Exception as e:
             logger.error(f"Exception in content generation from coursetree: {str(e)}")
             yield json.dumps({

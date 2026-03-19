@@ -10,7 +10,7 @@ import java.sql.Timestamp;
  * Custom repository for complex enquiry queries
  */
 public interface EnquiryRepositoryCustom {
-    
+
     Page<Enquiry> findEnquiriesWithFilters(
             String audienceId,
             String enquiryStatus,
@@ -18,6 +18,6 @@ public interface EnquiryRepositoryCustom {
             String destinationPackageSessionId,
             Timestamp createdFrom,
             Timestamp createdTo,
-            Pageable pageable
-    );
+            String search,
+            Pageable pageable);
 }

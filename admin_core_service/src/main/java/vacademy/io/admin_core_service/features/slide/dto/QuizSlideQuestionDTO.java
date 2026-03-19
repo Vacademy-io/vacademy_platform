@@ -30,5 +30,9 @@ public class QuizSlideQuestionDTO {
     private String quizSlideId;
     private Boolean canSkip;
 
+    private Double marks;
+
+    private Double negativeMarking;
+
     private List<QuizSlideQuestionOptionDTO> options;
 }

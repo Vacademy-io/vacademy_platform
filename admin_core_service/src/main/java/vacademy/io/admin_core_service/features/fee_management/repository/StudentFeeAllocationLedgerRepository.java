@@ -12,4 +12,8 @@ public interface StudentFeeAllocationLedgerRepository extends JpaRepository<Stud
     List<StudentFeeAllocationLedger> findByStudentFeePaymentId(String studentFeePaymentId);
 
     List<StudentFeeAllocationLedger> findByPaymentLogId(String paymentLogId);
+
+    List<StudentFeeAllocationLedger> findByUserIdOrderByCreatedAtDesc(String userId);
+
+    List<StudentFeeAllocationLedger> findByStudentFeePaymentIdInOrderByCreatedAtDesc(List<String> studentFeePaymentIds);
 }

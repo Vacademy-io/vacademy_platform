@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
+import vacademy.io.admin_core_service.features.chapter.dto.LearnerChapterDetailsDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSlidesDetailDTO;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerSubjectProjection;
@@ -30,6 +31,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
@@ -73,6 +75,7 @@ public class LearnerStudyLibraryService {
                 List.of(ModuleStatusEnum.ACTIVE.name())
         );
         List<LearnerModuleDTOWithDetails> modules = mapToLearnerModuleDTOWithDetails(rawResponse);
+        sortChaptersByOrder(modules);
         return modules;
     }
 
@@ -143,6 +146,20 @@ public class LearnerStudyLibraryService {
                 List.of(ModuleStatusEnum.ACTIVE.name()),
                 List.of(QuestionStatusEnum.ACTIVE.name())
         );
-        return mapToLearnerModuleDTOWithDetails(rawResponse);
+        List<LearnerModuleDTOWithDetails> modules = mapToLearnerModuleDTOWithDetails(rawResponse);
+        sortChaptersByOrder(modules);
+        return modules;
+    }
+
+    private void sortChaptersByOrder(List<LearnerModuleDTOWithDetails> modules) {
+        if (modules == null) return;
+        for (LearnerModuleDTOWithDetails module : modules) {
+            if (module.getChapters() != null) {
+                module.getChapters().sort(Comparator.comparing(
+                        LearnerChapterDetailsDTO::getChapterOrder,
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                ));
+            }
+        }
     }
 }

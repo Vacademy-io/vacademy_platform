@@ -15,5 +15,7 @@ public interface FeeTypeRepository extends JpaRepository<FeeType, String> {
 
     List<FeeType> findByCpoIdAndStatus(String cpoId, String status);
 
+    List<FeeType> findByCpoIdInAndStatusNot(List<String> cpoIds, String status);
+
     Page<FeeType> findByCpoIdAndStatusNot(String cpoId, String status, Pageable pageable);
 }

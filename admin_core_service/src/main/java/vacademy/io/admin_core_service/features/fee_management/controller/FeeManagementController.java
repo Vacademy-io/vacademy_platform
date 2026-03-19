@@ -8,6 +8,8 @@ import vacademy.io.admin_core_service.features.fee_management.dto.ComplexPayment
 import vacademy.io.admin_core_service.features.fee_management.service.FeeManagementService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/admin-core-service/v1/fee-management")
 public class FeeManagementController {
@@ -24,7 +26,7 @@ public class FeeManagementController {
     public ResponseEntity<ComplexPaymentOptionDTO> createCpo(
             @RequestBody ComplexPaymentOptionDTO request,
             @RequestAttribute("user") CustomUserDetails userDetails) {
-        return ResponseEntity.ok(feeManagementService.createCpo(request));
+        return ResponseEntity.ok(feeManagementService.createCpo(request, userDetails));
     }
 
     /**
@@ -84,10 +86,37 @@ public class FeeManagementController {
      * API #6: Soft delete CPO and all related records by status update.
      * PUT /admin-core-service/v1/fee-management/cpo/{cpoId}/soft-delete
      */
-    @PutMapping("/cpo/{cpoId}/soft-delete-shivamapi")
+    @PutMapping("/cpo/{cpoId}/soft-delete")
     public ResponseEntity<ComplexPaymentOptionDTO> softDeleteCpo(
             @PathVariable String cpoId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(feeManagementService.softDeleteCpoById(cpoId));
+    }
+
+    /**
+     * API #7: Get all CPO options available for a package session (class).
+     * Returns full CPO details with fee breakdown for admin to select during
+     * admission.
+     * GET
+     * /admin-core-service/v1/fee-management/package-session/{packageSessionId}/cpo-options
+     */
+    @GetMapping("/package-session/{packageSessionId}/cpo-options")
+    public ResponseEntity<List<ComplexPaymentOptionDTO>> getCpoOptionsForPackageSession(
+            @PathVariable String packageSessionId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(feeManagementService.getCpoOptionsForPackageSession(packageSessionId));
+    }
+
+    /**
+     * API #8: Approve a PENDING_APPROVAL CPO.
+     * Only admins should call this. Moves CPO status from PENDING_APPROVAL →
+     * ACTIVE.
+     * POST /admin-core-service/v1/fee-management/cpo/{cpoId}/approve
+     */
+    @PostMapping("/cpo/{cpoId}/approve")
+    public ResponseEntity<ComplexPaymentOptionDTO> approveCpo(
+            @PathVariable String cpoId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(feeManagementService.approveCpo(cpoId, userDetails));
     }
 }

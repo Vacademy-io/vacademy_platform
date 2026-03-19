@@ -101,11 +101,12 @@ class VideoGenerationService:
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
         generate_avatar: bool = False,
-        avatar_image_url: Optional[str] = None
+        avatar_image_url: Optional[str] = None,
+        quality_tier: str = "ultra",
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
-        
+
         Args:
             video_id: Unique video identifier
             prompt: Text prompt for video generation
@@ -115,7 +116,8 @@ class VideoGenerationService:
             target_audience: Target audience for age-appropriate content
             target_duration: Target video duration (e.g., '5 minutes')
             content_type: Type of content (VIDEO, QUIZ, STORYBOOK, etc.)
-            
+            quality_tier: Quality tier (free, standard, premium, ultra)
+
         Yields:
             SSE events with progress updates
         """
@@ -213,7 +215,8 @@ class VideoGenerationService:
                     institute_id=institute_id,
                     user_id=user_id,
                     generate_avatar=generate_avatar,
-                    avatar_image_url=avatar_image_url
+                    avatar_image_url=avatar_image_url,
+                    quality_tier=quality_tier,
                 ):
                     # If we get an error event, log it and check if we should stop
                     if event.get("type") == "error":
@@ -274,11 +277,12 @@ class VideoGenerationService:
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
         generate_avatar: bool = False,
-        avatar_image_url: Optional[str] = None
+        avatar_image_url: Optional[str] = None,
+        quality_tier: str = "ultra",
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
-        
+
         Yields:
             Progress events for each stage
         """
@@ -313,14 +317,34 @@ class VideoGenerationService:
         pipeline_args = {
             "openrouter_key": openrouter_key,
             "gemini_image_key": gemini_key or "",  # Pass Gemini key for image generation
-            "runs_dir": work_dir.parent
+            "runs_dir": work_dir.parent,
+            "quality_tier": quality_tier,
         }
-        
-        # Only pass model overrides if provided, otherwise use pipeline defaults
-        if model:
-            pipeline_args["script_model"] = model
-            pipeline_args["html_model"] = model
-            
+
+        # Resolve model: use explicit model, or pick from DB based on quality_tier
+        resolved_model = model
+        if not resolved_model:
+            try:
+                from ..constants.models import get_models_by_tier, get_default_model
+                tier_models = get_models_by_tier(quality_tier)
+                if tier_models:
+                    # Prefer the default model for this tier
+                    default_for_tier = next((m for m in tier_models if m.is_default), tier_models[0])
+                    resolved_model = default_for_tier.id
+                    logger.info(f"[VideoGenService] Auto-selected model '{resolved_model}' for tier '{quality_tier}'")
+                else:
+                    # Fallback to global default
+                    default_model = get_default_model()
+                    if default_model:
+                        resolved_model = default_model.id
+                        logger.info(f"[VideoGenService] No models for tier '{quality_tier}', using global default '{resolved_model}'")
+            except Exception as e:
+                logger.warning(f"[VideoGenService] Failed to auto-select model for tier '{quality_tier}': {e}")
+
+        if resolved_model:
+            pipeline_args["script_model"] = resolved_model
+            pipeline_args["html_model"] = resolved_model
+
         pipeline = VideoGenerationPipeline(**pipeline_args)
         
         # Fetch branding and style configuration from institute settings
@@ -589,7 +613,7 @@ class VideoGenerationService:
                         if usage.get("total_tokens", 0) > 0 or usage.get("image_count", 0) > 0:
                             token_service = TokenUsageService(db_session)
                             provider = ApiProvider.OPENAI
-                            if model and "gemini" in model.lower():
+                            if resolved_model and "gemini" in resolved_model.lower():
                                 provider = ApiProvider.GEMINI
                             token_service.record_usage_and_deduct_credits(
                                 api_provider=provider,
@@ -599,7 +623,7 @@ class VideoGenerationService:
                                 request_type=RequestType.VIDEO,
                                 institute_id=institute_id,
                                 user_id=user_id,
-                                model=model or "video-gen-pipeline",
+                                model=resolved_model or "video-gen-pipeline",
                                 metadata={
                                     "video_id": video_id,
                                     "image_count": usage.get("image_count", 0),
@@ -973,7 +997,18 @@ class VideoGenerationService:
                                         db_updated = True
                                         break
                                     except Exception as db_error:
-                                        if "server closed the connection" in str(db_error) or "OperationalError" in str(type(db_error).__name__):
+                                        _db_err_str = str(db_error).lower()
+                                        _db_err_type = type(db_error).__name__
+                                        _is_conn_err = (
+                                            "server closed the connection" in _db_err_str
+                                            or "ssl connection has been closed" in _db_err_str
+                                            or "connection was reset" in _db_err_str
+                                            or "broken pipe" in _db_err_str
+                                            or "OperationalError" in _db_err_type
+                                            or "PendingRollbackError" in _db_err_type
+                                            or "InterfaceError" in _db_err_type
+                                        )
+                                        if _is_conn_err:
                                             if retry < max_db_retries - 1:
                                                 logger.warning(f"[VideoGenService] Database connection error (attempt {retry + 1}/{max_db_retries}): {db_error}. Retrying...")
                                                 time.sleep(1)  # Wait 1 second before retry
@@ -1007,13 +1042,21 @@ class VideoGenerationService:
                         logger.warning(f"[VideoGenService] Could not process file path {file_path}: {e}")
             
             if stage_has_files:
-                # Update stage status
-                self.repository.update_stage(
-                    video_id=video_id,
-                    stage=stage_name,
-                    status="COMPLETED"
-                )
-                
+                # Update stage status — wrap in try/except so a stale-session error
+                # doesn't abort the entire pipeline after files were already uploaded.
+                try:
+                    self.repository.update_stage(
+                        video_id=video_id,
+                        stage=stage_name,
+                        status="COMPLETED"
+                    )
+                except Exception as stage_update_err:
+                    logger.error(
+                        f"[VideoGenService] Failed to update stage {stage_name} in DB: {stage_update_err}. "
+                        "Files may have been uploaded but stage is not marked complete.",
+                        exc_info=True
+                    )
+
                 logger.info(f"[VideoGenService] Stage {stage_name} completed. Uploaded {len(uploaded_files)} files.")
                 
                 yield {

@@ -52,7 +52,7 @@ export const JoinPage: React.FC = () => {
         <JoinSessionForm onJoin={handleJoinSession} isJoining={isJoining} initialInviteCode={initialInviteCode} />
         
         <footer className="mt-12 text-center">
-          <p className="text-white/60 text-xs font-medium">&copy; {new Date().getFullYear()} Your Company Name. All rights reserved.</p>
+          <p className="text-white/60 text-xs font-medium">&copy; {new Date().getFullYear()} Vacademy. All rights reserved.</p>
           <p className="text-orange-300 font-medium mt-1">Ready to engage and learn!</p>
         </footer>
       </div>

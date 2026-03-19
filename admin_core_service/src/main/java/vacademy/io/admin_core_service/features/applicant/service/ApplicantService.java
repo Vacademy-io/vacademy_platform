@@ -22,6 +22,8 @@ import vacademy.io.admin_core_service.features.applicant.repository.ApplicantSta
 import vacademy.io.admin_core_service.features.applicant.repository.ApplicationStageRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
@@ -44,6 +46,16 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.ParentWithChildDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
+import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.payment.enums.PaymentType;
+import vacademy.io.admin_core_service.features.fee_management.service.ApplicationFeeReceiptService;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
@@ -58,6 +70,7 @@ import vacademy.io.admin_core_service.features.notification.enums.NotificationEv
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceType;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationTemplateType;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 
 import java.util.*;
 
@@ -110,6 +123,9 @@ public class ApplicantService {
         private UserPlanRepository userPlanRepository;
 
         @Autowired
+        private PaymentLogRepository paymentLogRepository;
+
+        @Autowired
         private InstituteDomainRoutingRepository instituteDomainRoutingRepository;
 
         @Autowired
@@ -126,6 +142,18 @@ public class ApplicantService {
 
         @Autowired
         private InstituteRepository instituteRepository;
+
+        @Autowired
+        private TimelineEventService timelineEventService;
+
+        @Autowired
+        private vacademy.io.admin_core_service.features.admission.service.AdmissionPipelineService admissionPipelineService;
+
+        @Autowired
+        private ApplicationFeeReceiptService applicationFeeReceiptService;
+
+        @Autowired
+        private PaymentLogService paymentLogService;
 
         // Correct Imports for Payment DTOs
         // using fully qualified names in method signature to avoid ambiguity if needed
@@ -699,6 +727,7 @@ public class ApplicantService {
                                                                 .name(childUser.getFullName())
                                                                 .dob(childUser.getDateOfBirth())
                                                                 .gender(childUser.getGender())
+                                                                .destinationPackageSessionId(audienceResponse.getDestinationPackageSessionId())
                                                                 .build();
                                         }
                                 }
@@ -816,90 +845,74 @@ public class ApplicantService {
                 } else {
                         // === Path 2: Manual / Direct Application ===
 
-                        // 2. Create Users (Parent & Child)
-                        parentUser = createParentUser(request);
-                        childUser = createChildUser(request, parentUser.getId());
+                        // 2. Manage Parent User
+                        // First check if parent exists via Mobile Number (similar to Admission logic)
+                        String parentMobile = getFormDataString(request.getFormData(), "parent_phone");
+                        if (parentMobile != null && !parentMobile.isBlank()) {
+                                parentUser = authService.getUserByMobileNumber(parentMobile);
+                        }
 
-                        // 3. Create Student
+                        // If not found by mobile, create conventionally (or update if email matches)
+                        if (parentUser == null) {
+                                parentUser = createParentUser(request);
+                        }
+
+                        // 3. Prevent Ghost Child Generation & Check Duplicates BEFORE creation
+                        String childName = getFormDataString(request.getFormData(), "child_name");
+                        if (parentUser != null && childName != null && !childName.isBlank()) {
+                                try {
+                                        List<ParentWithChildDTO> parentChildren = authService
+                                                        .getUsersWithChildren(List.of(parentUser.getId()));
+
+                                        final String finalParentId = parentUser.getId();
+                                        boolean duplicateInAuth = parentChildren.stream()
+                                                        .filter(dto -> dto.getParent() != null
+                                                                        && dto.getParent().getId()
+                                                                                        .equals(finalParentId))
+                                                        .map(ParentWithChildDTO::getChild)
+                                                        .filter(Objects::nonNull)
+                                                        .anyMatch(child -> child.getFullName()
+                                                                        .equalsIgnoreCase(childName));
+
+                                        if (duplicateInAuth) {
+                                                throw new VacademyException(
+                                                                "An application for a student named '" + childName
+                                                                                + "' has already been submitted under this parent account.");
+                                        }
+                                } catch (VacademyException ve) {
+                                        if (ve.getMessage().contains("already been submitted"))
+                                                throw ve;
+                                } catch (Exception e) {
+                                        logger.warn("Auth Service child check failed, proceeding: {}", e.getMessage());
+                                }
+                        }
+
+                        // Now safely create Child & Student Profile
+                        childUser = createChildUser(request, parentUser.getId());
                         if (childUser != null) {
                                 createStudentProfile(childUser, request.getFormData(), request.getCustomFieldValues(),
                                                 request.getInstituteId());
                         }
 
-                        // 4. Check for Existing Audience Response by User IDs (Optimization for
-                        // Admission)
-                        // If we are in ADMISSION mode (or even standard), checking for existing link
-                        // prevents duplicates
-                        List<AudienceResponse> existingResponses = audienceResponseRepository
-                                        .findByUserIdOrStudentUserId(
-                                                        parentUser.getId(),
-                                                        childUser != null ? childUser.getId() : null);
-
-                        // Filter for relevant response (checking if one already exists with source
-                        // linkage or generic)
-                        // For Admission, we prioritize any existing link to reuse
-                        Optional<AudienceResponse> existingAr = existingResponses.stream().findFirst();
-
-                        if (existingAr.isPresent()) {
-                                audienceResponse = existingAr.get();
-                                logger.info("Found existing AudienceResponse/Lead for user. Reusing ID: {}",
-                                                audienceResponse.getId());
-
-                                // Check existing applicant on this AR
-                                if (audienceResponse.getApplicantId() != null) {
-                                        if ("ADMISSION".equals(workflowType)) {
-                                                logger.info("Transitioning existing applicant {} to ADMISSION workflow (Direct Path)",
-                                                                audienceResponse.getApplicantId());
-                                                // Logic continues below to reused applicant
-                                        } else {
-                                                throw new VacademyException(
-                                                                "Application already submitted for this user.");
-                                        }
-                                }
-                        } else {
-                                // Create NEW Audience Response
-                                if ("ADMISSION".equals(workflowType)) {
-                                        // ADMISSION path: no Audience campaign required — create a direct response
-                                        audienceResponse = AudienceResponse.builder()
-                                                        .audienceId(null) // No campaign for manual admission
-                                                        .userId(parentUser.getId())
-                                                        .studentUserId(childUser != null ? childUser.getId() : null)
-                                                        .sourceType("MANUAL_ADMISSION")
-                                                        .sourceId(request.getSourceId())
-                                                        .enquiryId(null)
-                                                        .parentName(getFormDataString(request.getFormData(),
-                                                                        "parent_name"))
-                                                        .parentEmail(getFormDataString(request.getFormData(),
-                                                                        "parent_email"))
-                                                        .parentMobile(getFormDataString(request.getFormData(),
-                                                                        "parent_phone"))
-                                                        .overallStatus("ADMISSION")
-                                                        .build();
-                                } else {
-                                        Audience audience = audienceRepository
-                                                        .findByInstituteIdAndSessionId(request.getInstituteId(),
-                                                                        request.getSessionId())
-                                                        .orElseThrow(() -> new VacademyException(
-                                                                        "No audience campaign found for this session. Please contact admin."));
-
-                                        audienceResponse = AudienceResponse.builder()
-                                                        .audienceId(audience.getId())
-                                                        .userId(parentUser.getId())
-                                                        .studentUserId(childUser != null ? childUser.getId() : null)
-                                                        .sourceType("DIRECT_APPLICATION")
-                                                        .sourceId(request.getSourceId())
-                                                        .enquiryId(null) // Skip Enquiry
-                                                        .parentName(getFormDataString(request.getFormData(),
-                                                                        "parent_name"))
-                                                        .parentEmail(getFormDataString(request.getFormData(),
-                                                                        "parent_email"))
-                                                        .parentMobile(getFormDataString(request.getFormData(),
-                                                                        "parent_phone"))
-                                                        .overallStatus("APPLICATION")
-                                                        .build();
-                                }
-                                audienceResponse = audienceResponseRepository.save(audienceResponse);
-                        }
+                        // 4. Setup Lead Tracking (Audience Response)
+                        // Create a fresh AudienceResponse directly from form data.
+                        // No audience campaign lookup needed — audienceId is nullable.
+                        String sourceType = "ADMISSION".equals(workflowType)
+                                        ? "MANUAL_ADMISSION"
+                                        : "DIRECT_APPLICATION";
+                        audienceResponse = AudienceResponse.builder()
+                                        .audienceId(null) // No campaign required
+                                        .userId(parentUser.getId())
+                                        .studentUserId(childUser != null ? childUser.getId() : null)
+                                        .sourceType(sourceType)
+                                        .sourceId(request.getSourceId())
+                                        .enquiryId(null)
+                                        .parentName(getFormDataString(request.getFormData(), "parent_name"))
+                                        .parentEmail(getFormDataString(request.getFormData(), "parent_email"))
+                                        .parentMobile(getFormDataString(request.getFormData(), "parent_phone"))
+                                        .overallStatus("ADMISSION".equals(workflowType) ? "ADMISSION" : "APPLICATION")
+                                        .build();
+                        audienceResponse = audienceResponseRepository.save(audienceResponse);
                 }
 
                 // === Common Path: Create Applicant & Link ===
@@ -971,6 +984,42 @@ public class ApplicantService {
                 if (ApplicantStageType.PAYMENT.equals(firstStage.getType())) {
                         sendApplicationPaymentEmail(savedApplicant.getId().toString(), firstStage);
                 }
+
+                // Log timeline event for Applicant creation
+                String actorId = (parentUser != null) ? parentUser.getId() : "SYSTEM";
+                String actorName = (parentUser != null) ? parentUser.getFullName() : "SYSTEM";
+
+                timelineEventService.logEvent(
+                                "APPLICANT",
+                                savedApplicant.getId().toString(),
+                                isTransition ? "APPLICATION_TRANSITIONED" : "APPLICATION_SUBMITTED",
+                                "USER", // Standarding to USER or SYSTEM for applicants
+                                actorId,
+                                actorName,
+                                isTransition ? "Applicant Transitioned to Admission" : "Application Submitted",
+                                "Applicant moved to stage: " + firstStage.getStageName(),
+                                Map.of(
+                                                "workflow_type", workflowType,
+                                                "stage_name", firstStage.getStageName()));
+
+                // --- NEW: Record Application in Pipeline ---
+                admissionPipelineService.recordApplication(
+                                request.getInstituteId(),
+                                request.getDestinationPackageSessionId() != null
+                                                ? request.getDestinationPackageSessionId()
+                                                : request.getSessionId(),
+                                parentUser != null ? parentUser.getId() : null,
+                                childUser != null ? childUser.getId()
+                                                : (parentUser != null ? parentUser.getId() : null), // if no child user,
+                                                                                                    // parent user is
+                                                                                                    // child (unlikely
+                                                                                                    // for admission but
+                                                                                                    // possible)
+                                request.getEnquiryId(),
+                                savedApplicant != null && savedApplicant.getId() != null
+                                                ? savedApplicant.getId().toString()
+                                                : null,
+                                request.getSource());
 
                 return ApplyResponseDTO.builder()
                                 .applicantId(savedApplicant.getId().toString())
@@ -1403,10 +1452,152 @@ public class ApplicantService {
                                         UserPlanStatusEnum.PENDING_FOR_PAYMENT.name());
                 }
 
-                vacademy.io.common.payment.dto.PaymentResponseDTO response = paymentService
-                                .handleUserPlanPayment(requestDTO, instituteId, userDetails, userPlan.getId());
+                // SECURE FLAG FOR WEBHOOK: If payment is for application fees, flag it for
+                // Razorpay Webhook
+                if (paymentOptionId != null && (paymentOptionId.contains("application_fee")
+                                || paymentOptionId.contains("admission_fee"))) { // Handle both admission/application
+                                                                                 // fee formats
+                        requestDTO.setPaymentType(vacademy.io.common.payment.enums.PaymentType.APPLICATION_FEE);
+                } else {
+                        // Keep previous default behavior for other payments
+                        requestDTO.setPaymentType(vacademy.io.common.payment.enums.PaymentType.INITIAL); // Fallback
+                                                                                                         // for
+                                                                                                         // normal
+                                                                                                         // payments
+                }
 
-                // 3. Update Response JSON with Order ID
+                // Inject applicantId and optionId into Gateway Requests so PaymentService saves
+                // them
+                // in the Razorpay order notes -> which then flow to the webhook
+                if (requestDTO.getRazorpayRequest() == null) {
+                        requestDTO.setRazorpayRequest(new vacademy.io.common.payment.dto.RazorpayRequestDTO());
+                }
+                requestDTO.getRazorpayRequest().setApplicantId(applicantId);
+                requestDTO.getRazorpayRequest().setPaymentOptionId(paymentOptionId);
+
+                vacademy.io.common.payment.dto.PaymentResponseDTO response;
+                boolean isManualPayment = "MANUAL".equalsIgnoreCase(requestDTO.getVendor());
+
+                if (isManualPayment) {
+                        // ── OFFLINE / CASH PAYMENT PATH ──────────────────────────────────────────
+                        // Skip gateway entirely. Admin is recording a cash/offline payment.
+
+                        // 1. Activate the UserPlan immediately (no webhook needed)
+                        userPlan.setStatus(
+                                        vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum.ACTIVE
+                                                        .name());
+                        userPlanService.save(userPlan);
+
+                        // 2. Build a reference ID — use admin-supplied receipt/transaction ID if
+                        // present
+                        String transactionRef = (requestDTO.getManualRequest() != null
+                                        && org.springframework.util.StringUtils
+                                                        .hasText(requestDTO.getManualRequest().getTransactionId()))
+                                                                        ? requestDTO.getManualRequest()
+                                                                                        .getTransactionId()
+                                                                        : "MANUAL-" + System.currentTimeMillis();
+
+                        // 2.1. Create PaymentLog for audit trail (matching online payment behavior)
+                        PaymentLog paymentLog = new PaymentLog();
+                        paymentLog.setUserPlan(userPlan);
+                        paymentLog.setUserId(childUserId);
+                        paymentLog.setPaymentAmount(requestDTO.getAmount());
+                        paymentLog.setVendor("MANUAL");
+                        paymentLog.setVendorId(instituteId); // Institute as vendor for manual payments
+                        paymentLog.setStatus("SUCCESS"); // Immediate success for manual
+                        paymentLog.setPaymentStatus("PAID");
+                        paymentLog.setCurrency(requestDTO.getCurrency() != null ? requestDTO.getCurrency() : "INR");
+                        paymentLog.setDate(new java.util.Date());
+
+                        // Store transaction reference and admin details in payment_specific_data
+                        java.util.Map<String, Object> paymentData = new java.util.HashMap<>();
+                        paymentData.put("transactionRef", transactionRef);
+                        paymentData.put("paymentType", "APPLICATION_FEE");
+                        if (userDetails != null) {
+                                paymentData.put("recordedByUserId", userDetails.getUserId());
+                                paymentData.put("recordedByUsername", userDetails.getUsername());
+                        }
+                        if (requestDTO.getManualRequest() != null
+                                        && requestDTO.getManualRequest().getFileId() != null) {
+                                paymentData.put("fileId", requestDTO.getManualRequest().getFileId());
+                        }
+
+                        try {
+                                paymentLog.setPaymentSpecificData(objectMapper.writeValueAsString(paymentData));
+                        } catch (Exception e) {
+                                logger.warn("Failed to serialize payment data for manual payment", e);
+                                paymentLog.setPaymentSpecificData("{}");
+                        }
+
+                        paymentLogRepository.save(paymentLog);
+                        logger.info("Created PaymentLog for manual payment: {}, user_plan: {}", paymentLog.getId(),
+                                        userPlan.getId());
+
+                        // ---- INJECT APPLICATION FEE INVOICE GENERATION FOR MANUAL PAYMENTS ----
+                        try {
+                                if (vacademy.io.common.payment.enums.PaymentType.APPLICATION_FEE
+                                                .equals(requestDTO.getPaymentType())) {
+
+                                        // RELIABILITY FIX: Extract genuine parent email from DB instead of
+                                        // AudienceResponse
+                                        String contactEmail = requestDTO.getEmail();
+                                        String contactName = "Applicant";
+
+                                        if (audienceResponse != null && audienceResponse.getUserId() != null) {
+                                                try {
+                                                        List<vacademy.io.common.auth.dto.UserDTO> parentUsers = authService
+                                                                        .getUsersFromAuthServiceByUserIds(List.of(
+                                                                                        audienceResponse.getUserId()));
+                                                        if (parentUsers != null && !parentUsers.isEmpty()) {
+                                                                vacademy.io.common.auth.dto.UserDTO realParent = parentUsers
+                                                                                .get(0);
+                                                                if (realParent.getEmail() != null)
+                                                                        contactEmail = realParent.getEmail();
+                                                                if (realParent.getFullName() != null)
+                                                                        contactName = realParent.getFullName();
+                                                        }
+                                                } catch (Exception authEx) {
+                                                        logger.warn("Failed to lookup real parent account info: {}",
+                                                                        authEx.getMessage());
+                                                }
+                                        }
+
+                                        applicationFeeReceiptService.generateAndSendInvoice(
+                                                        applicantId, paymentOptionId, paymentLog.getId(), instituteId,
+                                                        java.math.BigDecimal.valueOf(requestDTO.getAmount()),
+                                                        transactionRef,
+                                                        "OFFLINE",
+                                                        contactEmail,
+                                                        contactName);
+                                }
+                        } catch (Exception ex) {
+                                logger.error("Failed to generate manual application fee invoice for applicant: {}",
+                                                applicantId, ex);
+                        }
+
+                        // 3. Build response (no gateway response to parse)
+                        response = new vacademy.io.common.payment.dto.PaymentResponseDTO();
+                        response.setOrderId(transactionRef);
+                        response.setMessage("Offline payment recorded successfully");
+                        java.util.Map<String, Object> responseData = new java.util.HashMap<>();
+                        responseData.put("paymentStatus", "PAID");
+                        responseData.put("paymentMode", "MANUAL");
+                        responseData.put("transactionRef", transactionRef);
+                        response.setResponseData(responseData);
+
+                        logger.info("Manual payment recorded for applicant: {}, ref: {}", applicantId, transactionRef);
+
+                        // 4. Auto-advance applicant stage immediately (no webhook wait)
+                        completeStageAndMoveNext(applicantId);
+
+                } else {
+                        // ── ONLINE GATEWAY PAYMENT PATH ──────────────────────────────────────────
+                        // Existing unchanged logic — calls Razorpay/Stripe/etc.
+                        response = paymentService
+                                        .handleUserPlanPayment(requestDTO, instituteId, userDetails, userPlan.getId());
+                }
+
+                // 3. Update Response JSON with Order ID / Transaction Ref
                 try {
                         // Read existing JSON (which is the Template)
                         java.util.Map<String, Object> jsonMap = new java.util.HashMap<>();
@@ -1423,7 +1614,8 @@ public class ApplicantService {
 
                         // Update Keys
                         jsonMap.put("order_id", response.getOrderId());
-                        jsonMap.put("payment_status", "INITIATED");
+                        jsonMap.put("payment_status", isManualPayment ? "COMPLETED" : "INITIATED");
+                        jsonMap.put("payment_mode", requestDTO.getVendor()); // e.g. "MANUAL", "RAZORPAY"
 
                         // Save
                         currentStage.setResponseJson(objectMapper.writeValueAsString(jsonMap));
@@ -1521,6 +1713,13 @@ public class ApplicantService {
                                         .findById(UUID.fromString(currentStage.getStageId()))
                                         .orElseThrow(() -> new VacademyException("Stage definition not found"));
 
+                        // Check if current stage is marked as last (explicit workflow end)
+                        if (currentStageDef.getIsLast() != null && currentStageDef.getIsLast()) {
+                                logger.info("Workflow completed for applicant {}. Stage '{}' is marked as last.",
+                                                applicantId, currentStageDef.getStageName());
+                                return;
+                        }
+
                         // Find next stage (Sequence + 1)
                         // Assuming sequence is numeric string
                         int currentSeq = 0;
@@ -1533,18 +1732,37 @@ public class ApplicantService {
 
                         String nextSeq = String.valueOf(currentSeq + 1);
 
-                        Optional<ApplicationStage> nextStageOpt = applicationStageRepository
-                                        .findByInstituteIdAndSourceAndSourceIdAndSequenceAndWorkflowType(
-                                                        currentStageDef.getInstituteId(),
-                                                        currentStageDef.getSource(),
-                                                        currentStageDef.getSourceId(),
-                                                        nextSeq,
-                                                        currentStageDef.getWorkflowType());
+                        // Safe workflow_type filtering: Only filter if workflow_type exists (backward
+                        // compatible)
+                        Optional<ApplicationStage> nextStageOpt;
+                        if (currentStageDef.getWorkflowType() != null && !currentStageDef.getWorkflowType().isEmpty()) {
+                                // Filter by workflow_type (prevents cross-workflow jumps)
+                                nextStageOpt = applicationStageRepository
+                                                .findByInstituteIdAndSourceAndSourceIdAndSequenceAndWorkflowType(
+                                                                currentStageDef.getInstituteId(),
+                                                                currentStageDef.getSource(),
+                                                                currentStageDef.getSourceId(),
+                                                                nextSeq,
+                                                                currentStageDef.getWorkflowType());
+                                logger.debug("Searching for next stage with workflow_type: {}",
+                                                currentStageDef.getWorkflowType());
+                        } else {
+                                // Legacy path: No workflow_type filter for NULL/empty values (backward
+                                // compatible)
+                                nextStageOpt = applicationStageRepository
+                                                .findByInstituteIdAndSourceAndSourceIdAndSequence(
+                                                                currentStageDef.getInstituteId(),
+                                                                currentStageDef.getSource(),
+                                                                currentStageDef.getSourceId(),
+                                                                nextSeq);
+                                logger.warn("Applicant {} current stage has NULL/empty workflow_type, using legacy query",
+                                                applicantId);
+                        }
 
+                        // Check if next stage exists
                         if (nextStageOpt.isPresent()) {
                                 ApplicationStage nextStage = nextStageOpt.get();
 
-                                // Create Applicant Stage
                                 ApplicantStage newStage = ApplicantStage.builder()
                                                 .applicantId(applicantId)
                                                 .stageId(nextStage.getId().toString())
@@ -1568,7 +1786,8 @@ public class ApplicantService {
 
         /**
          * Admin manual move to next stage
-         * Updates applicant, creates new applicant_stage entry, and updates audience_response if workflow type completed
+         * Updates applicant, creates new applicant_stage entry, and updates
+         * audience_response if workflow type completed
          */
         @Transactional
         public void moveApplicantToNextStage(String applicantId) {
@@ -1581,7 +1800,15 @@ public class ApplicantService {
                                 .findById(UUID.fromString(applicant.getApplicationStageId()))
                                 .orElseThrow(() -> new VacademyException("Current application stage not found"));
 
-                // Step 3: Resolve next stage (sequence + 1, same institute/source/sourceId)
+                // Check if current stage is marked as last (explicit workflow end)
+                if (currentStageDef.getIsLast() != null && currentStageDef.getIsLast()) {
+                        throw new VacademyException(
+                                        "Cannot move further. Stage '" + currentStageDef.getStageName()
+                                                        + "' is marked as the last stage of this workflow.");
+                }
+
+                // Step 3: Resolve next stage (sequence + 1, same
+                // institute/source/sourceId/workflowType)
                 int currentSeq = 0;
                 try {
                         currentSeq = Integer.parseInt(currentStageDef.getSequence());
@@ -1591,15 +1818,40 @@ public class ApplicantService {
 
                 String nextSeq = String.valueOf(currentSeq + 1);
 
-                Optional<ApplicationStage> nextStageOpt = applicationStageRepository
-                                .findByInstituteIdAndSourceAndSourceIdAndSequence(
-                                                currentStageDef.getInstituteId(),
-                                                currentStageDef.getSource(),
-                                                currentStageDef.getSourceId(),
-                                                nextSeq);
+                // Safe workflow_type filtering: Only filter if workflow_type exists (backward
+                // compatible)
+                Optional<ApplicationStage> nextStageOpt;
+                if (currentStageDef.getWorkflowType() != null && !currentStageDef.getWorkflowType().isEmpty()) {
+                        // Filter by workflow_type (prevents cross-workflow jumps)
+                        nextStageOpt = applicationStageRepository
+                                        .findByInstituteIdAndSourceAndSourceIdAndSequenceAndWorkflowType(
+                                                        currentStageDef.getInstituteId(),
+                                                        currentStageDef.getSource(),
+                                                        currentStageDef.getSourceId(),
+                                                        nextSeq,
+                                                        currentStageDef.getWorkflowType());
+                        logger.debug("Admin moving applicant {} with workflow_type filter: {}", applicantId,
+                                        currentStageDef.getWorkflowType());
+                } else {
+                        // Legacy path: No workflow_type filter for NULL/empty values (backward
+                        // compatible)
+                        nextStageOpt = applicationStageRepository
+                                        .findByInstituteIdAndSourceAndSourceIdAndSequence(
+                                                        currentStageDef.getInstituteId(),
+                                                        currentStageDef.getSource(),
+                                                        currentStageDef.getSourceId(),
+                                                        nextSeq);
+                        logger.warn("Admin moving applicant {} with NULL/empty workflow_type, using legacy query",
+                                        applicantId);
+                }
 
                 if (nextStageOpt.isEmpty()) {
-                        throw new VacademyException("No next stage found. Applicant is already at the last stage.");
+                        // No next stage - graceful handling (no exception)
+                        logger.warn("Cannot move applicant {}. No next stage found (sequence {}). " +
+                                        "Current stage may be misconfigured (is_last=false but no successor exists). " +
+                                        "Consider marking current stage as is_last=true or adding next stage.",
+                                        applicantId, nextSeq);
+                        return; // Graceful exit - applicant remains at current stage
                 }
 
                 ApplicationStage nextStage = nextStageOpt.get();
@@ -1609,7 +1861,8 @@ public class ApplicantService {
                 applicant.setApplicationStageStatus("INITIATED");
                 applicantRepository.save(applicant);
 
-                // Step 5: UPDATE current applicant_stage (mark COMPLETED) and CREATE new applicant_stage row
+                // Step 5: UPDATE current applicant_stage (mark COMPLETED) and CREATE new
+                // applicant_stage row
                 Optional<ApplicantStage> currentApplicantStageOpt = applicantStageRepository
                                 .findTopByApplicantIdOrderByCreatedAtDesc(applicantId);
 
@@ -1633,18 +1886,9 @@ public class ApplicantService {
                                 .build();
                 applicantStageRepository.save(newApplicantStage);
 
-                // Step 6: UPDATE audience_response if current stage had is_last = 1 (workflow type completed)
-                Optional<AudienceResponse> audienceResponseOpt = audienceResponseRepository
-                                .findByApplicantId(applicantId);
-
-                if (audienceResponseOpt.isPresent()) {
-                        AudienceResponse audienceResponse = audienceResponseOpt.get();
-                        // Check if the stage we're leaving has is_last = 1
-                        if (Boolean.TRUE.equals(currentStageDef.getIsLast())) {
-                                audienceResponse.setOverallStatus("CHANGED");
-                                audienceResponseRepository.save(audienceResponse);
-                                logger.info("Updated audience_response.overall_status to CHANGED for applicant {} (workflow type completed)", applicantId);
-                        }
+                // Step 6: Trigger email if next stage is payment type
+                if (ApplicantStageType.PAYMENT.equals(nextStage.getType())) {
+                        sendApplicationPaymentEmail(applicantId, nextStage);
                 }
 
                 logger.info("Successfully moved applicant {} from stage {} to stage {}", applicantId,
@@ -1837,7 +2081,7 @@ public class ApplicantService {
                         String instituteName = institute != null ? institute.getInstituteName() : "Institute";
 
                         // Get credentials (username and password)
-                        String username = parentUser != null ? parentUser.getEmail() : "";
+                        String username = parentUser != null ? parentUser.getUsername() : "";
                         String password = parentUser != null ? parentUser.getPassword() : ""; // Use getPassword, not
                                                                                               // getPasswordHash
 
@@ -1854,10 +2098,17 @@ public class ApplicantService {
                                         ? session.getSession().getSessionName()
                                         : "Session";
 
+                        String workflowType = applicant.getWorkflowType();
+                        String emailTypeLabel = "ADMISSION".equalsIgnoreCase(workflowType) ? "Admission"
+                                        : "Application";
+                        NotificationEventType eventType = "ADMISSION".equalsIgnoreCase(workflowType)
+                                        ? NotificationEventType.ADMISSION_FORM_SUBMISSION
+                                        : NotificationEventType.APPLICATION_FORM_SUBMISSION;
+
                         // Try to fetch template from notification_event_config
                         Optional<NotificationEventConfig> configOpt = notificationEventConfigRepository
                                         .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
-                                                        NotificationEventType.APPLICATION_FORM_SUBMISSION,
+                                                        eventType,
                                                         NotificationSourceType.APPLICATION_STAGE,
                                                         firstStage.getId().toString(),
                                                         NotificationTemplateType.EMAIL);
@@ -1891,23 +2142,37 @@ public class ApplicantService {
                                                 parentUser.getEmail());
                         } else {
                                 // Send default email
-                                logger.info("No custom template found, using default application confirmation email");
+                                logger.info("No custom template found, using default {} confirmation email",
+                                                emailTypeLabel.toLowerCase());
 
-                                String defaultEmailBody = buildDefaultApplicationEmailBody(
-                                                parentUser != null ? parentUser.getFullName() : "Parent",
-                                                childUser != null ? childUser.getFullName() : "Student",
-                                                sessionName,
-                                                applicant.getTrackingId(),
-                                                submissionTime,
-                                                username,
-                                                password,
-                                                portalUrl,
-                                                instituteName);
+                                String emailBody;
+                                if ("ADMISSION".equals(workflowType)) {
+                                        emailBody = buildDefaultAdmissionEmailBody(
+                                                        parentUser != null ? parentUser.getFullName() : "Parent",
+                                                        childUser != null ? childUser.getFullName() : "Student",
+                                                        instituteName,
+                                                        portalUrl,
+                                                        portalUrl, // Using portalUrl for loginUrl as well
+                                                        username,
+                                                        password);
+                                } else {
+                                        emailBody = buildDefaultApplicationEmailBody(
+                                                        "Application",
+                                                        parentUser != null ? parentUser.getFullName() : "Parent",
+                                                        childUser != null ? childUser.getFullName() : "Student",
+                                                        sessionName,
+                                                        applicant.getTrackingId(),
+                                                        submissionTime,
+                                                        username,
+                                                        password,
+                                                        portalUrl,
+                                                        instituteName);
+                                }
 
                                 GenericEmailRequest emailRequest = new GenericEmailRequest();
                                 emailRequest.setTo(parentUser.getEmail());
-                                emailRequest.setSubject("Application Submitted Successfully - " + sessionName);
-                                emailRequest.setBody(defaultEmailBody);
+                                emailRequest.setSubject(emailTypeLabel + " Submitted Successfully - " + sessionName);
+                                emailRequest.setBody(emailBody);
 
                                 notificationService.sendGenericHtmlMail(emailRequest, instituteId);
                                 logger.info("Sent default application confirmation email to: {}",
@@ -1925,6 +2190,7 @@ public class ApplicantService {
          * Build default HTML email body for application confirmation
          */
         private String buildDefaultApplicationEmailBody(
+                        String emailTypeLabel,
                         String parentName,
                         String childName,
                         String sessionName,
@@ -1958,14 +2224,15 @@ public class ApplicantService {
                                 "<body>" +
                                 "<div class='container'>" +
                                 "<div class='header'>" +
-                                "<h2>Application Submitted Successfully!</h2>" +
+                                "<h2>" + emailTypeLabel + " Submitted Successfully!</h2>" +
                                 "</div>" +
                                 "<div class='content'>" +
                                 "<p>Dear <strong>" + parentName + "</strong>,</p>" +
-                                "<p>Thank you for submitting the application for <strong>" + childName
+                                "<p>Thank you for submitting the " + emailTypeLabel.toLowerCase() + " for <strong>"
+                                + childName
                                 + "</strong> to <strong>" + sessionName + "</strong>.</p>" +
                                 "<div class='detail-section'>" +
-                                "<h3>Application Details</h3>" +
+                                "<h3>" + emailTypeLabel + " Details</h3>" +
                                 "<p><span class='detail-label'>Tracking ID:</span> <span class='detail-value'>"
                                 + trackingId + "</span></p>" +
                                 "<p><span class='detail-label'>Student Name:</span> <span class='detail-value'>"
@@ -1990,8 +2257,10 @@ public class ApplicantService {
                                 "</div>" +
                                 "<div class='detail-section'>" +
                                 "<h3>Next Steps</h3>" +
-                                "<p>We will review your application and contact you shortly with the next steps.</p>" +
-                                "<p>You can track your application status by logging into the portal using the credentials above.</p>"
+                                "<p>We will review your " + emailTypeLabel.toLowerCase()
+                                + " and contact you shortly with the next steps.</p>" +
+                                "<p>You can track your " + emailTypeLabel.toLowerCase()
+                                + " status by logging into the portal using the credentials above.</p>"
                                 +
                                 "</div>" +
                                 "<p>If you have any questions, please don't hesitate to contact us.</p>" +
@@ -1999,6 +2268,78 @@ public class ApplicantService {
                                 "</div>" +
                                 "<div class='footer'>" +
                                 "<p>This is an automated email. Please do not reply to this message.</p>" +
+                                "</div>" +
+                                "</body>" +
+                                "</html>";
+        }
+
+        /**
+         * Build default HTML email body for admission confirmation
+         */
+        private String buildDefaultAdmissionEmailBody(
+                        String parentName,
+                        String childName,
+                        String instituteName,
+                        String websiteUrl,
+                        String loginUrl,
+                        String username,
+                        String password) {
+
+                return "<!DOCTYPE html>" +
+                                "<html>" +
+                                "<head>" +
+                                "<style>" +
+                                "body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #2c3e50; background-color: #f4f7f6; }"
+                                +
+                                ".container { max-width: 650px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }"
+                                +
+                                ".header { background: linear-gradient(135deg, #FFB75E 0%, #ED8F03 100%); color: white; padding: 30px 20px; text-align: center; }"
+                                +
+                                ".header h2 { margin: 0; font-size: 28px; letter-spacing: 1px; }" +
+                                ".content { padding: 40px 30px; }" +
+                                ".welcome-msg { font-size: 18px; color: #34495e; margin-bottom: 25px; text-align: center; }"
+                                +
+                                ".credentials-box { background-color: #f8f9fa; border-left: 5px solid #ED8F03; padding: 25px; margin: 30px 0; border-radius: 0 8px 8px 0; }"
+                                +
+                                ".credentials-box h3 { margin-top: 0; color: #ED8F03; }" +
+                                ".cred-row { margin: 10px 0; font-size: 16px; }" +
+                                ".cred-val { font-family: monospace; background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 18px; }"
+                                +
+                                ".button { display: inline-block; padding: 14px 35px; background-color: #ED8F03; color: white !important; text-decoration: none; border-radius: 6px; font-weight: bold; text-transform: uppercase; font-size: 14px; transition: background 0.3s; }"
+                                +
+                                ".button:hover { background-color: #d67d02; }" +
+                                ".footer { background-color: #2c3e50; text-align: center; padding: 25px; color: #a8b2bd; font-size: 13px; }"
+                                +
+                                "</style>" +
+                                "</head>" +
+                                "<body>" +
+                                "<div class='container'>" +
+                                "<div class='header'>" +
+                                "<h2>Admission Confirmed! 🎉</h2>" +
+                                "<p style='margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;'>Welcome to "
+                                + instituteName + "</p>" +
+                                "</div>" +
+                                "<div class='content'>" +
+                                "<p class='welcome-msg'>Dear <strong>" + parentName + "</strong>,</p>" +
+                                "<p>We are absolutely thrilled to officially welcome <strong>" + childName
+                                + "</strong> to our institute!</p>" +
+                                "<p>Your admission process has been successfully completed. To help you get started, access fee schedules, and view academic updates, we have set up your permanent Parent Portal account.</p>"
+                                +
+                                "<div class='credentials-box'>" +
+                                "<h3>Your Portal Credentials</h3>" +
+                                "<div class='cred-row'>Username: <span class='cred-val'>" + username + "</span></div>" +
+                                "<div class='cred-row'>Password: <span class='cred-val'>" + password + "</span></div>" +
+                                "</div>" +
+                                "<div style='text-align: center; margin: 40px 0;'>" +
+                                "<a href='" + loginUrl + "' class='button'>Login to Parent Portal</a>" +
+                                "</div>" +
+                                "<p>If you have any questions before classes begin, please visit our <a href='"
+                                + websiteUrl
+                                + "' style='color: #ED8F03;'>website</a> or reach out to our administration team.</p>" +
+                                "</div>" +
+                                "<div class='footer'>" +
+                                "<p>You are receiving this email because you have successfully enrolled at "
+                                + instituteName + ".</p>" +
                                 "</div>" +
                                 "</div>" +
                                 "</body>" +

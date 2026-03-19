@@ -26,7 +26,7 @@ import vacademy.io.assessment_service.features.learner_assessment.enums.Assessme
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.DateUtil;
-import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.assessment_service.core.exception.VacademyException;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -68,18 +68,20 @@ public class LearnerAssessmentManualStatusManager {
      * @throws VacademyException if the attempt or assessment is invalid.
      */
     public ResponseEntity<String> submitManualAssessment(CustomUserDetails userDetails,
-                                                         String assessmentId,
-                                                         String attemptId,
-                                                         AssessmentAttemptUpdateRequest request,
-                                                         String instituteId) {
+            String assessmentId,
+            String attemptId,
+            AssessmentAttemptUpdateRequest request,
+            String instituteId) {
         try {
             // Fetch student attempt from the database
             Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
-            if (attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
+            if (attemptOptional.isEmpty())
+                throw new VacademyException("Attempt Not Found");
 
             // Validate if the attempt belongs to the given assessment
             Assessment assessment = attemptOptional.get().getRegistration().getAssessment();
-            if (!assessment.getId().equals(assessmentId)) throw new VacademyException("Assessment Not Found");
+            if (!assessment.getId().equals(assessmentId))
+                throw new VacademyException("Assessment Not Found");
 
             // Check attempt status before proceeding
             if (attemptOptional.get().getStatus().equals("PREVIEW")) {
@@ -110,8 +112,8 @@ public class LearnerAssessmentManualStatusManager {
      */
     @Transactional
     private void updateAttemptForManualSubmit(Assessment assessment,
-                                              StudentAttempt studentAttempt,
-                                              AssessmentAttemptUpdateRequest request, String instituteId) throws JsonProcessingException {
+            StudentAttempt studentAttempt,
+            AssessmentAttemptUpdateRequest request, String instituteId) throws JsonProcessingException {
 
         // Validate request
         if (Objects.isNull(request) || Objects.isNull(request.getJsonContent())) {
@@ -119,11 +121,12 @@ public class LearnerAssessmentManualStatusManager {
         }
 
         // Parse and validate the JSON data
-        LearnerManualAttemptDataDto attemptData = studentAttemptService.validateAndCreateManualAttemptJsonObject(request.getJsonContent());
+        LearnerManualAttemptDataDto attemptData = studentAttemptService
+                .validateAndCreateManualAttemptJsonObject(request.getJsonContent());
         Optional<AssessmentSetMapping> setMapping = assessmentSetMappingRepository.findById(request.getSetId());
 
-
-        if (Objects.isNull(attemptData)) throw new VacademyException("Attempt Data is Null");
+        if (Objects.isNull(attemptData))
+            throw new VacademyException("Attempt Data is Null");
 
         // Extract client sync time from the parsed JSON
         String clientSyncTime = attemptData.getClientLastSync();
@@ -139,7 +142,8 @@ public class LearnerAssessmentManualStatusManager {
         studentAttempt.setClientLastSync(DateUtil.convertStringToUTCDate(clientSyncTime));
         studentAttempt.setTotalTimeInSeconds(assessmentAttemptDto.getTimeElapsedInSeconds());
         setMapping.ifPresent(studentAttempt::setAssessmentSetMapping);
-        studentAttempt.setCommaSeparatedEvaluatorUserIds(convertListToCommaSeparatedString(getEvaluatorsForAttempt(assessment.getId(), instituteId)));
+        studentAttempt.setCommaSeparatedEvaluatorUserIds(
+                convertListToCommaSeparatedString(getEvaluatorsForAttempt(assessment.getId(), instituteId)));
 
         // Save the updated attempt
         studentAttemptService.updateStudentAttempt(studentAttempt);
@@ -154,13 +158,17 @@ public class LearnerAssessmentManualStatusManager {
 
     private List<String> getEvaluatorsForAttempt(String assessmentId, String instituteId) {
         try {
-            Optional<AssessmentInstituteMapping> assessmentInstituteMapping = assessmentInstituteMappingRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
-            if (assessmentInstituteMapping.isEmpty()) throw new VacademyException("Institute Mapping not Found");
+            Optional<AssessmentInstituteMapping> assessmentInstituteMapping = assessmentInstituteMappingRepository
+                    .findByAssessmentIdAndInstituteId(assessmentId, instituteId);
+            if (assessmentInstituteMapping.isEmpty())
+                throw new VacademyException("Institute Mapping not Found");
 
-            if (Objects.isNull(assessmentInstituteMapping.get().getEvaluationSetting())) return new ArrayList<>();
+            if (Objects.isNull(assessmentInstituteMapping.get().getEvaluationSetting()))
+                return new ArrayList<>();
 
             ObjectMapper objectMapper = new ObjectMapper();
-            EvaluationSettingDto settingDto = objectMapper.readValue(assessmentInstituteMapping.get().getEvaluationSetting(), EvaluationSettingDto.class);
+            EvaluationSettingDto settingDto = objectMapper
+                    .readValue(assessmentInstituteMapping.get().getEvaluationSetting(), EvaluationSettingDto.class);
 
             return getEvaluatorsFromEvaluationSetting(settingDto);
         } catch (Exception e) {
@@ -169,7 +177,8 @@ public class LearnerAssessmentManualStatusManager {
     }
 
     private List<String> getEvaluatorsFromEvaluationSetting(EvaluationSettingDto settingDto) {
-        if (Objects.isNull(settingDto) || Objects.isNull(settingDto.getUsers())) return new ArrayList<>();
+        if (Objects.isNull(settingDto) || Objects.isNull(settingDto.getUsers()))
+            return new ArrayList<>();
         List<String> userIds = new ArrayList<>();
 
         settingDto.getUsers().forEach(users -> {
@@ -180,7 +189,8 @@ public class LearnerAssessmentManualStatusManager {
     }
 
     /**
-     * Asynchronously creates or updates question-wise marks data for manual assessments.
+     * Asynchronously creates or updates question-wise marks data for manual
+     * assessments.
      *
      * @param assessment     The associated assessment.
      * @param studentAttempt The student attempt being evaluated.
@@ -190,20 +200,18 @@ public class LearnerAssessmentManualStatusManager {
      */
     @Async
     public CompletableFuture<List<QuestionWiseMarks>> createQuestionWiseMarksWrapper(Assessment assessment,
-                                                                                     StudentAttempt studentAttempt,
-                                                                                     String jsonContent,
-                                                                                     LearnerManualAttemptDataDto attemptData) {
+            StudentAttempt studentAttempt,
+            String jsonContent,
+            LearnerManualAttemptDataDto attemptData) {
         return CompletableFuture.completedFuture(
                 questionWiseMarksService.createOrUpdateQuestionWiseMarksDataForManualAssessment(
-                        assessment, studentAttempt, jsonContent, attemptData
-                )
-        );
+                        assessment, studentAttempt, jsonContent, attemptData));
     }
 
     public String convertListToCommaSeparatedString(List<String> list) {
-        if (Objects.isNull(list) || list.isEmpty()) return null;
+        if (Objects.isNull(list) || list.isEmpty())
+            return null;
         return String.join(",", list);
     }
-
 
 }

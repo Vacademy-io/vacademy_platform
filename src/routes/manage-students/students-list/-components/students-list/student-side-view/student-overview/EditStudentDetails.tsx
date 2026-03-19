@@ -16,6 +16,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useEditStudentDetails } from '@/routes/manage-students/students-list/-services/editStudentDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
+import { useGetStudentDetails } from '@/services/get-student-details';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { DropdownValueType } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
 import { Menu, Transition } from '@headlessui/react';
@@ -56,6 +57,7 @@ export type EditStudentDetailsFormValues = z.infer<typeof EditStudentDetailsForm
 
 export const EditStudentDetails = () => {
     const { selectedStudent, setSelectedStudent } = useStudentSidebar();
+    const { data: studentDetails } = useGetStudentDetails(selectedStudent?.user_id || '');
     const form = useForm<EditStudentDetailsFormValues>({
         resolver: zodResolver(EditStudentDetailsFormSchema),
         defaultValues: {},
@@ -134,48 +136,69 @@ export const EditStudentDetails = () => {
 
     useEffect(() => {
         if (selectedStudent && openDialog) {
-            // Prepare custom fields object from selectedStudent
+            // Prefer API-fetched details over list-row data
+            const s = studentDetails || selectedStudent;
+
+            // Prepare custom fields object
             const customFieldsValues: Record<string, string> = {};
-            if (selectedStudent.custom_fields) {
-                Object.entries(selectedStudent.custom_fields).forEach(([key, value]) => {
-                    if (value !== null) {
-                        customFieldsValues[key] = value;
+            const customFieldsSource = s.custom_fields || selectedStudent.custom_fields;
+            if (customFieldsSource) {
+                Object.entries(customFieldsSource).forEach(([key, value]) => {
+                    if (value !== null && value !== undefined) {
+                        customFieldsValues[key] = value as string;
                     }
                 });
             }
 
             form.reset({
-                user_id: selectedStudent?.user_id || '',
-                username: selectedStudent?.username || '',
-                email: selectedStudent?.email || '',
-                full_name: selectedStudent?.full_name || '',
-                contact_number: selectedStudent?.mobile_number,
-                gender: selectedStudent?.gender || '',
-                date_of_birth: selectedStudent?.date_of_birth || '',
-                address_line: selectedStudent?.address_line || '',
-                city: selectedStudent?.city || '',
-                state: selectedStudent?.region || '',
-                pin_code: selectedStudent?.pin_code || '',
-                institute_name: selectedStudent?.linked_institute_name || '',
-                fathers_name: selectedStudent?.fathers_name || '',
-                mothers_name: selectedStudent?.mothers_name || '',
-                father_mobile_number: selectedStudent?.father_mobile_number || '',
-                father_email: selectedStudent?.father_email || '',
-                mother_mobile_number: selectedStudent?.mother_mobile_number || '',
-                mother_email: selectedStudent?.mother_email || '',
-                face_file_id: selectedStudent?.face_file_id || '',
+                user_id: selectedStudent.user_id || '',
+                username: s.username || selectedStudent.username || '',
+                email: s.email || selectedStudent.email || '',
+                full_name: s.full_name || selectedStudent.full_name || '',
+                contact_number: s.mobile_number || selectedStudent.mobile_number || '',
+                gender: s.gender || selectedStudent.gender || '',
+                date_of_birth: s.date_of_birth || selectedStudent.date_of_birth || '',
+                address_line: s.address_line || selectedStudent.address_line || '',
+                city: s.city || selectedStudent.city || '',
+                state: s.region || selectedStudent.region || '',
+                pin_code: s.pin_code || selectedStudent.pin_code || '',
+                institute_name: s.linked_institute_name || selectedStudent.linked_institute_name || '',
+                fathers_name: s.fathers_name || selectedStudent.fathers_name || '',
+                mothers_name: s.mothers_name || selectedStudent.mothers_name || '',
+                father_mobile_number:
+                    s.parents_mobile_number ||
+                    selectedStudent.parents_mobile_number ||
+                    selectedStudent.father_mobile_number ||
+                    '',
+                father_email:
+                    s.parents_email ||
+                    selectedStudent.parents_email ||
+                    selectedStudent.father_email ||
+                    '',
+                mother_mobile_number:
+                    s.parents_to_mother_mobile_number ||
+                    selectedStudent.parents_to_mother_mobile_number ||
+                    selectedStudent.mother_mobile_number ||
+                    '',
+                mother_email:
+                    s.parents_to_mother_email ||
+                    selectedStudent.parents_to_mother_email ||
+                    selectedStudent.mother_email ||
+                    '',
+                face_file_id: s.face_file_id || selectedStudent.face_file_id || '',
                 custom_fields: customFieldsValues,
             });
 
-            if (selectedStudent.face_file_id && !removedImage) {
-                loadImage(selectedStudent.face_file_id);
+            const faceFileId = s.face_file_id || selectedStudent.face_file_id;
+            if (faceFileId && !removedImage) {
+                loadImage(faceFileId);
             } else {
                 setFaceUrl(null); // fallback if image was removed
             }
 
             setRemovedImage(false); // reset on open
         }
-    }, [selectedStudent, openDialog]);
+    }, [selectedStudent, openDialog, studentDetails]);
 
     const handleFileSubmit = async (file: File) => {
         setIsUploading(true);

@@ -76,24 +76,27 @@ public class UserSessionService {
 
     /**
      * Creates a session row immediately after a successful login.
-     * The full JWT access token is stored as the session_token.
-     * Skips creation if an active session with this token already exists.
+     * The JWT access token is hashed before storing as the session_token for
+     * security
+     * and to sync with JwtAuthFilter tracking.
      */
     @Transactional
     public void createSession(String userId, String instituteId,
             String accessToken, String deviceType) {
         try {
+            String sessionToken = generateSessionIdFromJwt(accessToken);
+
             // Guard against duplicates (e.g., if gateway triggers createOrUpdateSession
             // first)
             List<UserSession> existing = sessionRepository
-                    .findBySessionTokenAndIsActive(accessToken, true);
+                    .findBySessionTokenAndIsActive(sessionToken, true);
             if (!existing.isEmpty())
                 return;
 
             UserSession session = UserSession.builder()
                     .userId(userId)
                     .instituteId(instituteId)
-                    .sessionToken(accessToken)
+                    .sessionToken(sessionToken)
                     .deviceType(deviceType != null ? deviceType : "WEB")
                     .isActive(true)
                     .loginTime(LocalDateTime.now())
@@ -124,8 +127,13 @@ public class UserSessionService {
      */
     @Transactional
     public void terminateSessionByToken(String accessToken) {
-        sessionRepository.endSession(accessToken, LocalDateTime.now());
+        String sessionToken = generateSessionIdFromJwt(accessToken);
+        sessionRepository.endSession(sessionToken, LocalDateTime.now());
         log.info("Session terminated by token");
+    }
+
+    private String generateSessionIdFromJwt(String jwt) {
+        return "jwt_session_" + Integer.toHexString(jwt.hashCode());
     }
 
     /**

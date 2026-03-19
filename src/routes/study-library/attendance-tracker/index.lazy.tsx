@@ -1426,6 +1426,7 @@ function BatchDropdown({ label, value, options, onSelect }: BatchDropdownProps) 
                 <PopoverContent className="w-auto p-3" align="start">
                     <div className="flex flex-col gap-2">
                         <h4 className="mb-1 text-xs font-medium text-neutral-500">{label}</h4>
+                        <div className="flex max-h-60 flex-col gap-2 overflow-y-auto">
                         {options.map((opt) => (
                             <button
                                 key={opt.value || 'all'}
@@ -1436,6 +1437,7 @@ function BatchDropdown({ label, value, options, onSelect }: BatchDropdownProps) 
                                 {opt.label}
                             </button>
                         ))}
+                        </div>
                     </div>
                 </PopoverContent>
             </Popover>

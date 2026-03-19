@@ -512,7 +512,7 @@ public class LearnerEnrollRequestService {
                             .name(user.getFullName())
                             .status("ACTIVE")
                             .userType("ROOT_ADMIN")
-                            .accessType("PackageSession")
+                            .accessType("PACKAGE_SESSION")
                             .accessId(packageSessionId)
                             .accessPermission("FULL")
                             .linkageType("SUB_ORG")

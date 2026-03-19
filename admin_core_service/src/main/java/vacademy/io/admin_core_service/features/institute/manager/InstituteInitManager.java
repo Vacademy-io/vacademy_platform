@@ -23,7 +23,9 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageReposi
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
+import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.common.auth.enums.Gender;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
@@ -67,14 +69,25 @@ public class InstituteInitManager {
         @Autowired
         private InstituteCustomFiledService instituteCustomFiledService;
 
+        @Autowired
+        private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
+
+        private static final String HAS_FACULTY_ASSIGNED = "HAS_FACULTY_ASSIGNED";
+
         @Transactional
         public InstituteInfoDTO getInstituteDetails(String instituteId, boolean includeBatches) {
-                return buildInstituteInfoDTO(instituteId, true, includeBatches);
+                return buildInstituteInfoDTO(instituteId, true, includeBatches, null);
+        }
+
+        @Transactional
+        public InstituteInfoDTO getInstituteDetails(String instituteId, boolean includeBatches,
+                        CustomUserDetails user) {
+                return buildInstituteInfoDTO(instituteId, true, includeBatches, user);
         }
 
         @Transactional
         public InstituteInfoDTO getPublicInstituteDetails(String instituteId, boolean includeBatches) {
-                return buildInstituteInfoDTO(instituteId, false, includeBatches);
+                return buildInstituteInfoDTO(instituteId, false, includeBatches, null);
         }
 
         /**
@@ -86,7 +99,7 @@ public class InstituteInitManager {
          * @return Populated InstituteInfoDTO
          */
         private InstituteInfoDTO buildInstituteInfoDTO(String instituteId, boolean includePrivateFields,
-                        boolean includeBatches) {
+                        boolean includeBatches, CustomUserDetails user) {
                 // Trace the main database lookup
                 Institute institute = PerformanceTracer.traceDbQuery(
                                 "instituteRepository.findById",
@@ -175,6 +188,20 @@ public class InstituteInitManager {
                                         () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
                                                         activeStatuses));
 
+                        // If user has HAS_FACULTY_ASSIGNED permission, filter to only their assigned package sessions
+                        // No entries in faculty mapping = no restriction = full access
+                        if (user != null && hasFacultyAssignedPermission(user)) {
+                                List<String> allowedAccessIds = facultyMappingRepository
+                                                .findAccessIdsByUserIdAndInstituteId(
+                                                                user.getUserId(), instId, List.of("ACTIVE"));
+                                if (!allowedAccessIds.isEmpty()) {
+                                        Set<String> allowedSet = new HashSet<>(allowedAccessIds);
+                                        packageSessions = packageSessions.stream()
+                                                        .filter(ps -> allowedSet.contains(ps.getId()))
+                                                        .toList();
+                                }
+                        }
+
                         // Batch query to get all read times at once (eliminates N+1 query problem)
                         List<String> sessionIds = packageSessions.stream().map(PackageSession::getId).toList();
 
@@ -210,6 +237,11 @@ public class InstituteInitManager {
                 dto.setSubModules(new ArrayList<>());
 
                 return dto;
+        }
+
+        private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
+                return user.getAuthorities().stream()
+                                .anyMatch(auth -> HAS_FACULTY_ASSIGNED.equalsIgnoreCase(auth.getAuthority()));
         }
 
         private InstituteInfoDTOForTableSetup buildInstituteInfoDTOForTableSetup(String instituteId,

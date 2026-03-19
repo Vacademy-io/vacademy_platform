@@ -126,11 +126,19 @@ class IntentClassifierService:
             r'questions?\s+(?:on|about)\s+([^,.!?]+)',
         ]
 
+        # Generic/deictic words that refer to current context, not a real topic
+        DEICTIC_WORDS = {"this", "that", "it", "these", "those", "here", "the above",
+                         "the slide", "this slide", "this topic", "the topic",
+                         "this chapter", "current", "the current"}
+
         message_lower = message.lower()
         for pattern in topic_patterns:
             match = re.search(pattern, message_lower)
             if match:
                 topic = match.group(1).strip()
+                # Skip deictic/generic references — fall through to context
+                if topic.lower() in DEICTIC_WORDS:
+                    break
                 if len(topic) > 3:  # Avoid very short matches
                     return topic.title()
 

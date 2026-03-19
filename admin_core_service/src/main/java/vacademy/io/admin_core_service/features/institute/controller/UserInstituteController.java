@@ -50,8 +50,10 @@ public class UserInstituteController {
     }
 
     @GetMapping("/details/{instituteId}")
-    public ResponseEntity<InstituteInfoDTO> getInstituteDetails(@PathVariable String instituteId) {
-        InstituteInfoDTO instituteInfoDTO = instituteInitManager.getInstituteDetails(instituteId, true);
+    public ResponseEntity<InstituteInfoDTO> getInstituteDetails(
+            @PathVariable String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        InstituteInfoDTO instituteInfoDTO = instituteInitManager.getInstituteDetails(instituteId, true, user);
         return ResponseEntity.ok(instituteInfoDTO);
     }
 

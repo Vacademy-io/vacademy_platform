@@ -25,6 +25,7 @@ from ..services.intent_classifier_service import IntentClassifierService
 from ..services.context_window_service import ContextWindowService
 from ..services.learning_analytics_service import LearningAnalyticsService
 from ..models.chat_message import ChatMessage
+from ..services.mathpix_service import MathpixService
 from ..schemas.chat_agent import (
     MessageIntent,
     QuizData,
@@ -192,6 +193,23 @@ class AiChatAgentService:
                 logger.info(f"Duplicate message detected for idempotency key {idempotency_key}")
                 return (existing.id, "idle")
 
+        # Extract LaTeX from image attachments via Mathpix OCR
+        enriched_message = message
+        if attachments:
+            mathpix = MathpixService()
+            for att in attachments:
+                att_dict = att if isinstance(att, dict) else {}
+                att_type = att_dict.get("type", "")
+                att_url = att_dict.get("url", "")
+                if att_type == "image" and att_url:
+                    try:
+                        ocr_result = await mathpix.ocr_image(att_url)
+                        latex_content = ocr_result.get("latex", "")
+                        if latex_content:
+                            enriched_message += f"\n\n[Math from image: ${latex_content}$]"
+                    except Exception as e:
+                        logger.warning(f"Mathpix OCR failed for attachment: {e}")
+
         # Build metadata for the message
         metadata = {}
         if intent:
@@ -207,7 +225,7 @@ class AiChatAgentService:
         msg = self.message_repo.create_message(
             session_id=session_id,
             message_type="user",
-            content=message,
+            content=enriched_message,
             metadata=metadata if metadata else None,
         )
         
@@ -995,22 +1013,64 @@ class AiChatAgentService:
                 }
             }
             
+            # Enrich context with user message (may contain Mathpix-extracted LaTeX)
+            quiz_context = dict(context)
+            if "context_data" not in quiz_context:
+                quiz_context["context_data"] = {}
+            # Append user message to content so quiz generator sees the full picture
+            existing_content = quiz_context["context_data"].get("content", "")
+            quiz_context["context_data"]["content"] = (
+                f"{existing_content}\n\nUser's request: {user_message}" if existing_content
+                else f"User's request: {user_message}"
+            )
+
             # Generate quiz
             quiz_data = await self.quiz_service.generate_quiz(
                 topic=topic,
-                context=context,
-                num_questions=5,
+                context=quiz_context,
+                num_questions=10,
                 difficulty="medium",
                 institute_id=institute_id,
                 user_id=user_id,
             )
             
+            # If quiz generation failed (0 questions), ask user to specify topic
+            if not quiz_data.questions:
+                fallback_msg = self.message_repo.create_message(
+                    session_id=session_id,
+                    message_type="assistant",
+                    content=(
+                        "I couldn't generate quiz questions for that. "
+                        "Could you tell me the specific topic you'd like to practice? "
+                        "For example:\n"
+                        "- \"Quiz me on quadratic equations\"\n"
+                        "- \"Practice questions on photosynthesis\"\n"
+                        "- \"Test me on Newton's laws\""
+                    ),
+                )
+                yield {
+                    "event": "message",
+                    "data": {
+                        "id": fallback_msg.id,
+                        "type": fallback_msg.message_type,
+                        "content": fallback_msg.content,
+                        "metadata": fallback_msg.meta_data,
+                        "created_at": fallback_msg.created_at.isoformat()
+                    }
+                }
+                # Reset status
+                yield {
+                    "event": "status",
+                    "data": {"ai_status": "idle"}
+                }
+                return
+
             # Store quiz for later evaluation
             self._active_quizzes[session_id] = quiz_data
-            
+
             # Prepare quiz data for frontend (strip correct answers)
             frontend_quiz_data = self.quiz_service.get_quiz_for_frontend(quiz_data)
-            
+
             # Create quiz message
             quiz_msg = self.message_repo.create_message(
                 session_id=session_id,
@@ -1018,7 +1078,7 @@ class AiChatAgentService:
                 content=f"Here's your quiz on **{topic}**! Answer all {quiz_data.total_questions} questions and submit when ready.",
                 metadata={"quiz_data": frontend_quiz_data}
             )
-            
+
             yield {
                 "event": "message",
                 "data": {
@@ -1029,7 +1089,7 @@ class AiChatAgentService:
                     "created_at": quiz_msg.created_at.isoformat()
                 }
             }
-            
+
             logger.info(f"Quiz generated for session {session_id}: {quiz_data.quiz_id}")
             
         except Exception as e:

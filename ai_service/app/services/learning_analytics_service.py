@@ -17,6 +17,7 @@ class LearningAnalyticsService:
     """Tracks and queries learning analytics events."""
 
     def __init__(self, db_session: Session):
+        self.db = db_session
         self.repo = LearningAnalyticsRepository(db_session)
 
     def track_doubt(

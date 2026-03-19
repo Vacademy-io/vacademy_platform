@@ -11,6 +11,7 @@ import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { loginEnrolledUser } from "@/services/signup-api";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
+import { pushNotificationService } from "@/services/push-notifications/push-notification-service";
 
 export interface LoginResponse {
     accessToken: string;
@@ -112,6 +113,16 @@ export const performFullAuthCycle = async (
         } catch (e) {
             console.warn("[AuthCycle] Failed to load display settings:", e);
         }
+    }
+
+    // 8. Register push notification token with server now that userId & InstituteId are stored.
+    //    On mobile the FCM token is obtained at app start (before login), so sendTokenToServer()
+    //    bails out early because userId/InstituteId aren't yet available. Calling this here
+    //    ensures the token is registered after every successful login or session restore.
+    try {
+        await pushNotificationService.registerStoredToken();
+    } catch (e) {
+        console.warn("[AuthCycle] Push token registration after login failed:", e);
     }
 
     console.log("[AuthCycle] Auth cycle complete");

@@ -100,12 +100,12 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
       "[.ui-vibrant_&]:border-fuchsia-200/50 dark:[.ui-vibrant_&]:border-fuchsia-800/30"
     )}>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <Bell className="h-5 w-5 text-primary" />
-            Recent System Notifications
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2 min-w-0">
+            <Bell className="h-5 w-5 text-primary flex-shrink-0" />
+            <span className="truncate">Recent System Notifications</span>
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <Badge variant="secondary" className="text-xs">
               {recentNotifications.length} recent
             </Badge>
@@ -122,7 +122,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
                     Clear All
                   </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent>
+                <AlertDialogContent className="z-[10001]">
                   <AlertDialogHeader>
                     <AlertDialogTitle>Clear All Notifications</AlertDialogTitle>
                     <AlertDialogDescription>

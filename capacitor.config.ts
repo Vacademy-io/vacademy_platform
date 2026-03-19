@@ -15,7 +15,12 @@ const config: CapacitorConfig = {
       enable: true,
       preventScreenshots: true,
     },
+    // @capacitor/push-notifications — kept for backward compat (Android channel creation)
     PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
+    // @capacitor-firebase/messaging — primary FCM plugin used on Android & iOS
+    FirebaseMessaging: {
       presentationOptions: ["badge", "sound", "alert"],
     },
   },

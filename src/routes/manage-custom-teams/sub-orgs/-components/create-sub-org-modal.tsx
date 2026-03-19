@@ -17,12 +17,13 @@ import * as z from 'zod';
 import {
     createSubOrg,
     createSubOrgWithSubscription,
+    createCustomRole,
     getAllRoles,
     type CreateSubOrgSubscriptionRequest,
 } from '../../-services/custom-team-services';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2, UploadCloud, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, UploadCloud, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -89,6 +90,8 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
     const [selectedPackageSessionIds, setSelectedPackageSessionIds] = useState<string[]>([]);
     const [expandedPackageId, setExpandedPackageId] = useState<string | null>(null);
     const [selectedAuthRoles, setSelectedAuthRoles] = useState<string[]>([]);
+    const [showNewRoleInput, setShowNewRoleInput] = useState(false);
+    const [newRoleName, setNewRoleName] = useState('');
 
     // Step 1 form
     const step1Form = useForm<Step1Values>({
@@ -187,6 +190,29 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         },
     });
 
+    // Mutation for creating a new role
+    const createRoleMutation = useMutation({
+        mutationFn: (name: string) => createCustomRole({ name, permissionIds: ['109'] }),
+        onSuccess: () => {
+            toast.success('Role created successfully');
+            queryClient.invalidateQueries({ queryKey: ['roles'] });
+            setNewRoleName('');
+            setShowNewRoleInput(false);
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || 'Failed to create role');
+        },
+    });
+
+    const handleCreateRole = () => {
+        const trimmed = newRoleName.trim();
+        if (!trimmed) {
+            toast.error('Role name is required');
+            return;
+        }
+        createRoleMutation.mutate(trimmed);
+    };
+
     const resetWizard = () => {
         setStep(1);
         setStep1Data(null);
@@ -194,6 +220,8 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         setExpandedPackageId(null);
         setLogoPreview(null);
         setSelectedAuthRoles([]);
+        setShowNewRoleInput(false);
+        setNewRoleName('');
         step1Form.reset();
         step3Form.reset({
             paymentType: 'FREE',
@@ -622,10 +650,66 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
 
                                 {/* Auth Roles for sub-org admin */}
                                 <div className="space-y-2 sm:col-span-2">
-                                    <Label>Admin Roles (auth service)</Label>
-                                    <p className="text-xs text-muted-foreground">
-                                        Roles assigned to users who join via this invite
-                                    </p>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <Label>Admin Roles (auth service)</Label>
+                                            <p className="text-xs text-muted-foreground">
+                                                Roles assigned to users who join via this invite
+                                            </p>
+                                        </div>
+                                        {!showNewRoleInput && (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setShowNewRoleInput(true)}
+                                            >
+                                                <Plus className="mr-1 h-3 w-3" />
+                                                Add New
+                                            </Button>
+                                        )}
+                                    </div>
+                                    {showNewRoleInput && (
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                placeholder="Enter role name"
+                                                value={newRoleName}
+                                                onChange={(e) => setNewRoleName(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleCreateRole();
+                                                    }
+                                                }}
+                                                disabled={createRoleMutation.isPending}
+                                                className="h-8"
+                                            />
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                onClick={handleCreateRole}
+                                                disabled={createRoleMutation.isPending}
+                                            >
+                                                {createRoleMutation.isPending ? (
+                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                ) : (
+                                                    'Create'
+                                                )}
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => {
+                                                    setShowNewRoleInput(false);
+                                                    setNewRoleName('');
+                                                }}
+                                                disabled={createRoleMutation.isPending}
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                    )}
                                     <div className="flex flex-wrap gap-2 rounded-md border p-2">
                                         {rolesList.map((role) => (
                                             <label

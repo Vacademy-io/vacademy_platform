@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.learner_management.controller;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,6 +14,7 @@ import vacademy.io.admin_core_service.features.learner_management.dto.BulkDeassi
 import vacademy.io.admin_core_service.features.learner_management.dto.BulkDeassignResponseDTO;
 import vacademy.io.admin_core_service.features.learner_management.service.BulkAssignmentService;
 import vacademy.io.admin_core_service.features.learner_management.service.BulkDeassignmentService;
+import vacademy.io.common.auth.model.CustomUserDetails;
 
 /**
  * v3 Bulk Learner Management API.
@@ -42,15 +44,18 @@ public class BulkLearnerManagementController {
      */
     @PostMapping("/assign")
     public ResponseEntity<BulkAssignResponseDTO> bulkAssign(
-            @RequestBody BulkAssignRequestDTO request) {
+            @RequestBody BulkAssignRequestDTO request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        log.info("Bulk assign request: instituteId={}, users={}, assignments={}, dryRun={}",
+        log.info("Bulk assign request: instituteId={}, users={}, assignments={}, dryRun={}, admin={}",
                 request.getInstituteId(),
                 request.getUserIds() != null ? request.getUserIds().size() : 0,
                 request.getAssignments() != null ? request.getAssignments().size() : 0,
-                request.getOptions() != null && request.getOptions().isDryRun());
+                request.getOptions() != null && request.getOptions().isDryRun(),
+                userDetails != null ? userDetails.getUserId() : "unknown");
 
-        BulkAssignResponseDTO response = bulkAssignmentService.bulkAssign(request);
+        String adminUserId = userDetails != null ? userDetails.getUserId() : null;
+        BulkAssignResponseDTO response = bulkAssignmentService.bulkAssign(request, adminUserId);
 
         log.info("Bulk assign complete: total={}, success={}, failed={}, skipped={}, reEnrolled={}, dryRun={}",
                 response.getSummary().getTotalRequested(),

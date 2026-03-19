@@ -154,4 +154,20 @@ public interface FacultySubjectPackageSessionMappingRepository
   Set<String> findUserIdsByFilters(
       @Param("instituteId") String instituteId,
       @Param("statusList") List<String> statusList);
+
+  /**
+   * Find the sub-org ID for a faculty member on a specific package session.
+   * Returns the first active mapping's suborgId (null if no sub-org linkage).
+   */
+  @Query("""
+          SELECT f.suborgId
+          FROM FacultySubjectPackageSessionMapping f
+          WHERE f.userId = :userId
+            AND f.packageSessionId = :packageSessionId
+            AND f.suborgId IS NOT NULL
+            AND f.status = 'ACTIVE'
+      """)
+  List<String> findSubOrgIdsByUserAndPackageSession(
+      @Param("userId") String userId,
+      @Param("packageSessionId") String packageSessionId);
 }

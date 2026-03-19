@@ -5,7 +5,7 @@
 
 export type AccessType = 'PACKAGE' | 'PACKAGE_SESSION';
 export type AccessPermission = string;
-export type LinkageType = 'INHERITED' | 'DIRECT' | 'PARTNERSHIP';
+export type LinkageType = 'INHERITED' | 'DIRECT' | 'PARTNERSHIP' | 'SUB_ORG';
 export type AccessStatus = 'ACTIVE' | 'INACTIVE';
 export type UserType = 'role' | 'user';
 

@@ -67,7 +67,10 @@ export const AddVimeoDialog = ({ openState }: { openState?: (open: boolean) => v
         if (videoId) {
             setIsValidUrl(true);
             fetch(`https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`)
-                .then((response) => response.json())
+                .then((response) => {
+                    if (!response.ok) throw new Error('Failed to fetch video info');
+                    return response.json();
+                })
                 .then((data) => {
                     form.setValue('videoName', data.title || 'Vimeo Video');
                     setVideoPreview({
@@ -77,6 +80,8 @@ export const AddVimeoDialog = ({ openState }: { openState?: (open: boolean) => v
                     setVideoDuration((data.duration || 0) * 1000);
                 })
                 .catch(() => {
+                    // oEmbed may fail for private videos or CORS issues;
+                    // still allow submission with the valid Vimeo URL
                     form.setValue('videoName', 'Vimeo Video');
                     setVideoPreview(null);
                     setVideoDuration(0);

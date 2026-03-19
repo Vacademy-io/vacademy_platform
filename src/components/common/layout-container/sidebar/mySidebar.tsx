@@ -90,7 +90,8 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     const [mainInstituteLogoUrl, setMainInstituteLogoUrl] = useState<string>('');
 
     const selectedSubOrgId = getSelectedSubOrgId();
-    const isPartnershipLinkage = getSelectedSubOrgLinkageType() === 'PARTNERSHIP';
+    const subOrgLinkageType = getSelectedSubOrgLinkageType();
+    const isPartnershipLinkage = subOrgLinkageType === 'PARTNERSHIP' || subOrgLinkageType === 'SUB_ORG';
 
     const { data: subOrgInstituteDetails } = useQuery({
         ...getSubOrgInstituteQuery(selectedSubOrgId ?? null),

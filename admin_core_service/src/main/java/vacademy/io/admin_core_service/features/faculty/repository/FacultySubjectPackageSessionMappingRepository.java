@@ -21,13 +21,13 @@ public interface FacultySubjectPackageSessionMappingRepository
       FROM faculty_subject_package_session_mapping fm
       WHERE (
           (fm.access_type = 'Package' AND EXISTS (SELECT 1 FROM package_institute pi WHERE pi.package_id = fm.access_id AND pi.institute_id = :instituteId))
-          OR (fm.access_type = 'PackageSession' AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.access_id AND pi.institute_id = :instituteId))
+          OR (fm.access_type = 'PACKAGE_SESSION' AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.access_id AND pi.institute_id = :instituteId))
           OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
-          OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PackageSession', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
+          OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
       )
         AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
         AND (CAST(:hasBatchesIds AS boolean) = false OR (
-            (fm.access_type = 'PackageSession' AND fm.access_id IN (:batchesIds)) OR
+            (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id IN (:batchesIds)) OR
             (fm.package_session_id IN (:batchesIds))
         ))
         AND (CAST(:hasStatusList AS boolean) = false OR fm.status IN (:statusList))
@@ -38,13 +38,13 @@ public interface FacultySubjectPackageSessionMappingRepository
       FROM faculty_subject_package_session_mapping fm
       WHERE (
           (fm.access_type = 'Package' AND EXISTS (SELECT 1 FROM package_institute pi WHERE pi.package_id = fm.access_id AND pi.institute_id = :instituteId))
-          OR (fm.access_type = 'PackageSession' AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.access_id AND pi.institute_id = :instituteId))
+          OR (fm.access_type = 'PACKAGE_SESSION' AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.access_id AND pi.institute_id = :instituteId))
           OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
-          OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PackageSession', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
+          OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
       )
         AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
         AND (CAST(:hasBatchesIds AS boolean) = false OR (
-            (fm.access_type = 'PackageSession' AND fm.access_id IN (:batchesIds)) OR
+            (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id IN (:batchesIds)) OR
             (fm.package_session_id IN (:batchesIds))
         ))
         AND (CAST(:hasStatusList AS boolean) = false OR fm.status IN (:statusList))
@@ -152,6 +152,50 @@ public interface FacultySubjectPackageSessionMappingRepository
             AND ps.packageEntity.status IN :statusList
       """)
   Set<String> findUserIdsByFilters(
+      @Param("instituteId") String instituteId,
+      @Param("statusList") List<String> statusList);
+
+  @Query(value = """
+      SELECT DISTINCT ps_id FROM (
+          SELECT f.access_id AS ps_id
+          FROM faculty_subject_package_session_mapping f
+          JOIN package_session ps ON ps.id = f.access_id
+          JOIN package_institute pi ON pi.package_id = ps.package_id
+          WHERE f.user_id = :userId
+            AND f.access_type = 'PACKAGE_SESSION'
+            AND pi.institute_id = :instituteId
+            AND f.status IN (:statusList)
+          UNION
+          SELECT f.package_session_id AS ps_id
+          FROM faculty_subject_package_session_mapping f
+          JOIN package_session ps ON ps.id = f.package_session_id
+          JOIN package_institute pi ON pi.package_id = ps.package_id
+          WHERE f.user_id = :userId
+            AND (f.access_type IS NULL OR f.access_type NOT IN ('Package', 'EnrollInvite'))
+            AND f.package_session_id IS NOT NULL
+            AND pi.institute_id = :instituteId
+            AND f.status IN (:statusList)
+      ) combined
+      """, nativeQuery = true)
+  List<String> findAccessIdsByUserIdAndInstituteId(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId,
+      @Param("statusList") List<String> statusList);
+
+  @Query(value = """
+      SELECT DISTINCT f.access_id
+      FROM faculty_subject_package_session_mapping f
+      WHERE f.user_id = :userId
+        AND f.access_type = 'EnrollInvite'
+        AND f.status IN (:statusList)
+        AND EXISTS (
+            SELECT 1 FROM enroll_invite ei
+            WHERE ei.id = f.access_id
+              AND ei.institute_id = :instituteId
+        )
+      """, nativeQuery = true)
+  List<String> findEnrollInviteAccessIdsByUserIdAndInstituteId(
+      @Param("userId") String userId,
       @Param("instituteId") String instituteId,
       @Param("statusList") List<String> statusList);
 

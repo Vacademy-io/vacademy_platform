@@ -16,6 +16,9 @@ interface StoreState {
   learnerPortalUrl: string | null;
   instructorPortalUrl: string | null;
   hasCustomSidebar: boolean;
+  // Sub-org branding (from student_sub_org junction)
+  subOrgName: string | null;
+  subOrgLogoUrl: string | null;
   setSidebarOpen: () => void;
   setSideBarState: (sidebarstate: sideBarStateType) => void;
   setInstituteDetails: (
@@ -39,6 +42,8 @@ const useStore = create<StoreState>((set) => ({
   learnerPortalUrl: null,
   instructorPortalUrl: null,
   hasCustomSidebar: false,
+  subOrgName: null,
+  subOrgLogoUrl: null,
   setSidebarOpen: () => set((state) => ({ sideBarOpen: !state.sideBarOpen })),
   setSideBarState: (sidebarstate) => set({ sideBarState: sidebarstate }),
   setHasCustomSidebar: (value: boolean) => set({ hasCustomSidebar: value }),
@@ -56,6 +61,27 @@ const useStore = create<StoreState>((set) => ({
           instituteLogoFileUrl: logoUrl ?? "",
           homeIconClickRoute: homeIconClickRoute ?? null,
         });
+
+        // Also resolve sub-org branding from stored authenticated details
+        try {
+          const stored = await Preferences.get({ key: "InstituteDetails" });
+          if (stored.value) {
+            const details = JSON.parse(stored.value);
+            const subOrgs = details?.sub_orgs;
+            if (Array.isArray(subOrgs) && subOrgs.length > 0) {
+              const activeSubOrg = subOrgs.find((s: any) => s.status === "ACTIVE") || subOrgs[0];
+              const subOrgLogoUrl = activeSubOrg.logo_file_id
+                ? await getPublicUrl(activeSubOrg.logo_file_id)
+                : null;
+              set({
+                subOrgName: activeSubOrg.name || null,
+                subOrgLogoUrl,
+              });
+            }
+          }
+        } catch {
+          // Sub-org resolution is best-effort
+        }
         return;
       }
 
@@ -73,6 +99,18 @@ const useStore = create<StoreState>((set) => ({
           ? await getPublicUrl(InstituteDetails.institute_logo_file_id)
           : "";
 
+        // Resolve sub-org branding if learner belongs to one
+        const subOrgs = InstituteDetails.sub_orgs;
+        let subOrgName: string | null = null;
+        let subOrgLogoUrl: string | null = null;
+        if (Array.isArray(subOrgs) && subOrgs.length > 0) {
+          const activeSubOrg = subOrgs.find((s: any) => s.status === "ACTIVE") || subOrgs[0];
+          subOrgName = activeSubOrg.name || null;
+          if (activeSubOrg.logo_file_id) {
+            subOrgLogoUrl = await getPublicUrl(activeSubOrg.logo_file_id);
+          }
+        }
+
         set({
           instituteName: InstituteDetails.institute_name,
           instituteLogoFileUrl: url,
@@ -86,6 +124,8 @@ const useStore = create<StoreState>((set) => ({
           macAppLink: InstituteDetails.macAppLink ?? null,
           learnerPortalUrl: InstituteDetails.learnerPortalUrl ?? null,
           instructorPortalUrl: InstituteDetails.instructorPortalUrl ?? null,
+          subOrgName,
+          subOrgLogoUrl,
         });
       }
     } catch (error) {

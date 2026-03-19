@@ -34,6 +34,26 @@ const isYouTubeUrl = (url: string): boolean => {
   return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/.test(url);
 };
 
+// Utility function to check if URL is a Vimeo URL
+const isVimeoUrl = (url: string): boolean => {
+  if (!url) return false;
+  return /^(https?:\/\/)?(www\.)?(player\.)?vimeo\.com\/.+/.test(url);
+};
+
+// Utility function to extract Vimeo video ID
+const extractVimeoVideoId = (url: string): string | null => {
+  if (!url) return null;
+  const match = url.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)(\d+)/);
+  return match ? match[1] : null;
+};
+
+// Utility function to convert Vimeo URL to embed URL
+const convertToVimeoEmbedUrl = (url: string): string => {
+  const videoId = extractVimeoVideoId(url);
+  if (!videoId) return url;
+  return `https://player.vimeo.com/video/${videoId}?badge=0&autopause=0&player_id=0`;
+};
+
 // Utility function to extract YouTube video ID
 const extractYouTubeVideoId = (url: string): string | null => {
   if (!url) return null;
@@ -80,8 +100,8 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
     if (hasTriedLoading) return;
 
     const loadUrl = async () => {
-      // Check if it's a YouTube URL first - use it directly
-      if (item.url && isYouTubeUrl(item.url)) {
+      // Check if it's a YouTube or Vimeo URL first - use it directly
+      if (item.url && (isYouTubeUrl(item.url) || isVimeoUrl(item.url))) {
         if (isMounted) {
           setResolvedUrl(item.url);
           setHasTriedLoading(true);
@@ -172,6 +192,24 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
     );
   };
 
+  // Render Vimeo video player
+  const renderVimeoPlayer = () => {
+    const embedUrl = convertToVimeoEmbedUrl(resolvedUrl);
+    return (
+      <div className={`relative w-full h-64 bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+        <iframe
+          src={embedUrl}
+          title={item.caption || "Video"}
+          frameBorder="0"
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+          className="absolute inset-0 w-full h-full"
+          loading="lazy"
+        />
+      </div>
+    );
+  };
+
   // Render native video player for uploaded videos
   const renderNativeVideoPlayer = () => {
     return (
@@ -241,9 +279,11 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
     <div className="relative group">
       {item.type === "video" ? (
         <>
-          {/* Check if it's a YouTube URL */}
+          {/* Check if it's a YouTube or Vimeo URL */}
           {resolvedUrl && isYouTubeUrl(resolvedUrl) ? (
             renderYouTubePlayer()
+          ) : resolvedUrl && isVimeoUrl(resolvedUrl) ? (
+            renderVimeoPlayer()
           ) : resolvedUrl && !videoLoadError ? (
             renderNativeVideoPlayer()
           ) : (

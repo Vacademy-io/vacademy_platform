@@ -25,7 +25,6 @@ import {
   Pause,
   Play,
   Rewind,
-  X,
   Gauge,
 } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";

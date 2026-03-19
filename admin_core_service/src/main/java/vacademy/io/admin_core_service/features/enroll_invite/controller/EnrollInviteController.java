@@ -38,7 +38,7 @@ public class EnrollInviteController {
             @RequestBody EnrollInviteFilterDTO enrollInviteFilterDTO,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(enrollInviteService.getEnrollInvitesByInstituteIdAndFilters(instituteId,
-                enrollInviteFilterDTO, pageNo, pageSize));
+                enrollInviteFilterDTO, pageNo, pageSize, user));
     }
 
     @PostMapping("/by-referral-option-ids")

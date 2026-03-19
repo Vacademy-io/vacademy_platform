@@ -867,7 +867,7 @@ public class SubOrgLearnerService {
                 .name(user.getFullName())
                 .status("ACTIVE")
                 .userType(orgRoles)
-                .accessType("PackageSession")
+                .accessType("PACKAGE_SESSION")
                 .accessId(packageSessionId)
                 .accessPermission("FULL")
                 .linkageType("SUB_ORG")

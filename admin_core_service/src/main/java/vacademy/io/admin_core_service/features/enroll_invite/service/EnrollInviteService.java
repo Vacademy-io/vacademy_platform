@@ -34,6 +34,8 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.Referral
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.ReferralOptionService;
+import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -68,6 +70,11 @@ public class EnrollInviteService {
 
     @Autowired
     private ShortUrlManagementService shortUrlManagementService;
+
+    @Autowired
+    private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
+
+    private static final String HAS_FACULTY_ASSIGNED = "HAS_FACULTY_ASSIGNED";
 
     @org.springframework.beans.factory.annotation.Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerBaseUrl;
@@ -230,10 +237,22 @@ public class EnrollInviteService {
     }
 
     public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId,
-            EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
+            EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize, CustomUserDetails user) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
         Page<EnrollInviteWithSessionsProjection> pageResult;
+
+        // Check if user has HAS_FACULTY_ASSIGNED permission — scope to their assigned enroll invites
+        // No entries in faculty mapping = no restriction = full access
+        List<String> allowedEnrollInviteIds = null;
+        if (user != null && hasFacultyAssignedPermission(user)) {
+            List<String> accessIds = facultyMappingRepository
+                    .findEnrollInviteAccessIdsByUserIdAndInstituteId(
+                            user.getUserId(), instituteId, List.of("ACTIVE"));
+            if (!accessIds.isEmpty()) {
+                allowedEnrollInviteIds = accessIds;
+            }
+        }
 
         if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())) {
             pageResult = repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,
@@ -251,7 +270,21 @@ public class EnrollInviteService {
                     pageable);
         }
 
+        // Post-filter results if user is faculty-scoped
+        if (allowedEnrollInviteIds != null) {
+            final Set<String> allowedSet = new HashSet<>(allowedEnrollInviteIds);
+            List<EnrollInviteWithSessionsProjection> filtered = pageResult.getContent().stream()
+                    .filter(invite -> allowedSet.contains(invite.getId()))
+                    .toList();
+            return new org.springframework.data.domain.PageImpl<>(filtered, pageable, filtered.size());
+        }
+
         return pageResult;
+    }
+
+    private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
+        return user.getAuthorities().stream()
+                .anyMatch(auth -> HAS_FACULTY_ASSIGNED.equalsIgnoreCase(auth.getAuthority()));
     }
 
     public EnrollInviteDTO findByEnrollInviteId(String enrollInviteId, String instituteId) {

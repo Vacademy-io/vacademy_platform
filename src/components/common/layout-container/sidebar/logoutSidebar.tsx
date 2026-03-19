@@ -17,8 +17,9 @@ import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { Preferences } from "@capacitor/preferences";
 import { Student } from "@/types/user/user-detail";
 import { getPublicUrl } from "@/services/upload_file";
-import { User } from "lucide-react";
+import { User, X } from "lucide-react";
 import { useIsIOS } from "@/hooks/useIsIOS";
+import { Capacitor } from "@capacitor/core";
 
 export const LogoutSidebar = ({
   sidebarComponent,
@@ -33,6 +34,7 @@ export const LogoutSidebar = ({
   } = useStore();
   const navigate = useNavigate();
   const isIOS = useIsIOS();
+  const isMobile = Capacitor.isNativePlatform();
   const handleInstituteLogoClick = () => {
     if (homeIconClickRoute) {
       window.location.href = homeIconClickRoute;

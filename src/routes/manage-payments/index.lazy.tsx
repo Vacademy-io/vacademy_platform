@@ -119,6 +119,7 @@ function ManagePaymentsLayoutPage() {
         data: paymentLogsData,
         isLoading: isLoadingPayments,
         error: paymentsError,
+        refetch: refetchPaymentLogs,
     } = useQuery({
         queryKey: getPaymentLogsQueryKey(currentPage, pageSize, requestFilters),
         queryFn: () => fetchPaymentLogs(currentPage, pageSize, requestFilters),
@@ -310,6 +311,7 @@ function ManagePaymentsLayoutPage() {
                     onPageChange={handlePageChange}
                     packageSessions={packageSessionsMap}
                     hasOrgAssociatedBatches={hasOrgAssociatedBatches}
+                    onRefresh={() => refetchPaymentLogs()}
                 />
             </div>
         </>

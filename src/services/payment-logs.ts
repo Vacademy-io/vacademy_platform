@@ -4,7 +4,6 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import type { PaymentLogsRequest, PaymentLogsResponse } from '@/types/payment-logs';
 
 export const PAYMENT_LOGS_URL = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs`;
-
 /**
  * Fetch payment logs with pagination and filtering
  */
@@ -59,3 +58,21 @@ export const usePaymentLogsQuery = (
         staleTime: 30000, // 30 seconds
     };
 };
+
+export interface UpdatePaymentLogTrackingRequest {
+    payment_log_id: string;
+    tracking_id: string;
+    tracking_source: string;
+    order_status: string;
+}
+export const UPDATE_PAYMENT_LOG_TRACKING_URL = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/update-tracking`;
+
+/**
+ * Update tracking info (tracking_id, tracking_source, order_status) for a payment log row.
+ */
+export const updatePaymentLogTracking = async (
+    request: UpdatePaymentLogTrackingRequest
+): Promise<void> => {
+    await authenticatedAxiosInstance.post(UPDATE_PAYMENT_LOG_TRACKING_URL, request);
+};
+

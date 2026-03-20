@@ -46,6 +46,7 @@ export const StudentPaymentHistory = () => {
         data: paymentLogsData,
         isLoading: isLoadingPayments,
         error: paymentsError,
+        refetch: refetchPaymentLogs,
     } = useQuery({
         queryKey: getPaymentLogsQueryKey(currentPage, PAGE_SIZE, requestFilters),
         queryFn: () => fetchPaymentLogs(currentPage, PAGE_SIZE, requestFilters),
@@ -91,6 +92,7 @@ export const StudentPaymentHistory = () => {
                 packageSessions={packageSessionsMap}
                 hasOrgAssociatedBatches={hasOrgAssociatedBatches}
                 hideUserColumn
+                onRefresh={() => refetchPaymentLogs()}
             />
         </div>
     );

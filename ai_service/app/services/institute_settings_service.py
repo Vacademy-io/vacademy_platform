@@ -172,8 +172,13 @@ Follow these rules strictly at all times.
             setting_json = row[0]
             settings = json.loads(setting_json) if isinstance(setting_json, str) else setting_json
 
-            # Extract AI_settings from the settings
-            ai_settings = settings.get("setting", {}).get("AI_settings", {})
+            # Extract AI_settings from the settings (handle SettingDto wrapper format)
+            ai_settings_raw = settings.get("setting", {}).get("AI_settings", {})
+            # If it has a "data" key, it's in SettingDto wrapper format
+            if isinstance(ai_settings_raw.get("data"), dict):
+                ai_settings = ai_settings_raw["data"]
+            else:
+                ai_settings = ai_settings_raw
 
             return {
                 "AI_COURSE_PROMPT": ai_settings.get("AI_COURSE_PROMPT")
@@ -215,11 +220,17 @@ Follow these rules strictly at all times.
             # Ensure the nested structure exists
             if "setting" not in current_settings:
                 current_settings["setting"] = {}
-            if "AI_settings" not in current_settings["setting"]:
-                current_settings["setting"]["AI_settings"] = {}
 
-            # Update the AI_COURSE_PROMPT
-            current_settings["setting"]["AI_settings"]["AI_COURSE_PROMPT"] = ai_course_prompt
+            # Use SettingDto wrapper format compatible with Java's InstituteSettingDto
+            existing_ai = current_settings["setting"].get("AI_settings", {})
+            existing_data = existing_ai.get("data", {}) if isinstance(existing_ai.get("data"), dict) else {}
+            existing_data["AI_COURSE_PROMPT"] = ai_course_prompt
+
+            current_settings["setting"]["AI_settings"] = {
+                "key": "AI_settings",
+                "name": "AI Settings",
+                "data": existing_data
+            }
 
             # Update the database
             update_stmt = text("""
@@ -281,10 +292,14 @@ Follow these rules strictly at all times.
             if "setting" not in current_settings:
                 current_settings["setting"] = {}
                 
-            # Get existing keys list
-            video_api_keys_data = current_settings["setting"].get("VIDEO_API_KEYS", {})
+            # Get existing keys list (handle SettingDto wrapper format)
+            video_api_keys_raw = current_settings["setting"].get("VIDEO_API_KEYS", {})
+            if isinstance(video_api_keys_raw, dict) and isinstance(video_api_keys_raw.get("data"), dict):
+                video_api_keys_data = video_api_keys_raw["data"]
+            else:
+                video_api_keys_data = video_api_keys_raw
             api_keys = []
-            
+
             if isinstance(video_api_keys_data, list):
                 api_keys = video_api_keys_data
             else:
@@ -300,8 +315,13 @@ Follow these rules strictly at all times.
                 "status": "active"
             }
             api_keys.append(new_key_entry)
-            
-            current_settings["setting"]["VIDEO_API_KEYS"] = {"keys": api_keys}
+
+            # Use SettingDto wrapper format compatible with Java's InstituteSettingDto
+            current_settings["setting"]["VIDEO_API_KEYS"] = {
+                "key": "VIDEO_API_KEYS",
+                "name": "Video API Keys",
+                "data": {"keys": api_keys}
+            }
             
             # Update DB
             update_stmt = text("""
@@ -336,13 +356,18 @@ Follow these rules strictly at all times.
                 return []
                 
             settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
-            video_api_keys_data = settings.get("setting", {}).get("VIDEO_API_KEYS", {})
-            
+            video_api_keys_raw = settings.get("setting", {}).get("VIDEO_API_KEYS", {})
+            # Handle SettingDto wrapper format
+            if isinstance(video_api_keys_raw, dict) and isinstance(video_api_keys_raw.get("data"), dict):
+                video_api_keys_data = video_api_keys_raw["data"]
+            else:
+                video_api_keys_data = video_api_keys_raw
+
             if isinstance(video_api_keys_data, list):
                 api_keys = video_api_keys_data
             else:
                 api_keys = video_api_keys_data.get("keys", [])
-            
+
             # Mask keys for display
             masked_keys = []
             for k in api_keys:
@@ -373,21 +398,31 @@ Follow these rules strictly at all times.
                 return False
                 
             current_settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
-            video_api_keys_data = current_settings.get("setting", {}).get("VIDEO_API_KEYS", {})
-            
+            video_api_keys_raw = current_settings.get("setting", {}).get("VIDEO_API_KEYS", {})
+            # Handle SettingDto wrapper format
+            if isinstance(video_api_keys_raw, dict) and isinstance(video_api_keys_raw.get("data"), dict):
+                video_api_keys_data = video_api_keys_raw["data"]
+            else:
+                video_api_keys_data = video_api_keys_raw
+
             if isinstance(video_api_keys_data, list):
                 api_keys = video_api_keys_data
             else:
                 api_keys = video_api_keys_data.get("keys", [])
-            
+
             # Filter out the key to delete
             original_count = len(api_keys)
             api_keys = [k for k in api_keys if k.get("id") != key_id]
             
             if len(api_keys) == original_count:
                 return False  # Key not found
-                
-            current_settings["setting"]["VIDEO_API_KEYS"] = {"keys": api_keys}
+
+            # Use SettingDto wrapper format compatible with Java's InstituteSettingDto
+            current_settings["setting"]["VIDEO_API_KEYS"] = {
+                "key": "VIDEO_API_KEYS",
+                "name": "Video API Keys",
+                "data": {"keys": api_keys}
+            }
             
             update_stmt = text("""
                 UPDATE institutes
@@ -431,7 +466,12 @@ Follow these rules strictly at all times.
                 inst_id, settings_raw = row
                 settings = json.loads(settings_raw) if isinstance(settings_raw, str) else settings_raw
                 
-                keys_data = settings.get("setting", {}).get("VIDEO_API_KEYS", {})
+                keys_raw = settings.get("setting", {}).get("VIDEO_API_KEYS", {})
+                # Handle SettingDto wrapper format
+                if isinstance(keys_raw, dict) and isinstance(keys_raw.get("data"), dict):
+                    keys_data = keys_raw["data"]
+                else:
+                    keys_data = keys_raw
                 if isinstance(keys_data, list):
                     keys = keys_data
                 else:
@@ -491,8 +531,13 @@ Follow these rules strictly at all times.
                 return {"branding": DEFAULT_BRANDING, "has_custom_branding": False}
                 
             settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
-            branding = settings.get("setting", {}).get("VIDEO_BRANDING")
-            
+            branding_raw = settings.get("setting", {}).get("VIDEO_BRANDING")
+            # Handle SettingDto wrapper format
+            if isinstance(branding_raw, dict) and isinstance(branding_raw.get("data"), dict):
+                branding = branding_raw["data"]
+            else:
+                branding = branding_raw
+
             if branding:
                 # Merge with defaults to ensure all keys exist
                 merged = {
@@ -536,8 +581,12 @@ Follow these rules strictly at all times.
             if "setting" not in current_settings:
                 current_settings["setting"] = {}
             
-            # Update VIDEO_BRANDING
-            current_settings["setting"]["VIDEO_BRANDING"] = branding
+            # Use SettingDto wrapper format compatible with Java's InstituteSettingDto
+            current_settings["setting"]["VIDEO_BRANDING"] = {
+                "key": "VIDEO_BRANDING",
+                "name": "Video Branding",
+                "data": branding
+            }
             
             # Update the database
             update_stmt = text("""
@@ -558,6 +607,89 @@ Follow these rules strictly at all times.
         except Exception as e:
             self.db.rollback()
             logger.error(f"Error updating video branding for institute {institute_id}: {e}")
+            raise
+
+
+    def get_video_style(self, institute_id: str) -> Dict[str, Any]:
+        """
+        Get video style configuration for an institute (brand colors, fonts, layout theme).
+        Returns defaults if not configured.
+        """
+        DEFAULT_STYLE = {
+            "background_type": "white",
+            "primary_color": "#6366f1",
+            "heading_font": "Inter",
+            "body_font": "Inter",
+            "layout_theme": "clean_light",
+        }
+        try:
+            stmt = text("SELECT setting_json FROM institutes WHERE id = :institute_id")
+            result = self.db.execute(stmt, {"institute_id": institute_id})
+            row = result.fetchone()
+
+            if not row or not row[0]:
+                return {"style": DEFAULT_STYLE.copy(), "has_custom_style": False}
+
+            settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            style_raw = settings.get("setting", {}).get("VIDEO_STYLE")
+            # Handle SettingDto wrapper format
+            if isinstance(style_raw, dict) and isinstance(style_raw.get("data"), dict):
+                style = style_raw["data"]
+            else:
+                style = style_raw
+
+            if style:
+                merged = {**DEFAULT_STYLE, **style}
+                return {"style": merged, "has_custom_style": True}
+
+            return {"style": DEFAULT_STYLE.copy(), "has_custom_style": False}
+
+        except Exception as e:
+            logger.error(f"Error fetching video style for institute {institute_id}: {e}")
+            return {"style": DEFAULT_STYLE.copy(), "has_custom_style": False}
+
+    def update_video_style(self, institute_id: str, style: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update video style configuration for an institute.
+        """
+        try:
+            stmt = text("SELECT setting_json FROM institutes WHERE id = :institute_id")
+            result = self.db.execute(stmt, {"institute_id": institute_id})
+            row = result.fetchone()
+
+            if not row:
+                raise ValueError(f"Institute {institute_id} not found")
+
+            current_settings = {}
+            if row[0]:
+                current_settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+
+            if "setting" not in current_settings:
+                current_settings["setting"] = {}
+
+            # Use SettingDto wrapper format compatible with Java's InstituteSettingDto
+            current_settings["setting"]["VIDEO_STYLE"] = {
+                "key": "VIDEO_STYLE",
+                "name": "Video Style",
+                "data": style
+            }
+
+            update_stmt = text("""
+                UPDATE institutes
+                SET setting_json = :setting_json
+                WHERE id = :institute_id
+            """)
+            self.db.execute(update_stmt, {
+                "setting_json": json.dumps(current_settings),
+                "institute_id": institute_id
+            })
+            self.db.commit()
+
+            return {"style": style, "has_custom_style": True}
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error updating video style for institute {institute_id}: {e}")
             raise
 
 

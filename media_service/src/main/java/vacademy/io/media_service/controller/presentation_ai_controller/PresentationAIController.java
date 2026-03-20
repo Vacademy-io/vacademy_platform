@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.ExternalAIApiServiceImpl;
+import vacademy.io.media_service.config.AiModelConfig;
 import vacademy.io.media_service.constant.ConstantAiTemplate;
 import vacademy.io.media_service.dto.AutoDocumentSubmitResponse;
 import vacademy.io.media_service.dto.DeepSeekResponse;
@@ -32,6 +33,9 @@ public class PresentationAIController {
     @Autowired
     ExternalAIApiServiceImpl deepSeekApiService;
 
+    @Autowired
+    AiModelConfig aiModelConfig;
+
     @PostMapping("/generateFromData")
     public ResponseEntity<String> generateFromData(@RequestBody PresentationAiGenerateRequest presentationAiGenerateRequest) {
 
@@ -41,7 +45,8 @@ public class PresentationAIController {
             Prompt prompt = new PromptTemplate(template).create(Map.of("language", presentationAiGenerateRequest.getLanguage(),
                     "inputText", presentationAiGenerateRequest.getText()));
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-pro-preview", prompt.getContents().trim(), 40000);
+            String model = aiModelConfig.getModelToUse(presentationAiGenerateRequest.getModel());
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion(model, prompt.getContents().trim(), 40000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 throw new VacademyException("Failed To generate Response");
             }
@@ -63,7 +68,8 @@ public class PresentationAIController {
 
             Prompt prompt = new PromptTemplate(template).create(Map.of("initialData", presentationAiGenerateRequest.getInitialData(),
                     "text", presentationAiGenerateRequest.getText()));
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-pro-preview", prompt.getContents().trim(), 40000);
+            String model = aiModelConfig.getModelToUse(presentationAiGenerateRequest.getModel());
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion(model, prompt.getContents().trim(), 40000);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 throw new VacademyException("Failed To generate Response");
             }

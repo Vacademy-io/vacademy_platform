@@ -8,28 +8,33 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
+import vacademy.io.common.health.controller.BaseHealthController;
+import vacademy.io.common.health.dto.HealthDbResponse;
 
 import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Health Diagnostics Controller for Admin Core Service
- * 
- * Provides lightweight endpoints for:
- * - Client-side latency measurement (ping)
- * - Database latency measurement
- * - Inter-service connectivity (to auth-service, media-service, etc.)
+ * Health endpoints for admin-core-service.
+ *
+ * Inherits from BaseHealthController:
+ * GET /admin-core-service/health/ping → ping + JVM metrics
+ * GET /admin-core-service/health/db → master DB pool breakdown
+ * GET /admin-core-service/health/complete → aggregated health
+ *
+ * Added here:
+ * GET /admin-core-service/health/db/read-replica → read-replica pool breakdown
+ * GET /admin-core-service/health/connectivity/* → inter-service mesh checks
  */
 @RestController
 @RequestMapping("/admin-core-service/health")
-public class HealthDiagnosticsController {
+public class HealthDiagnosticsController extends BaseHealthController {
 
     @Autowired
-    private DataSource dataSource;
+    @Qualifier("slaveDataSource")
+    private DataSource replicaDataSource;
 
     @Value("${auth.server.baseurl:http://auth-service:8071}")
     private String authServiceUrl;
@@ -43,196 +48,69 @@ public class HealthDiagnosticsController {
     @Value("${notification.server.baseurl:http://notification-service:8076}")
     private String notificationServiceUrl;
 
-    private final RestTemplate restTemplate;
+    private final RestTemplate restTemplate = new RestTemplate();
 
-    public HealthDiagnosticsController() {
-        this.restTemplate = new RestTemplate();
-    }
+    // ── Read Replica ──────────────────────────────────────────────────────────
 
-    /**
-     * Ultra-lightweight ping endpoint for client-side latency measurement
-     * Returns minimal response for accurate timing
-     */
-    @GetMapping("/ping")
-    public ResponseEntity<Map<String, Object>> ping() {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("status", "OK");
-        response.put("service", "admin-core-service");
-        response.put("timestamp", Instant.now().toEpochMilli());
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * Database latency measurement
-     * Returns connection acquisition time and validation time
-     */
-    @Autowired
-    @Qualifier("slaveDataSource")
-    private DataSource slaveDataSource;
-
-    /**
-     * Database latency measurement for Master DB
-     * Returns connection acquisition time and validation time
-     */
-    @GetMapping("/db")
-    public ResponseEntity<Map<String, Object>> getDatabaseLatency() {
-        return checkDatabaseHealth(dataSource, "master");
-    }
-
-    /**
-     * Database latency measurement for Read Replica DB
-     * Returns connection acquisition time and validation time
-     */
     @GetMapping("/db/read-replica")
-    public ResponseEntity<Map<String, Object>> getReadReplicaLatency() {
-        return checkDatabaseHealth(slaveDataSource, "read-replica");
+    public ResponseEntity<HealthDbResponse> getReplicaHealth() {
+        return ResponseEntity.ok(healthService.checkReplicaDb(replicaDataSource));
     }
 
-    private ResponseEntity<Map<String, Object>> checkDatabaseHealth(DataSource ds, String dbType) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("service", "admin-core-service");
-        response.put("db_type", dbType);
-        response.put("timestamp", Instant.now());
+    // ── Connectivity ──────────────────────────────────────────────────────────
 
-        long connectionStart = System.currentTimeMillis();
-        try (Connection conn = ds.getConnection()) {
-            long connectionTime = System.currentTimeMillis() - connectionStart;
-
-            long validationStart = System.currentTimeMillis();
-            boolean valid = conn.isValid(5);
-            long validationTime = System.currentTimeMillis() - validationStart;
-
-            response.put("status", valid ? "UP" : "DOWN");
-            response.put("connected", valid);
-            response.put("connection_time_ms", connectionTime);
-            response.put("validation_time_ms", validationTime);
-            response.put("total_latency_ms", connectionTime + validationTime);
-
-            // For routing datasource (master), getCatalog might return actual DB name
-            response.put("database", conn.getCatalog());
-
-            // Get pool stats if available
-            try {
-                response.put("pool_name", conn.getMetaData().getDriverName());
-                response.put("url", conn.getMetaData().getURL()); // Be careful with exposing full URL in prod logs, but
-                                                                  // OK for internal health check if secured
-            } catch (Exception ignored) {
-            }
-
-        } catch (SQLException e) {
-            long connectionTime = System.currentTimeMillis() - connectionStart;
-            response.put("status", "DOWN");
-            response.put("connected", false);
-            response.put("connection_time_ms", connectionTime);
-            response.put("error", e.getMessage());
-        }
-
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * Inter-service connectivity check to auth-service
-     */
     @GetMapping("/connectivity/auth")
     public ResponseEntity<Map<String, Object>> checkAuthConnectivity() {
-        return checkServiceConnectivity("auth-service", authServiceUrl + "/auth-service/health/ping");
+        return ResponseEntity.ok(ping("auth-service", authServiceUrl + "/auth-service/health/ping"));
     }
 
-    /**
-     * Inter-service connectivity check to media-service
-     */
     @GetMapping("/connectivity/media")
     public ResponseEntity<Map<String, Object>> checkMediaConnectivity() {
-        return checkServiceConnectivity("media-service", mediaServiceUrl + "/media-service/health/ping");
+        return ResponseEntity.ok(ping("media-service", mediaServiceUrl + "/media-service/health/ping"));
     }
 
-    /**
-     * Inter-service connectivity check to assessment-service
-     */
     @GetMapping("/connectivity/assessment")
     public ResponseEntity<Map<String, Object>> checkAssessmentConnectivity() {
-        return checkServiceConnectivity("assessment-service", assessmentServiceUrl + "/assessment-service/health/ping");
+        return ResponseEntity.ok(ping("assessment-service", assessmentServiceUrl + "/assessment-service/health/ping"));
     }
 
-    /**
-     * Inter-service connectivity check to notification-service
-     */
     @GetMapping("/connectivity/notification")
     public ResponseEntity<Map<String, Object>> checkNotificationConnectivity() {
-        return checkServiceConnectivity("notification-service",
-                notificationServiceUrl + "/notification-service/health/ping");
+        return ResponseEntity
+                .ok(ping("notification-service", notificationServiceUrl + "/notification-service/health/ping"));
     }
 
-    /**
-     * All inter-service connectivity checks
-     */
+    /** Result map consumed by DiagnosticsService in community-service */
     @GetMapping("/connectivity/all")
     public ResponseEntity<Map<String, Object>> checkAllConnectivity() {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("source", "admin-core-service");
         response.put("timestamp", Instant.now());
-
-        response.put("auth_service",
-                checkServiceConnectivityInternal("auth-service", authServiceUrl + "/auth-service/health/ping"));
-        response.put("media_service",
-                checkServiceConnectivityInternal("media-service", mediaServiceUrl + "/media-service/health/ping"));
-        response.put("assessment_service", checkServiceConnectivityInternal("assessment-service",
-                assessmentServiceUrl + "/assessment-service/health/ping"));
-        response.put("notification_service", checkServiceConnectivityInternal("notification-service",
-                notificationServiceUrl + "/notification-service/health/ping"));
-
+        response.put("auth_service", ping("auth-service", authServiceUrl + "/auth-service/health/ping"));
+        response.put("media_service", ping("media-service", mediaServiceUrl + "/media-service/health/ping"));
+        response.put("assessment_service",
+                ping("assessment-service", assessmentServiceUrl + "/assessment-service/health/ping"));
+        response.put("notification_service",
+                ping("notification-service", notificationServiceUrl + "/notification-service/health/ping"));
         return ResponseEntity.ok(response);
     }
 
-    private ResponseEntity<Map<String, Object>> checkServiceConnectivity(String targetService, String url) {
-        return ResponseEntity.ok(checkServiceConnectivityInternal(targetService, url));
-    }
-
-    private Map<String, Object> checkServiceConnectivityInternal(String targetService, String url) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("source", "admin-core-service");
-        response.put("target", targetService);
-        response.put("timestamp", Instant.now());
-
+    private Map<String, Object> ping(String target, String url) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("source", "admin-core-service");
+        m.put("target", target);
+        m.put("timestamp", Instant.now());
         long start = System.currentTimeMillis();
         try {
-            ResponseEntity<String> result = restTemplate.getForEntity(url, String.class);
-            long latency = System.currentTimeMillis() - start;
-
-            response.put("status", result.getStatusCode().is2xxSuccessful() ? "OK" : "FAILED");
-            response.put("latency_ms", latency);
-            response.put("http_status", result.getStatusCode().value());
+            ResponseEntity<String> res = restTemplate.getForEntity(url, String.class);
+            m.put("status", res.getStatusCode().is2xxSuccessful() ? "OK" : "FAILED");
+            m.put("latency_ms", System.currentTimeMillis() - start);
+            m.put("http_status", res.getStatusCode().value());
         } catch (Exception e) {
-            long latency = System.currentTimeMillis() - start;
-            response.put("status", "FAILED");
-            response.put("latency_ms", latency);
-            response.put("error", e.getMessage());
+            m.put("status", "FAILED");
+            m.put("latency_ms", System.currentTimeMillis() - start);
+            m.put("error", e.getMessage());
         }
-
-        return response;
-    }
-
-    /**
-     * Complete health summary
-     */
-    @GetMapping("/complete")
-    public ResponseEntity<Map<String, Object>> getCompleteHealth() {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("service", "admin-core-service");
-        response.put("timestamp", Instant.now());
-
-        // Database health
-        Map<String, Object> dbResponse = getDatabaseLatency().getBody();
-        response.put("database", dbResponse);
-
-        // Connectivity
-        Map<String, Object> connectivityResponse = checkAllConnectivity().getBody();
-        response.put("connectivity", connectivityResponse);
-
-        // Overall status
-        boolean dbUp = "UP".equals(dbResponse.get("status"));
-        response.put("overall_status", dbUp ? "HEALTHY" : "UNHEALTHY");
-
-        return ResponseEntity.ok(response);
+        return m;
     }
 }

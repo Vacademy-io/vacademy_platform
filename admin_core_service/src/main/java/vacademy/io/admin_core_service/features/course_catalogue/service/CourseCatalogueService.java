@@ -38,7 +38,7 @@ public class CourseCatalogueService {
                         if (request.getTagName() != null && !request.getTagName().isBlank()) {
                                 Optional<CatalogueInstituteMapping> existing = catalogueInstituteMappingRepository
                                                 .findByInstituteIdAndTagName(instituteId, request.getTagName(),
-                                                                List.of(CatalogueStatusEnum.ACTIVE.name()));
+                                                                List.of(CatalogueStatusEnum.ACTIVE.name(), CatalogueStatusEnum.DRAFT.name()));
                                 if (existing.isPresent()) {
                                         throw new VacademyException(HttpStatus.CONFLICT,
                                                         "Catalogue tag already exists for this institute");
@@ -114,7 +114,7 @@ public class CourseCatalogueService {
         @Transactional(readOnly = true)
         public List<CourseCatalogueResponse> getAllCataloguesByInstitute(String instituteId) {
                 List<CatalogueInstituteMapping> mappings = catalogueInstituteMappingRepository
-                                .findByInstituteIdAndStatusIn(instituteId, List.of(CatalogueStatusEnum.ACTIVE.name()));
+                                .findByInstituteIdAndStatusIn(instituteId, List.of(CatalogueStatusEnum.ACTIVE.name(), CatalogueStatusEnum.DRAFT.name()));
 
                 return mappings.stream()
                                 .map(m -> CourseCatalogueResponse.builder()
@@ -172,7 +172,7 @@ public class CourseCatalogueService {
         public CourseCatalogueResponse getCatalogueByInstituteAndTag(String instituteId, String tagName) {
                 Optional<CatalogueInstituteMapping> mappingOpt = catalogueInstituteMappingRepository
                                 .findByInstituteIdAndTagName(instituteId, tagName,
-                                                List.of(CatalogueStatusEnum.ACTIVE.name()));
+                                                List.of(CatalogueStatusEnum.ACTIVE.name(), CatalogueStatusEnum.DRAFT.name()));
                 if (mappingOpt.isEmpty()) {
                         throw new VacademyException(HttpStatus.NOT_FOUND, "Catalogue not found for tag");
                 }

@@ -26,7 +26,7 @@ public class CouponCodeResponseDTO {
     private Date redeemEndDate;
     private Long usageLimit;
     private boolean canBeAdded;
-    private String shortUrl;
+    private String shortReferralLink;
 
     public static CouponCodeResponseDTO fromEntity(CouponCode couponCode) {
         return CouponCodeResponseDTO.builder()
@@ -43,7 +43,8 @@ public class CouponCodeResponseDTO {
                 .redeemEndDate(couponCode.getRedeemEndDate())
                 .usageLimit(couponCode.getUsageLimit())
                 .canBeAdded(couponCode.isCanBeAdded())
-                .shortUrl(couponCode.getShortUrl())
+                .shortReferralLink(couponCode.getShortUrl()) // raw short code; will be resolved to full URL by
+                                                             // controller
                 .build();
     }
 }

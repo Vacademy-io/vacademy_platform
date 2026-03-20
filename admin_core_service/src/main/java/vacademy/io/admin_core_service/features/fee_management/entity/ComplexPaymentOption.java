@@ -30,6 +30,12 @@ public class ComplexPaymentOption {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "created_by")
+    private String createdBy;
+
+    @Column(name = "approved_by")
+    private String approvedBy;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

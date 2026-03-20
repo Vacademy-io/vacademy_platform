@@ -109,12 +109,14 @@ class IntentClassifierService:
     def get_practice_topic(self, message: str, context: dict) -> str:
         """
         Extract or infer the topic for practice quiz.
-        
+
         Priority:
         1. Explicit topic mentioned in message
-        2. Current slide/chapter name from context
-        3. Subject from context
-        4. Generic "current topic"
+        2. Chapter name from context (most descriptive of current topic)
+        3. Slide/content name (if meaningful, not generic)
+        4. Subject from context
+        5. Infer from slide content text
+        6. Generic "current topic"
         """
         # Try to extract topic from message
         topic_patterns = [
@@ -123,30 +125,61 @@ class IntentClassifierService:
             r'test\s+me\s+on\s+([^,.!?]+)',
             r'questions?\s+(?:on|about)\s+([^,.!?]+)',
         ]
-        
+
+        # Generic/deictic words that refer to current context, not a real topic
+        DEICTIC_WORDS = {"this", "that", "it", "these", "those", "here", "the above",
+                         "the slide", "this slide", "this topic", "the topic",
+                         "this chapter", "current", "the current"}
+
         message_lower = message.lower()
         for pattern in topic_patterns:
             match = re.search(pattern, message_lower)
             if match:
                 topic = match.group(1).strip()
+                # Skip deictic/generic references — fall through to context
+                if topic.lower() in DEICTIC_WORDS:
+                    break
                 if len(topic) > 3:  # Avoid very short matches
                     return topic.title()
-        
+
         # Fall back to context
         context_data = context.get("context_data", {})
-        
-        # Try slide/content name
-        if context_data.get("name"):
-            return context_data["name"]
-        
-        # Try chapter
+
+        # Try chapter first (most descriptive of current learning topic)
         if context_data.get("chapter"):
-            return context_data["chapter"]
-        
+            topic = context_data["chapter"]
+            # Enrich with subject for better quiz scoping
+            if context_data.get("subject"):
+                topic = f"{topic} ({context_data['subject']})"
+            return topic
+
+        # Try slide/content name (skip generic names)
+        slide_name = context_data.get("name", "")
+        generic_names = {"current slide", "slide 1", "slide", ""}
+        if slide_name and slide_name.lower().strip() not in generic_names:
+            return slide_name
+
+        # Try module
+        if context_data.get("module"):
+            return context_data["module"]
+
         # Try subject
         if context_data.get("subject"):
             return context_data["subject"]
-        
+
+        # Try course
+        if context_data.get("course"):
+            return context_data["course"]
+
+        # Last resort: extract a topic hint from slide content
+        content = context_data.get("content", "")
+        if content and len(content) > 20:
+            # Use first meaningful line as topic hint (up to 100 chars)
+            first_line = content.strip().split("\n")[0][:100].strip()
+            if len(first_line) > 10:
+                logger.info(f"Inferred topic from content: '{first_line[:50]}...'")
+                return first_line
+
         return "Current Topic"
 
 

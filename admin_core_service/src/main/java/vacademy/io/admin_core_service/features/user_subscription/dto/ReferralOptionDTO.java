@@ -19,6 +19,7 @@ public class ReferralOptionDTO {
     private String referrerDiscountJson;
     private String refereeDiscountJson;
     private Integer referrerVestingDays;
+    private Boolean allowCombineOffers; // add new field in DTO for combining offers
     private String tag;
     private String description;
     private Date createdAt;

@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -40,7 +41,9 @@ public class GetSessionByIdResponseDTO {
     private Boolean allowPlayPause;
     private String sessionStreamingServiceType;
     private String timezone;
+    private Map<String, Object> bbbConfig;
     private List<String> packageSessionIds;
+    private List<PackageSessionDetail> packageSessionDetails;
     private List<ScheduleItem> addedSchedules;
 
     @Getter
@@ -56,6 +59,8 @@ public class GetSessionByIdResponseDTO {
         private LearnerButtonConfigDTO learnerButtonConfig;
         private LocalDate meetingDate;
         private String timezone;
+        private Boolean dailyAttendance;
+        private String providerRecordingsJson;
     }
 
     @Getter
@@ -90,6 +95,15 @@ public class GetSessionByIdResponseDTO {
     static public class NotificationConfigResponse {
         private List<NotificationAction> addedNotificationActions;
         private List<Field> addedFields = new ArrayList<>();
+    }
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class PackageSessionDetail {
+        private String packageSessionId;
+        private String packageName;
+        private String levelName;
+        private String sessionName;
     }
 
     @Data

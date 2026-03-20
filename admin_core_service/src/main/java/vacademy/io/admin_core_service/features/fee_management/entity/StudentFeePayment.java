@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.fee_management.entity;
 
 import jakarta.persistence.*;
+import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -35,10 +36,15 @@ public class StudentFeePayment {
     @Column(name = "cpo_id", nullable = false)
     private String cpoId;
 
+    // Read-only join used by admin fee roster Specification for institute filtering
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cpo_id", insertable = false, updatable = false)
+    private ComplexPaymentOption complexPaymentOption;
+
     @Column(name = "asv_id", nullable = false)
     private String asvId;
 
-    @Column(name = "i_id", nullable = false)
+    @Column(name = "i_id", nullable =  false)
     private String iId;
 
     @Column(name = "amount_expected", nullable = false)
@@ -58,6 +64,21 @@ public class StudentFeePayment {
 
     @Column(name = "status", nullable = false)
     private String status; // e.g., PENDING, PARTIAL_PAID, PAID, WAIVED, OVERDUE
+
+    @Column(name = "is_skippable")
+    private Boolean isSkippable = false;
+
+    @Column(name = "fee_type_id")
+    private String feeTypeId;
+
+    /**
+     * The institute this fee payment belongs to.
+     * Nullable for backward compatibility with existing rows.
+     * Populated at enrollment time so the fee reminder workflow
+     * can resolve the correct workflow_trigger by institute_id.
+     */
+    @Column(name = "institute_id")
+    private String instituteId;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

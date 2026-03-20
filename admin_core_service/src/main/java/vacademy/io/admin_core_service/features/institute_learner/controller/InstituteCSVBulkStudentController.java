@@ -41,6 +41,7 @@ public class InstituteCSVBulkStudentController {
             @RequestParam("bulkUploadInitRequest") String bulkUploadInitRequestJson,
             @RequestParam("packageSessionId") String packageSessionId,
             @RequestParam(value = "notify", required = false, defaultValue = "true") Boolean notify,
+            @RequestParam(value = "subOrgId", required = false) String subOrgId,
             @RequestAttribute(name = "user") CustomUserDetails user) {
 
         // Convert JSON string to BulkUploadInitRequest object
@@ -53,7 +54,7 @@ public class InstituteCSVBulkStudentController {
         }
 
         if (CSVHelper.hasCSVFormat(file)) {
-            return studentBulkUpload.uploadStudentCsv(file, instituteId, bulkUploadInitRequest, packageSessionId, notify, user);
+            return studentBulkUpload.uploadStudentCsv(file, instituteId, bulkUploadInitRequest, packageSessionId, notify, user, subOrgId);
         }
 
         throw new VacademyException("Please upload a valid CSV file");

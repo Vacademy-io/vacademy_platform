@@ -75,7 +75,25 @@ public interface DailyUserActivitySummaryRepository extends JpaRepository<DailyU
            nativeQuery = true)
     List<DailyUserActivitySummary> findByInstituteIdAndActivityDateBetweenOrderByActivityDate(@Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
     
-    @Query(value = "SELECT * FROM daily_user_activity_summary d WHERE d.user_id = :userId AND CAST(d.institute_id AS TEXT) = :instituteId AND d.activity_date BETWEEN :startDate AND :endDate ORDER BY d.activity_date", 
+    @Query(value = "SELECT * FROM daily_user_activity_summary d WHERE d.user_id = :userId AND CAST(d.institute_id AS TEXT) = :instituteId AND d.activity_date BETWEEN :startDate AND :endDate ORDER BY d.activity_date",
            nativeQuery = true)
     List<DailyUserActivitySummary> findByUserIdAndInstituteIdAndActivityDateBetweenOrderByActivityDate(@Param("userId") String userId, @Param("instituteId") String instituteId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    // ==================== Super Admin Queries ====================
+
+    @Query(value = """
+            SELECT d.activity_date, COUNT(DISTINCT d.user_id), SUM(d.total_sessions), SUM(d.total_api_calls)
+            FROM daily_user_activity_summary d
+            WHERE d.activity_date BETWEEN :startDate AND :endDate
+            GROUP BY d.activity_date
+            ORDER BY d.activity_date
+            """, nativeQuery = true)
+    List<Object[]> getPlatformWideDailyTrends(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    @Query(value = """
+            SELECT COUNT(DISTINCT d.user_id), COALESCE(SUM(d.total_sessions), 0), COALESCE(SUM(d.total_api_calls), 0)
+            FROM daily_user_activity_summary d
+            WHERE d.activity_date BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
+    Object[] getPlatformWideTotals(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 } 

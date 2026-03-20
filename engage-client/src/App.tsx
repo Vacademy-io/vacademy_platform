@@ -16,7 +16,7 @@ function App() {
         <Route path="/presentation/public/:presentationId" element={<PublicPresentationViewerPage />} />
         <Route path="*" element={<Navigate to="/" replace />} /> {/* Fallback route */}
       </Routes>
-      <Toaster richColors />
+      <Toaster richColors position="top-center" />
     </Router>
   );
 }

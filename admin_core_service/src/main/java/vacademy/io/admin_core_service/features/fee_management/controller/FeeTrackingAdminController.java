@@ -1,15 +1,37 @@
 package vacademy.io.admin_core_service.features.fee_management.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.SelectiveAllocationRequest;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentRowDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardResponseDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardRequestDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.InstituteFeeTypePriorityDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.InvoiceReceiptDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.SetPriorityRequest;
+import vacademy.io.admin_core_service.features.fee_management.entity.InstituteFeeTypePriority;
+import vacademy.io.admin_core_service.features.fee_management.enums.AllocationScope;
+import vacademy.io.admin_core_service.features.fee_management.repository.InstituteFeeTypePriorityRepository;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackingService;
+import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
+import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
+import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/admin-core-service/v1/admin/student-fee")
@@ -21,11 +43,61 @@ public class FeeTrackingAdminController {
     @Autowired
     private FeeLedgerAllocationService feeLedgerAllocationService;
 
-    @GetMapping("/{userId}/dues")
+    @Autowired
+    private InstituteFeeTypePriorityRepository priorityRepository;
+
+    @Autowired
+    private InvoiceRepository invoiceRepository;
+
+    @Autowired
+    private MediaService mediaService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.service.SchoolFeeReceiptService schoolFeeReceiptService;
+
+    @PostMapping("/{userId}/dues")
     public ResponseEntity<List<StudentFeePaymentDTO>> getStudentDues(
             @PathVariable("userId") String userId,
-            @RequestParam("instituteId") String instituteId) {
-        return ResponseEntity.ok(feeTrackingService.getStudentDues(userId, instituteId));
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody(required = false) DuesFilterRequest filter) {
+
+        List<StudentFeePaymentDTO> dues = feeTrackingService.getStudentDues(userId, instituteId);
+
+        if (filter != null) {
+            // Optional status filter (e.g., PENDING, PARTIAL_PAID, OVERDUE)
+            if (filter.getStatus() != null && !filter.getStatus().isBlank()) {
+                String statusFilter = filter.getStatus().trim().toUpperCase();
+                dues = dues.stream()
+                        .filter(d -> d.getStatus() != null
+                                && d.getStatus().toUpperCase().equals(statusFilter))
+                        .collect(Collectors.toList());
+            }
+
+            // Optional due date range filter
+            LocalDate start = filter.getStartDueDate();
+            LocalDate end = filter.getEndDueDate();
+            if (start != null || end != null) {
+                dues = dues.stream()
+                        .filter(d -> {
+                            if (d.getDueDate() == null) {
+                                return false;
+                            }
+                            LocalDate due = d.getDueDate().toInstant()
+                                    .atZone(ZoneId.systemDefault())
+                                    .toLocalDate();
+                            if (start != null && due.isBefore(start)) {
+                                return false;
+                            }
+                            if (end != null && due.isAfter(end)) {
+                                return false;
+                            }
+                            return true;
+                        })
+                        .collect(Collectors.toList());
+            }
+        }
+
+        return ResponseEntity.ok(dues);
     }
 
     @GetMapping("/{userId}/receipts")
@@ -35,26 +107,253 @@ public class FeeTrackingAdminController {
         return ResponseEntity.ok(feeTrackingService.getStudentReceipts(userId, instituteId));
     }
 
+    @GetMapping("/{userId}/invoice-receipts")
+    public ResponseEntity<List<InvoiceReceiptDTO>> getStudentInvoiceReceipts(
+            @PathVariable("userId") String userId,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(feeTrackingService.getStudentInvoiceReceipts(userId, instituteId));
+    }
+
     /**
-     * Allocate an offline/admin payment for a user across all their unpaid
-     * installments.
+     * Allocate an offline/admin payment for a user across their unpaid installments
+     * with overdue-first + institute fee-type priority ordering.
      *
-     * Input:
-     *  - userId (path) - the student whose installments are to be updated
-     *  - amount (query param) representing the payment amount
-     *
-     * Behavior:
-     *  - Creates a NEW PaymentLog row with status PAID for this amount
-     *  - Allocates that amount across all unpaid student_fee_payment rows (FIFO)
-     *  - Creates separate ledger rows per student_fee_payment_id for this payment
+     * @param userId      the student whose installments are to be updated
+     * @param amount      the payment amount
+     * @param instituteId optional – derived from bills when absent
+     * @param scope       OVERDUE_ONLY or ALL_DUES (defaults to ALL_DUES)
      */
     @PostMapping("/{userId}/allocate")
-    public ResponseEntity<Void> allocatePaymentForLog(
+    public ResponseEntity<Void> allocatePaymentForUser(
             @PathVariable("userId") String userId,
             @RequestParam("amount") java.math.BigDecimal amount,
+            @RequestParam(value = "instituteId", required = false) String instituteId,
+            @RequestParam(value = "scope", required = false, defaultValue = "ALL_DUES") String scope,
             @RequestAttribute("user") CustomUserDetails user) {
-        feeLedgerAllocationService.allocatePaymentForUser(userId, amount);
+
+        AllocationScope allocationScope;
+        try {
+            allocationScope = AllocationScope.valueOf(scope.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        feeLedgerAllocationService.allocatePaymentForUser(userId, amount, instituteId, allocationScope);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Allocate payment to admin-selected installments.
+     * The admin picks specific installments and the amount to pay on each.
+     */
+    @PostMapping("/{userId}/allocate-selected")
+    public ResponseEntity<Void> allocatePaymentForSelectedInstallments(
+            @PathVariable("userId") String userId,
+            @RequestBody SelectiveAllocationRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+
+        if (request.getInstituteId() == null || request.getInstituteId().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (request.getStudentFeePaymentIds() == null || request.getStudentFeePaymentIds().isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (request.getAmount() == null || request.getAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        feeLedgerAllocationService.allocatePaymentForSelectedInstallments(
+                userId, request.getInstituteId(), request.getStudentFeePaymentIds(),
+                request.getAmount(), request.getRemarks());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Admin fee roster search — powers the "Manage Finances" table in the frontend.
+     *
+     * POST
+     * /admin-core-service/v1/admin/student-fee/search?instituteId={instituteId}
+     *
+     * Accepts a rich filter payload and returns a paginated list of student fee
+     * payment records enriched with student name/email and fee type context.
+     */
+    @PostMapping("/search")
+    public ResponseEntity<Page<StudentFeePaymentRowDTO>> searchStudentFeePayments(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody FeeSearchFilterDTO filter,
+            @RequestAttribute("user") CustomUserDetails user) {
+        Page<StudentFeePaymentRowDTO> results = feeTrackingService.searchFeePayments(instituteId, filter);
+        return ResponseEntity.ok(results);
+    }
+
+    @PostMapping("/dashboard/collection")
+    public ResponseEntity<CollectionDashboardResponseDTO> getCollectionDashboard(
+            @RequestBody CollectionDashboardRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(feeTrackingService.getCollectionDashboard(request));
+    }
+
+    @GetMapping("/payment-details")
+    public ResponseEntity<List<vacademy.io.admin_core_service.features.fee_management.dto.InstallmentDetailsDTO>> getPaymentDetails(
+            @RequestParam("studentId") String studentId,
+            @RequestParam("cpoId") String cpoId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(feeTrackingService.getPaymentDetails(studentId, cpoId));
+    }
+    // ---- Fee-type priority configuration endpoints ----
+
+    @PutMapping("/priority")
+    @Transactional
+    public ResponseEntity<Void> setFeeTypePriority(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody SetPriorityRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+
+        if (request.getScope() == null || request.getPriorities() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        String scopeStr;
+        try {
+            scopeStr = AllocationScope.valueOf(request.getScope().trim().toUpperCase()).name();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        priorityRepository.deleteByInstituteIdAndScope(instituteId, scopeStr);
+
+        for (InstituteFeeTypePriorityDTO dto : request.getPriorities()) {
+            InstituteFeeTypePriority entity = new InstituteFeeTypePriority();
+            entity.setInstituteId(instituteId);
+            entity.setScope(scopeStr);
+            entity.setFeeTypeId(dto.getFeeTypeId());
+            entity.setPriorityOrder(dto.getPriorityOrder());
+            priorityRepository.save(entity);
+        }
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/priority")
+    public ResponseEntity<List<InstituteFeeTypePriorityDTO>> getFeeTypePriority(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("scope") String scope) {
+
+        String scopeStr;
+        try {
+            scopeStr = AllocationScope.valueOf(scope.trim().toUpperCase()).name();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        List<InstituteFeeTypePriorityDTO> result = priorityRepository
+                .findByInstituteIdAndScopeOrderByPriorityOrderAsc(instituteId, scopeStr)
+                .stream()
+                .map(e -> InstituteFeeTypePriorityDTO.builder()
+                        .feeTypeId(e.getFeeTypeId())
+                        .priorityOrder(e.getPriorityOrder())
+                        .build())
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(result);
+    }
+
+    // ---- Receipt PDF Download ----
+
+    /**
+     * Get download URL for receipt PDF.
+     * Frontend should use the returned URL with &lt;a download&gt; to trigger download.
+     *
+     * @param invoiceId the invoice/receipt ID
+     * @return JSON with download_url, invoice_number, file_name
+     */
+    @GetMapping("/receipt/{invoiceId}/download-url")
+    public ResponseEntity<?> downloadReceiptPdf(@PathVariable("invoiceId") String invoiceId) {
+        Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+        if (invoice == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        String pdfFileId = invoice.getPdfFileId();
+        if (!StringUtils.hasText(pdfFileId)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "PDF not available for this receipt"));
+        }
+
+        String signedUrl = mediaService.getFilePublicUrlById(pdfFileId);
+        if (!StringUtils.hasText(signedUrl)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to generate download URL"));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "download_url", signedUrl,
+                "invoice_number", invoice.getInvoiceNumber(),
+                "file_name", "receipt_" + invoice.getInvoiceNumber() + ".pdf"
+        ));
+    }
+
+    /**
+     * Generate an invoice/statement PDF for selected installments.
+     * Returns the S3 file ID and download URL for the generated PDF.
+     * Shows current status of each installment (PAID, PENDING, PARTIAL_PAID, etc.).
+     */
+    @PostMapping("/{userId}/generate-invoice")
+    public ResponseEntity<?> generateInvoiceForInstallments(
+            @PathVariable("userId") String userId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody Map<String, Object> request) {
+
+        @SuppressWarnings("unchecked")
+        List<String> installmentIds = (List<String>) request.get("installment_ids");
+        if (installmentIds == null || installmentIds.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "installment_ids is required"));
+        }
+
+        String pdfFileId = schoolFeeReceiptService.generateInvoiceForInstallments(
+                userId, instituteId, installmentIds);
+
+        String downloadUrl = mediaService.getFilePublicUrlById(pdfFileId);
+
+        return ResponseEntity.ok(Map.of(
+                "file_id", pdfFileId,
+                "download_url", downloadUrl != null ? downloadUrl : ""
+        ));
+    }
+
+    /**
+     * Request body for filtering dues.
+     * - status: optional status filter (e.g. "PENDING", "PARTIAL_PAID").
+     * - startDueDate / endDueDate: optional due date range (yyyy-MM-dd).
+     */
+    public static class DuesFilterRequest {
+        private String status;
+        private LocalDate startDueDate;
+        private LocalDate endDueDate;
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public LocalDate getStartDueDate() {
+            return startDueDate;
+        }
+
+        public void setStartDueDate(LocalDate startDueDate) {
+            this.startDueDate = startDueDate;
+        }
+
+        public LocalDate getEndDueDate() {
+            return endDueDate;
+        }
+
+        public void setEndDueDate(LocalDate endDueDate) {
+            this.endDueDate = endDueDate;
+        }
     }
 
 }

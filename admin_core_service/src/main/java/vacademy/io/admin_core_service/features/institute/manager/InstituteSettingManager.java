@@ -99,6 +99,8 @@ public class InstituteSettingManager {
                     java.util.Map<?, ?> map = (java.util.Map<?, ?>) data;
                     if (map.containsKey("userIdentifier")) {
                         userIdentifier = map.get("userIdentifier").toString();
+                    } else if (map.containsKey("user_identifier")) {
+                        userIdentifier = map.get("user_identifier").toString();
                     } else if (map.containsKey("value")) {
                         userIdentifier = map.get("value").toString();
                     }

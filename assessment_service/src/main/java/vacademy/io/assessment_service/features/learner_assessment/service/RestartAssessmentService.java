@@ -13,7 +13,7 @@ import vacademy.io.assessment_service.features.assessment.service.AttemptDataPar
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.assessment_service.features.learner_assessment.dto.response.LearnerUpdateStatusResponse;
 import vacademy.io.common.core.utils.DateUtil;
-import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.assessment_service.core.exception.VacademyException;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -34,24 +34,28 @@ public class RestartAssessmentService {
     QuestionAssessmentSectionMappingRepository questionAssessmentSectionMappingRepository;
 
     /**
-     * Retrieves the new duration for an assessment attempt by validating and updating student attempt data.
+     * Retrieves the new duration for an assessment attempt by validating and
+     * updating student attempt data.
      *
      * @param studentAttemptOptional Optional containing StudentAttempt data
      * @param assessment             The assessment object
      * @param requestAttemptJson     JSON string containing attempt data
      * @return List of DurationResponse containing updated durations
      */
-    public List<LearnerUpdateStatusResponse.DurationResponse> getNewDurationForAssessment(Optional<StudentAttempt> studentAttemptOptional,
-                                                                                          Assessment assessment,
-                                                                                          String requestAttemptJson) {
+    public List<LearnerUpdateStatusResponse.DurationResponse> getNewDurationForAssessment(
+            Optional<StudentAttempt> studentAttemptOptional,
+            Assessment assessment,
+            String requestAttemptJson) {
 
-        if (studentAttemptOptional.isEmpty()) throw new VacademyException("No Attempt Found");
+        if (studentAttemptOptional.isEmpty())
+            throw new VacademyException("No Attempt Found");
         StudentAttempt studentAttempt = studentAttemptOptional.get();
 
         if (!Objects.isNull(requestAttemptJson)) {
 
             // Update student attempt data if necessary and return the latest attempt data
-            String attemptDataJson = updateStudentAttemptDataAndReturnLatest(requestAttemptJson, studentAttempt.getAttemptData(), studentAttempt);
+            String attemptDataJson = updateStudentAttemptDataAndReturnLatest(requestAttemptJson,
+                    studentAttempt.getAttemptData(), studentAttempt);
 
             return createDurationDistributionResponse(studentAttempt, assessment, attemptDataJson);
         }
@@ -67,10 +71,14 @@ public class RestartAssessmentService {
      * @param studentAttempt     The student attempt object
      * @return The updated LearnerAssessmentAttemptDataDto
      */
-    private String updateStudentAttemptDataAndReturnLatest(String requestAttemptJson, String savedAttemptJson, StudentAttempt studentAttempt) {
-        if (Objects.isNull(savedAttemptJson) || isSavedDataOld(studentAttempt.getServerLastSync(), DateUtil.convertStringToUTCDate(attemptDataParserService.getClientLastSyncTime(requestAttemptJson)))) {
+    private String updateStudentAttemptDataAndReturnLatest(String requestAttemptJson, String savedAttemptJson,
+            StudentAttempt studentAttempt) {
+        if (Objects.isNull(savedAttemptJson) || isSavedDataOld(studentAttempt.getServerLastSync(),
+                DateUtil.convertStringToUTCDate(attemptDataParserService.getClientLastSyncTime(requestAttemptJson)))) {
             updateIfNotNull(requestAttemptJson, studentAttempt::setAttemptData);
-            updateIfNotNull(DateUtil.convertStringToUTCDate(attemptDataParserService.getClientLastSyncTime(requestAttemptJson)), studentAttempt::setClientLastSync);
+            updateIfNotNull(
+                    DateUtil.convertStringToUTCDate(attemptDataParserService.getClientLastSyncTime(requestAttemptJson)),
+                    studentAttempt::setClientLastSync);
 
             studentAttempt.setServerLastSync(DateUtil.getCurrentUtcTime());
 
@@ -99,26 +107,30 @@ public class RestartAssessmentService {
      * @param assessment     The assessment object
      * @return List of DurationResponse containing updated durations
      */
-    private List<LearnerUpdateStatusResponse.DurationResponse> createDurationDistributionResponse(StudentAttempt studentAttempt,
-                                                                                                  Assessment assessment, String attemptJson) {
+    private List<LearnerUpdateStatusResponse.DurationResponse> createDurationDistributionResponse(
+            StudentAttempt studentAttempt,
+            Assessment assessment, String attemptJson) {
         Long timeLeft = timeDifference(studentAttempt.getStartTime(), studentAttempt.getMaxTime());
 
         return distributeDuration(assessment, timeLeft, attemptJson);
     }
 
     /**
-     * Distributes the available time across assessment sections or questions based on the assessment type.
+     * Distributes the available time across assessment sections or questions based
+     * on the assessment type.
      *
      * @param assessment The assessment object
      * @param timeLeft   The time left for the assessment
      * @return List of DurationResponse containing updated durations
      */
-    private List<LearnerUpdateStatusResponse.DurationResponse> distributeDuration(Assessment assessment, Long timeLeft, String attemptJson) {
+    private List<LearnerUpdateStatusResponse.DurationResponse> distributeDuration(Assessment assessment, Long timeLeft,
+            String attemptJson) {
         List<LearnerUpdateStatusResponse.DurationResponse> responses = new ArrayList<>();
         String assessmentType = assessment.getDurationDistribution();
 
         // Create a duration response for the entire assessment
-        LearnerUpdateStatusResponse.DurationResponse assessmentDuration = LearnerUpdateStatusResponse.DurationResponse.builder()
+        LearnerUpdateStatusResponse.DurationResponse assessmentDuration = LearnerUpdateStatusResponse.DurationResponse
+                .builder()
                 .id(assessment.getId())
                 .type(DurationDistributionEnum.ASSESSMENT.name())
                 .newMaxTimeInSeconds(timeLeft).build();
@@ -133,11 +145,13 @@ public class RestartAssessmentService {
                 List<String> sections = attemptDataParserService.extractSectionJsonStrings(attemptJson);
 
                 sections.forEach(sectionJson -> {
-                    responses.addAll(createQuestionTimeDistribution(sectionJson, timeLeft, attemptDataParserService.extractSectionIdFromSectionJson(sectionJson)));
+                    responses.addAll(createQuestionTimeDistribution(sectionJson, timeLeft,
+                            attemptDataParserService.extractSectionIdFromSectionJson(sectionJson)));
                 });
             } else {
                 // No AttemptData available, fetch sections from the repository
-                List<Section> allSections = sectionRepository.findByAssessmentIdAndStatusNotIn(assessment.getId(), List.of("DELETED"));
+                List<Section> allSections = sectionRepository.findByAssessmentIdAndStatusNotIn(assessment.getId(),
+                        List.of("DELETED"));
                 allSections.forEach(section -> {
                     responses.addAll(createQuestionTimeDistribution(null, timeLeft, section.getId()));
                 });
@@ -147,50 +161,60 @@ public class RestartAssessmentService {
         return responses;
     }
 
-
     /**
-     * Creates a time distribution for each question in a section based on the remaining time.
+     * Creates a time distribution for each question in a section based on the
+     * remaining time.
      *
      * @param timeLeft  Remaining time available for the section.
      * @param sectionId ID of the section.
-     * @return A collection of {@link LearnerUpdateStatusResponse.DurationResponse} objects representing time allocation for each question.
+     * @return A collection of {@link LearnerUpdateStatusResponse.DurationResponse}
+     *         objects representing time allocation for each question.
      */
-    private Collection<? extends LearnerUpdateStatusResponse.DurationResponse> createQuestionTimeDistribution(String sectionJson, Long timeLeft, String sectionId) {
+    private Collection<? extends LearnerUpdateStatusResponse.DurationResponse> createQuestionTimeDistribution(
+            String sectionJson, Long timeLeft, String sectionId) {
 
-        // Retrieve questions from section attempt data if present, otherwise create an empty list
+        // Retrieve questions from section attempt data if present, otherwise create an
+        // empty list
         List<String> questions = !Objects.isNull(sectionJson) && !sectionJson.isEmpty()
                 ? attemptDataParserService.extractQuestionJsonsFromSection(sectionJson)
                 : new ArrayList<>();
 
-        // If there are no attempted questions, handle the case where time needs to be distributed among all questions
+        // If there are no attempted questions, handle the case where time needs to be
+        // distributed among all questions
         if (questions == null || questions.isEmpty()) {
             return handleCaseForNoQuestion(timeLeft, sectionId);
         }
 
         // Calculate total allocated time for all questions (excluding null values)
         Long totalAllocatedTime = questions.stream()
-                .mapToLong(questionJson -> attemptDataParserService.getQuestionDurationLeftInSecondsFromQuestionJson(questionJson) != null
-                        ? attemptDataParserService.getQuestionDurationLeftInSecondsFromQuestionJson(questionJson)
-                        : 0)
+                .mapToLong(questionJson -> attemptDataParserService
+                        .getQuestionDurationLeftInSecondsFromQuestionJson(questionJson) != null
+                                ? attemptDataParserService
+                                        .getQuestionDurationLeftInSecondsFromQuestionJson(questionJson)
+                                : 0)
                 .sum();
 
         // Distribute the remaining time proportionally among the questions
         return questions.stream().map(questionJson -> {
             long newTime = (totalAllocatedTime == 0)
-                    ? timeLeft / questions.size()  // Equal distribution if no allocated time
-                    : (attemptDataParserService.getQuestionDurationLeftInSecondsFromQuestionJson(questionJson) * timeLeft) / totalAllocatedTime; // Proportional distribution
+                    ? timeLeft / questions.size() // Equal distribution if no allocated time
+                    : (attemptDataParserService.getQuestionDurationLeftInSecondsFromQuestionJson(questionJson)
+                            * timeLeft) / totalAllocatedTime; // Proportional distribution
 
             return new LearnerUpdateStatusResponse.DurationResponse(
-                    attemptDataParserService.extractQuestionIdFromQuestionJson(questionJson), DurationDistributionEnum.QUESTION.name(), newTime);
+                    attemptDataParserService.extractQuestionIdFromQuestionJson(questionJson),
+                    DurationDistributionEnum.QUESTION.name(), newTime);
         }).collect(Collectors.toList());
     }
 
     /**
-     * Handles the scenario where there are no attempted questions, distributing time among all section questions.
+     * Handles the scenario where there are no attempted questions, distributing
+     * time among all section questions.
      *
      * @param timeLeft  Remaining time available for the section.
      * @param sectionId ID of the section.
-     * @return A collection of {@link LearnerUpdateStatusResponse.DurationResponse} objects representing time allocation for each question.
+     * @return A collection of {@link LearnerUpdateStatusResponse.DurationResponse}
+     *         objects representing time allocation for each question.
      */
     private Collection<? extends LearnerUpdateStatusResponse.DurationResponse> handleCaseForNoQuestion(
             Long timeLeft, String sectionId) {
@@ -207,28 +231,32 @@ public class RestartAssessmentService {
         // Distribute the remaining time among the questions
         return allQuestions.stream().map(question -> {
             long newTime = (totalAllocatedTimeInSeconds == 0)
-                    ? timeLeft / allQuestions.size()  // Equal distribution if no allocated time
+                    ? timeLeft / allQuestions.size() // Equal distribution if no allocated time
                     : ((question.getQuestionDurationInMin() != null
-                    ? question.getQuestionDurationInMin()
-                    : 0) * 60 * timeLeft) / totalAllocatedTimeInSeconds; // Proportional distribution
+                            ? question.getQuestionDurationInMin()
+                            : 0) * 60 * timeLeft) / totalAllocatedTimeInSeconds; // Proportional distribution
 
             return new LearnerUpdateStatusResponse.DurationResponse(
                     question.getId(), DurationDistributionEnum.QUESTION.name(), newTime);
         }).collect(Collectors.toList());
     }
 
-
     /**
      * Creates a time distribution for each section based on the remaining time.
      *
      * @param timeLeft   The total time left for the assessment.
      * @param assessment The assessment object containing sections.
-     * @return A collection of DurationResponse objects representing the time allocated for each section.
+     * @return A collection of DurationResponse objects representing the time
+     *         allocated for each section.
      */
-    private Collection<? extends LearnerUpdateStatusResponse.DurationResponse> createSectionTimeDistribution(Long timeLeft, Assessment assessment, String attemptJson) {
+    private Collection<? extends LearnerUpdateStatusResponse.DurationResponse> createSectionTimeDistribution(
+            Long timeLeft, Assessment assessment, String attemptJson) {
 
-        // Retrieve section attempt data if available, otherwise initialize an empty list
-        List<String> sections = (attemptJson != null && !attemptJson.isEmpty()) ? attemptDataParserService.extractSectionJsonStrings(attemptJson) : new ArrayList<>();
+        // Retrieve section attempt data if available, otherwise initialize an empty
+        // list
+        List<String> sections = (attemptJson != null && !attemptJson.isEmpty())
+                ? attemptDataParserService.extractSectionJsonStrings(attemptJson)
+                : new ArrayList<>();
 
         // Handle the case where no sections are present
         if (Objects.isNull(sections) || sections.isEmpty()) {
@@ -237,16 +265,22 @@ public class RestartAssessmentService {
 
         // Calculate the total allocated time for all sections
         Long totalAllocatedTime = sections.stream()
-                .mapToLong(sectionJson -> (sectionJson != null && !sectionJson.isEmpty()) ? attemptDataParserService.getSectionDurationLeftInSeconds(sectionJson) : 0)
+                .mapToLong(sectionJson -> (sectionJson != null && !sectionJson.isEmpty())
+                        ? attemptDataParserService.getSectionDurationLeftInSeconds(sectionJson)
+                        : 0)
                 .sum();
 
         // Distribute the remaining time among sections based on their allocated time
         return sections.stream().map(sectionJson -> {
             long newTimeInSeconds = (totalAllocatedTime == 0)
                     ? timeLeft / sections.size() // Equal distribution if no allocated time
-                    : (((sectionJson != null && !sectionJson.isEmpty()) ? attemptDataParserService.getSectionDurationLeftInSeconds(sectionJson) : 0) * timeLeft) / totalAllocatedTime;
+                    : (((sectionJson != null && !sectionJson.isEmpty())
+                            ? attemptDataParserService.getSectionDurationLeftInSeconds(sectionJson)
+                            : 0) * timeLeft) / totalAllocatedTime;
 
-            return new LearnerUpdateStatusResponse.DurationResponse(attemptDataParserService.extractSectionIdFromSectionJson(sectionJson), DurationDistributionEnum.SECTION.name(), newTimeInSeconds);
+            return new LearnerUpdateStatusResponse.DurationResponse(
+                    attemptDataParserService.extractSectionIdFromSectionJson(sectionJson),
+                    DurationDistributionEnum.SECTION.name(), newTimeInSeconds);
         }).collect(Collectors.toList());
     }
 
@@ -256,9 +290,11 @@ public class RestartAssessmentService {
      *
      * @param timeLeft   The total time left for the assessment.
      * @param assessment The assessment object containing sections.
-     * @return A collection of DurationResponse objects representing the time allocated for each section.
+     * @return A collection of DurationResponse objects representing the time
+     *         allocated for each section.
      */
-    private Collection<? extends LearnerUpdateStatusResponse.DurationResponse> handleCaseForNoSection(Long timeLeft, Assessment assessment) {
+    private Collection<? extends LearnerUpdateStatusResponse.DurationResponse> handleCaseForNoSection(Long timeLeft,
+            Assessment assessment) {
 
         // Retrieve all sections for the given assessment, excluding deleted ones
         List<Section> allSections = sectionRepository.findByAssessmentIdAndStatusNotIn(
@@ -273,9 +309,11 @@ public class RestartAssessmentService {
         return allSections.stream().map(section -> {
             long newTimeInSeconds = (totalAllocatedTimeInSeconds == 0)
                     ? timeLeft / allSections.size() // Equal distribution if no allocated time
-                    : ((section.getDuration() != null ? section.getDuration() : 0) * 60 * timeLeft) / totalAllocatedTimeInSeconds;
+                    : ((section.getDuration() != null ? section.getDuration() : 0) * 60 * timeLeft)
+                            / totalAllocatedTimeInSeconds;
 
-            return new LearnerUpdateStatusResponse.DurationResponse(section.getId(), DurationDistributionEnum.SECTION.name(), newTimeInSeconds);
+            return new LearnerUpdateStatusResponse.DurationResponse(section.getId(),
+                    DurationDistributionEnum.SECTION.name(), newTimeInSeconds);
         }).collect(Collectors.toList());
     }
 

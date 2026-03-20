@@ -32,6 +32,45 @@ import urllib.request
 import time
 import functools
 
+try:
+    from rembg import remove as rembg_remove, new_session as rembg_new_session
+    REMBG_AVAILABLE = True
+except ImportError:
+    REMBG_AVAILABLE = False
+    rembg_remove = None       # type: ignore[assignment]
+    rembg_new_session = None   # type: ignore[assignment]
+    print("⚠️  rembg not installed — cutout background removal disabled. pip install rembg")
+
+# Singleton rembg session — loads model ONCE, shared across threads.
+# Uses u2netp (4.7MB) instead of u2net (176MB) to reduce memory footprint.
+# A lock serializes inference calls so only one thread runs rembg at a time,
+# preventing ONNX Runtime from allocating concurrent inference buffers → OOM.
+_rembg_session = None
+_rembg_lock = None
+try:
+    import threading
+    _rembg_lock = threading.Lock()
+except Exception:
+    pass
+
+def _get_rembg_session():
+    """Lazy-init singleton rembg session (u2netp). Thread-safe."""
+    global _rembg_session
+    if not REMBG_AVAILABLE:
+        return None
+    if _rembg_session is not None:
+        return _rembg_session
+    # Double-checked locking
+    if _rembg_lock:
+        with _rembg_lock:
+            if _rembg_session is not None:
+                return _rembg_session
+            print("    🧠 Loading rembg model (u2netp, ~4.7MB) — one-time init...")
+            _rembg_session = rembg_new_session("u2netp")
+            return _rembg_session
+    _rembg_session = rembg_new_session("u2netp")
+    return _rembg_session
+
 REPO_ROOT = Path(__file__).resolve().parent
 LOCAL_DEPS_DIR = REPO_ROOT / ".deps"
 DEFAULT_RUNS_DIR = REPO_ROOT / "my_test_files" / "runs"
@@ -45,11 +84,14 @@ try:
     from prompts import (
         SCRIPT_SYSTEM_PROMPT,
         SCRIPT_USER_PROMPT_TEMPLATE,
+        SCRIPT_REVIEW_SYSTEM_PROMPT,
+        SCRIPT_REVIEW_USER_PROMPT_TEMPLATE,
         STYLE_GUIDE_SYSTEM_PROMPT,
         STYLE_GUIDE_USER_PROMPT_TEMPLATE,
         HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE,
         HTML_GENERATION_SAFE_AREA,
         HTML_GENERATION_USER_PROMPT_TEMPLATE,
+        SEGMENT_CONTEXT_ADDON,
         BACKGROUND_PRESETS,
         TOPIC_SHOT_PROFILES,
     )
@@ -71,6 +113,13 @@ except ImportError:
     def get_content_type_prompts(content_type):
         return {}
     def format_user_prompt(content_type, **kwargs):
+        return None
+
+# Import template gallery definitions
+try:
+    from video_templates import get_template_by_id as _get_template_by_id
+except ImportError:
+    def _get_template_by_id(_id):  # type: ignore[misc]
         return None
 
 DEFAULT_OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
@@ -147,6 +196,162 @@ VOICE_MAPPING = {
         "google": {"female": "zh-CN-Neural2-C", "male": "zh-CN-Neural2-D"}
     }
 }
+
+
+# Whisper ISO-639-1 language codes for forced alignment
+WHISPER_LANG_MAP = {
+    "english": "en", "english (us)": "en", "english (uk)": "en",
+    "english (india)": "en", "hindi": "hi", "bengali": "bn",
+    "tamil": "ta", "telugu": "te", "marathi": "mr", "kannada": "kn",
+    "gujarati": "gu", "malayalam": "ml", "spanish": "es", "french": "fr",
+    "german": "de", "japanese": "ja", "chinese": "zh",
+}
+
+# Unicode script ranges for validating Whisper output matches expected language
+_SCRIPT_RANGES: dict[str, tuple[int, int]] = {
+    "hi": (0x0900, 0x097F),   # Devanagari (Hindi, Marathi)
+    "mr": (0x0900, 0x097F),   # Devanagari
+    "bn": (0x0980, 0x09FF),   # Bengali
+    "ta": (0x0B80, 0x0BFF),   # Tamil
+    "te": (0x0C00, 0x0C7F),   # Telugu
+    "kn": (0x0C80, 0x0CFF),   # Kannada
+    "gu": (0x0A80, 0x0AFF),   # Gujarati
+    "ml": (0x0D00, 0x0D7F),   # Malayalam
+    "ja": (0x3040, 0x30FF),   # Hiragana/Katakana
+    "zh": (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+}
+
+
+# ---------------------------------------------------------------------------
+# Quality tier configuration
+# ---------------------------------------------------------------------------
+QUALITY_TIERS: dict[str, dict[str, Any]] = {
+    "free": {
+        "script_temperature": 0.5,
+        "script_max_tokens": 16000,
+        "html_temperature": 0.7,
+        "html_max_tokens": 24000,
+        "two_pass_script": False,
+        "html_validation": False,
+        "image_prompt_enhancement": False,
+        "shot_diversity_enforcement": False,
+        "segment_context": False,
+    },
+    "standard": {
+        "script_temperature": 0.5,
+        "script_max_tokens": 16000,
+        "html_temperature": 0.7,
+        "html_max_tokens": 24000,
+        "two_pass_script": False,
+        "html_validation": True,
+        "image_prompt_enhancement": False,
+        "shot_diversity_enforcement": True,
+        "segment_context": True,
+    },
+    "premium": {
+        "script_temperature": 0.6,
+        "script_max_tokens": 24000,
+        "html_temperature": 0.7,
+        "html_max_tokens": 32000,
+        "two_pass_script": True,
+        "html_validation": True,
+        "image_prompt_enhancement": True,
+        "shot_diversity_enforcement": True,
+        "segment_context": True,
+    },
+    "ultra": {
+        "script_temperature": 0.6,
+        "script_max_tokens": 32000,
+        "html_temperature": 0.7,
+        "html_max_tokens": 32000,
+        "two_pass_script": True,
+        "html_validation": True,
+        "image_prompt_enhancement": True,
+        "shot_diversity_enforcement": True,
+        "segment_context": True,
+    },
+}
+
+
+def _validate_whisper_script(word_entries: list, lang_code: str) -> bool:
+    """Check if Whisper output contains characters in the expected script.
+
+    For Latin-script languages (en, es, fr, de) always returns True.
+    For non-Latin scripts, requires ≥30 % of letter characters to be in the
+    expected Unicode range — otherwise Whisper hallucinated in the wrong language.
+    """
+    script_range = _SCRIPT_RANGES.get(lang_code)
+    if script_range is None:
+        return True  # Latin-script language — no validation needed
+
+    lo, hi = script_range
+    total_letters = 0
+    matching_letters = 0
+    for entry in word_entries:
+        for ch in entry.get("word", ""):
+            if ch.isalpha():
+                total_letters += 1
+                if lo <= ord(ch) <= hi:
+                    matching_letters += 1
+
+    if total_letters == 0:
+        return False
+    ratio = matching_letters / total_letters
+    return ratio >= 0.30
+
+
+def _whisper_align(audio_path: Path, language: str = "English") -> list:
+    """Standalone Whisper forced alignment. Returns word-level timestamps.
+
+    Works for any language supported by Whisper (Hindi, Bengali, etc.).
+    Validates that Whisper output matches expected script; returns [] if not.
+    """
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        print("    ⚠️ faster-whisper not installed. Run: pip install faster-whisper")
+        return []
+    try:
+        lang_code = WHISPER_LANG_MAP.get(language.lower().strip(), "en")
+        # Use a larger model for non-English to get better accuracy
+        model_size = "medium" if lang_code != "en" else "base"
+        print(f"    🎯 Running Whisper forced alignment (lang={lang_code}, model={model_size})...")
+        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        segments, _ = model.transcribe(
+            str(audio_path), word_timestamps=True, language=lang_code
+        )
+        word_entries = []
+        for segment in segments:
+            if segment.words:
+                for wi in segment.words:
+                    word_entries.append({
+                        "word": wi.word.strip(),
+                        "start": round(wi.start, 3),
+                        "end": round(wi.end, 3),
+                    })
+        if not word_entries:
+            print("    ⚠️ Whisper returned no word timestamps")
+            return []
+
+        # Validate Whisper output is in the expected script
+        if not _validate_whisper_script(word_entries, lang_code):
+            print(f"    ⚠️ Whisper output is NOT in expected script for '{language}' "
+                  f"(lang={lang_code}). Discarding Whisper results.")
+            return []
+
+        print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
+        return word_entries
+    except Exception as e:
+        print(f"    ❌ Whisper alignment failed: {e}")
+        return []
+
+
+class _GeminiRateLimitError(Exception):
+    """Raised by _call_image_generation_llm on HTTP 429 so the executor thread
+    is freed immediately and the sleep/requeue happens in the main thread."""
+    def __init__(self, retry_after: float = 15.0):
+        self.retry_after = retry_after
+        super().__init__(f"Gemini rate limited (retry after {retry_after:.0f}s)")
 
 
 def retry_with_backoff(max_retries=3, initial_delay=2.0, backoff_factor=2.0, exceptions=(Exception,)):
@@ -424,51 +629,187 @@ class GoogleCloudTTSClient:
         voice_short = voice_name.split("-")[-1] if voice_name else ""
         supports_marks = not any(voice_short.startswith(p) for p in unsupported_mark_prefixes)
 
-        response = None
-        word_list = []
+        # ── Split text into chunks if it exceeds the 5000-byte API limit ──
+        # For SSML, each word gets ~20 bytes of markup overhead, so use a
+        # lower limit; for plain text the raw byte limit applies.
+        ssml_max = self._MAX_TTS_BYTES  # ~4500 (leaves room for <speak> tags + marks)
+        plain_max = 4800  # closer to 5000 for plain text
+        chunks = self._split_text_into_chunks(text, max_bytes=ssml_max if supports_marks else plain_max)
 
-        if supports_marks:
-            # Create SSML with marks for each word to get precise timestamps
-            ssml_input, word_list = self._create_ssml_with_marks(text)
-            input_text = texttospeech.SynthesisInput(ssml=ssml_input)
-            try:
-                request = texttospeech.SynthesizeSpeechRequest(
-                    input=input_text,
+        if len(chunks) > 1:
+            print(f"    📄 Text is {len(text.encode('utf-8'))} bytes — split into {len(chunks)} chunks")
+
+        all_audio_bytes = b""
+        all_word_entries: list[dict] = []
+        cumulative_offset = 0.0  # seconds offset for timestamp merging
+
+        for chunk_idx, chunk_text in enumerate(chunks):
+            response = None
+            word_list = []
+
+            if supports_marks:
+                ssml_input, word_list = self._create_ssml_with_marks(chunk_text)
+                # Verify SSML doesn't exceed the byte limit
+                if len(ssml_input.encode("utf-8")) <= 5000:
+                    input_text = texttospeech.SynthesisInput(ssml=ssml_input)
+                    try:
+                        request = texttospeech.SynthesizeSpeechRequest(
+                            input=input_text,
+                            voice=voice,
+                            audio_config=audio_config,
+                            enable_time_pointing=[
+                                texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
+                            ]
+                        )
+                        response = client.synthesize_speech(request=request)
+                    except Exception as tp_error:
+                        print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis")
+                        response = None
+
+            if response is None:
+                simple_input = texttospeech.SynthesisInput(text=chunk_text)
+                response = client.synthesize_speech(
+                    input=simple_input,
                     voice=voice,
-                    audio_config=audio_config,
-                    enable_time_pointing=[
-                        texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
-                    ]
+                    audio_config=audio_config
                 )
-                response = client.synthesize_speech(request=request)
-            except Exception as tp_error:
-                print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis")
-                response = None
 
-        if response is None:
-            # Plain text synthesis (for unsupported voices or after timepoint failure)
-            simple_input = texttospeech.SynthesisInput(text=text)
-            response = client.synthesize_speech(
-                input=simple_input,
-                voice=voice,
-                audio_config=audio_config
-            )
+            # Accumulate audio bytes (MP3 is concatenatable)
+            chunk_audio = response.audio_content
+            all_audio_bytes += chunk_audio
 
-        # Save audio
-        output_path.write_bytes(response.audio_content)
-        
-        # Process timepoints to create word timestamps (if available)
-        word_entries = []
-        if hasattr(response, 'timepoints') and response.timepoints:
-            word_entries = self._process_timepoints(response, word_list)
-        
-        if word_entries:
-            print(f"    ✅ Got {len(word_entries)} word timestamps from Google TTS Timepoints")
-            raw_json_path.write_text(json.dumps(word_entries, indent=2))
+            # Process timepoints for this chunk
+            chunk_word_entries = []
+            if hasattr(response, 'timepoints') and response.timepoints:
+                chunk_word_entries = self._process_timepoints(response, word_list)
+
+            # Get this chunk's audio duration (needed for offset and per-chunk fallback)
+            chunk_duration = self._get_mp3_duration(chunk_audio) if len(chunks) > 1 else 0.0
+
+            # Per-chunk Whisper fallback: if this chunk got no timestamps,
+            # try Whisper on just this chunk's audio so we don't lose data
+            if not chunk_word_entries and len(chunks) > 1:
+                print(f"    ⚠️ Chunk {chunk_idx + 1}/{len(chunks)} has no timepoints — trying Whisper...")
+                import tempfile as _tmpmod
+                _tmp = _tmpmod.NamedTemporaryFile(suffix=".mp3", delete=False)
+                _tmp.write(chunk_audio)
+                _tmp.close()
+                try:
+                    chunk_word_entries = _whisper_align(Path(_tmp.name))
+                finally:
+                    os.unlink(_tmp.name)
+
+            # Offset timestamps by cumulative duration of previous chunks
+            for entry in chunk_word_entries:
+                entry["start"] = round(entry["start"] + cumulative_offset, 3)
+                entry["end"] = round(entry["end"] + cumulative_offset, 3)
+            all_word_entries.extend(chunk_word_entries)
+
+            if len(chunks) > 1:
+                cumulative_offset += chunk_duration
+
+        # Save concatenated audio
+        output_path.write_bytes(all_audio_bytes)
+
+        if all_word_entries:
+            print(f"    ✅ Got {len(all_word_entries)} word timestamps from Google TTS Timepoints")
+            raw_json_path.write_text(json.dumps(all_word_entries, indent=2))
         else:
             # Fallback to Whisper alignment if no timepoints returned
             print(f"    ⚠️ No timepoints returned, using Whisper alignment fallback")
             self._generate_timestamps_with_fallback(output_path, text, raw_json_path)
+
+    # Maximum bytes for a single Google TTS request (API limit is 5000; leave headroom)
+    _MAX_TTS_BYTES = 4500
+
+    def _split_text_into_chunks(self, text: str, max_bytes: int | None = None) -> list[str]:
+        """Split text into chunks that fit within the Google TTS byte limit.
+
+        Splits on sentence boundaries (. ! ?) first, then on commas/semicolons,
+        and finally mid-sentence if a single sentence is still too long.
+        """
+        max_bytes = max_bytes or self._MAX_TTS_BYTES
+
+        # If already under limit, return as-is
+        if len(text.encode("utf-8")) <= max_bytes:
+            return [text]
+
+        import re
+        # Split into sentences (keep the delimiter attached)
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+
+        chunks: list[str] = []
+        current_chunk = ""
+
+        for sentence in sentences:
+            candidate = (current_chunk + " " + sentence).strip() if current_chunk else sentence
+            if len(candidate.encode("utf-8")) <= max_bytes:
+                current_chunk = candidate
+            else:
+                # Current chunk is full — save it if non-empty
+                if current_chunk:
+                    chunks.append(current_chunk)
+
+                # If this single sentence itself exceeds the limit, split further
+                if len(sentence.encode("utf-8")) > max_bytes:
+                    # Try splitting on commas / semicolons
+                    sub_parts = re.split(r'(?<=[,;])\s+', sentence)
+                    sub_chunk = ""
+                    for part in sub_parts:
+                        sub_candidate = (sub_chunk + " " + part).strip() if sub_chunk else part
+                        if len(sub_candidate.encode("utf-8")) <= max_bytes:
+                            sub_chunk = sub_candidate
+                        else:
+                            if sub_chunk:
+                                chunks.append(sub_chunk)
+                            # Last resort: split by words
+                            if len(part.encode("utf-8")) > max_bytes:
+                                words = part.split()
+                                word_chunk = ""
+                                for w in words:
+                                    wc = (word_chunk + " " + w).strip() if word_chunk else w
+                                    if len(wc.encode("utf-8")) <= max_bytes:
+                                        word_chunk = wc
+                                    else:
+                                        if word_chunk:
+                                            chunks.append(word_chunk)
+                                        word_chunk = w
+                                if word_chunk:
+                                    sub_chunk = word_chunk
+                            else:
+                                sub_chunk = part
+                    if sub_chunk:
+                        current_chunk = sub_chunk
+                    else:
+                        current_chunk = ""
+                else:
+                    current_chunk = sentence
+
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        return chunks
+
+    @staticmethod
+    def _get_mp3_duration(audio_bytes: bytes) -> float:
+        """Get duration of MP3 audio in seconds using ffprobe."""
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        try:
+            tmp.write(audio_bytes)
+            tmp.flush()
+            result = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", tmp.name],
+                capture_output=True, text=True, timeout=10
+            )
+            return float(result.stdout.strip())
+        except Exception:
+            # Rough fallback: ~16 kB/s for 128kbps MP3
+            return len(audio_bytes) / 16000.0
+        finally:
+            tmp.close()
+            os.unlink(tmp.name)
 
     def _create_ssml_with_marks(self, text: str) -> tuple:
         """Create SSML with <mark> tags for each word to track timing."""
@@ -530,48 +871,9 @@ class GoogleCloudTTSClient:
         
         return word_entries
 
-    def _align_with_whisper(self, audio_path: Path, text: str) -> list:
+    def _align_with_whisper(self, audio_path: Path, text: str, language: str = "English") -> list:
         """Use Whisper for forced alignment to get accurate word timestamps from audio."""
-        try:
-            from faster_whisper import WhisperModel
-        except ImportError:
-            print("    ⚠️ faster-whisper not installed. Run: pip install faster-whisper")
-            return []
-        
-        try:
-            print("    🎯 Running Whisper forced alignment...")
-            
-            # Use tiny or base model for speed (word-level timing is accurate enough)
-            # Compute type determines precision/speed tradeoff
-            model = WhisperModel("base", device="cpu", compute_type="int8")
-            
-            # Transcribe with word timestamps
-            segments, info = model.transcribe(
-                str(audio_path),
-                word_timestamps=True,
-                language="en"  # TODO: Make this dynamic based on video language
-            )
-            
-            word_entries = []
-            for segment in segments:
-                if segment.words:
-                    for word_info in segment.words:
-                        word_entries.append({
-                            "word": word_info.word.strip(),
-                            "start": round(word_info.start, 3),
-                            "end": round(word_info.end, 3)
-                        })
-            
-            if word_entries:
-                print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
-            else:
-                print("    ⚠️ Whisper returned no word timestamps")
-            
-            return word_entries
-            
-        except Exception as e:
-            print(f"    ❌ Whisper alignment failed: {e}")
-            return []
+        return _whisper_align(audio_path, language)
 
     def _generate_timestamps_with_fallback(self, audio_path: Path, text: str, raw_json_path: Path) -> None:
         """Generate word timestamps using Whisper alignment, with linear fallback."""
@@ -621,6 +923,7 @@ class VideoGenerationPipeline:
         voice_model: str = "eleven_multilingual_v2",
         gemini_image_key: str = DEFAULT_GEMINI_IMAGE_KEY,
         runs_dir: Path = DEFAULT_RUNS_DIR,
+        quality_tier: str = "ultra",
     ) -> None:
         if not openrouter_key:
             raise ValueError("OpenRouter API key is required (set OPENROUTER_API_KEY or pass --openrouter-key).")
@@ -631,6 +934,10 @@ class VideoGenerationPipeline:
         self.gemini_image_api_key = gemini_image_key
         self.runs_dir = runs_dir
         self.runs_dir.mkdir(parents=True, exist_ok=True)
+        # Quality tier configuration
+        self._quality_tier = quality_tier if quality_tier in QUALITY_TIERS else "ultra"
+        self._tier_config = QUALITY_TIERS[self._quality_tier]
+        print(f"⚡ Quality tier: {self._quality_tier}")
 
     @staticmethod
     def _get_default_branding() -> Dict[str, Any]:
@@ -673,6 +980,7 @@ class VideoGenerationPipeline:
         voice_gender: str = "female",
         tts_provider: str = "edge",
         branding_config: Optional[Dict[str, Any]] = None,
+        style_config: Optional[Dict[str, Any]] = None,
         content_type: str = "VIDEO",
         generate_avatar: bool = False,
         avatar_image_url: Optional[str] = None,
@@ -719,6 +1027,8 @@ class VideoGenerationPipeline:
         
         # Store branding config (use defaults if not provided)
         self._current_branding = branding_config or self._get_default_branding()
+        # Store style config for brand colors/fonts overrides
+        self._current_style_config = style_config
         
         stage_idx = self.STAGE_INDEX[start_from]
         # stop_at means "stop after this stage", so stop_idx is the next stage after stop_at
@@ -731,6 +1041,11 @@ class VideoGenerationPipeline:
         do_script = stage_idx <= self.STAGE_INDEX["script"] and self.STAGE_INDEX["script"] < stop_idx
         do_tts = stage_idx <= self.STAGE_INDEX["tts"] and self.STAGE_INDEX["tts"] < stop_idx
         do_words = stage_idx <= self.STAGE_INDEX["words"] and self.STAGE_INDEX["words"] < stop_idx
+
+        # SLIDES is purely visual — no audio generation needed
+        if content_type == "SLIDES":
+            do_tts = False
+            do_words = False
         do_html = stage_idx <= self.STAGE_INDEX["html"] and self.STAGE_INDEX["html"] < stop_idx
         do_avatar = stage_idx <= self.STAGE_INDEX["avatar"] and self.STAGE_INDEX["avatar"] < stop_idx and generate_avatar
         do_render = stage_idx <= self.STAGE_INDEX["render"] and self.STAGE_INDEX["render"] < stop_idx
@@ -769,6 +1084,15 @@ class VideoGenerationPipeline:
             script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration, content_type=content_type)
             script_plan = script_out["result"]
             accumulate_usage(script_out.get("usage", {}))
+
+            # Two-pass script review (Premium/Ultra tiers)
+            if self._tier_config.get("two_pass_script") and content_type == "VIDEO":
+                reviewed_plan = self._review_script(script_plan.get("plan", script_plan), run_dir)
+                if reviewed_plan:
+                    script_plan["plan"] = reviewed_plan
+                    reviewed_text = str(reviewed_plan.get("script") or reviewed_plan.get("script_text") or "").strip()
+                    if reviewed_text:
+                        script_plan["script_text"] = reviewed_text
         else:
             self._require_file(script_path, "script.txt (narration text)")
             # Try to load the plan if it exists, otherwise provide a dummy one
@@ -784,34 +1108,34 @@ class VideoGenerationPipeline:
                 "script_text": script_path.read_text(),
             }
 
+        # Content types that produce no audio (purely visual)
+        NO_AUDIO_TYPES = {"SLIDES"}
+
         # Only proceed to TTS if we are not stopping before it
         if self.STAGE_INDEX["tts"] < stop_idx:
             if do_tts:
                 # print("🗣️  Synthesize narration ...") # Already printed in method
                 tts_outputs = self._synthesize_voice(
-                    script_plan["script_path"], 
-                    run_dir, 
+                    script_plan["script_path"],
+                    run_dir,
                     language=language,
                     voice_gender=voice_gender,
                     tts_provider=tts_provider
                 )
-            else:
+            elif content_type not in NO_AUDIO_TYPES:
+                # Resuming from a checkpoint after TTS — files must already exist
                 self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
                 self._require_file(audio_path, "narration.mp3 (decoded audio)")
                 tts_outputs = {"response_json": response_json, "audio_path": audio_path}
+            # else: no-audio content type (e.g. SLIDES) — leave tts_outputs as empty defaults
 
         # Only proceed to WORDS if we are not stopping before it
         if self.STAGE_INDEX["words"] < stop_idx:
             if do_words:
                 print("🔤 Deriving word timings ...")
-                # Ensure we have the necessary inputs from TTS stage (or loaded files)
-                if not tts_outputs["response_json"]:
-                     # This should not happen due to the check above and do_tts logic, 
-                     # but essentially if we are here, we must have tts outputs
-                     # If we skipped TTS generation (do_tts=False), we loaded them in the else block above.
-                     pass
                 word_outputs = self._parse_timestamps(tts_outputs["response_json"], run_dir)
-            else:
+            elif content_type not in NO_AUDIO_TYPES:
+                # Resuming from a checkpoint after WORDS — files must already exist
                 self._require_file(words_json, "narration.words.json")
                 self._require_file(words_csv, "narration.words.csv")
                 # Note: alignment.json not required since phonemes disabled
@@ -819,19 +1143,23 @@ class VideoGenerationPipeline:
                     "words_json": words_json,
                     "words_csv": words_csv,
                 }
+            # else: no-audio content type — leave word_outputs as empty defaults
 
-            words = self._load_words(word_outputs["words_json"])
-            if not words:
-                raise RuntimeError("No words parsed from timestamps; cannot continue.")
+            if word_outputs["words_json"] is not None:
+                words = self._load_words(word_outputs["words_json"])
+                if not words:
+                    raise RuntimeError("No words parsed from timestamps; cannot continue.")
+            else:
+                words = []
         else:
             words = []
 
         if do_html:
             print("🎨 Designing Visual Style Guide ...")
-            style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type)
+            style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type, style_config=self._current_style_config)
             
             # CHECK FOR INTERACTIVE CONTENT TYPES
-            interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION"]
+            interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "SIMULATION", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION", "MAP_EXPLORATION", "SLIDES"]
             
             if content_type in interactive_types:
                 print(f"🎮 Processing interactive content type: {content_type}")
@@ -858,16 +1186,39 @@ class VideoGenerationPipeline:
                 print("🧠 Building concept-aligned segments ...")
                 # Use beat_outline for concept-aligned segmentation if available
                 beat_outline = plan_data.get("beat_outline", [])
-                
+
+                # Store raw questions from script plan (chapter timestamps assigned later)
+                self._current_questions = plan_data.get("questions", [])
+                if self._current_questions:
+                    print(f"   📝 Loaded {len(self._current_questions)} MCQ questions from script plan")
+
+                # Get actual audio duration so segments cover the full narration
+                _seg_audio_dur = 0.0
+                _seg_audio_path = tts_outputs.get("audio_path")
+                if _seg_audio_path and Path(_seg_audio_path).exists():
+                    try:
+                        _probe_res = subprocess.run(
+                            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                             "-of", "default=noprint_wrappers=1:nokey=1", str(_seg_audio_path)],
+                            capture_output=True, text=True, timeout=10,
+                        )
+                        _seg_audio_dur = float(_probe_res.stdout.strip())
+                        print(f"   ℹ️  Actual audio duration: {_seg_audio_dur:.1f}s")
+                    except Exception:
+                        pass
+
                 # Configurable max segments to limit LLM expense
-                # Default: max 8 segments (covers ~8 minutes of video at ~60s each)
-                max_segments = getattr(self, '_max_segments', 8)
-                
+                # Default: max 12 segments (covers ~8 minutes of video at ~40s each)
+                max_segments = getattr(self, '_max_segments', 12)
+
                 if beat_outline and len(beat_outline) >= 2 and words:
-                    segments = self._segment_words_by_beats(words, beat_outline, max_segments=max_segments)
+                    segments = self._segment_words_by_beats(
+                        words, beat_outline, max_segments=max_segments,
+                        audio_duration=_seg_audio_dur,
+                    )
                     print(f"   ✅ Created {len(segments)} concept-aligned segments from {len(beat_outline)} beats (max: {max_segments})")
                 else:
-                    segments = self._segment_words(words)
+                    segments = self._segment_words(words, audio_duration=_seg_audio_dur)
                     print(f"   ℹ️  Using fixed-window segmentation ({len(segments)} segments)")
 
                 # Store segment start times + labels for chapter markers in the frontend player
@@ -891,11 +1242,136 @@ class VideoGenerationPipeline:
                     raise RuntimeError("Failed to derive segments from narration.")
                 
                 print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
-                html_results, html_usage = self._generate_html_segments(segments, style_guide, plan_data, run_dir, language=language)
+
+                # ── Pipelined HTML + image generation ─────────────────────────────────
+                # As each HTML segment completes, its entries are immediately queued for
+                # image generation in a background thread — so image work starts while
+                # the remaining segments are still being generated by the LLM.
+                # _process_generated_images is still called at the end to handle any
+                # segments that were completed after image gen started (and to apply
+                # the base64 replacements in a single pass).
+                #
+                # Thread-safety: the callback appends to `_early_image_segments` under
+                # a lock; _process_generated_images only reads once all HTML is done.
+                import threading as _threading
+                _early_image_segments: List[Dict[str, Any]] = []
+                _early_image_lock = _threading.Lock()
+                _early_image_results: List[Dict[str, Any]] = []  # raw result dicts
+                _early_image_usage: Dict[str, Any] = {
+                    "prompt_tokens": 0, "completion_tokens": 0,
+                    "total_tokens": 0, "image_count": 0,
+                }
+
+                _SVG_KW_RE_PIPE = re.compile(
+                    r'\b(diagram|flowchart|bar chart|pie chart|line chart|infographic|'
+                    r'comparison chart|data table|workflow|process flow|timeline diagram|'
+                    r'schematic|blueprint|concept map|mind map|venn diagram)\b',
+                    re.IGNORECASE,
+                )
+                _img_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+                _early_futures: List[concurrent.futures.Future] = []
+                _images_dir_early = run_dir / "generated_images"
+                _images_dir_early.mkdir(parents=True, exist_ok=True)
+
+                def _on_html_segment_done(entries: List[Dict[str, Any]]) -> None:
+                    """Callback: called from HTML gen pool as each segment finishes."""
+                    if not self.gemini_image_api_key:
+                        return
+                    for entry in entries:
+                        html_e = entry.get("html", "")
+                        if "data-img-prompt" not in html_e:
+                            continue
+                        matches_e = list(re.finditer(
+                            r'(<img[^>]+data-img-prompt=(["\'])(.*?)\2[^>]*>)', html_e))
+                        for m in matches_e:
+                            full_tag = m.group(1)
+                            prompt_e = m.group(3)
+                            if _SVG_KW_RE_PIPE.search(prompt_e):
+                                continue
+                            visual_style_e = getattr(
+                                self, '_current_visual_style', 'realistic cinematic photograph')
+                            if visual_style_e.lower() not in prompt_e.lower():
+                                prompt_e = f"{visual_style_e}, {prompt_e}"
+
+                            task_e = {
+                                "entry": entry,
+                                "full_tag": full_tag,
+                                "prompt": prompt_e,
+                                "seg_idx": id(entry),
+                                "timestamp": datetime.now().strftime("%f"),
+                            }
+                            with _early_image_lock:
+                                _early_image_segments.append(entry)
+                            fut = _img_executor.submit(
+                                self._process_image_task_simple, task_e, _images_dir_early)
+                            _early_futures.append(fut)
+
+                html_results, html_usage = self._generate_html_segments(
+                    segments, style_guide, plan_data, run_dir,
+                    language=language,
+                    on_segment_done=_on_html_segment_done,
+                )
                 html_segments = html_results
                 accumulate_usage(html_usage)
-                
-                print("🖼️  Generating AI images for visual assets ...")
+
+                # Collect results from pipelined image tasks (already running/done)
+                print(f"🖼️  Waiting for {len(_early_futures)} pipelined image task(s)...")
+                _img_requeue: List[Dict] = []  # collect 429s for main-thread retry
+                for _fut in concurrent.futures.as_completed(_early_futures):
+                    try:
+                        _res = _fut.result()
+                    except _GeminiRateLimitError as _rl:
+                        # requeue after delay — handled below
+                        _img_requeue.append({"fut": _fut, "rl": _rl})
+                        continue
+                    except Exception as _ex:
+                        print(f"    ⚠️  Pipelined image task error: {_ex}")
+                        continue
+                    if _res:
+                        _early_image_results.append(_res)
+                        _early_image_usage["image_count"] += 1
+
+                # Retry any 429-limited tasks (sleep in main thread, not executor)
+                _MAX_REQUEUE_PIPE = 2
+                _requeue_counts_pipe: Dict[str, int] = {}
+                for _rq in _img_requeue:
+                    _rl_err = _rq["rl"]
+                    _wait = min(_rl_err.retry_after, 60.0)
+                    print(f"    ⏳ Pipelined image 429 — sleeping {_wait:.0f}s then retrying...")
+                    time.sleep(_wait)
+                    # re-submit and collect result synchronously (rare path)
+                    try:
+                        _res = self._process_image_task_simple(
+                            _rq.get("task", {}), _images_dir_early)
+                        if _res:
+                            _early_image_results.append(_res)
+                    except Exception:
+                        pass
+
+                _img_executor.shutdown(wait=False)
+
+                # Apply in-memory base64 replacements from pipelined results
+                _repl_applied_pipe = 0
+                for _res in _early_image_results:
+                    _entry   = _res.get("entry")
+                    _old_tag = _res.get("full_tag", "")
+                    _ibytes  = _res.get("image_bytes")
+                    if not (_entry and _old_tag and _ibytes):
+                        continue
+                    _html_e = _entry.get("html", "")
+                    _b64    = base64.b64encode(_ibytes).decode("utf-8")
+                    _nsrc   = f"data:image/png;base64,{_b64}"
+                    if _old_tag in _html_e:
+                        _new_tag = re.sub(r'src=["\'][^"\']*["\']',
+                                          f'src="{_nsrc}"', _old_tag)
+                        _entry["html"] = _html_e.replace(_old_tag, _new_tag)
+                        _repl_applied_pipe += 1
+                print(f"    📝 Pipelined image replacements applied: {_repl_applied_pipe}")
+
+                # Fall back to full _process_generated_images for any segments whose
+                # images weren't submitted early (e.g. segments that finished after
+                # the executor was already done, or images with no early result).
+                print("🖼️  Checking for any remaining visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
             
@@ -904,6 +1380,9 @@ class VideoGenerationPipeline:
                 html_segments, run_dir, self._current_branding, self._current_content_type,
                 chapters=getattr(self, '_current_chapters', None),
                 glossary=getattr(self, '_current_glossary', None),
+                questions=getattr(self, '_current_questions', None),
+                language=language,
+                audio_path=tts_outputs.get("audio_path"),
             )
         
         avatar_video_path = None
@@ -991,6 +1470,8 @@ class VideoGenerationPipeline:
             
             # Format user prompt with all available parameters
             defaults = ct_prompts.get("defaults", {})
+            # Resolve institute style (used by SLIDES and future styled content types)
+            _style = self._current_style_config or {}
             user_prompt = ct_prompts["user_template"].format(
                 base_prompt=base_prompt.strip(),
                 language=language,
@@ -1016,6 +1497,16 @@ class VideoGenerationPipeline:
                 time_period=defaults.get("time_period", "auto"),
                 scenario_type=defaults.get("scenario_type", "role_play"),
                 exchange_count=defaults.get("exchange_count", 8),
+                # SLIDES slide-count defaults
+                slide_count_short=defaults.get("slide_count_short", 6),
+                slide_count_medium=defaults.get("slide_count_medium", 10),
+                slide_count_long=defaults.get("slide_count_long", 15),
+                # Institute style (used by SLIDES; ignored by other templates)
+                primary_color=_style.get("primary_color", "#6366f1"),
+                heading_font=_style.get("heading_font", "Inter"),
+                body_font=_style.get("body_font", "Inter"),
+                background_type=_style.get("background_type", "white"),
+                layout_theme=_style.get("layout_theme", "clean_light"),
             ).strip()
             
         print(f"📝 Generating {content_type} content...")
@@ -1025,10 +1516,13 @@ class VideoGenerationPipeline:
         last_error = None
         for attempt in range(max_attempts):
             try:
+                # SLIDES needs a large token budget: each slide has rich HTML (inline SVGs,
+                # styles) that must be JSON-escaped, so 10 slides ≈ 20 000–30 000 tokens.
+                _max_tokens = 32000 if content_type == "SLIDES" else self._tier_config.get("script_max_tokens", 16000)
                 raw, usage = self.script_client.chat(
                     messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                    temperature=0.5,
-                    max_tokens=16000,  # Increased for complex content types
+                    temperature=self._tier_config.get("script_temperature", 0.5),
+                    max_tokens=_max_tokens,
                 )
                 data = _extract_json_blob(raw)
                 break  # Success
@@ -1083,12 +1577,20 @@ class VideoGenerationPipeline:
         elif content_type in ["INTERACTIVE_GAME", "SIMULATION"]:
             # Games/simulations may have minimal or no narration
             script_text = data.get("title", content_type) + ". " + data.get("instructions", data.get("description", ""))
+        elif content_type == "PUZZLE_BOOK":
+            # Read puzzle titles + instructions so TTS covers the full book
+            puzzles = data.get("puzzles", [])
+            script_parts = [data.get("title", "Puzzle Book")]
+            for i, p in enumerate(puzzles, 1):
+                title = p.get("title", f"Puzzle {i}")
+                instructions = p.get("instructions", "")
+                script_parts.append(f"Puzzle {i}. {title}. {instructions}" if instructions else f"Puzzle {i}. {title}")
+            script_text = "\n\n".join(script_parts)
         elif content_type == "FLASHCARDS":
-            # Read cards: front, then back
+            # Read all cards so word timestamps cover the full deck (needed for per-page audio seek)
             cards = data.get("cards", [])
             script_parts = [data.get("deck_title", "Flashcard Deck")]
-            for card in cards[:5]:  # Limit audio to first 5 cards for demo
-                # Simplified extraction
+            for card in cards:
                 script_parts.append(f"Card. {card.get('front_text', 'Question')}. Answer. {card.get('back_text', 'Answer')}")
             script_text = "\n\n".join(script_parts)
         elif content_type == "WORKSHEET":
@@ -1121,13 +1623,13 @@ class VideoGenerationPipeline:
                 script_parts.append(first_ex.get("instructions", ""))
             script_text = "\n\n".join(script_parts)
         elif content_type == "TIMELINE":
-            # Read timeline events for narration
+            # Read all events so word timestamps cover every entry (needed for per-entry audio seek)
             script_parts = [data.get("title", "Timeline")]
             description = data.get("description", "")
             if description:
                 script_parts.append(description)
             events = data.get("events", [])
-            for event in events[:5]:  # Limit to first 5 events
+            for event in events:
                 date_display = event.get("date_display", event.get("date", ""))
                 title = event.get("title", "")
                 desc = event.get("description", "")
@@ -1135,18 +1637,34 @@ class VideoGenerationPipeline:
                     script_parts.append(f"{date_display}. {title}. {desc}")
             script_text = "\n\n".join(script_parts)
         elif content_type == "CONVERSATION":
-            # Read dialogue exchanges for TTS
+            # Read all exchanges so word timestamps cover the full dialogue
             script_parts = [data.get("title", "Conversation Practice")]
             scenario = data.get("scenario", "")
             if scenario:
                 script_parts.append(f"Scenario: {scenario}")
             exchanges = data.get("exchanges", [])
-            for ex in exchanges[:5]:  # Limit to first 5 exchanges
+            for ex in exchanges:
                 speaker_name = ex.get("speaker_name", "Speaker")
                 speech = ex.get("audio_text", ex.get("speech_text", ""))
                 if speech:
                     script_parts.append(f"{speaker_name} says: {speech}")
             script_text = "\n\n".join(script_parts)
+        elif content_type == "MAP_EXPLORATION":
+            # Read region names + descriptions so TTS covers the full map
+            script_parts = [data.get("title", "Map Exploration")]
+            description = data.get("description", "")
+            if description:
+                script_parts.append(description)
+            for region in data.get("regions", []):
+                name = region.get("name", "")
+                info = region.get("info", {})
+                desc = info.get("description", "") if isinstance(info, dict) else ""
+                if name:
+                    script_parts.append(f"{name}. {desc}" if desc else name)
+            script_text = "\n\n".join(script_parts)
+        elif content_type == "SLIDES":
+            # SLIDES are purely visual — no TTS needed. Store a minimal placeholder.
+            script_text = data.get("presentation_title", "Presentation")
         else:
             # Default fallback
             script_text = data.get("script", data.get("title", content_type))
@@ -1159,6 +1677,132 @@ class VideoGenerationPipeline:
         script_path = run_dir / "script.txt"
         script_path.write_text(script_text + "\n")
         return {"result": {"plan": data, "script_path": script_path, "script_text": script_text}, "usage": usage}
+
+    def _review_script(
+        self,
+        script_data: Dict[str, Any],
+        run_dir: Path,
+    ) -> Dict[str, Any]:
+        """Two-pass script review — improves transitions, hook, analogies, pacing.
+
+        Only called when tier_config["two_pass_script"] is True (Premium/Ultra).
+        Returns improved script_data with the same JSON structure.
+        """
+        print("🔍 Running two-pass script review (Premium/Ultra tier)...")
+        script_json_str = json.dumps(script_data, indent=2, ensure_ascii=False)
+
+        try:
+            raw, usage = self.script_client.chat(
+                messages=[
+                    {"role": "system", "content": SCRIPT_REVIEW_SYSTEM_PROMPT},
+                    {"role": "user", "content": SCRIPT_REVIEW_USER_PROMPT_TEMPLATE.format(
+                        script_json=script_json_str
+                    )},
+                ],
+                temperature=0.5,
+                max_tokens=32000,
+            )
+            reviewed = _extract_json_blob(raw)
+
+            # Ensure critical fields survived the review
+            if not reviewed.get("script") and not reviewed.get("script_text"):
+                print("⚠️ Script review returned empty script — keeping original.")
+                return script_data
+
+            # Preserve fields that the review shouldn't touch
+            reviewed.setdefault("_content_type", script_data.get("_content_type"))
+
+            # Save reviewed plan
+            reviewed_path = run_dir / "script_plan_reviewed.json"
+            reviewed_path.write_text(json.dumps(reviewed, indent=2, ensure_ascii=False))
+
+            # Update script.txt with reviewed narration
+            reviewed_script = str(reviewed.get("script") or reviewed.get("script_text") or "").strip()
+            if reviewed_script:
+                script_path = run_dir / "script.txt"
+                script_path.write_text(reviewed_script + "\n")
+
+            print("✅ Script review complete — using improved version.")
+            return reviewed
+        except Exception as e:
+            print(f"⚠️ Script review failed ({e}) — keeping original script.")
+            return script_data
+
+    @staticmethod
+    def _validate_html_segment(html_str: str, expected_shot_type: str = "") -> Tuple[bool, List[str]]:
+        """Validate generated HTML for structural correctness.
+
+        Returns (is_valid, list_of_issues).
+        """
+        issues: list[str] = []
+        if not html_str or len(html_str.strip()) < 50:
+            issues.append("HTML is empty or too short (< 50 chars).")
+            return False, issues
+
+        # Check for unclosed script tags (common LLM mistake)
+        open_scripts = html_str.lower().count("<script")
+        close_scripts = html_str.lower().count("</script>")
+        if open_scripts != close_scripts:
+            issues.append(f"Mismatched <script> tags: {open_scripts} open vs {close_scripts} close.")
+
+        # Check image shots have data-img-prompt
+        if expected_shot_type in ("IMAGE_HERO", "IMAGE_SPLIT", "ANNOTATION_MAP"):
+            if "data-img-prompt" not in html_str:
+                issues.append(f"Shot type {expected_shot_type} expected a <img data-img-prompt=...> but none found.")
+
+        # Check Mermaid syntax (basic: must have at least one arrow or node)
+        if "<div class='mermaid'" in html_str or '<div class="mermaid"' in html_str:
+            # Ensure it contains actual diagram content, not empty
+            mermaid_match = re.search(r"class=['\"]mermaid['\"][^>]*>(.*?)</div>", html_str, re.DOTALL)
+            if mermaid_match:
+                content = mermaid_match.group(1).strip()
+                if len(content) < 10:
+                    issues.append("Mermaid diagram block is nearly empty.")
+
+        # Check KaTeX delimiters are paired
+        dollar_count = html_str.count("$$")
+        if dollar_count % 2 != 0:
+            issues.append(f"Unpaired $$ delimiters (found {dollar_count} — should be even).")
+
+        return (len(issues) == 0, issues)
+
+    def _repair_html_segment(
+        self,
+        html_str: str,
+        issues: List[str],
+        original_user_prompt: str,
+    ) -> str:
+        """Attempt a single LLM repair pass on invalid HTML.
+
+        Returns repaired HTML string, or original if repair fails.
+        """
+        print(f"    🔧 Attempting HTML repair for issues: {issues}")
+        repair_prompt = (
+            "The following HTML segment has issues that need fixing:\n\n"
+            f"**Issues found:**\n" + "\n".join(f"- {i}" for i in issues) + "\n\n"
+            f"**Current HTML:**\n```html\n{html_str[:6000]}\n```\n\n"
+            "Fix ONLY the listed issues. Return the corrected HTML only — no JSON wrapper, no explanation."
+        )
+        try:
+            raw, _usage = self.html_client.chat(
+                messages=[
+                    {"role": "system", "content": "You are an HTML/CSS repair assistant. Fix the issues and return corrected HTML only."},
+                    {"role": "user", "content": repair_prompt},
+                ],
+                temperature=0.3,
+                max_tokens=8000,
+            )
+            repaired = raw.strip()
+            # Strip markdown code fences if present
+            if repaired.startswith("```"):
+                repaired = re.sub(r"^```(?:html)?\n?", "", repaired)
+                repaired = re.sub(r"\n?```$", "", repaired)
+            if len(repaired) > 50:
+                print("    ✅ HTML repair successful.")
+                return repaired
+        except Exception as e:
+            print(f"    ⚠️ HTML repair failed: {e}")
+        return html_str
 
     # --- Google TTS bridge -------------------------------------------------
     # --- Edge TTS bridge (Free, Timed) -------------------------------------------------
@@ -1244,242 +1888,213 @@ class VideoGenerationPipeline:
 
         # --- Edge TTS Path ---
         # Default behavior: Use EdgeTTS with selected voice
-        
+
         async def _run_tts():
             communicate = edge_tts.Communicate(script_text, selected_voice)
-            
-            # We will perform a TWO-PASS or single-pass-with-subs approach? 
-            # stream() is easiest for single pass, but if it fails, we need subs.
-            # Let's try to capture Subs directly if available?
-            # Actually, `communicate.stream()` produces `type="WordBoundary"`.
-            # If that fails, `submaker` is needed?
-            
-            # Simple approach: AriaNeural (and other neural voices) generally works. 
-            # Let's stick to stream() but with Aria.
-            
             audio_data = bytearray()
-            word_entries = [] 
-            
-            print(f"    ℹ️  EdgeTTS Processing script of length: {len(script_text)}")
-            
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    audio_data.extend(chunk["data"])
-                elif chunk["type"] == "WordBoundary":
-                    # offset/duration in 100ns units (1e-7 seconds)
-                    start_s = chunk["offset"] / 1e7
-                    dur_s = chunk["duration"] / 1e7
-                    text = chunk["text"]
-                    word_entries.append({
-                        "word": text,
-                        "start": start_s,
-                        "end": start_s + dur_s
-                    })
-            
-            if not word_entries:
-                print("    ⚠️  WARNING: No WordBoundary events received! Switching to 'SubMaker' fallback.")
-                
-                # 2. SubMaker Fallback with timeout protection
-                # The communicate stream also emits events that SubMaker uses
-                # We need to feed the submaker if we hadn't already. 
-                # But since we already consumed the stream, and submaker needs the stream events passed to it,
-                # we technically should have been feeding it.
-                # However, re-running is cheap for us here to ensure correctness.
-                
-                print("    🔄 Re-running generation to capture Subtitles...")
-                communicate_retry = edge_tts.Communicate(script_text, selected_voice)
-                submaker = edge_tts.SubMaker()
-                audio_data_retry = bytearray() # Re-capture to be safe
-                chunk_count = 0
-                # More reasonable chunk limit: ~100 chunks per character (accounts for audio + boundary events)
-                max_chunks = min(len(script_text) * 100, 50000)  # Cap at 50k chunks to prevent excessive processing
-                
-                try:
-                    # Wrap stream processing with timeout (max 3 minutes for very long scripts)
-                    # More aggressive timeout: 3 min base + 0.05s per character (capped at 5 min)
-                    max_timeout = min(300, max(180, len(script_text) * 0.05))
-                    print(f"    ℹ️  SubMaker timeout set to {max_timeout:.1f}s for {len(script_text)} character script")
-                    
-                    async def process_stream():
-                        nonlocal chunk_count, audio_data_retry
-                        async for chunk in communicate_retry.stream():
-                            chunk_count += 1
-                            # Progress logging for long scripts
-                            if chunk_count % 500 == 0:
-                                print(f"    ℹ️  Processed {chunk_count} chunks (max: {max_chunks})...")
-                            
-                            # Safety check to prevent infinite loops
-                            if chunk_count > max_chunks:
-                                print(f"    ⚠️  Reached chunk limit ({max_chunks}). Stopping stream processing.")
-                                break
-                            
-                            if chunk["type"] == "audio":
-                                audio_data_retry.extend(chunk["data"])
-                            elif chunk["type"] == "WordBoundary" or chunk["type"] == "SentenceBoundary":
-                                submaker.feed(chunk)
-                        return audio_data_retry
-                    
-                    stream_timed_out = False
+            word_entries = []
+            # Always initialise SubMaker and feed it on the FIRST (and only) pass.
+            # If WordBoundary events are absent for this voice/language, SubMaker
+            # will already hold all the data — no second network round-trip needed.
+            tts_submaker = edge_tts.SubMaker()
+            chunk_count = 0
+            max_chunks = min(len(script_text) * 100, 50000)
+            max_timeout = min(300, max(180, len(script_text) * 0.05))
+
+            print(f"    ℹ️  EdgeTTS Processing script of length: {len(script_text)} "
+                  f"(timeout: {max_timeout:.0f}s, chunk cap: {max_chunks})")
+
+            stream_timed_out = False
+
+            async def _stream_first_pass():
+                nonlocal chunk_count
+                async for chunk in communicate.stream():
+                    chunk_count += 1
+                    if chunk_count % 500 == 0:
+                        print(f"    ℹ️  Processed {chunk_count} chunks (max: {max_chunks})...")
+                    if chunk_count > max_chunks:
+                        print(f"    ⚠️  Reached chunk limit ({max_chunks}). Stopping stream.")
+                        break
+                    if chunk["type"] == "audio":
+                        audio_data.extend(chunk["data"])
+                    elif chunk["type"] == "WordBoundary":
+                        start_s = chunk["offset"] / 1e7
+                        dur_s   = chunk["duration"] / 1e7
+                        word_entries.append({
+                            "word":  chunk["text"],
+                            "start": start_s,
+                            "end":   start_s + dur_s,
+                        })
+                        tts_submaker.feed(chunk)
+                    elif chunk["type"] == "SentenceBoundary":
+                        tts_submaker.feed(chunk)
+
+            try:
+                await asyncio.wait_for(_stream_first_pass(), timeout=max_timeout)
+                print(f"    ✅ Stream completed ({chunk_count} chunks)")
+            except asyncio.TimeoutError:
+                print(f"    ⚠️  Stream timed out after {max_timeout:.0f}s. Using partial audio.")
+                stream_timed_out = True
+
+            chars  = []
+            starts = []
+            ends   = []
+
+            if word_entries:
+                # ── Normal path: WordBoundary events received ──────────────────
+                print(f"    ✅ Captured {len(word_entries)} words from WordBoundary events.")
+
+                # ── Gap detection: Hindi and other non-Latin languages may have
+                #    incomplete WordBoundary events (Edge TTS bug).  If a gap
+                #    exceeds 10 s or total coverage is < 50 %, fall back to
+                #    Whisper forced alignment for the full audio. ──────────────
+                _sorted_we = sorted(word_entries, key=lambda _w: _w["start"])
+                _max_gap = 0.0
+                for _gi in range(1, len(_sorted_we)):
+                    _gap = _sorted_we[_gi]["start"] - _sorted_we[_gi - 1]["end"]
+                    _max_gap = max(_max_gap, _gap)
+                _covered = sum(w["end"] - w["start"] for w in word_entries)
+                _est_dur = len(audio_data) / 16000.0  # rough MP3 estimate
+
+                if _max_gap > 10.0 or (_est_dur > 5 and _covered / _est_dur < 0.50):
+                    print(f"    ⚠️  WordBoundary gaps detected (max_gap={_max_gap:.1f}s, "
+                          f"coverage={_covered:.1f}s / ~{_est_dur:.1f}s). "
+                          f"Falling back to Whisper forced alignment...")
+                    import tempfile as _tmpmod
+                    _tmp_audio = _tmpmod.NamedTemporaryFile(suffix=".mp3", delete=False)
+                    _tmp_audio.write(audio_data)
+                    _tmp_audio.close()
+                    _whisper_ok = False
                     try:
-                        audio_data = await asyncio.wait_for(process_stream(), timeout=max_timeout)
-                        print(f"    ✅ Stream processing completed ({chunk_count} chunks)")
-                    except asyncio.TimeoutError:
-                        print(f"    ⚠️  Stream processing timed out after {max_timeout}s. Using partial audio and skipping SRT.")
-                        audio_data = audio_data_retry
-                        vtt_content = ""  # Skip SRT generation if stream timed out
-                        stream_timed_out = True
-                    
-                    # Generate SRT with timeout protection (only if stream didn't timeout)
-                    if not stream_timed_out:
-                        try:
-                            print("    ℹ️  Generating SRT from SubMaker...")
-                            # SubMaker.get_srt() can sometimes hang, so we'll use a simple timeout
-                            import concurrent.futures
-                            with concurrent.futures.ThreadPoolExecutor() as executor:
-                                future = executor.submit(submaker.get_srt)
-                                try:
-                                    vtt_content = future.result(timeout=30)  # 30 second timeout for SRT generation
-                                    print(f"    ✅ SubMaker generated {len(vtt_content)} characters of SRT")
-                                except concurrent.futures.TimeoutError:
-                                    print(f"    ⚠️  SubMaker.get_srt() timed out after 30s. Using empty SRT.")
-                                    vtt_content = ""
-                        except Exception as e:
-                            print(f"    ⚠️  SubMaker.get_srt() failed: {e}")
-                            vtt_content = ""
-                except Exception as e:
-                    print(f"    ⚠️  SubMaker stream processing failed: {e}")
-                    vtt_content = ""
-                    # Use retry audio if available, otherwise keep original
-                    if audio_data_retry:
-                        audio_data = audio_data_retry
-                
-                # Parse SRT (SubRip) - Using VTT parser logic logic adjusted for SRT
-                # Format:
-                # 1
-                # 00:00:00,100 --> 00:00:02,500
-                # Hello world
-                
-                chars = []
-                starts = []
-                ends = []
-                
-                lines = vtt_content.splitlines()
-                current_start = 0.0
-                current_end = 0.0
-                
-                import re
-                # SRT uses comma for milliseconds: 00:00:05,400
-                time_pattern = re.compile(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})")
-                
-                def parse_time(t_str):
-                    parts = time_pattern.match(t_str)
-                    if not parts: return 0.0
-                    h, m, s, ms = map(int, parts.groups())
-                    return h*3600 + m*60 + s + ms/1000.0
+                        _whisper_words = _whisper_align(Path(_tmp_audio.name), language)
+                        if _whisper_words and len(_whisper_words) > len(word_entries):
+                            word_entries = _whisper_words
+                            _whisper_ok = True
+                            print(f"    ✅ Replaced EdgeTTS words with {len(word_entries)} Whisper words")
+                        else:
+                            print(f"    ℹ️  Whisper returned {len(_whisper_words) if _whisper_words else 0} words "
+                                  f"(EdgeTTS had {len(word_entries)})")
+                    finally:
+                        os.unlink(_tmp_audio.name)
 
-                for i, line in enumerate(lines):
-                    if "-->" in line:
-                        times = line.split("-->")
-                        current_start = parse_time(times[0].strip())
-                        current_end = parse_time(times[1].strip())
-                        
-                        # Next lines are text until empty line
-                        text_accumulator = ""
-                        j = i + 1
-                        while j < len(lines) and lines[j].strip():
-                            text_accumulator += lines[j].strip() + " "
-                            j += 1
-                        
-                        text_line = text_accumulator.strip()
-                        if text_line:
-                            # Distribute characters over this duration
-                            seg_len = current_end - current_start
-                            char_len = len(text_line)
-                            if char_len > 0:
-                                per_char = seg_len / char_len
-                                for k, char in enumerate(text_line):
-                                    c_s = current_start + (k * per_char)
-                                    c_e = c_s + per_char
-                                    chars.append(char)
-                                    starts.append(round(c_s, 3))
-                                    ends.append(round(c_e, 3))
-                                # Add space separator
-                                chars.append(" ")
-                                starts.append(round(current_end, 3))
-                                ends.append(round(current_end, 3))
-                
-                final_data = {
-                    "alignment": {
-                        "characters": chars,
-                        "character_start_times_seconds": starts,
-                        "character_end_times_seconds": ends
-                    }
-                }
-                if not vtt_content:
-                    print("    ⚠️  No subtitles generated. Edge TTS is invalid for this text/voice combo.")
-                    print("    ⚠️  Generating MOCK timestamps to prevent crash (Sync will be approximate).")
-                    chars = list(script_text)
-                    starts = []
-                    ends = []
-                    t = 0.0
-                    step = 0.06
-                    for c in chars:
-                        starts.append(round(t, 3))
-                        t += step
-                        ends.append(round(t, 3))
-                    
-                    final_data = {
-                        "alignment": {
-                            "characters": chars,
-                            "character_start_times_seconds": starts,
-                            "character_end_times_seconds": ends
-                        }
-                    }
-                else:
-                     print(f"    ✅ Recovered {len(chars)} chars/timestamps via VTT.")
-                     # ... vtt parsing already done above ... use `final_data` if constructed or reconstruct it.
-                     # Wait, my previous edit inserted the parser. I just need to wrap it.
-                     pass 
+                    # If Whisper failed or returned wrong language, use linear
+                    # interpolation based on script text + estimated audio duration
+                    if not _whisper_ok:
+                        print(f"    🔄 Using linear interpolation on script text "
+                              f"(~{_est_dur:.0f}s estimated audio)...")
+                        import re as _lre
+                        _words_list = _lre.findall(r'\S+', script_text)
+                        if _words_list and _est_dur > 0:
+                            # Distribute words evenly across the audio duration
+                            _per_word = _est_dur / len(_words_list)
+                            _lin_entries = []
+                            for _wi, _wt in enumerate(_words_list):
+                                _ws = _wi * _per_word
+                                _we_t = _ws + _per_word * 0.85  # small gap between words
+                                _lin_entries.append({
+                                    "word": _wt,
+                                    "start": round(_ws, 3),
+                                    "end": round(_we_t, 3),
+                                })
+                            word_entries = _lin_entries
+                            print(f"    ✅ Generated {len(word_entries)} linear word timestamps")
 
-                # Actually the previous edit failed to insert the "if not vtt_content" block correctly.
-                # Let's clean up the whole mess after `vtt_content = ...` definition.
-
-            else:
-                # Normal word entries path...
-                # Convert Word Timings to Pseudo-Character Alignment for compatibility
-                chars = []
-                starts = []
-                ends = []
-                
                 for w in word_entries:
                     word_str = w["word"]
-                    w_start = w["start"]
-                    w_end = w["end"]
-                    w_dur = w_end - w_start
-                    
-                    if not word_str: continue
-                    
+                    w_start  = w["start"]
+                    w_end    = w["end"]
+                    w_dur    = w_end - w_start
+                    if not word_str:
+                        continue
                     char_dur = w_dur / len(word_str)
                     for i, char in enumerate(word_str):
                         c_start = w_start + (i * char_dur)
-                        c_end = c_start + char_dur
+                        c_end   = c_start + char_dur
                         chars.append(char)
                         starts.append(round(c_start, 3))
                         ends.append(round(c_end, 3))
-                    
                     chars.append(" ")
                     starts.append(round(w_end, 3))
                     ends.append(round(w_end, 3))
 
-                final_data = {
-                    "alignment": {
-                        "characters": chars,
-                        "character_start_times_seconds": starts,
-                        "character_end_times_seconds": ends
-                    }
-                }
-                print(f"    ✅ Captured {len(word_entries)} words.")
+            else:
+                # ── Fallback: SubMaker already fed — no re-run needed ──────────
+                print("    ⚠️  No WordBoundary events — using SubMaker SRT (single-pass, no re-run).")
+                vtt_content = ""
+                if not stream_timed_out:
+                    try:
+                        print("    ℹ️  Generating SRT from SubMaker...")
+                        with concurrent.futures.ThreadPoolExecutor() as _ex:
+                            _fut = _ex.submit(tts_submaker.get_srt)
+                            try:
+                                vtt_content = _fut.result(timeout=30)
+                                print(f"    ✅ SubMaker generated {len(vtt_content)} chars of SRT")
+                            except concurrent.futures.TimeoutError:
+                                print("    ⚠️  SubMaker.get_srt() timed out after 30s.")
+                    except Exception as e:
+                        print(f"    ⚠️  SubMaker.get_srt() failed: {e}")
 
+                if vtt_content:
+                    # Parse SRT into char-level timestamps
+                    import re as _re
+                    _time_pat = _re.compile(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})")
+
+                    def _parse_time(t_str):
+                        m = _time_pat.match(t_str)
+                        if not m:
+                            return 0.0
+                        h, mi, s, ms = map(int, m.groups())
+                        return h * 3600 + mi * 60 + s + ms / 1000.0
+
+                    srt_lines = vtt_content.splitlines()
+                    for i, line in enumerate(srt_lines):
+                        if "-->" not in line:
+                            continue
+                        parts = line.split("-->")
+                        seg_start = _parse_time(parts[0].strip())
+                        seg_end   = _parse_time(parts[1].strip())
+                        text_acc  = ""
+                        j = i + 1
+                        while j < len(srt_lines) and srt_lines[j].strip():
+                            text_acc += srt_lines[j].strip() + " "
+                            j += 1
+                        text_line = text_acc.strip()
+                        if not text_line:
+                            continue
+                        seg_len  = seg_end - seg_start
+                        char_len = len(text_line)
+                        if char_len > 0:
+                            per_char = seg_len / char_len
+                            for k, char in enumerate(text_line):
+                                c_s = seg_start + k * per_char
+                                chars.append(char)
+                                starts.append(round(c_s, 3))
+                                ends.append(round(c_s + per_char, 3))
+                            chars.append(" ")
+                            starts.append(round(seg_end, 3))
+                            ends.append(round(seg_end, 3))
+                    if chars:
+                        print(f"    ✅ Recovered {len(chars)} chars/timestamps via SRT.")
+
+                if not chars:
+                    # Last resort: linear interpolation (~16 chars/s)
+                    print("    ⚠️  No timestamps available. Generating mock timestamps "
+                          "(sync will be approximate).")
+                    t    = 0.0
+                    step = 0.06
+                    for c in script_text:
+                        chars.append(c)
+                        starts.append(round(t, 3))
+                        t += step
+                        ends.append(round(t, 3))
+
+            final_data = {
+                "alignment": {
+                    "characters":                    chars,
+                    "character_start_times_seconds": starts,
+                    "character_end_times_seconds":   ends,
+                }
+            }
             response_json.write_text(json.dumps(final_data))
             with open(audio_path, "wb") as f:
                 f.write(audio_data)
@@ -1557,14 +2172,35 @@ class VideoGenerationPipeline:
         return {"words_json": words_json, "words_csv": words_csv}
 
     # --- Style Generation --------------------------------------------------
-    def _generate_style_guide(self, script_text: str, run_dir: Path, background_type: str = "black") -> Dict[str, Any]:
+    def _generate_style_guide(self, script_text: str, run_dir: Path, background_type: str = "black", style_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Generate a style guide based on background_type (white or black).
         Uses predefined presets to ensure proper color contrast.
+
+        Priority chain (highest wins):
+          1. style_config.background_type (explicit brand override)
+          2. template.background_type     (template default)
+          3. function parameter default   ("black")
+
+        After building from preset:
+          template.palette_override  →  merged on top of preset
+          brand primary_color / fonts  →  applied last (always win)
         """
+        # Resolve template (if layout_theme is a known template id)
+        layout_theme_id = (style_config or {}).get("layout_theme", "")
+        template = _get_template_by_id(layout_theme_id) if layout_theme_id else None
+
+        # Determine background_type: explicit brand setting > template default > parameter default
+        explicit_bg = (style_config or {}).get("background_type")
+        if explicit_bg in ("white", "black"):
+            background_type = explicit_bg
+        elif template and template.get("background_type") in ("white", "black"):
+            background_type = template["background_type"]
+        # else: keep the parameter default (already "black")
+
         # Use predefined presets based on background_type
         preset = BACKGROUND_PRESETS.get(background_type, BACKGROUND_PRESETS["black"])
-        
+
         style_guide = {
             "background_type": background_type,
             "palette": {
@@ -1594,11 +2230,46 @@ class VideoGenerationPipeline:
             "code_theme": preset["code_theme"],
             "notes": f"Clean {'dark' if background_type == 'black' else 'light'} educational style. No shadows. Use Rough Notation for annotations."
         }
-        
+
+        # Apply template palette_override (template colors on top of preset)
+        if template:
+            for k, v in template.get("palette_override", {}).items():
+                if k in style_guide["palette"]:
+                    style_guide["palette"][k] = v
+                # keys like background_type, card_bg, card_border may not be in palette
+                elif k not in ("background_type",):
+                    style_guide["palette"][k] = v
+            style_guide["layout_theme"] = layout_theme_id
+            print(f"   🎨 Template applied: {template['name']} ({background_type} background)")
+
+        # Apply institute brand overrides from style_config (always highest priority)
+        if style_config:
+            primary_color = style_config.get("primary_color")
+            if primary_color:
+                style_guide["palette"]["accent"] = primary_color
+                style_guide["palette"]["primary"] = primary_color
+                style_guide["palette"]["annotation_color"] = primary_color
+                style_guide["palette"]["svg_stroke"] = primary_color
+                style_guide["palette"]["mermaid_node_stroke"] = primary_color
+                print(f"   🎨 Brand primary color applied: {primary_color}")
+
+            heading_font = style_config.get("heading_font")
+            body_font = style_config.get("body_font")
+            if heading_font:
+                style_guide["fonts"]["primary"] = heading_font
+            if body_font:
+                style_guide["fonts"]["secondary"] = body_font
+            if heading_font or body_font:
+                print(f"   🔤 Brand fonts applied: heading={heading_font or 'default'}, body={body_font or 'default'}")
+
+            # layout_theme is already set from template lookup above; keep it consistent
+            if layout_theme_id:
+                style_guide["layout_theme"] = layout_theme_id
+
         # Save for inspection
         (run_dir / "style_guide.json").write_text(json.dumps(style_guide, indent=2))
         print(f"🎨 Using {background_type.upper()} background theme")
-        print(f"   Text color: {preset['text']} | SVG stroke: {preset['svg_stroke']} | Annotation: {preset['annotation_color']}")
+        print(f"   Text color: {preset['text']} | SVG stroke: {style_guide['palette']['svg_stroke']} | Annotation: {style_guide['palette']['annotation_color']}")
         return style_guide
 
     # --- Segmentation + HTML ----------------------------------------------
@@ -1607,10 +2278,15 @@ class VideoGenerationPipeline:
         return json.loads(words_path.read_text())
 
     @staticmethod
-    def _segment_words(words: List[Dict[str, Any]], window: float = 60.0) -> List[Dict[str, Any]]:
+    def _segment_words(words: List[Dict[str, Any]], window: float = 40.0, audio_duration: float = 0.0) -> List[Dict[str, Any]]:
         if not words:
             return []
-        total_duration = float(words[-1]["end"])
+        # Use max of all word end-times (array may not be sorted) and
+        # actual audio duration (words may not cover the full audio).
+        total_duration = max(
+            max(float(w["end"]) for w in words),
+            audio_duration,
+        )
         segments: List[Dict[str, Any]] = []
         idx = 0
         start_time = 0.0
@@ -1637,19 +2313,25 @@ class VideoGenerationPipeline:
         return segments
 
     def _segment_words_by_beats(
-        self, words: List[Dict[str, Any]], beat_outline: List[Dict[str, Any]], max_segments: int = 8
+        self, words: List[Dict[str, Any]], beat_outline: List[Dict[str, Any]],
+        max_segments: int = 8, audio_duration: float = 0.0,
     ) -> List[Dict[str, Any]]:
         """
         Concept-aligned segmentation: uses the beat_outline labels to find natural
         topic transitions in the narration text, then splits words at those boundaries.
-        
+
         Falls back to fixed-window if beat matching fails.
         max_segments caps total segments to control LLM cost.
         """
         if not words or not beat_outline:
-            return self._segment_words(words)
-        
-        total_duration = float(words[-1]["end"])
+            return self._segment_words(words, audio_duration=audio_duration)
+
+        # Use max of all word end-times (array may not be sorted) and
+        # actual audio duration (words may not cover the full audio).
+        total_duration = max(
+            max(float(w["end"]) for w in words),
+            audio_duration,
+        )
         full_text = " ".join(str(w.get("word", "")) for w in words).lower()
         
         # Try to find approximate word positions for each beat label
@@ -1703,7 +2385,7 @@ class VideoGenerationPipeline:
         # If we only got start+end (no useful beat boundaries), fall back
         if len(beat_boundaries) <= 2:
             print("   ⚠️ Beat matching found no useful boundaries, using fixed-window fallback")
-            return self._segment_words(words)
+            return self._segment_words(words, audio_duration=audio_duration)
         
         # Build segments from boundaries
         segments: List[Dict[str, Any]] = []
@@ -1763,83 +2445,210 @@ class VideoGenerationPipeline:
         
         if content_type == "QUIZ":
             questions = plan_data.get("questions", [])
+            if not questions:
+                print(f"    ⚠️  QUIZ: 'questions' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, q in enumerate(questions):
                 html = q.get("question_html", f"<div>Question {i+1}</div>")
                 segments.append(create_segment(html, i+1, q.get("id"), extra_meta=q))
-                
+            if not questions:
+                html = plan_data.get("html", "<div>Quiz</div>")
+                segments.append(create_segment(html, 1, "quiz-main", extra_meta=plan_data))
+
         elif content_type == "STORYBOOK":
             pages = plan_data.get("pages", [])
+            if not pages:
+                print(f"    ⚠️  STORYBOOK: 'pages' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, p in enumerate(pages):
                 html = p.get("html", f"<div>Page {i+1}</div>")
-                
+
                 # Fallback: If LLM forgot the data-img-prompt in HTML but provided it in JSON, inject it
                 if "illustration_prompt" in p and "data-img-prompt" not in html:
-                    # Simple injection into the first <img> tag
+                    safe_prompt = p["illustration_prompt"].replace('"', '&quot;')
                     if "<img" in html:
-                         # Escape quotes in prompt for HTML attribute
-                         safe_prompt = p["illustration_prompt"].replace('"', '&quot;')
-                         html = html.replace("<img", f'<img data-img-prompt="{safe_prompt}"', 1)
-                         print(f"    🔧 Auto-injected missing data-img-prompt for page {i+1}")
-                
+                        html = html.replace("<img", f'<img data-img-prompt="{safe_prompt}"', 1)
+                        print(f"    🔧 Auto-injected missing data-img-prompt for page {i+1}")
+                    else:
+                        html = html + f'<img data-img-prompt="{safe_prompt}" style="display:none" alt="illustration">'
+                        print(f"    🔧 Appended hidden img placeholder with data-img-prompt for page {i+1}")
+
                 segments.append(create_segment(html, i+1, f"page-{p.get('page_number', i+1)}", extra_meta=p))
-                
+            if not pages:
+                html = plan_data.get("html", "<div>Storybook</div>")
+                segments.append(create_segment(html, 1, "storybook-main", extra_meta=plan_data))
+
         elif content_type == "INTERACTIVE_GAME":
             # Games are usually a single self-contained entry
             html = plan_data.get("html", "<div>Game Container</div>")
             segments.append(create_segment(html, 1, "game-container", extra_meta=plan_data))
-            
+
         elif content_type == "FLASHCARDS":
             cards = plan_data.get("cards", [])
+            if not cards:
+                print(f"    ⚠️  FLASHCARDS: 'cards' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, c in enumerate(cards):
-                # For flashcards, we might want to combine front/back or just use front_html
-                # and let frontend handle the flip. Let's pass the whole card data in meta.
-                # Use front_html as the initial view
                 html = c.get("front_html", f"<div>Card {i+1}</div>")
                 segments.append(create_segment(html, i+1, c.get("id", f"card-{i+1}"), extra_meta=c))
+            if not cards:
+                html = plan_data.get("html", "<div>Flashcard Deck</div>")
+                segments.append(create_segment(html, 1, "flashcard-main", extra_meta=plan_data))
                 
         elif content_type == "PUZZLE_BOOK":
             puzzles = plan_data.get("puzzles", [])
+            if not puzzles:
+                print(f"    ⚠️  PUZZLE_BOOK: 'puzzles' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, p in enumerate(puzzles):
                 html = p.get("html", f"<div>Puzzle {i+1}</div>")
                 segments.append(create_segment(html, i+1, p.get("id", f"puzzle-{i+1}"), extra_meta=p))
+            if not puzzles:
+                # Fallback: single entry using top-level html or a placeholder
+                html = plan_data.get("html", f"<div>Puzzle Book</div>")
+                segments.append(create_segment(html, 1, "puzzle-main", extra_meta=plan_data))
         
         elif content_type == "TIMELINE":
             events = plan_data.get("events", [])
+            if not events:
+                print(f"    ⚠️  TIMELINE: 'events' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, e in enumerate(events):
                 html = e.get("html", f"<div>Event {i+1}</div>")
                 segments.append(create_segment(html, i+1, e.get("id", f"event-{i+1}"), extra_meta=e))
-                
-        # Default fallback for others (WORKSHEET, CODE_PLAYGROUND, CONVERSATION)
-        # Assuming they follow a similar pattern or single entry
+            if not events:
+                html = plan_data.get("html", "<div>Timeline</div>")
+                segments.append(create_segment(html, 1, "timeline-main", extra_meta=plan_data))
+
+        elif content_type == "MAP_EXPLORATION":
+            # Each region is a separate user_driven entry
+            regions = plan_data.get("regions", [])
+            if not regions:
+                print(f"    ⚠️  MAP_EXPLORATION: 'regions' key missing or empty. Available keys: {list(plan_data.keys())}")
+            for i, r in enumerate(regions):
+                html = r.get("html", f"<div>Region {i+1}</div>")
+                segments.append(create_segment(html, i+1, r.get("id", f"region-{i+1}"), extra_meta=r))
+            if not regions:
+                html = plan_data.get("html", "<div>Map Exploration</div>")
+                segments.append(create_segment(html, 1, "map-main", extra_meta=plan_data))
+
+        elif content_type == "SIMULATION":
+            # Simulations are self_contained — one single HTML entry with all interactivity
+            html = plan_data.get("html", "<div>Simulation</div>")
+            segments.append(create_segment(html, 1, "simulation-container", extra_meta=plan_data))
+
+        elif content_type == "WORKSHEET":
+            sections = plan_data.get("sections", [])
+            for i, s in enumerate(sections):
+                html = s.get("html", f"<div>Exercise {i+1}</div>")
+                segments.append(create_segment(html, i+1, s.get("id", f"exercise-{i+1}"), extra_meta=s))
+            if not sections:
+                # Single-page worksheet fallback
+                html = plan_data.get("html", "<div>Worksheet</div>")
+                segments.append(create_segment(html, 1, "worksheet-main", extra_meta=plan_data))
+
+        elif content_type == "CODE_PLAYGROUND":
+            exercises = plan_data.get("exercises", [])
+            for i, ex in enumerate(exercises):
+                html = ex.get("html", f"<div>Exercise {i+1}</div>")
+                segments.append(create_segment(html, i+1, ex.get("id", f"exercise-{i+1}"), extra_meta=ex))
+            if not exercises:
+                html = plan_data.get("html", "<div>Code Playground</div>")
+                segments.append(create_segment(html, 1, "playground-main", extra_meta=plan_data))
+
+        elif content_type == "CONVERSATION":
+            exchanges = plan_data.get("exchanges", [])
+            for i, ex in enumerate(exchanges):
+                html = ex.get("html", f"<div>Exchange {i+1}</div>")
+                segments.append(create_segment(html, i+1, ex.get("id", f"exchange-{i+1}"), extra_meta=ex))
+            if not exchanges:
+                html = plan_data.get("html", "<div>Conversation</div>")
+                segments.append(create_segment(html, 1, "conversation-main", extra_meta=plan_data))
+
+        elif content_type == "SLIDES":
+            slides = plan_data.get("slides", [])
+            if not slides:
+                print(f"    ⚠️  SLIDES: 'slides' key missing or empty. Available keys: {list(plan_data.keys())}")
+                print(f"    ⚠️  This usually means the model ran out of tokens or ignored the slides-array format.")
+                print(f"    ⚠️  Tip: use a model with high output token limits (e.g. google/gemini-2.5-pro).")
+            for i, slide in enumerate(slides):
+                html = slide.get("html", f"<div>Slide {i+1}</div>")
+                # If the slide has an image_prompt but no data-img-prompt in its HTML, inject it
+                if slide.get("image_prompt") and "data-img-prompt" not in html:
+                    safe_prompt = slide["image_prompt"].replace('"', '&quot;')
+                    if "<img" in html:
+                        html = html.replace("<img", f'<img data-img-prompt="{safe_prompt}"', 1)
+                        print(f"    🔧 Auto-injected data-img-prompt for slide {i+1}")
+                    else:
+                        # Append a hidden placeholder so image generation is triggered
+                        html = html + f'<img data-img-prompt="{safe_prompt}" src="placeholder.png" style="display:none" alt="">'
+                        print(f"    🔧 Appended hidden img with data-img-prompt for slide {i+1}")
+                meta = {k: v for k, v in slide.items() if k != "html"}
+                segments.append(create_segment(html, i+1, slide.get("id", f"slide-{i+1}"), extra_meta=meta))
+            if slides:
+                print(f"    ✅ SLIDES: extracted {len(slides)} slide(s) from plan.")
+            else:
+                # Fallback: model returned monolithic HTML or empty slides array.
+                # Wrap the whole thing in a single entry so the response is at least usable.
+                html = plan_data.get("html", "<div>Presentation</div>")
+                segments.append(create_segment(html, 1, "slides-main", extra_meta=plan_data))
+
         else:
-            # Try to find a list like 'items', 'sections', 'exercises'
+            # Generic fallback: try common list keys, then single entry
             found_list = False
-            for key in ["items", "sections", "exercises", "exchanges"]:
+            for key in ["items", "sections", "exercises", "exchanges", "regions"]:
                 if key in plan_data and isinstance(plan_data[key], list):
                     items = plan_data[key]
                     for i, item in enumerate(items):
-                         html = item.get("html", f"<div>Item {i+1}</div>")
-                         segments.append(create_segment(html, i+1, item.get("id", f"item-{i+1}"), extra_meta=item))
+                        html = item.get("html", f"<div>Item {i+1}</div>")
+                        segments.append(create_segment(html, i+1, item.get("id", f"item-{i+1}"), extra_meta=item))
                     found_list = True
                     break
-            
+
             if not found_list:
-                # Fallback: single entry using 'html' field if present
                 html = plan_data.get("html", f"<div>Content for {content_type}</div>")
                 segments.append(create_segment(html, 1, "main-content", extra_meta=plan_data))
                 
         print(f"✅ Extracted {len(segments)} segments for {content_type}")
         return segments, usage
 
-    def _generate_html_segments(self, segments: List[Dict[str, Any]], style_guide: Dict[str, Any], script_plan: Optional[Dict[str, Any]], run_dir: Path, language: str = "English") -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def _generate_html_segments(
+        self,
+        segments: List[Dict[str, Any]],
+        style_guide: Dict[str, Any],
+        script_plan: Optional[Dict[str, Any]],
+        run_dir: Path,
+        language: str = "English",
+        on_segment_done: Optional[Any] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        on_segment_done: optional callable(entries: List[Dict]) invoked as soon as
+        each segment's HTML is ready.  Used by run() to start image generation in
+        parallel while remaining HTML segments are still being generated.
+        """
+        # Resolve template once (shared across all segment tasks)
+        _layout_theme_id = style_guide.get("layout_theme", "")
+        _template = _get_template_by_id(_layout_theme_id) if _layout_theme_id else None
+
+        # Pre-compute segment context for continuity (Standard+ tiers)
+        _seg_summaries: list[str] = []
+        if self._tier_config.get("segment_context"):
+            for s in segments:
+                text = str(s.get("text", ""))
+                _seg_summaries.append(text[:120].rsplit(" ", 1)[0] if len(text) > 120 else text)
+
+        # Pre-compute beat visual type assignments for diversity enforcement
+        _beat_visual_types: list[str] = []
+        if self._tier_config.get("shot_diversity_enforcement") and script_plan:
+            for beat in (script_plan.get("beat_outline") or []):
+                _beat_visual_types.append(beat.get("visual_type", ""))
+
         def task(seg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
             # Flatten style guide for prompt
             palette = style_guide.get("palette", {})
             background_type = style_guide.get("background_type", "black")
-            
+            fonts = style_guide.get("fonts", {})
+            layout_theme = style_guide.get("layout_theme", "")
+            mermaid_theme = style_guide.get("mermaid_theme", "dark")
+
             # Get mermaid classDef based on background type
             mermaid_classdef = f"classDef default fill:{palette.get('mermaid_node_fill', '#1e293b')},stroke:{palette.get('mermaid_node_stroke', '#3b82f6')},stroke-width:2px,color:{palette.get('mermaid_text', '#fff')},rx:8px,ry:8px;"
-            
+
             # Build explicit color instructions based on background
             if background_type == "white":
                 color_warning = (
@@ -1863,9 +2672,26 @@ class VideoGenerationPipeline:
                     text=palette.get('text'),
                     svg_stroke=palette.get('svg_stroke')
                 )
-            
+
+            # ── Build style_context ──────────────────────────────────────────
+            # Order: template (holistic visual direction) → colors → mermaid → typography
+            # Template comes FIRST so the LLM reads the overall aesthetic before
+            # the specific color values that refine it.
             style_context = (
-                f"🎨 **COLOR RULES (CRITICAL - FOLLOW EXACTLY)**:\n"
+                # 1. Template visual direction (if selected) — defines the overall aesthetic
+                (
+                    f"**🎨 VISUAL TEMPLATE: {_template['name'].upper()}** — {_template['description']}\n"
+                    f"{_template['style_injection']}\n"
+                    f"↑ These CSS rules and HTML patterns define your visual identity for this video. "
+                    f"The exact color values below OVERRIDE template defaults where they differ.\n\n"
+                    if _template else (
+                        f"**LAYOUT DIRECTION — {layout_theme.upper().replace('_', ' ')}**: "
+                        f"Let this visual style guide spacing, card shape, and overall tone.\n\n"
+                        if layout_theme else ""
+                    )
+                )
+                # 2. Color rules — precise hex values that the template (or brand) set
+                + f"🎨 **COLOR RULES (CRITICAL - FOLLOW EXACTLY)**:\n"
                 f"{color_warning}\n"
                 f"**EXACT COLORS TO USE**:\n"
                 f"- Text color: {palette.get('text')}\n"
@@ -1880,14 +2706,24 @@ class VideoGenerationPipeline:
                 f"<path stroke=\"{palette.get('svg_stroke')}\" fill=\"none\"/>\n"
                 f"<rect fill=\"{palette.get('svg_fill')}\"/>\n"
                 f"```\n"
-                f"\n**MERMAID DIAGRAMS**:\n"
+                # 3. Mermaid — theme + classDef
+                + f"\n**MERMAID DIAGRAMS** (theme: {mermaid_theme}):\n"
+                f"- Add `%%{{init: {{'theme': '{mermaid_theme}'}}}}%%` as the FIRST LINE inside every `<div class='mermaid'>` block.\n"
                 f"```\n"
+                f"%%{{init: {{'theme': '{mermaid_theme}'}}}}%%\n"
                 f"{mermaid_classdef}\n"
                 f"```\n"
-                f"\n**ROUGH NOTATION** (for annotations):\n"
+                # 4. Rough Notation
+                + f"\n**ROUGH NOTATION** (for annotations):\n"
                 f"```javascript\n"
                 f"annotate('#element-id', {{type: 'underline', color: '{palette.get('annotation_color')}'}});\n"
                 f"```\n"
+                # 5. Typography
+                + f"\n**TYPOGRAPHY (use these exact font families throughout)**:\n"
+                f"- Headings / titles / h1–h3: font-family: '{fonts.get('primary', 'Montserrat')}', sans-serif\n"
+                f"- Body text / paragraphs / labels: font-family: '{fonts.get('secondary', 'Inter')}', sans-serif\n"
+                f"- Code / monospace elements: font-family: '{fonts.get('code', 'Fira Code')}', monospace\n"
+                f"Import these via Google Fonts if not already loaded in the slide.\n"
             )
 
             # Extract relevant visual ideas from beat outline if available
@@ -1979,17 +2815,57 @@ class VideoGenerationPipeline:
                 primary_color=palette.get('primary', '#2563eb'),
             ).strip()
 
-            # Retry logic for robustness against JSON parsing failures
+            # Append segment continuity context (Standard+ tiers)
+            if self._tier_config.get("segment_context") and _seg_summaries:
+                seg_idx = seg.get("index", 1) - 1  # 0-based
+                total = len(_seg_summaries)
+                prev_ctx = (
+                    f"- Previous segment narration: \"{_seg_summaries[seg_idx - 1]}...\""
+                    if seg_idx > 0 else "- This is the FIRST segment (strong opening visual needed)."
+                )
+                next_ctx = (
+                    f"- Next segment narration: \"{_seg_summaries[seg_idx + 1]}...\""
+                    if seg_idx < total - 1 else "- This is the LAST segment (use a conclusive visual)."
+                )
+                # Diversity hint: list beat visual types so LLM avoids repetition
+                diversity_ctx = ""
+                if self._tier_config.get("shot_diversity_enforcement") and _beat_visual_types:
+                    diversity_ctx = (
+                        f"- Beat visual types planned across all segments: {', '.join(_beat_visual_types)}. "
+                        f"Use a DIFFERENT shot type from adjacent segments where possible."
+                    )
+                user_prompt += "\n\n" + SEGMENT_CONTEXT_ADDON.format(
+                    seg_index=seg_idx + 1,
+                    total_segments=total,
+                    prev_context=prev_ctx,
+                    next_context=next_ctx,
+                    diversity_context=diversity_ctx,
+                )
+
+            # Retry logic: distinguishes server overload (500), rate-limit (429),
+            # and JSON parse failures so each gets an appropriate delay.
             import time
-            max_retries = 3
+            import random as _rnd
+            max_retries = 4  # extra attempt covers transient server 500s
             for attempt in range(max_retries):
                 try:
                     raw, usage = self.html_client.chat(
                         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                        temperature=0.7,  # Lower temperature for more consistent JSON output
-                        max_tokens=12000,
+                        temperature=self._tier_config.get("html_temperature", 0.7),
+                        max_tokens=self._tier_config.get("html_max_tokens", 24000),
                     )
                     data = self._parse_html_response(raw, seg, run_dir)
+
+                    # HTML validation & self-repair (Standard+ tiers)
+                    if self._tier_config.get("html_validation"):
+                        for shot in (data.get("shots") or [data] if isinstance(data, dict) else []):
+                            shot_html = shot.get("html", "")
+                            shot_type = seg.get("visual_type", "")
+                            is_valid, html_issues = self._validate_html_segment(shot_html, shot_type)
+                            if not is_valid and html_issues:
+                                repaired = self._repair_html_segment(shot_html, html_issues, user_prompt)
+                                shot["html"] = repaired
+
                     shot_entries = self._expand_shots(seg, data)
                     if not shot_entries:
                         raise RuntimeError(f"HTML model did not return any usable shots for segment {seg.get('index')}.")
@@ -2000,9 +2876,22 @@ class VideoGenerationPipeline:
                     return shot_entries, usage
                 except Exception as e:
                     if attempt < max_retries - 1:
-                        wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
-                        print(f"⚠️  Attempt {attempt + 1}/{max_retries} failed for segment {seg.get('index')}: {e}")
-                        print(f"   Retrying in {wait_time}s...")
+                        err_str = str(e).lower()
+                        # Pick a base delay suited to the failure type:
+                        #   429 / rate-limit  → longer wait (server needs breathing room)
+                        #   500 / overload    → moderate wait with jitter
+                        #   JSON parse fail   → quick retry (no server issue)
+                        if "429" in err_str or "rate" in err_str or "quota" in err_str:
+                            base = 10.0
+                        elif "500" in err_str or "server error" in err_str or "overload" in err_str or "unavailable" in err_str:
+                            base = 4.0
+                        else:
+                            base = 1.5  # JSON parse or other transient error
+                        # Exponential + jitter so parallel workers don't all retry at once
+                        wait_time = min(base * (1.6 ** attempt) * _rnd.uniform(0.7, 1.3), 45.0)
+                        print(f"⚠️  Attempt {attempt + 1}/{max_retries} failed for segment "
+                              f"{seg.get('index')}: {e}")
+                        print(f"   Retrying in {wait_time:.1f}s...")
                         time.sleep(wait_time)
                     else:
                         print(f"❌ All {max_retries} attempts failed for segment {seg.get('index')}")
@@ -2011,7 +2900,7 @@ class VideoGenerationPipeline:
         results: List[Dict[str, Any]] = []
         total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(segments) or 1)) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(segments) or 1)) as executor:
             future_map = {executor.submit(task, seg): seg for seg in segments}
             for future in concurrent.futures.as_completed(future_map):
                 seg = future_map[future]
@@ -2021,6 +2910,13 @@ class VideoGenerationPipeline:
                     total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
                     total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
                     total_usage["total_tokens"] += usage.get("total_tokens", 0)
+                # Notify caller as soon as this segment's entries are ready so that
+                # image generation can start in parallel with remaining HTML work.
+                if on_segment_done and result_entries:
+                    try:
+                        on_segment_done(result_entries)
+                    except Exception as _cb_err:
+                        print(f"    ⚠️  on_segment_done callback error (non-fatal): {_cb_err}")
 
         results.sort(key=lambda item: item["start"])
         return results, total_usage
@@ -2039,7 +2935,8 @@ class VideoGenerationPipeline:
             print(f"    Raw content preview: {raw[:200]}...")
             print(f"    Full raw content saved to: {debug_path}")
             
-            fallback = self._fallback_html_payload(raw)
+            seg_dur = max(5.0, float(seg.get("end", 0)) - float(seg.get("start", 0)))
+            fallback = self._fallback_html_payload(raw, seg_duration=seg_dur)
             if fallback:
                 print(
                     f"⚠️  Using fallback markup for segment {seg.get('index')}."
@@ -2049,7 +2946,7 @@ class VideoGenerationPipeline:
                 f"Unable to parse HTML JSON for segment {seg.get('index')} (raw saved to {debug_path})"
             )
 
-    def _fallback_html_payload(self, raw: str) -> Dict[str, Any]:
+    def _fallback_html_payload(self, raw: str, seg_duration: float = 60.0) -> Dict[str, Any]:
         stripped = self._strip_code_fences(raw)
         if stripped.startswith("{") and stripped.rstrip().endswith("}"):
             try:
@@ -2088,7 +2985,7 @@ class VideoGenerationPipeline:
             "shots": [
                 {
                     "offsetSeconds": 0,
-                    "durationSeconds": 999,
+                    "durationSeconds": max(5.0, seg_duration),
                     "htmlStartX": 0,
                     "htmlStartY": 0,
                     "width": 1920,
@@ -2469,7 +3366,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             duration = coerce(shot["durationFraction"], 0.0) * seg_duration
         if duration is None:
             duration = default_span
-        return max(0.25, duration)
+        # Enforce a readable minimum: 3 seconds per shot (prompt asks for 5+ but segments
+        # shorter than ~12s would produce fewer than the requested 3-4 shots at 5s each).
+        return max(3.0, duration)
 
     @staticmethod
     def _resolve_shot_box(shot: Dict[str, Any]) -> Tuple[int, int, int, int, bool]:
@@ -2514,6 +3413,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         h = max(150, h)
         return x, y, w, h, auto_box
 
+    # Extra Google Fonts families required by each template (appended to the base import)
+    _TEMPLATE_EXTRA_FONT_FAMILIES: Dict[str, str] = {
+        "whiteboard":  "Caveat:wght@400;600;700",
+        "chalkboard":  "Caveat:wght@400;600;700",
+        "glamour":     "Playfair+Display:ital,wght@0,400;0,700;1,400",
+        "diorama":     "Poppins:wght@400;600;700;800",
+        "neon":        "Orbitron:wght@400;700;900&family=Share+Tech+Mono",
+        "blueprint":   "Courier+Prime:wght@400;700&family=Share+Tech+Mono",
+        "minimal":     "Inter:wght@300;400;600;700",
+        "cerulean":    "Inter:wght@400;600;700",
+    }
+
     def _ensure_fonts(self, html: str) -> str:
         # Get colors based on background_type
         bg_type = getattr(self, '_current_background_type', 'white')
@@ -2525,8 +3436,16 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         accent_color = preset["accent"]
         
         # Common educational styles (Highlighting, Markers)
+        # Build Google Fonts import URL — base fonts + any template-specific additions
+        _style_cfg = getattr(self, '_current_style_config', None)
+        _layout_theme = (_style_cfg or {}).get("layout_theme", "") if _style_cfg else ""
+        _extra_family = self._TEMPLATE_EXTRA_FONT_FAMILIES.get(_layout_theme, "")
+        _base_families = "Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code"
+        _fonts_param = f"{_base_families}&family={_extra_family}" if _extra_family else _base_families
+        _fonts_url = f"https://fonts.googleapis.com/css2?family={_fonts_param}&display=swap"
+
         global_css = f"""<style>
-            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');
+            @import url('{_fonts_url}');
             
             /* --- FULL SCREEN CENTER CONTAINER (CRITICAL) --- */
             .full-screen-center {{
@@ -2883,6 +3802,154 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 return True
         return False
 
+    def _process_image_task_simple(
+        self,
+        task: Dict[str, Any],
+        images_dir: Path,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Thin wrapper used by the pipelined image generation in run().
+        Generates one image and returns a result dict (or None on failure).
+        May raise _GeminiRateLimitError so the caller can handle requeue.
+        """
+        prompt   = task.get("prompt", "")
+        seg_idx  = task.get("seg_idx", 0)
+        full_tag = task.get("full_tag", "")
+        entry    = task.get("entry")
+        if not prompt:
+            return None
+        is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
+        print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {prompt[:60]}...")
+        image_bytes, usage_meta = self._call_image_generation_llm(prompt)
+        if not image_bytes:
+            return None
+        # Remove background for cutout assets
+        if is_cutout:
+            image_bytes = self._remove_background(image_bytes)
+        filename = f"img_pipe_{seg_idx}_{abs(hash(prompt))}.png"
+        try:
+            (images_dir / filename).write_bytes(image_bytes)
+        except Exception as _e:
+            print(f"    ⚠️  Could not save pipelined image to disk (non-fatal): {_e}")
+        print(f"    ✅ [pipeline] {filename} ({len(image_bytes)} bytes)")
+        return {
+            "entry":       entry,
+            "full_tag":    full_tag,
+            "image_bytes": image_bytes,
+            "filename":    filename,
+            "usage":       usage_meta,
+        }
+
+    @staticmethod
+    def _remove_background(image_bytes: bytes) -> bytes:
+        """Remove background from image bytes using rembg, returning transparent PNG.
+
+        Memory optimizations (pod limit ~3Gi):
+        - Singleton u2netp session (~4.7MB model, not 176MB u2net)
+        - Downscale to 1024px max before inference (reduces ONNX buffers)
+        - Serialized via _rembg_lock so only 1 thread runs inference at a time
+        - Mask is upscaled back to original resolution for crisp output
+        """
+        if not REMBG_AVAILABLE:
+            print("    ⚠️  rembg not available — skipping background removal")
+            return image_bytes
+        try:
+            from io import BytesIO
+            from PIL import Image
+
+            session = _get_rembg_session()
+            original_img = Image.open(BytesIO(image_bytes))
+            orig_w, orig_h = original_img.size
+
+            # Downscale large images before rembg to save memory
+            MAX_DIM = 1024
+            if max(orig_w, orig_h) > MAX_DIM:
+                scale = MAX_DIM / max(orig_w, orig_h)
+                small_w, small_h = int(orig_w * scale), int(orig_h * scale)
+                small_img = original_img.resize((small_w, small_h), Image.LANCZOS)
+                buf = BytesIO()
+                small_img.save(buf, format="PNG")
+                input_bytes = buf.getvalue()
+                del small_img, buf
+            else:
+                input_bytes = image_bytes
+
+            # Serialize rembg calls — only one thread runs inference at a time
+            # to prevent concurrent ONNX buffer allocation → OOM
+            lock = _rembg_lock
+            if lock:
+                lock.acquire()
+            try:
+                result_bytes = rembg_remove(input_bytes, session=session)
+            finally:
+                if lock:
+                    lock.release()
+
+            # If we downscaled, extract the alpha mask and apply to original resolution
+            result_img = Image.open(BytesIO(result_bytes))
+            if result_img.mode != "RGBA":
+                result_img = result_img.convert("RGBA")
+
+            if max(orig_w, orig_h) > MAX_DIM:
+                # Upscale the alpha mask to original resolution
+                alpha_mask = result_img.split()[3]  # extract alpha channel
+                alpha_mask = alpha_mask.resize((orig_w, orig_h), Image.LANCZOS)
+                # Apply mask to original full-res image
+                if original_img.mode != "RGBA":
+                    original_img = original_img.convert("RGBA")
+                original_img.putalpha(alpha_mask)
+                result_img = original_img
+
+            buf = BytesIO()
+            result_img.save(buf, format="PNG", optimize=True)
+            result_bytes = buf.getvalue()
+
+            # Free references
+            del original_img, result_img, buf
+
+            print(f"    ✂️  Background removed ({len(image_bytes)} → {len(result_bytes)} bytes)")
+            return result_bytes
+        except Exception as e:
+            print(f"    ⚠️  Background removal failed (using original): {e}")
+            return image_bytes
+
+    def _enhance_image_prompt(self, raw_prompt: str) -> str:
+        """Enhance an image generation prompt with cinematic details (Premium+ tiers).
+
+        Uses a quick LLM call to add lighting, camera angle, color palette, mood,
+        and composition details while keeping the prompt under 200 words.
+        """
+        if not self._tier_config.get("image_prompt_enhancement"):
+            return raw_prompt
+
+        visual_style = getattr(self, '_current_visual_style', 'realistic cinematic photograph')
+        topic = getattr(self, '_current_topic', '')
+
+        enhance_prompt = (
+            f"Enhance this image generation prompt for a {visual_style} educational video"
+            f"{' about ' + topic if topic else ''}.\n\n"
+            f"Original prompt: \"{raw_prompt}\"\n\n"
+            "Add: lighting direction, camera angle, color palette, mood, and "
+            "specific compositional details. Keep under 200 words total. "
+            "The image must be 16:9 aspect ratio, no text overlays, no faces. "
+            "Return the enhanced prompt text ONLY — no quotes, no explanation."
+        )
+        try:
+            enhanced, _usage = self.html_client.chat(
+                messages=[
+                    {"role": "system", "content": "You enhance image generation prompts with cinematic details. Return enhanced prompt only."},
+                    {"role": "user", "content": enhance_prompt},
+                ],
+                temperature=0.6,
+                max_tokens=500,
+            )
+            enhanced = enhanced.strip().strip('"').strip("'")
+            if len(enhanced) > 30:
+                return enhanced
+        except Exception as e:
+            print(f"    ⚠️ Image prompt enhancement failed: {e}")
+        return raw_prompt
+
     def _process_generated_images(self, html_segments: List[Dict[str, Any]], run_dir: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Scan generated HTML for <img data-img-prompt="..."> tags, generate images via Gemini,
@@ -2911,22 +3978,27 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # Regex to find all such tags
             # We capture: entire tag, quote style, prompt, rest of tag
             matches = list(re.finditer(r'(<img[^>]+data-img-prompt=(["\'])(.*?)\2[^>]*>)', html))
-            SVG_KEYWORDS = [
-                "diagram", "flowchart", "chart", "graph", "infographic",
-                "comparison", "table", "workflow", "process flow", "timeline",
-                "schematic", "blueprint", "map of concepts", "mind map",
-            ]
+            # Word-boundary regex — avoids false positives like "photograph" → "graph"
+            # or "notable" → "table", "architectural" → "chart"
+            _SVG_KW_RE = re.compile(
+                r'\b(diagram|flowchart|bar chart|pie chart|line chart|infographic|'
+                r'comparison chart|data table|workflow|process flow|timeline diagram|'
+                r'schematic|blueprint|concept map|mind map|venn diagram)\b',
+                re.IGNORECASE,
+            )
             for match in matches:
                 full_tag = match.group(1)
                 prompt = match.group(3)
-                if any(kw in prompt.lower() for kw in SVG_KEYWORDS):
+                if _SVG_KW_RE.search(prompt):
                     print(f"    ⚠️  Skipping image gen (SVG candidate): {prompt[:70]}...")
                     continue
+                is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
                     "prompt": prompt,
                     "seg_idx": seg_idx,
+                    "is_cutout": is_cutout,
                     "timestamp": datetime.now().strftime("%f")  # basic uniqueness
                 })
 
@@ -2936,179 +4008,271 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             return html_segments, {}
 
         print(f"    Found {len(tasks)} images to generate from {segments_with_images} segments.")
-        
+
+        # IMAGE_WORKERS: 4 concurrent Gemini calls.  Higher than the old hard-coded 2,
+        # but conservative enough not to saturate free-tier quotas.
+        IMAGE_WORKERS = 4
+        # Max times we'll requeue a single task that gets a 429.
+        MAX_REQUEUE = 2
+
         def process_image_task(task):
-            prompt = task["prompt"]
-            idx = task["seg_idx"]
+            """
+            Generate one image and return a result dict.
+            Raises _GeminiRateLimitError on 429 so the executor thread is freed
+            immediately — the caller handles sleep + requeue in the main thread.
+            """
+            prompt     = task["prompt"]
+            idx        = task["seg_idx"]
+            is_cutout  = task.get("is_cutout", False)
 
-            # Prepend video-wide visual style for consistency across all images
-            visual_style = getattr(self, '_current_visual_style', 'realistic cinematic photograph')
-            if visual_style.lower() not in prompt.lower():
-                prompt = f"{visual_style}, {prompt}"
+            if is_cutout:
+                # Cutout assets need clean isolated objects — skip cinematic style
+                # prefix and LLM enhancement which would add backgrounds/scenes
+                pass
+            else:
+                # Enhance image prompt with cinematic details (Premium+ tiers)
+                prompt = self._enhance_image_prompt(prompt)
 
-            # Generate
-            print(f"    🎨 Generating image {idx}: {prompt[:60]}...")
-            # We don't get exact token usage from this simplified call, but we can count images
+                visual_style = getattr(self, '_current_visual_style', 'realistic cinematic photograph')
+                if visual_style.lower() not in prompt.lower():
+                    prompt = f"{visual_style}, {prompt}"
+
+            label = f"seg={idx}" + (" (cutout)" if is_cutout else "")
+            print(f"    🎨 Generating image {label}: {prompt[:60]}...")
+            # May raise _GeminiRateLimitError — propagates to as_completed caller
             image_bytes, usage_meta = self._call_image_generation_llm(prompt)
             if not image_bytes:
-                print(f"    ❌ Failed to generate image for: {prompt[:50]}...")
-                return None
-                
-            # Save
-            filename = f"img_{idx}_{abs(hash(prompt))}.png"
-            path = images_dir / filename
-            try:
-                path.write_bytes(image_bytes)
-                # Verify file was written
-                if not path.exists() or path.stat().st_size == 0:
-                    print(f"    ❌ Image file was not saved correctly: {filename}")
-                    return None
-                print(f"    ✅ Saved image: {filename} ({len(image_bytes)} bytes) at {path}")
-                
-                return {
-                    "entry_id": id(task["entry"]),
-                    "full_tag": task["full_tag"],
-                    "new_src": str(path.absolute()),
-                    "filename": filename,
-                    "usage": usage_meta
-                }
-            except Exception as e:
-                print(f"    ❌ Failed to save image {filename}: {e}")
+                print(f"    ❌ No image bytes for: {prompt[:50]}...")
                 return None
 
-        replacements = {}
+            # Remove background for cutout assets
+            if is_cutout:
+                image_bytes = self._remove_background(image_bytes)
+
+            # Save to disk for audit/debug (non-blocking write; bytes already in memory)
+            filename = f"img_{idx}_{abs(hash(prompt))}.png"
+            try:
+                (images_dir / filename).write_bytes(image_bytes)
+            except Exception as e:
+                print(f"    ⚠️  Could not save image to disk (non-fatal): {e}")
+
+            # Return raw bytes — no disk re-read needed for base64 embedding
+            print(f"    ✅ Image generated: {filename} ({len(image_bytes)} bytes)")
+            return {
+                "entry_id":   id(task["entry"]),
+                "full_tag":   task["full_tag"],
+                "image_bytes": image_bytes,       # pass bytes directly — no re-read
+                "filename":   filename,
+                "usage":      usage_meta,
+            }
+
+        replacements      = {}
         successful_generations = 0
-        failed_generations = 0
-        total_image_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "image_count": 0}
-        
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            futures = [executor.submit(process_image_task, t) for t in tasks]
-            for f in concurrent.futures.as_completed(futures):
-                res = f.result()
-                if res:
-                    successful_generations += 1
-                    total_image_usage["image_count"] += 1
-                    u = res.get("usage")
-                    if u:
-                        total_image_usage["prompt_tokens"] += u.get("promptTokenCount", 0)
-                        total_image_usage["completion_tokens"] += u.get("candidatesTokenCount", 0)
-                        total_image_usage["total_tokens"] += u.get("totalTokenCount", 0)
-                    
-                    entry_id = res["entry_id"]
-                    if entry_id not in replacements:
-                        replacements[entry_id] = []
-                    replacements[entry_id].append(res)
-                else:
-                    failed_generations += 1
-        
-        print(f"    📊 Image generation summary: {successful_generations} successful, {failed_generations} failed out of {len(tasks)} total")
-        
+        failed_generations     = 0
+        total_image_usage = {"prompt_tokens": 0, "completion_tokens": 0,
+                              "total_tokens": 0, "image_count": 0}
+
+        # requeue_counts tracks how many times a task has been re-submitted after 429
+        requeue_counts: Dict[int, int] = {i: 0 for i in range(len(tasks))}
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=IMAGE_WORKERS) as executor:
+            # Map future → (task, task_index) so we can requeue on 429
+            pending: Dict[concurrent.futures.Future, Tuple[Dict, int]] = {
+                executor.submit(process_image_task, t): (t, i)
+                for i, t in enumerate(tasks)
+            }
+
+            while pending:
+                done, _ = concurrent.futures.wait(
+                    pending, return_when=concurrent.futures.FIRST_COMPLETED
+                )
+                for future in done:
+                    task, task_idx = pending.pop(future)
+                    try:
+                        res = future.result()
+                    except _GeminiRateLimitError as rl_err:
+                        # 429 — thread was freed immediately; sleep in main thread
+                        if requeue_counts[task_idx] < MAX_REQUEUE:
+                            requeue_counts[task_idx] += 1
+                            wait = min(rl_err.retry_after, 60.0)
+                            print(f"    ⏳ Rate-limited — sleeping {wait:.0f}s in main thread "
+                                  f"then requeuing (attempt {requeue_counts[task_idx]}/{MAX_REQUEUE})...")
+                            time.sleep(wait)
+                            new_future = executor.submit(process_image_task, task)
+                            pending[new_future] = (task, task_idx)
+                        else:
+                            print(f"    ❌ Giving up on image after {MAX_REQUEUE} rate-limit requeues: "
+                                  f"{task['prompt'][:50]}...")
+                            failed_generations += 1
+                        continue
+                    except Exception as exc:
+                        print(f"    ❌ Image task raised unexpected error: {exc}")
+                        failed_generations += 1
+                        continue
+
+                    if res:
+                        successful_generations += 1
+                        total_image_usage["image_count"] += 1
+                        u = res.get("usage") or {}
+                        total_image_usage["prompt_tokens"]      += u.get("promptTokenCount", 0)
+                        total_image_usage["completion_tokens"]  += u.get("candidatesTokenCount", 0)
+                        total_image_usage["total_tokens"]       += u.get("totalTokenCount", 0)
+                        entry_id = res["entry_id"]
+                        replacements.setdefault(entry_id, []).append(res)
+                    else:
+                        failed_generations += 1
+
+        print(f"    📊 Image generation: {successful_generations} OK, "
+              f"{failed_generations} failed out of {len(tasks)} total")
+
         if successful_generations == 0:
-            print("    ⚠️  No images were successfully generated. HTML will retain placeholder images.")
+            print("    ⚠️  No images generated. HTML will retain placeholder images.")
             return html_segments, total_image_usage
-        
-        # Apply replacements - use a more robust matching strategy
+
+        # Apply replacements — base64-encode from in-memory bytes (no disk re-read)
         replacements_applied = 0
         for entry in html_segments:
-            entry_id = id(entry)
-            html = entry.get("html", "")
+            entry_id     = id(entry)
+            html         = entry.get("html", "")
             original_html = html
-            
-            if entry_id in replacements:
-                for rep in replacements[entry_id]:
-                    old_tag = rep["full_tag"]
-                    # Convert path to string and normalize for file:// URL (use forward slashes)
-                    path_str = str(rep['new_src']).replace('\\', '/')  # Normalize Windows paths to forward slashes
-                    new_src = f"file://{path_str}"
-                    
-                    # Strategy 1: Direct tag replacement (most reliable)
-                    if old_tag in html:
-                        # Replace src attribute in the tag
-                        new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_src}"', old_tag)
-                        html = html.replace(old_tag, new_tag)
-                        replacements_applied += 1
-                        print(f"    ✅ Replaced image tag in entry {entry_id}: {old_tag[:50]}... -> {new_src[:50]}...")
-                    else:
-                        # Strategy 2: Find by data-img-prompt value (fallback)
-                        prompt_match = re.search(r'data-img-prompt=(["\'])(.*?)\1', old_tag)
-                        if prompt_match:
-                            prompt_value = prompt_match.group(2)
-                            # Find all img tags with this prompt
-                            img_pattern = rf'<img[^>]+data-img-prompt=(["\']){re.escape(prompt_value)}\1[^>]*>'
-                            matches = list(re.finditer(img_pattern, html))
-                            for match in matches:
-                                matched_tag = match.group(0)
-                                new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_src}"', matched_tag)
-                                html = html.replace(matched_tag, new_tag)
-                                replacements_applied += 1
-                                print(f"    ✅ Replaced image tag by prompt match: {prompt_value[:30]}... -> {new_src[:50]}...")
-            
+
+            if entry_id not in replacements:
+                continue
+
+            for rep in replacements[entry_id]:
+                old_tag     = rep["full_tag"]
+                # Encode directly from the bytes already in memory
+                b64     = base64.b64encode(rep["image_bytes"]).decode("utf-8")
+                new_src = f"data:image/png;base64,{b64}"
+
+                # Strategy 1: direct tag replacement
+                if old_tag in html:
+                    new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_src}"', old_tag)
+                    html = html.replace(old_tag, new_tag)
+                    replacements_applied += 1
+                    print(f"    ✅ Embedded image (base64) for entry {entry_id}: {old_tag[:50]}...")
+                else:
+                    # Strategy 2: match by data-img-prompt value
+                    pm = re.search(r'data-img-prompt=(["\'])(.*?)\1', old_tag)
+                    if pm:
+                        pv  = pm.group(2)
+                        pat = rf'<img[^>]+data-img-prompt=(["\']){re.escape(pv)}\1[^>]*>'
+                        for m in re.finditer(pat, html):
+                            mt      = m.group(0)
+                            new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_src}"', mt)
+                            html    = html.replace(mt, new_tag)
+                            replacements_applied += 1
+                            print(f"    ✅ Embedded image (prompt match): {pv[:30]}...")
+
             if html != original_html:
                 entry["html"] = html
-        
-        print(f"    📝 Applied {replacements_applied} image replacements to HTML segments")
+
+        print(f"    📝 Applied {replacements_applied} image replacements")
         return html_segments, total_image_usage
 
-    @retry_with_backoff(max_retries=3, initial_delay=1.0)
     def _call_image_generation_llm(self, prompt: str, width: int = 1920, height: int = 1080) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
         """
         Generate image using Google Generative AI (Gemini). Returns (image_bytes, usage_metadata).
+
+        429 rate-limit errors raise _GeminiRateLimitError immediately so the
+        executor thread is freed. The caller (_process_generated_images) handles
+        the sleep + requeue in the main thread, keeping the pool unblocked.
+
+        500 / network errors are retried up to 3 times with short jittered delays.
         """
-        try:
-            if not self.gemini_image_api_key:
-                print(f"    ⚠️ No Gemini API key for images. Cannot generate: {prompt[:50]}...")
-                return None, None
-                
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key={self.gemini_image_api_key}"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "imageConfig": {"aspectRatio": "16:9"},
-                    "responseModalities": ["IMAGE"]
-                }
-            }
-            
+        import random as _random
+        import traceback as _tb
+
+        if not self.gemini_image_api_key:
+            print(f"    ⚠️ No Gemini API key for images. Cannot generate: {prompt[:50]}...")
+            return None, None
+
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"gemini-3.1-flash-image-preview:generateContent"
+            f"?key={self.gemini_image_api_key}"
+        )
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "imageConfig": {"aspectRatio": "16:9"},
+                "responseModalities": ["IMAGE"],
+            },
+        }
+
+        max_retries = 3
+        for attempt in range(max_retries):
             req = urllib.request.Request(
-                url, 
-                data=json.dumps(payload).encode("utf-8"), 
-                headers=headers, 
-                method="POST"
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
+                method="POST",
             )
-            
-            with urllib.request.urlopen(req, timeout=60) as response:
-                if response.status != 200:
-                    print(f"Gemini API error: {response.status}")
-                    return None, None
-                raw = response.read().decode("utf-8")
-                data = json.loads(raw)
-            
-            usage_metadata = data.get("usageMetadata", {})
+            try:
+                with urllib.request.urlopen(req, timeout=120) as response:
+                    raw  = response.read().decode("utf-8")
+                    data = json.loads(raw)
 
-            # Check for inlineData
-            # 1. Direct inlineData (rare for this endpoint structure but checked in snippet)
-            if "inlineData" in data:
-                b64 = data["inlineData"].get("data")
-                if b64:
-                    return base64.b64decode(b64), usage_metadata
-            
-            # 2. Candidates
-            if "candidates" in data and data["candidates"]:
-                candidate = data["candidates"][0]
-                if "content" in candidate and "parts" in candidate["content"]:
-                    for part in candidate["content"]["parts"]:
-                        if "inlineData" in part:
-                            b64 = part["inlineData"].get("data")
-                            if b64:
-                                return base64.b64decode(b64), usage_metadata
-            
-            return None, None
+                usage_metadata = data.get("usageMetadata", {})
 
-        except Exception as e:
-            print(f"    ❌ Gemini image generation exception for prompt '{prompt[:50]}...': {str(e)}")
-            import traceback
-            print(f"    📋 Error details: {traceback.format_exc()[:500]}")  # Limit traceback length
-            return None, None
+                # 1. Direct inlineData
+                if "inlineData" in data:
+                    b64 = data["inlineData"].get("data")
+                    if b64:
+                        return base64.b64decode(b64), usage_metadata
+
+                # 2. Candidates
+                if "candidates" in data and data["candidates"]:
+                    candidate = data["candidates"][0]
+                    if "content" in candidate and "parts" in candidate["content"]:
+                        for part in candidate["content"]["parts"]:
+                            if "inlineData" in part:
+                                b64 = part["inlineData"].get("data")
+                                if b64:
+                                    return base64.b64decode(b64), usage_metadata
+
+                return None, None
+
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    # Raise immediately — do NOT sleep inside the executor thread.
+                    # The main thread will handle the delay and requeue.
+                    retry_after = 15.0
+                    raw_hdr = e.headers.get("Retry-After")
+                    if raw_hdr:
+                        try:
+                            retry_after = float(raw_hdr) + 1
+                        except ValueError:
+                            pass
+                    print(f"    ⚠️  Gemini 429 for '{prompt[:40]}...' — signalling rate-limit "
+                          f"(retry-after {retry_after:.0f}s)")
+                    raise _GeminiRateLimitError(retry_after)
+
+                if e.code >= 500:
+                    # Server-side error (overload, etc.) — short jittered retry
+                    if attempt < max_retries - 1:
+                        wait = (2.0 ** attempt) * _random.uniform(0.8, 1.4)  # ~0.8-2.8s jitter
+                        print(f"    ⚠️  Gemini HTTP {e.code} (attempt {attempt+1}/{max_retries}) "
+                              f"for '{prompt[:40]}...'. Retrying in {wait:.1f}s...")
+                        time.sleep(wait)
+                        continue
+                print(f"    ❌ Gemini image HTTP {e.code} for '{prompt[:50]}...': {e}")
+                return None, None
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait = (1.5 ** attempt) * _random.uniform(0.5, 1.5)
+                    print(f"    ⚠️  Gemini image attempt {attempt+1}/{max_retries} failed "
+                          f"for '{prompt[:40]}...': {e}. Retrying in {wait:.1f}s...")
+                    print(f"    📋 {_tb.format_exc()[:200]}")
+                    time.sleep(wait)
+                    continue
+                print(f"    ❌ Gemini image failed after {max_retries} attempts: "
+                      f"{_tb.format_exc()[:400]}")
+                return None, None
+
+        return None, None
 
     def _generate_avatar_runpod(self, run_dir: Path) -> Optional[Path]:
         if not self._current_avatar_image_url:
@@ -3309,6 +4473,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         content_type: str = "VIDEO",
         chapters: Optional[List[Dict[str, Any]]] = None,
         glossary: Optional[List[Dict[str, Any]]] = None,
+        questions: Optional[List[Dict[str, Any]]] = None,
+        language: str = "English",
+        audio_path: Optional[Path] = None,
     ) -> Path:
         """
         Write timeline JSON with branding support.
@@ -3342,7 +4509,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "WORKSHEET": "user_driven",
             "CODE_PLAYGROUND": "self_contained",
             "TIMELINE": "user_driven",
-            "CONVERSATION": "user_driven"
+            "CONVERSATION": "user_driven",
+            "SLIDES": "user_driven",
         }
         navigation = NAVIGATION_MAP.get(content_type, "time_driven")
         
@@ -3360,7 +4528,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "WORKSHEET": "exercise",
             "CODE_PLAYGROUND": "exercise",
             "TIMELINE": "event",
-            "CONVERSATION": "exchange"
+            "CONVERSATION": "exchange",
+            "SLIDES": "slide",
         }
         entry_label = ENTRY_LABEL_MAP.get(content_type, "segment")
         
@@ -3438,15 +4607,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # Standard Time-Driven Logic (Video)
             for entry in html_segments:
                 start = int(entry.get("index", len(timeline_entries) + 1))
-                
+
                 # Original times from the content
                 original_in_time = float(entry.get("start", 0))
                 original_exit_time = float(entry.get("end", 0))
-                
+
+                # Sanitize: exitTime must be > inTime
+                if original_exit_time <= original_in_time:
+                    original_exit_time = original_in_time + 1.0
+
                 # Offset times by intro duration (audio starts after intro)
                 adjusted_in_time = original_in_time + content_starts_at
                 adjusted_exit_time = original_exit_time + content_starts_at
-                
+
                 timeline_entry = {
                     "inTime": adjusted_in_time,
                     "exitTime": adjusted_exit_time,
@@ -3473,7 +4646,32 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # If no content entries, use a minimal duration
         if content_max_end <= content_starts_at:
             content_max_end = content_starts_at + 1.0
-        
+
+        # Ensure timeline covers the full audio duration.
+        # Without this, visuals can end before audio finishes.
+        if audio_path and Path(audio_path).exists() and navigation == "time_driven":
+            try:
+                _probe = subprocess.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                _actual_audio_dur = float(_probe.stdout.strip())
+                # Audio starts at content_starts_at, so content should end at
+                # content_starts_at + audio_duration
+                _audio_end = content_starts_at + _actual_audio_dur
+                if _audio_end > content_max_end + 1.0:
+                    print(f"   ⚠️ Audio ({_actual_audio_dur:.1f}s) extends beyond last visual "
+                          f"({content_max_end:.1f}s). Extending last segment to match.")
+                    # Extend the last content entry's exitTime to cover the audio
+                    for _te in reversed(timeline_entries):
+                        if _te.get("id", "").startswith("segment-"):
+                            _te["exitTime"] = _audio_end
+                            break
+                    content_max_end = _audio_end
+            except Exception as _e:
+                print(f"   ℹ️ Could not probe audio duration: {_e}")
+
         # 3. Add WATERMARK entry if enabled (spans entire content duration, positioned in corner)
         if watermark_enabled and watermark_config.get("html"):
             position = watermark_config.get("position", "top-right")
@@ -3548,6 +4746,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "content_type": content_type,              # Tells frontend what type of content
             "navigation": navigation,                  # "time_driven", "user_driven", or "self_contained"
             "entry_label": entry_label,                # Label for entries (question, page, segment)
+            "language": language,                      # Content language (used by frontend TTS, captions)
             "audio_start_at": content_starts_at,       # Audio should start playing at this time
             "total_duration": final_duration,
             "intro_duration": intro_duration,
@@ -3564,6 +4763,38 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 {"term": g["term"], "time": round(g["time"] + content_starts_at, 3)}
                 for g in glossary
             ]
+
+        # Questions: map chapter_index to actual chapter end times (= next chapter's start)
+        # Only included for VIDEO content with chapters and MCQ data from the script plan
+        if questions and chapter_markers and content_type == "VIDEO":
+            n_chapters = len(chapter_markers)
+            question_markers = []
+            for q in questions:
+                try:
+                    chapter_idx = int(q.get("chapter_index", 0))
+                    # Fire at the start of the NEXT chapter (marks end of current chapter)
+                    if chapter_idx + 1 < n_chapters:
+                        q_time = chapter_markers[chapter_idx + 1]["time"]
+                    else:
+                        # Last chapter: fire just before content ends
+                        q_time = round(content_max_end, 3)
+                    q_text = str(q.get("question", "")).strip()
+                    q_options = [str(o) for o in q.get("options", [])]
+                    q_correct = int(q.get("correct", 0))
+                    q_explanation = str(q.get("explanation", "")).strip()
+                    if q_text and len(q_options) == 4:
+                        question_markers.append({
+                            "time": q_time,
+                            "question": q_text,
+                            "options": q_options,
+                            "correct": q_correct,
+                            "explanation": q_explanation,
+                        })
+                except (ValueError, TypeError):
+                    continue
+            if question_markers:
+                meta_dict["questions"] = question_markers
+                print(f"   ❓ Added {len(question_markers)} MCQ questions to timeline metadata")
 
         timeline_output = {
             "meta": meta_dict,
@@ -3602,24 +4833,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         
         # Get audio delay from branding config (intro duration)
         audio_delay = 0.0
-        
-        # First try to get from stored branding config (works within same pipeline run)
-        if hasattr(self, '_current_branding') and self._current_branding:
+
+        # Primary: check branding_meta.json (ground truth — written during _write_timeline)
+        branding_meta_path = run_dir / "branding_meta.json"
+        if branding_meta_path.exists():
+            try:
+                branding_meta = json.loads(branding_meta_path.read_text())
+                audio_delay = float(branding_meta.get("intro_duration_seconds", 0.0))
+                print(f"   🎵 Audio will start at {audio_delay}s (from branding_meta.json)")
+            except Exception as e:
+                print(f"   ⚠️ Could not load branding metadata: {e}")
+
+        # Fallback: use in-memory branding config (for first-run before _write_timeline)
+        if audio_delay == 0.0 and hasattr(self, '_current_branding') and self._current_branding:
             intro_config = self._current_branding.get("intro", {})
             if intro_config.get("enabled", False):
                 audio_delay = float(intro_config.get("duration_seconds", 0.0))
                 print(f"   🎵 Audio will start at {audio_delay}s (from branding config)")
-        
-        # Fallback: check branding_meta.json file (for resumed runs)
-        if audio_delay == 0.0:
-            branding_meta_path = run_dir / "branding_meta.json"
-            if branding_meta_path.exists():
-                try:
-                    branding_meta = json.loads(branding_meta_path.read_text())
-                    audio_delay = float(branding_meta.get("intro_duration_seconds", 0.0))
-                    print(f"   🎵 Audio will start at {audio_delay}s (from branding_meta.json)")
-                except Exception as e:
-                    print(f"   ⚠️ Could not load branding metadata: {e}")
         
         cmd = [
             sys.executable,

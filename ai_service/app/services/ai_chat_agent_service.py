@@ -22,7 +22,10 @@ from ..services.chat_llm_client import ChatLLMClient
 from ..services.institute_settings_service import InstituteSettingsService
 from ..services.quiz_service import QuizService
 from ..services.intent_classifier_service import IntentClassifierService
+from ..services.context_window_service import ContextWindowService
+from ..services.learning_analytics_service import LearningAnalyticsService
 from ..models.chat_message import ChatMessage
+from ..services.mathpix_service import MathpixService
 from ..schemas.chat_agent import (
     MessageIntent,
     QuizData,
@@ -55,9 +58,11 @@ class AiChatAgentService:
         self.llm_client = llm_client
         self.institute_settings = institute_settings
         
-        # Initialize quiz and intent services
+        # Initialize quiz, intent, context window, and analytics services
         self.quiz_service = QuizService(llm_client)
         self.intent_classifier = IntentClassifierService()
+        self.context_window = ContextWindowService(db_session, self.message_repo, llm_client)
+        self.analytics_service = LearningAnalyticsService(db_session)
         
         # Store active quizzes for evaluation (session_id -> QuizData)
         self._active_quizzes: Dict[str, QuizData] = {}
@@ -158,6 +163,8 @@ class AiChatAgentService:
         message: str,
         intent: Optional[MessageIntent] = None,
         quiz_submission: Optional[QuizSubmission] = None,
+        idempotency_key: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ) -> tuple[int, str]:
         """
         Send a message to an existing session.
@@ -178,19 +185,47 @@ class AiChatAgentService:
         
         if session.status != "ACTIVE":
             raise ValueError(f"Session {session_id} is not active")
-        
+
+        # Check idempotency to prevent duplicate message processing
+        if idempotency_key:
+            existing = self.message_repo.find_by_idempotency_key(session_id, idempotency_key)
+            if existing:
+                logger.info(f"Duplicate message detected for idempotency key {idempotency_key}")
+                return (existing.id, "idle")
+
+        # Extract LaTeX from image attachments via Mathpix OCR
+        enriched_message = message
+        if attachments:
+            mathpix = MathpixService()
+            for att in attachments:
+                att_dict = att if isinstance(att, dict) else {}
+                att_type = att_dict.get("type", "")
+                att_url = att_dict.get("url", "")
+                if att_type == "image" and att_url:
+                    try:
+                        ocr_result = await mathpix.ocr_image(att_url)
+                        latex_content = ocr_result.get("latex", "")
+                        if latex_content:
+                            enriched_message += f"\n\n[Math from image: ${latex_content}$]"
+                    except Exception as e:
+                        logger.warning(f"Mathpix OCR failed for attachment: {e}")
+
         # Build metadata for the message
         metadata = {}
         if intent:
             metadata["intent"] = intent.value
+        if idempotency_key:
+            metadata["idempotency_key"] = idempotency_key
         if quiz_submission:
             metadata["quiz_submission"] = quiz_submission.model_dump()
-        
+        if attachments:
+            metadata["attachments"] = [att.copy() if isinstance(att, dict) else att for att in attachments]
+
         # Save user message with metadata
         msg = self.message_repo.create_message(
             session_id=session_id,
             message_type="user",
-            content=message,
+            content=enriched_message,
             metadata=metadata if metadata else None,
         )
         
@@ -615,7 +650,21 @@ class AiChatAgentService:
             )
             
             logger.info(f"Message intent for session {session_id}: {intent}")
-            
+
+            # Track doubt events for analytics
+            if intent == MessageIntent.DOUBT:
+                try:
+                    topic = self.intent_classifier.get_practice_topic(latest_msg.content, context)
+                    self.analytics_service.track_doubt(
+                        user_id=user_id,
+                        institute_id=institute_id,
+                        topic=topic,
+                        content=latest_msg.content,
+                        session_id=session_id,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to track doubt analytics: {e}")
+
             # 6. Handle PRACTICE intent - generate quiz
             if intent == MessageIntent.PRACTICE:
                 async for event in self._handle_practice_request(
@@ -629,31 +678,34 @@ class AiChatAgentService:
                 return
             
             # 7. For DOUBT and GENERAL intents, continue with normal agentic processing
-            # Get conversation history (last 5 user messages = 10 total with responses)
-            history = self.message_repo.get_conversation_history(session_id, limit=10)
-            
+            # Get optimized conversation history (summary + recent messages)
+            optimized_history = self.context_window.get_optimized_history(session_id)
+
             # Fetch institute AI settings
             ai_settings = self.institute_settings.get_ai_settings(institute_id)
             institute_rules = self.institute_settings.format_rules_for_prompt(ai_settings)
             temperature = self.institute_settings.get_temperature(ai_settings)
-            
+
             # Build system prompt (with hint for DOUBT intent to be more explanatory)
             system_prompt = self._build_system_prompt(
-                institute_rules, context, user_id, institute_id, 
+                institute_rules, context, user_id, institute_id,
                 is_greeting=False,
                 is_doubt=(intent == MessageIntent.DOUBT)
             )
-            
+
             # 6. Build messages for LLM
             messages = [{"role": "system", "content": system_prompt}]
-            
-            # Add history
-            for msg in history:
-                if msg.message_type == "user":
-                    messages.append({"role": "user", "content": msg.content})
-                elif msg.message_type == "assistant":
-                    messages.append({"role": "assistant", "content": msg.content})
-            
+
+            # Add optimized history (may include summary as system message + recent user/assistant messages)
+            messages.extend(optimized_history)
+
+            # Add attachments to the latest user message if present (for multimodal/vision support)
+            if latest_msg.meta_data and latest_msg.meta_data.get("attachments"):
+                for i in range(len(messages) - 1, -1, -1):
+                    if messages[i].get("role") == "user":
+                        messages[i]["attachments"] = latest_msg.meta_data["attachments"]
+                        break
+
             # 7. Agentic loop with tool calling
             max_iterations = 5
             iteration = 0
@@ -663,26 +715,64 @@ class AiChatAgentService:
                 iteration += 1
                 logger.info(f"Agentic loop iteration {iteration} for session {session_id}")
                 
-                # Call LLM
+                # Call LLM with streaming for token-by-token output
                 try:
-                    response = await self.llm_client.chat_completion(
+                    full_content = ""
+                    tool_calls_result = None
+                    usage_data = None
+
+                    async for chunk in self.llm_client.chat_completion_stream(
                         messages=messages,
                         tools=tools,
                         temperature=temperature,
                         institute_id=institute_id,
                         user_id=user_id,
-                    )
-                    
-                    # Record usage
-                    self._record_token_usage(response, institute_id, user_id)
-                    
+                    ):
+                        if chunk["type"] == "token":
+                            full_content += chunk["content"]
+                            # Yield token event for real-time streaming
+                            yield {
+                                "event": "token",
+                                "data": {"content": chunk["content"]}
+                            }
+                        elif chunk["type"] == "tool_calls":
+                            tool_calls_result = chunk["tool_calls"]
+                        elif chunk["type"] == "done":
+                            usage_data = chunk
+
+                    # Record token usage
+                    if usage_data:
+                        self._record_token_usage({
+                            "usage": usage_data.get("usage"),
+                            "provider": usage_data.get("provider"),
+                            "model": usage_data.get("model"),
+                        }, institute_id, user_id)
+
                 except Exception as e:
                     logger.error(f"LLM call failed: {e}")
-                    # Yield error message
+                    # Provide specific message for 402 payment errors
+                    is_payment_error = "402" in str(e) or "Payment Required" in str(e)
+                    if is_payment_error:
+                        error_content = "AI service credits have been exhausted. Please contact your administrator to add more credits."
+                        logger.error(f"OpenRouter 402 error for session {session_id}, institute {institute_id}: {e}")
+                    else:
+                        error_content = "I encountered an error processing your request. Please try again."
+
+                    # Yield structured error event (consistent with outline/content endpoints)
+                    yield {
+                        "event": "error",
+                        "data": {
+                            "type": "ERROR",
+                            "code": 402 if is_payment_error else 500,
+                            "message": error_content,
+                        }
+                    }
+
+                    # Also save as assistant message for chat history
                     error_msg = self.message_repo.create_message(
                         session_id=session_id,
                         message_type="assistant",
-                        content="I encountered an error processing your request. Please try again.",
+                        content=error_content,
                     )
                     yield {
                         "event": "message",
@@ -695,15 +785,15 @@ class AiChatAgentService:
                         }
                     }
                     break
-                
+
                 # Check for tool calls
-                tool_calls = response.get("tool_calls")
-                
-                logger.info(f"LLM response received for session {session_id}, tool_calls: {bool(tool_calls)}, content: {bool(response.get('content'))}")
-                
+                tool_calls = tool_calls_result
+
+                logger.info(f"LLM response received for session {session_id}, tool_calls: {bool(tool_calls)}, content: {bool(full_content)}")
+
                 if not tool_calls:
-                    # No tool calls - final response
-                    final_content = response.get("content", "")
+                    # No tool calls - final response (tokens already streamed)
+                    final_content = full_content
                     logger.info(f"Final response for session {session_id}, content length: {len(final_content) if final_content else 0}")
                     if final_content:
                         logger.info(f"Creating assistant message for session {session_id}")
@@ -713,8 +803,8 @@ class AiChatAgentService:
                             content=final_content,
                         )
                         logger.info(f"Created message {msg.id}, yielding to SSE stream")
-                        
-                        # Yield the assistant message
+
+                        # Yield the complete assistant message (replaces streaming tokens on client)
                         yield {
                             "event": "message",
                             "data": {
@@ -837,14 +927,39 @@ class AiChatAgentService:
             
             # Update session last_active
             self.session_repo.update_last_active(session_id)
-            
+
+            # Check if conversation needs summarization (runs in background, non-blocking)
+            try:
+                if self.context_window.should_summarize(session_id):
+                    await self.context_window.generate_summary(session_id, institute_id, user_id)
+            except Exception as summary_err:
+                logger.warning(f"Non-critical: summary generation failed for {session_id}: {summary_err}")
+
         except Exception as e:
             logger.error(f"Error in agentic processing for session {session_id}: {e}")
-            # Yield error message
+            # Provide specific message for 402 payment errors
+            is_payment_error = "402" in str(e) or "Payment Required" in str(e)
+            if is_payment_error:
+                error_content = "AI service credits have been exhausted. Please contact your administrator to add more credits."
+                logger.error(f"OpenRouter 402 error for session {session_id}: {e}")
+            else:
+                error_content = "I encountered an error processing your request. Please try again."
+
+            # Yield structured error event (consistent with outline/content endpoints)
+            yield {
+                "event": "error",
+                "data": {
+                    "type": "ERROR",
+                    "code": 402 if is_payment_error else 500,
+                    "message": error_content,
+                }
+            }
+
+            # Also save as assistant message for chat history
             error_msg = self.message_repo.create_message(
                 session_id=session_id,
                 message_type="assistant",
-                content="I encountered an error processing your request. Please try again.",
+                content=error_content,
             )
             yield {
                 "event": "message",
@@ -898,22 +1013,64 @@ class AiChatAgentService:
                 }
             }
             
+            # Enrich context with user message (may contain Mathpix-extracted LaTeX)
+            quiz_context = dict(context)
+            if "context_data" not in quiz_context:
+                quiz_context["context_data"] = {}
+            # Append user message to content so quiz generator sees the full picture
+            existing_content = quiz_context["context_data"].get("content", "")
+            quiz_context["context_data"]["content"] = (
+                f"{existing_content}\n\nUser's request: {user_message}" if existing_content
+                else f"User's request: {user_message}"
+            )
+
             # Generate quiz
             quiz_data = await self.quiz_service.generate_quiz(
                 topic=topic,
-                context=context,
-                num_questions=5,
+                context=quiz_context,
+                num_questions=10,
                 difficulty="medium",
                 institute_id=institute_id,
                 user_id=user_id,
             )
             
+            # If quiz generation failed (0 questions), ask user to specify topic
+            if not quiz_data.questions:
+                fallback_msg = self.message_repo.create_message(
+                    session_id=session_id,
+                    message_type="assistant",
+                    content=(
+                        "I couldn't generate quiz questions for that. "
+                        "Could you tell me the specific topic you'd like to practice? "
+                        "For example:\n"
+                        "- \"Quiz me on quadratic equations\"\n"
+                        "- \"Practice questions on photosynthesis\"\n"
+                        "- \"Test me on Newton's laws\""
+                    ),
+                )
+                yield {
+                    "event": "message",
+                    "data": {
+                        "id": fallback_msg.id,
+                        "type": fallback_msg.message_type,
+                        "content": fallback_msg.content,
+                        "metadata": fallback_msg.meta_data,
+                        "created_at": fallback_msg.created_at.isoformat()
+                    }
+                }
+                # Reset status
+                yield {
+                    "event": "status",
+                    "data": {"ai_status": "idle"}
+                }
+                return
+
             # Store quiz for later evaluation
             self._active_quizzes[session_id] = quiz_data
-            
+
             # Prepare quiz data for frontend (strip correct answers)
             frontend_quiz_data = self.quiz_service.get_quiz_for_frontend(quiz_data)
-            
+
             # Create quiz message
             quiz_msg = self.message_repo.create_message(
                 session_id=session_id,
@@ -921,7 +1078,7 @@ class AiChatAgentService:
                 content=f"Here's your quiz on **{topic}**! Answer all {quiz_data.total_questions} questions and submit when ready.",
                 metadata={"quiz_data": frontend_quiz_data}
             )
-            
+
             yield {
                 "event": "message",
                 "data": {
@@ -932,7 +1089,7 @@ class AiChatAgentService:
                     "created_at": quiz_msg.created_at.isoformat()
                 }
             }
-            
+
             logger.info(f"Quiz generated for session {session_id}: {quiz_data.quiz_id}")
             
         except Exception as e:
@@ -1025,7 +1182,21 @@ class AiChatAgentService:
                 institute_id=institute_id,
                 user_id=user_id,
             )
-            
+
+            # Track quiz score for analytics
+            try:
+                quiz_topic = quiz_data.topic if quiz_data else "Unknown"
+                self.analytics_service.track_quiz_score(
+                    user_id=user_id,
+                    institute_id=institute_id,
+                    topic=quiz_topic,
+                    score=feedback.score,
+                    total=feedback.total,
+                    session_id=session_id,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to track quiz score analytics: {e}")
+
             # Build result summary message
             emoji = "🎉" if feedback.passed else "💪"
             result_text = f"""

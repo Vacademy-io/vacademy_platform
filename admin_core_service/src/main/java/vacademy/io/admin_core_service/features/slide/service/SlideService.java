@@ -744,6 +744,9 @@ public class SlideService {
             QuizSlide newQuizSlide = new QuizSlide();
             newQuizSlide.setId(UUID.randomUUID().toString());
             newQuizSlide.setTitle(quizSlide.getTitle());
+            newQuizSlide.setTimeLimitInMinutes(quizSlide.getTimeLimitInMinutes());
+            newQuizSlide.setMarksPerQuestion(quizSlide.getMarksPerQuestion() != null ? quizSlide.getMarksPerQuestion() : 1.0);
+            newQuizSlide.setNegativeMarking(quizSlide.getNegativeMarking() != null ? quizSlide.getNegativeMarking() : 0.0);
             newQuizSlide = quizSlideRepository.save(newQuizSlide);
             return newQuizSlide.getId();
         }

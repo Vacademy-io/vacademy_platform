@@ -98,6 +98,7 @@ public class CouponCode {
             .updatedAt(this.updatedAt)
             .canBeAdded(this.canBeAdded)
             .shortUrl(this.shortUrl)
+            .shortReferralLink(this.shortUrl)
             .build();
     }
 }

@@ -48,7 +48,7 @@ export const SlideRenderer: React.FC<SlideRendererProps> = ({ currentSlide, sess
         //   return <FeedbackInteraction questionData={currentSlide.added_question} ... />;
         // }
         return (
-            <div className={slideContainerStyle + " bg-slate-100 overflow-y-auto"}>
+            <div className={slideContainerStyle + " bg-transparent overflow-y-auto"}>
                  <QuizInteraction
                     key={currentSlide.id}
                     questionData={currentSlide.added_question}
@@ -56,6 +56,8 @@ export const SlideRenderer: React.FC<SlideRendererProps> = ({ currentSlide, sess
                     slideId={currentSlide.id}
                     username={sessionState.username}
                     studentAttemptsAllowed={sessionState.sessionData.student_attempts || 1}
+                    defaultSecondsForQuestion={sessionState.sessionData.default_seconds_for_question || 0}
+                    slideStartTimestamp={sessionState.sessionData.slide_start_timestamp || null}
                 />
             </div>
         );

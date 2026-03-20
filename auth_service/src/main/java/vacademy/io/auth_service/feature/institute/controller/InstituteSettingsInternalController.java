@@ -7,7 +7,7 @@ import vacademy.io.auth_service.feature.institute.dto.UpdateInstituteSettingsDTO
 import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
 
 @RestController
-@RequestMapping("/auth/internal/institute-settings")
+@RequestMapping("/auth-service/internal/institute-settings")
 public class InstituteSettingsInternalController {
 
     @Autowired

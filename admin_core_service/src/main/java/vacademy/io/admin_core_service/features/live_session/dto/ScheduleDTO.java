@@ -45,4 +45,6 @@ public interface ScheduleDTO {
     String getTimezone();
     Boolean getAllowRewind();
     Boolean getAllowPlayPause();
+    Boolean getDailyAttendance();
+    String getProviderRecordingsJson();
 }

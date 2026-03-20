@@ -31,4 +31,5 @@ public class CouponCodeDTO {
     private Timestamp updatedAt;
     private boolean canBeAdded;
     private String shortUrl;
+    private String shortReferralLink;
 }

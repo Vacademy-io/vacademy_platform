@@ -34,6 +34,8 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.Referral
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.ReferralOptionService;
+import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -69,6 +71,9 @@ public class EnrollInviteService {
     @Autowired
     private ShortUrlManagementService shortUrlManagementService;
 
+    @Autowired
+    private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
+
     @org.springframework.beans.factory.annotation.Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerBaseUrl;
 
@@ -99,7 +104,8 @@ public class EnrollInviteService {
         String shortUrl = shortUrlManagementService.createShortUrl(
                 destinationUrl,
                 SHORT_LINK_SOURCE_ENROLL_INVITE,
-                initialSavedEnrollInvite.getId());
+                initialSavedEnrollInvite.getId(),
+                initialSavedEnrollInvite.getInstituteId());
         if (shortUrl != null) {
             initialSavedEnrollInvite.setShortUrl(shortUrl);
             initialSavedEnrollInvite = repository.save(initialSavedEnrollInvite);
@@ -229,17 +235,31 @@ public class EnrollInviteService {
     }
 
     public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId,
-            EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
+            EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize, CustomUserDetails user) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
+        Page<EnrollInviteWithSessionsProjection> pageResult;
+
+        // Filter by faculty mapping: if user has EnrollInvite entries, scope to those only.
+        // No entries = full access.
+        List<String> allowedEnrollInviteIds = null;
+        if (user != null) {
+            List<String> accessIds = facultyMappingRepository
+                    .findEnrollInviteAccessIdsByUserIdAndInstituteId(
+                            user.getUserId(), instituteId, List.of("ACTIVE"));
+            if (!accessIds.isEmpty()) {
+                allowedEnrollInviteIds = accessIds;
+            }
+        }
+
         if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())) {
-            return repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,
+            pageResult = repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,
                     enrollInviteFilterDTO.getSearchName(),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     pageable);
         } else {
-            return repository.getEnrollInvitesWithFilters(instituteId,
+            pageResult = repository.getEnrollInvitesWithFilters(instituteId,
                     enrollInviteFilterDTO.getPackageSessionIds(),
                     enrollInviteFilterDTO.getPaymentOptionIds(),
                     enrollInviteFilterDTO.getTags(),
@@ -247,6 +267,17 @@ public class EnrollInviteService {
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     pageable);
         }
+
+        // Post-filter results if user is faculty-scoped
+        if (allowedEnrollInviteIds != null) {
+            final Set<String> allowedSet = new HashSet<>(allowedEnrollInviteIds);
+            List<EnrollInviteWithSessionsProjection> filtered = pageResult.getContent().stream()
+                    .filter(invite -> allowedSet.contains(invite.getId()))
+                    .toList();
+            return new org.springframework.data.domain.PageImpl<>(filtered, pageable, filtered.size());
+        }
+
+        return pageResult;
     }
 
     public EnrollInviteDTO findByEnrollInviteId(String enrollInviteId, String instituteId) {
@@ -432,6 +463,8 @@ public class EnrollInviteService {
     private EnrollInviteDTO buildFullEnrollInviteDTO(EnrollInvite enrollInvite, String instituteId,
             List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
         EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
+        dto.setShortUrl(
+                shortUrlManagementService.getAbsoluteShortUrl(enrollInvite.getInstituteId(), dto.getShortUrl()));
 
         // 1. Fetch and set Custom Fields
         dto.setInstituteCustomFields(instituteCustomFiledService.findCustomFieldsAsJson(
@@ -723,6 +756,8 @@ public class EnrollInviteService {
      */
     private EnrollInviteDTO convertToEnrollInviteDTO(EnrollInvite enrollInvite) {
         EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
+        dto.setShortUrl(
+                shortUrlManagementService.getAbsoluteShortUrl(enrollInvite.getInstituteId(), dto.getShortUrl()));
         return dto;
     }
 
@@ -750,7 +785,8 @@ public class EnrollInviteService {
         dto.setLearnerAccessDays(enrollInvite.getLearnerAccessDays());
         dto.setWebPageMetaDataJson(enrollInvite.getWebPageMetaDataJson());
         dto.setIsBundled(enrollInvite.getIsBundled());
-        dto.setShortUrl(enrollInvite.getShortUrl());
+        dto.setShortUrl(shortUrlManagementService.getAbsoluteShortUrl(enrollInvite.getInstituteId(),
+                enrollInvite.getShortUrl()));
         return dto;
     }
 

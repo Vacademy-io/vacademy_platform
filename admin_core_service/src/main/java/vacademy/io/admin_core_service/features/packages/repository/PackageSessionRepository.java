@@ -351,6 +351,26 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
 
     List<PackageSession> findByPackageEntity_IdAndStatus(String packageId, String status);
 
+    interface PackageSessionDetailProjection {
+        String getPackageSessionId();
+        String getPackageName();
+        String getLevelName();
+        String getSessionName();
+    }
+
+    @Query(value = """
+            SELECT ps.id AS packageSessionId,
+                   p.package_name AS packageName,
+                   l.level_name AS levelName,
+                   s.session_name AS sessionName
+            FROM package_session ps
+            JOIN package p ON ps.package_id = p.id
+            JOIN level l ON ps.level_id = l.id
+            JOIN session s ON ps.session_id = s.id
+            WHERE ps.id IN (:ids)
+            """, nativeQuery = true)
+    List<PackageSessionDetailProjection> findPackageSessionDetailsByIds(@Param("ids") List<String> ids);
+
     /**
      * Find child package sessions (subgroups) for a given parent batch.
      * Used when syncing subgroups on edit course.

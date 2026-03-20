@@ -29,4 +29,5 @@ public class EnrollInviteDTO {
     private List<PackageSessionToPaymentOptionDTO> packageSessionToPaymentOptions;
     private String settingJson;
     private String shortUrl;
+    private String subOrgId;
 }

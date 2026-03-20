@@ -20,4 +20,7 @@ public class PaymentLogDTO {
     private String paymentSpecificData;
     private Double paymentAmount;
     private String transactionId;
+    private String trackingId;
+    private String trackingSource;
+    private String orderStatus;
 }

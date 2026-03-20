@@ -105,14 +105,14 @@ public class CustomRoleService {
     }
 
     public List<CustomRoleDTO> getRolesForInstitute(String instituteId) {
+        // Return both system roles (institute_id IS NULL) and custom roles for this institute
+        List<Role> systemRoles = roleRepository.findAllByInstituteId(null);
         List<Role> customRoles = roleRepository.findAllByInstituteId(instituteId);
-        // We might also want to return system roles? User requirement said "Create
-        // customroles... per institute".
-        // Usually UI wants to see ALL available roles.
-        // Let's return just custom roles here as the name implies, or maybe all.
-        // For now, custom roles.
 
-        return customRoles.stream().map(this::mapToDTO).collect(Collectors.toList());
+        List<Role> allRoles = new java.util.ArrayList<>(systemRoles);
+        allRoles.addAll(customRoles);
+
+        return allRoles.stream().map(this::mapToDTO).collect(Collectors.toList());
     }
 
     private CustomRoleDTO mapToDTO(Role role) {

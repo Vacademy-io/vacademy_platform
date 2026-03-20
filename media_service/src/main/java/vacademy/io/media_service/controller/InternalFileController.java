@@ -130,6 +130,16 @@ public class InternalFileController {
         }
     }
 
+    @PostMapping("/get-signed-url")
+    public ResponseEntity<Map<String, String>> getInternalPreSignedUrl(
+            @RequestParam String fileName,
+            @RequestParam String fileType,
+            @RequestParam(defaultValue = "BBB_RECORDING") String source,
+            @RequestParam(defaultValue = "SYSTEM") String sourceId) {
+        var response = fileService.getPreSignedUrl(fileName, fileType, source, sourceId);
+        return ResponseEntity.ok(Map.of("id", response.getId(), "url", response.getUrl()));
+    }
+
     @PostMapping("/upload-file-custom-key")
     public ResponseEntity<FileDetailsDTO> uploadFileToAwsCustomKey(@RequestParam("file") MultipartFile file,
             @RequestParam("key") String key) {

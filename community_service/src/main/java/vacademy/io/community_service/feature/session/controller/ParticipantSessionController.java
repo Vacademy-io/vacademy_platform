@@ -2,9 +2,11 @@ package vacademy.io.community_service.feature.session.controller;
 
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import vacademy.io.community_service.feature.session.dto.admin.LeaderboardEntryDto;
 import vacademy.io.community_service.feature.session.dto.admin.LiveSessionDto;
 import vacademy.io.community_service.feature.session.dto.admin.ParticipantDto;
 
@@ -12,9 +14,10 @@ import vacademy.io.community_service.feature.session.dto.participant.MarkRespons
 import vacademy.io.community_service.feature.session.manager.LiveSessionService;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 @RestController
@@ -24,12 +27,18 @@ public class ParticipantSessionController {
     @Autowired
     LiveSessionService liveSessionService;
 
+    // Shared pool — replaces per-connection Executors.newSingleThreadScheduledExecutor()
+    // which created one daemon thread per student (1000 students = 1000 threads).
+    @Autowired
+    @Qualifier("sseHeartbeatScheduler")
+    private ScheduledExecutorService sseHeartbeatScheduler;
+
     @PostMapping("/get-details/{inviteCode}")
-    public ResponseEntity<LiveSessionDto> joinSession(@PathVariable String inviteCode, @RequestBody ParticipantDto participantDto) {
+    public ResponseEntity<LiveSessionDto> joinSession(@PathVariable String inviteCode,
+            @RequestBody ParticipantDto participantDto) {
         LiveSessionDto session = liveSessionService.getDetailsSession(inviteCode, participantDto);
         return ResponseEntity.ok(session);
     }
-
 
     @GetMapping("/get-updated-details/{sessionId}")
     public ResponseEntity<LiveSessionDto> getUpdatedSession(@PathVariable String sessionId) {
@@ -39,33 +48,28 @@ public class ParticipantSessionController {
 
     @GetMapping("/{sessionId}")
     public SseEmitter learnerStream(@PathVariable String sessionId, @RequestParam String username) {
-        SseEmitter emitter = new SseEmitter(3L * 60 * 60 * 1000); // 3 hours, for example
+        SseEmitter emitter = new SseEmitter(3L * 60 * 60 * 1000); // 3 hours
 
         liveSessionService.addStudentEmitter(sessionId, emitter, username);
 
-        final ScheduledExecutorService heartBeatExecutor = Executors.newSingleThreadScheduledExecutor();
+        // Schedule heartbeat on the shared pool; store the future so we can cancel it
+        // (not shut down the whole pool) when this specific emitter closes.
         Runnable heartbeatTask = () -> {
             try {
-                emitter.send(SseEmitter.event().name("learner_heartbeat").id(UUID.randomUUID().toString()).data("ping"));
-            } catch (IOException e) {
-                if (!heartBeatExecutor.isShutdown()) {
-                    heartBeatExecutor.shutdown();
-                }
+                emitter.send(
+                        SseEmitter.event().name("learner_heartbeat").id(UUID.randomUUID().toString()).data("ping"));
+            } catch (IOException | IllegalStateException ignored) {
+                // Emitter is already closed; the onCompletion/onTimeout/onError handler
+                // below will cancel this future.
             }
         };
-        heartBeatExecutor.scheduleAtFixedRate(heartbeatTask, 0, 30, TimeUnit.SECONDS);
+        ScheduledFuture<?> heartbeatFuture =
+                sseHeartbeatScheduler.scheduleAtFixedRate(heartbeatTask, 0, 30, TimeUnit.SECONDS);
 
-        emitter.onCompletion(() -> {
-            if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
-            // Service's addStudentEmitter handles app logic cleanup
-        });
-        emitter.onTimeout(() -> {
-            if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
-            // emitter.complete(); // SseEmitter infrastructure typically calls complete internally on timeout
-        });
-        emitter.onError(e -> {
-            if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
-        });
+        emitter.onCompletion(() -> heartbeatFuture.cancel(false));
+        emitter.onTimeout(() -> heartbeatFuture.cancel(false));
+        emitter.onError(e -> heartbeatFuture.cancel(false));
+
         return emitter;
     }
 
@@ -83,9 +87,15 @@ public class ParticipantSessionController {
             @PathVariable String sessionId,
             @PathVariable String slideId,
             @Valid @RequestBody MarkResponseRequestDto responseRequest) {
-        // Ensure username in request matches authenticated user if security is in place
-        // For now, using username from request body as specified.
         liveSessionService.recordParticipantResponse(sessionId, slideId, responseRequest);
         return ResponseEntity.ok().build();
+    }
+
+    // Leaderboard endpoint for participants
+    @GetMapping("/{sessionId}/leaderboard")
+    public ResponseEntity<List<LeaderboardEntryDto>> getParticipantLeaderboard(
+            @PathVariable String sessionId) {
+        List<LeaderboardEntryDto> leaderboard = liveSessionService.computeLeaderboard(sessionId);
+        return ResponseEntity.ok(leaderboard);
     }
 }

@@ -1,5 +1,5 @@
 // src/pages/EngageStreamPage.tsx
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useParams, useLocation, Navigate } from 'react-router-dom';
 import { useEngageSession } from '@/hooks/useEngageSession';
 import { SessionController } from '@/components/SessionController';
@@ -7,38 +7,133 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorMessage } from '@/components/errorMessage';
 import { type SessionDetailsResponse } from '@/types';
 
+const SESSION_STORAGE_KEY = 'engage_session_data';
+
+interface PersistedSessionData {
+  username: string;
+  inviteCode: string;
+  initialSessionData: SessionDetailsResponse;
+  savedAt: number;
+}
+
+/**
+ * Persist critical session data to sessionStorage so it survives
+ * page reloads caused by mobile browsers suspending and resuming tabs.
+ */
+function persistSessionData(data: PersistedSessionData) {
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn('[EngageStreamPage] Failed to persist session data:', e);
+  }
+}
+
+/**
+ * Recover session data from sessionStorage.
+ * Returns null if no data, data is expired (>3 hours), or inviteCode doesn't match.
+ */
+function recoverSessionData(inviteCode: string): PersistedSessionData | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: PersistedSessionData = JSON.parse(raw);
+    // Validate the data matches the current session
+    if (parsed.inviteCode !== inviteCode) return null;
+    // Expire after 3 hours
+    if (Date.now() - parsed.savedAt > 3 * 60 * 60 * 1000) {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch (e) {
+    console.warn('[EngageStreamPage] Failed to recover session data:', e);
+    return null;
+  }
+}
+
+// Minimal fallback session data used only to satisfy the hook call
+// when no real data is available (before redirecting).
+const EMPTY_SESSION: SessionDetailsResponse = {
+  session_id: '',
+  invite_code: '',
+  session_status: 'INIT',
+  current_slide_index: 0,
+  slides: { id: '', title: '', description: '', cover_file_id: '', added_slides: [], added_slides_count: 0 },
+  can_join_in_between: false,
+  allow_learner_hand_raise: false,
+  allow_after_start: false,
+  default_seconds_for_question: 0,
+  show_results_at_last_slide: false,
+  student_attempts: 1,
+  points_per_correct_answer: 0,
+  negative_marking_enabled: false,
+  negative_marks_per_wrong_answer: 0,
+  slide_start_timestamp: null,
+  excalidraw_data: null,
+  creation_time: '',
+  start_time: null,
+  end_time: null,
+};
+
 export const EngageStreamPage: React.FC = () => {
   const { inviteCode } = useParams<{ inviteCode: string }>();
   const location = useLocation();
   
   // Type assertion for location.state
-  const state = location.state as { username?: string; initialSessionData?: SessionDetailsResponse } | null;
-  const username = state?.username;
-  const initialSessionData = state?.initialSessionData;
+  const navState = location.state as { username?: string; initialSessionData?: SessionDetailsResponse } | null;
 
-  if (!inviteCode || !username || !initialSessionData) {
-    // If essential data is missing, redirect to join page or show error
-    // This might happen if the user directly navigates to this URL without going through JoinPage
-    console.warn("EngageStreamPage: Missing inviteCode, username, or initialSessionData. Redirecting.");
+  // Try to get data from location.state first, then fall back to sessionStorage
+  const resolvedData = useMemo(() => {
+    // Primary source: navigation state (from JoinPage)
+    if (navState?.username && navState?.initialSessionData && inviteCode) {
+      const data: PersistedSessionData = {
+        username: navState.username,
+        inviteCode,
+        initialSessionData: navState.initialSessionData,
+        savedAt: Date.now(),
+      };
+      // Persist for recovery on mobile browser reload
+      persistSessionData(data);
+      return data;
+    }
+
+    // Fallback: recover from sessionStorage
+    if (inviteCode) {
+      const recovered = recoverSessionData(inviteCode);
+      if (recovered) {
+        console.log('[EngageStreamPage] Recovered session from sessionStorage for user:', recovered.username);
+        return recovered;
+      }
+    }
+
+    return null;
+  }, [inviteCode, navState]);
+
+  // Determine if we have valid data to work with
+  const hasValidData = !!(resolvedData && inviteCode && resolvedData.initialSessionData.invite_code === inviteCode);
+
+  // Always call the hook (React rules of hooks), but use fallback data when invalid
+  const sessionState = useEngageSession({
+    inviteCode: inviteCode || '',
+    username: resolvedData?.username || '',
+    initialSessionData: resolvedData?.initialSessionData || EMPTY_SESSION,
+  });
+
+  // Now handle redirects AFTER the hook call
+  if (!inviteCode || !resolvedData) {
+    console.warn("EngageStreamPage: Missing inviteCode or session data. Redirecting.");
     return <Navigate to="/" replace />;
   }
 
-  if (initialSessionData.invite_code !== inviteCode) {
-    // Data mismatch, potentially stale state
+  if (!hasValidData) {
     console.warn("EngageStreamPage: Invite code mismatch. Redirecting.");
     return <Navigate to={`/?error=session_mismatch&code=${inviteCode}`} replace />;
   }
 
-  const sessionState = useEngageSession({ inviteCode, username, initialSessionData });
-
   if (sessionState.sseStatus === 'connecting' && !sessionState.sessionData?.session_id) {
-    // This covers the brief moment useEngageSession is initializing before first SSE connection attempt.
-    // initialSessionData should prevent this usually, but as a fallback.
     return <LoadingSpinner fullScreen text="Preparing your session..." />;
   }
   
-  // If useEngageSession itself returns a critical error (e.g. bad initial props)
-  // This is different from SSE connection errors handled within SessionController.
   if (sessionState.sseStatus === 'error' && !sessionState.sessionData) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden p-4">

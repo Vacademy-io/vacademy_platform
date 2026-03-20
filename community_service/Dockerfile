@@ -37,4 +37,4 @@ COPY --from=build /build/target/community_service.jar community_service.jar
 EXPOSE 8073
 
 # Define the command to run the application
-CMD ["java", "-jar", "-Dspring.profiles.active=stage", "community_service.jar"]
+CMD ["java", "-Xms256m", "-Xmx768m", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=200", "-XX:+UseContainerSupport", "-Dspring.profiles.active=stage", "-jar", "community_service.jar"]

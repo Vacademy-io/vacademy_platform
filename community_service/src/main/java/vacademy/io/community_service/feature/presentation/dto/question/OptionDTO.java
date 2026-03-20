@@ -42,6 +42,7 @@ public class OptionDTO {
         this.questionId = option.getQuestion() != null ? option.getQuestion().getId() : null; // Get question ID if available
         this.text = new AssessmentRichTextDataDTO(option.getText());
         this.mediaId = option.getMediaId();
+        this.optionOrder = option.getOptionOrder();
         this.createdOn = option.getCreatedOn() != null ? option.getCreatedOn().toString() : null; // Convert Timestamp to String
         this.updatedOn = option.getUpdatedOn() != null ? option.getUpdatedOn().toString() : null; // Convert Timestamp to String
         this.explanationText = new AssessmentRichTextDataDTO(option.getExplanationTextData());

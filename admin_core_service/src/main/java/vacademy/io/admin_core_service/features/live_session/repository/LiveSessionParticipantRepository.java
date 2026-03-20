@@ -308,9 +308,21 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             @Param("endDate") LocalDate endDate
     );
 
+    interface SessionBatchProjection {
+        String getSessionId();
+        String getSourceId();
+    }
+
     @Query(value = """
-    SELECT 
-        CASE 
+        SELECT lsp.session_id AS sessionId, lsp.source_id AS sourceId
+        FROM live_session_participants lsp
+        WHERE lsp.session_id IN (:sessionIds) AND lsp.source_type = 'BATCH'
+        """, nativeQuery = true)
+    List<SessionBatchProjection> findBatchSourceIdsBySessionIds(@Param("sessionIds") List<String> sessionIds);
+
+    @Query(value = """
+    SELECT
+        CASE
             WHEN total_days = 0 THEN 0
             ELSE ROUND((attended_days * 100.0) / total_days, 2)
         END AS attendance_percentage

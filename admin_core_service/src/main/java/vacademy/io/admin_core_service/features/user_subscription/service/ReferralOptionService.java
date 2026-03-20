@@ -67,6 +67,9 @@ public class ReferralOptionService {
         if (referralOptionDTO.getStatus() != null) {
             referralOption.setStatus(referralOptionDTO.getStatus());
         }
+        if (referralOptionDTO.getAllowCombineOffers() != null) {
+            referralOption.setAllowCombineOffers(referralOptionDTO.getAllowCombineOffers());
+        }
 
         referralOption.setReferrerDiscountJson(referralOptionDTO.getReferrerDiscountJson());
         referralOption.setRefereeDiscountJson(referralOptionDTO.getRefereeDiscountJson());

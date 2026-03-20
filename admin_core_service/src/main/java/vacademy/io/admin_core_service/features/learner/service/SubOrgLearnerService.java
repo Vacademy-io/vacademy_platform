@@ -16,6 +16,14 @@ import vacademy.io.admin_core_service.features.common.service.CustomFieldValueSe
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
+import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
+import vacademy.io.admin_core_service.features.faculty.dto.AddUserAccessDTO;
+import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSubOrg;
+import vacademy.io.admin_core_service.features.institute_learner.enums.StudentSubOrgLinkType;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSubOrgRepository;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -41,6 +49,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.Random;
+import java.util.Calendar;
 
 @Slf4j
 @Service
@@ -58,6 +67,9 @@ public class SubOrgLearnerService {
     private final WorkflowTriggerService workflowTriggerService;
     private final UserPlanRepository userPlanRepository;
     private final EnrollInviteRepository enrollInviteRepository;
+    private final StudentSubOrgRepository studentSubOrgRepository;
+    private final PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
+    private final FacultyService facultyService;
 
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
@@ -310,17 +322,27 @@ public class SubOrgLearnerService {
         // 6. Validate no duplicate enrollment
         validateNoDuplicateEnrollment(user.getId(), request);
 
-        // 7. Find root admin plan id
-        String rootAdminPlanId = findRootAdminPlanId(request.getSubOrgId(), request.getPackageSessionId());
+        // 7. Create individual UserPlan for the learner (linked to scoped FREE invite)
+        String learnerUserPlanId = createLearnerUserPlan(user.getId(), request.getSubOrgId(),
+                request.getPackageSessionId());
 
-        // 8. Create mapping
+        // 8. Create mapping (using learner's own UserPlan, not root admin's)
         StudentSessionInstituteGroupMapping mapping = createMapping(request, user, packageSession, subOrg,
-                rootAdminPlanId);
+                learnerUserPlanId);
         mapping = mappingRepository.save(mapping);
+
+        // 9. Create student_sub_org junction entry
+        createStudentSubOrgEntry(user.getId(), subOrg, request.getCommaSeparatedOrgRoles());
+
+        // 10. Sync faculty mapping for sub-org admins (enables HAS_FACULTY_ASSIGNED scoping)
+        if (isAdminRole(request.getCommaSeparatedOrgRoles())) {
+            syncFacultyMappingForSubOrgAdmin(user, request.getPackageSessionId(),
+                    request.getSubOrgId(), request.getCommaSeparatedOrgRoles());
+        }
 
         log.info("Created mapping with ID: {} for user: {}", mapping.getId(), user.getId());
         UserDTO adminDTO = authService.getUsersFromAuthServiceByUserIds(List.of(admin.getUserId())).get(0);
-        // 8. Save custom fields if provided
+        // 10. Save custom fields if provided
         if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
             // Save custom fields for the mapping entity
             customFieldValueService.addCustomFieldValue(
@@ -745,6 +767,117 @@ public class SubOrgLearnerService {
                 (memberCountLimit - currentMemberCount - 1));
     }
 
+    /**
+     * Creates an individual UserPlan for a sub-org learner, linked to the scoped FREE invite.
+     * Falls back to rootAdminPlanId if no scoped invite exists.
+     */
+    private String createLearnerUserPlan(String userId, String subOrgId, String packageSessionId) {
+        Optional<EnrollInvite> scopedInviteOpt = enrollInviteRepository
+                .findScopedInviteForSubOrgAndPackageSession(subOrgId, packageSessionId);
+
+        if (scopedInviteOpt.isEmpty()) {
+            log.warn("No scoped FREE invite found for sub-org={}, ps={}. Falling back to rootAdminPlanId.",
+                    subOrgId, packageSessionId);
+            return findRootAdminPlanId(subOrgId, packageSessionId);
+        }
+
+        EnrollInvite scopedInvite = scopedInviteOpt.get();
+
+        // Resolve PaymentOption and PaymentPlan from the scoped invite
+        // The scoped invite has a linked PaymentOption via the mapping table
+        UserPlan learnerPlan = new UserPlan();
+        learnerPlan.setUserId(userId);
+        learnerPlan.setSource(UserPlanSourceEnum.SUB_ORG.name());
+        learnerPlan.setSubOrgId(subOrgId);
+        learnerPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+        learnerPlan.setStartDate(new Date());
+        learnerPlan.setEnrollInviteId(scopedInvite.getId());
+
+        // Try to find the PaymentPlan from the scoped invite's linked PaymentOption
+        try {
+            var inviteMappings = packageSessionEnrollInviteToPaymentOptionService
+                    .findByInvite(scopedInvite);
+            for (var mapping : inviteMappings) {
+                if (mapping.getPaymentOption() != null) {
+                    learnerPlan.setPaymentOptionId(mapping.getPaymentOption().getId());
+                    if (mapping.getPaymentOption().getPaymentPlans() != null
+                            && !mapping.getPaymentOption().getPaymentPlans().isEmpty()) {
+                        PaymentPlan plan = mapping.getPaymentOption().getPaymentPlans().get(0);
+                        learnerPlan.setPaymentPlanId(plan.getId());
+                        // Set end date based on validity
+                        if (plan.getValidityInDays() != null) {
+                            Calendar cal = Calendar.getInstance();
+                            cal.add(Calendar.DAY_OF_YEAR, plan.getValidityInDays());
+                            learnerPlan.setEndDate(cal.getTime());
+                        }
+                    }
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve PaymentPlan from scoped invite: {}", e.getMessage());
+        }
+
+        learnerPlan = userPlanRepository.save(learnerPlan);
+        log.info("Created individual UserPlan id={} for learner={} in sub-org={}",
+                learnerPlan.getId(), userId, subOrgId);
+        return learnerPlan.getId();
+    }
+
+    /**
+     * Creates a student_sub_org junction entry if one doesn't already exist.
+     */
+    private void createStudentSubOrgEntry(String userId, Institute subOrg, String orgRoles) {
+        Optional<StudentSubOrg> existing = studentSubOrgRepository
+                .findByUserIdAndSubOrgId(userId, subOrg.getId());
+        if (existing.isPresent()) {
+            log.info("student_sub_org entry already exists for user={}, sub-org={}", userId, subOrg.getId());
+            return;
+        }
+
+        // Find student record
+        Optional<Student> studentOpt = instituteStudentRepository.findTopByUserIdOrderByCreatedAtDesc(userId);
+        String studentId = studentOpt.map(Student::getId).orElse(userId);
+
+        String linkType = StudentSubOrgLinkType.DIRECT.name();
+        StudentSubOrg entry = new StudentSubOrg(studentId, userId, subOrg, linkType);
+        studentSubOrgRepository.save(entry);
+        log.info("Created student_sub_org entry for user={}, sub-org={}, linkType={}",
+                userId, subOrg.getId(), linkType);
+    }
+
+    /**
+     * Check if the roles string contains ADMIN or ROOT_ADMIN
+     */
+    private boolean isAdminRole(String commaSeparatedOrgRoles) {
+        if (!StringUtils.hasText(commaSeparatedOrgRoles)) return false;
+        String upper = commaSeparatedOrgRoles.toUpperCase();
+        return upper.contains(SubOrgRoles.ADMIN.name()) || upper.contains(SubOrgRoles.ROOT_ADMIN.name());
+    }
+
+    /**
+     * Creates a FacultySubjectPackageSessionMapping for a sub-org admin so that
+     * the HAS_FACULTY_ASSIGNED permission system scopes their package sessions.
+     */
+    private void syncFacultyMappingForSubOrgAdmin(UserDTO user, String packageSessionId,
+                                                   String subOrgId, String orgRoles) {
+        AddUserAccessDTO accessDTO = AddUserAccessDTO.builder()
+                .userId(user.getId())
+                .packageSessionId(packageSessionId)
+                .name(user.getFullName())
+                .status("ACTIVE")
+                .userType(orgRoles)
+                .accessType("PACKAGE_SESSION")
+                .accessId(packageSessionId)
+                .accessPermission("FULL")
+                .linkageType("SUB_ORG")
+                .suborgId(subOrgId)
+                .build();
+        facultyService.grantUserAccess(accessDTO);
+        log.info("Synced faculty mapping for sub-org admin user={}, packageSession={}, subOrg={}",
+                user.getId(), packageSessionId, subOrgId);
+    }
+
     @Transactional(readOnly = true)
     public SubOrgAdminsResponseDTO getSubOrgAdmins(String userId, String packageSessionId, String subOrgId) {
         log.info("Fetching admins for packageSessionId: {}, subOrgId: {}", packageSessionId, subOrgId);
@@ -767,6 +900,29 @@ public class SubOrgLearnerService {
         return SubOrgAdminsResponseDTO.builder()
                 .userId(userId)
                 .packageSessionId(packageSessionId)
+                .subOrgId(subOrgId)
+                .admins(admins)
+                .totalAdmins(admins.size())
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public SubOrgAdminsResponseDTO getAllAdminsBySubOrg(String subOrgId) {
+        log.info("Fetching all admins for subOrgId: {}", subOrgId);
+
+        List<Object[]> adminResults = mappingRepository.findAdminsBySubOrg(subOrgId);
+
+        List<AdminDetailsDTO> admins = adminResults.stream()
+                .map(result -> AdminDetailsDTO.builder()
+                        .userId((String) result[0])
+                        .name((String) result[1])
+                        .role((String) result[2])
+                        .build())
+                .collect(Collectors.toList());
+
+        log.info("Found {} admins for subOrgId: {}", admins.size(), subOrgId);
+
+        return SubOrgAdminsResponseDTO.builder()
                 .subOrgId(subOrgId)
                 .admins(admins)
                 .totalAdmins(admins.size())

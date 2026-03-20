@@ -17,6 +17,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 public class NotificationTemplateVariables {
 
         // User details
+        private String userId;
         private String userName;
         private String userEmail;
         private String userMobile;
@@ -53,6 +54,7 @@ public class NotificationTemplateVariables {
         // Referral template variables
         private String name; // User's name for greeting
         private String referralLink; // The referral link (same as learnerInvitationResponseLink)
+        private String shortReferralLink; // The short URL for referral link
         private String refCode;
         private String inviteCode; // The invite code
         private String themeColor; // Theme color from institute
@@ -87,6 +89,7 @@ public class NotificationTemplateVariables {
 
                 return NotificationTemplateVariables.builder()
                                 // User details
+                                .userId(user.getId())
                                 .userName(user.getUsername())
                                 .userEmail(user.getEmail())
                                 .userMobile(user.getMobileNumber())
@@ -124,6 +127,7 @@ public class NotificationTemplateVariables {
                                 // Referral template variables (will be set separately)
                                 .name("")
                                 .referralLink("")
+                                .shortReferralLink("")
                                 .inviteCode("")
                                 .themeColor("#FF9800") // Default orange color
                                 .build();

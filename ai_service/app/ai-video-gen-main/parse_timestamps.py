@@ -3,6 +3,7 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
@@ -14,9 +15,18 @@ if LOCAL_DEPS_DIR.exists() and str(LOCAL_DEPS_DIR) not in sys.path:
 PHONE_TOKEN_RE = re.compile(r"^[A-Z]{1,3}\d?$")
 SILENCE_PHONE = "sil"
 
+# Unicode categories that are part of a word (letters, marks, numbers)
+_WORD_CATEGORIES = frozenset({
+    "Lu", "Ll", "Lt", "Lm", "Lo",  # Letters
+    "Mn", "Mc", "Me",               # Combining marks (virama, matras, anusvara, etc.)
+    "Nd", "Nl", "No",               # Numbers
+})
+
 
 def is_word_char(ch: str) -> bool:
-    return ch.isalnum() or ch in {"'", "-"}
+    if ch in {"'", "-", "\u200d"}:   # ASCII apostrophe, hyphen, ZWJ
+        return True
+    return unicodedata.category(ch) in _WORD_CATEGORIES
 
 
 def words_from_alignment(characters, starts: Sequence[float], ends: Sequence[float]) -> List[Dict[str, Any]]:

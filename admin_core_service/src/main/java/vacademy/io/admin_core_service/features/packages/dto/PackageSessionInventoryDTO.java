@@ -8,4 +8,5 @@ import lombok.Data;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class PackageSessionInventoryDTO {
     private Integer maxSeats;
+    private Integer availableSlots;
 }

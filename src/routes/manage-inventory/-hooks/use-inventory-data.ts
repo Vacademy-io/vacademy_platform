@@ -44,8 +44,8 @@ export const useUpdateCapacity = () => {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ packageSessionId, maxSeats }: { packageSessionId: string; maxSeats: number | null }) =>
-            updateInventoryCapacity(packageSessionId, maxSeats),
+        mutationFn: ({ packageSessionId, maxSeats, availableSlots }: { packageSessionId: string; maxSeats: number | null; availableSlots: number | null }) =>
+            updateInventoryCapacity(packageSessionId, maxSeats, availableSlots),
         onSuccess: (_, variables) => {
             // Invalidate both single and batch queries
             queryClient.invalidateQueries({ queryKey: ['inventoryAvailability', variables.packageSessionId] });

@@ -9,6 +9,7 @@ export interface InventoryAvailability {
 
 export interface UpdateCapacityRequest {
     max_seats: number | null;
+    available_slots: number | null;
 }
 
 export interface PackageSessionInventory {

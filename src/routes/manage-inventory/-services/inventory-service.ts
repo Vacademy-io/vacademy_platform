@@ -27,9 +27,10 @@ export const getInventoryAvailability = async (
  */
 export const updateInventoryCapacity = async (
     packageSessionId: string,
-    maxSeats: number | null
+    maxSeats: number | null,
+    availableSlots: number | null
 ): Promise<any> => {
-    const payload: UpdateCapacityRequest = { max_seats: maxSeats };
+    const payload: UpdateCapacityRequest = { max_seats: maxSeats, available_slots: availableSlots };
     const response = await authenticatedAxiosInstance({
         method: 'PUT',
         url: `${INVENTORY_BASE(packageSessionId)}/update-capacity`,

@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, createContext, useContext } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { MyTable, TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -41,7 +41,7 @@ const ORDER_STATUS_COLOR_MAP: Record<string, string> = {
     DELIVERED: 'bg-green-50 text-green-700 border-green-300',
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PaymentLogsTableProps {
     data: PaymentLogsResponse | undefined;
@@ -51,9 +51,7 @@ interface PaymentLogsTableProps {
     onPageChange: (page: number) => void;
     packageSessions?: Record<string, string>;
     hasOrgAssociatedBatches: boolean;
-    /** When true, hides the User column (e.g. when showing logs for a single student) */
     hideUserColumn?: boolean;
-    /** Called after a successful tracking update so the parent can refetch */
     onRefresh?: () => void;
 }
 
@@ -64,6 +62,178 @@ interface EditingState {
     orderStatus: string;
     isSaving: boolean;
 }
+
+// ─── Editing Context ──────────────────────────────────────────────────────────
+// Cell components consume this context to read/write editing state.
+// Because the cells are separate React components, they re-render independently
+// when context changes — WITHOUT the column definitions needing to change.
+
+interface EditingContextType {
+    editing: EditingState | null;
+    setEditing: (state: EditingState | null) => void;
+    onSave: (entry: PaymentLogEntry) => void;
+    onStartEdit: (entry: PaymentLogEntry) => void;
+    onCancel: () => void;
+}
+
+const EditingContext = createContext<EditingContextType>({
+    editing: null,
+    setEditing: () => {},
+    onSave: () => {},
+    onStartEdit: () => {},
+    onCancel: () => {},
+});
+
+// ─── Editable Cell Components ─────────────────────────────────────────────────
+// These are standalone React components rendered inside column cells.
+// They use useContext(EditingContext) so they re-render when editing state
+// changes, but the column definitions themselves stay stable.
+
+function TrackingIdCell({ entry }: { entry: PaymentLogEntry }) {
+    const { editing, setEditing } = useContext(EditingContext);
+    const isEditing = editing?.rowId === entry.payment_log.id;
+
+    if (isEditing && editing) {
+        return (
+            <Input
+                value={editing.trackingId}
+                onChange={(e) =>
+                    setEditing({ ...editing, trackingId: e.target.value })
+                }
+                placeholder="Enter tracking ID"
+                className="h-8 text-xs"
+                disabled={editing.isSaving}
+            />
+        );
+    }
+
+    return (
+        <div className="font-mono text-xs text-gray-600">
+            {entry.payment_log.tracking_id || '—'}
+        </div>
+    );
+}
+
+function TrackingSourceCell({ entry }: { entry: PaymentLogEntry }) {
+    const { editing, setEditing } = useContext(EditingContext);
+    const isEditing = editing?.rowId === entry.payment_log.id;
+
+    if (isEditing && editing) {
+        return (
+            <Input
+                value={editing.trackingSource}
+                onChange={(e) =>
+                    setEditing({ ...editing, trackingSource: e.target.value })
+                }
+                placeholder="Enter source"
+                className="h-8 text-xs"
+                disabled={editing.isSaving}
+            />
+        );
+    }
+
+    return (
+        <div className="text-xs text-gray-600">
+            {entry.payment_log.tracking_source || '—'}
+        </div>
+    );
+}
+
+function OrderStatusCell({ entry }: { entry: PaymentLogEntry }) {
+    const { editing, setEditing } = useContext(EditingContext);
+    const isEditing = editing?.rowId === entry.payment_log.id;
+
+    if (isEditing && editing) {
+        return (
+            <Select
+                value={editing.orderStatus}
+                onValueChange={(val) =>
+                    setEditing({ ...editing, orderStatus: val })
+                }
+                disabled={editing.isSaving}
+            >
+                <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                    {ORDER_STATUS_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        );
+    }
+
+    const status = entry.payment_log.order_status;
+    if (!status) {
+        return <span className="text-xs text-gray-400">—</span>;
+    }
+
+    const colorClasses =
+        ORDER_STATUS_COLOR_MAP[status] || 'bg-gray-100 text-gray-700 border-gray-300';
+    const label = ORDER_STATUS_LABEL_MAP[status] || status.replace(/_/g, ' ');
+
+    return (
+        <span
+            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${colorClasses}`}
+        >
+            {label}
+        </span>
+    );
+}
+
+function ActionsCell({ entry }: { entry: PaymentLogEntry }) {
+    const { editing, onSave, onStartEdit, onCancel } = useContext(EditingContext);
+    const isPaid = entry.current_payment_status === 'PAID';
+    const isEditing = editing?.rowId === entry.payment_log.id;
+
+    if (!isPaid) {
+        return <span className="text-xs text-gray-300">—</span>;
+    }
+
+    if (isEditing && editing) {
+        return (
+            <div className="flex items-center gap-1">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
+                    onClick={() => onSave(entry)}
+                    disabled={editing.isSaving}
+                    title="Save"
+                >
+                    <FloppyDisk size={16} weight="bold" />
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                    onClick={onCancel}
+                    disabled={editing.isSaving}
+                    title="Cancel"
+                >
+                    <X size={16} weight="bold" />
+                </Button>
+            </div>
+        );
+    }
+
+    return (
+        <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            onClick={() => onStartEdit(entry)}
+            title="Edit tracking info"
+        >
+            <PencilSimple size={16} />
+        </Button>
+    );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const getStatusBadgeVariant = (
     status: string
@@ -110,7 +280,40 @@ const formatRelativeTime = (dateString: string) => {
     }
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Static Columns (defined outside component — never recreated) ─────────
+
+const trackingIdColumn: ColumnDef<PaymentLogEntry> = {
+    id: 'tracking_id',
+    header: 'Tracking ID',
+    accessorFn: (row) => row?.payment_log?.tracking_id || '',
+    cell: ({ row }) => <TrackingIdCell entry={row.original} />,
+    size: 150,
+};
+
+const trackingSourceColumn: ColumnDef<PaymentLogEntry> = {
+    id: 'tracking_source',
+    header: 'Tracking Source',
+    accessorFn: (row) => row?.payment_log?.tracking_source || '',
+    cell: ({ row }) => <TrackingSourceCell entry={row.original} />,
+    size: 140,
+};
+
+const orderStatusColumn: ColumnDef<PaymentLogEntry> = {
+    id: 'order_status',
+    header: 'Order Status',
+    accessorFn: (row) => row?.payment_log?.order_status || '',
+    cell: ({ row }) => <OrderStatusCell entry={row.original} />,
+    size: 160,
+};
+
+const actionsColumn: ColumnDef<PaymentLogEntry> = {
+    id: 'tracking_actions',
+    header: 'Actions',
+    cell: ({ row }) => <ActionsCell entry={row.original} />,
+    size: 80,
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function PaymentLogsTable({
     data,
@@ -125,7 +328,7 @@ export function PaymentLogsTable({
     const { toast } = useToast();
     const [editing, setEditing] = useState<EditingState | null>(null);
 
-    const startEditing = useCallback((entry: PaymentLogEntry) => {
+    const onStartEdit = useCallback((entry: PaymentLogEntry) => {
         setEditing({
             rowId: entry.payment_log.id,
             trackingId: entry.payment_log.tracking_id || '',
@@ -135,86 +338,101 @@ export function PaymentLogsTable({
         });
     }, []);
 
-    const cancelEditing = useCallback(() => {
+    const onCancel = useCallback(() => {
         setEditing(null);
     }, []);
 
-    const handleSave = useCallback(
+    const onSave = useCallback(
         async (entry: PaymentLogEntry) => {
-            if (!editing) return;
+            // Read latest editing state directly — no stale closures
+            setEditing((currentEditing) => {
+                if (!currentEditing) return null;
 
-            const originalTrackingId = entry.payment_log.tracking_id || '';
-            const originalTrackingSource = entry.payment_log.tracking_source || '';
-            const originalOrderStatus = entry.payment_log.order_status || '';
+                const originalTrackingId = entry.payment_log.tracking_id || '';
+                const originalTrackingSource = entry.payment_log.tracking_source || '';
+                const originalOrderStatus = entry.payment_log.order_status || '';
 
-            const hasChanges =
-                editing.trackingId !== originalTrackingId ||
-                editing.trackingSource !== originalTrackingSource ||
-                editing.orderStatus !== originalOrderStatus;
+                const hasChanges =
+                    currentEditing.trackingId !== originalTrackingId ||
+                    currentEditing.trackingSource !== originalTrackingSource ||
+                    currentEditing.orderStatus !== originalOrderStatus;
 
-            if (!hasChanges) {
-                // Nothing changed — just exit edit mode
-                setEditing(null);
-                return;
-            }
+                if (!hasChanges) {
+                    return null; // exit edit mode
+                }
 
-            // Validate: all three must be non-empty if any has changed
-            if (!editing.trackingId.trim()) {
-                toast({
-                    title: 'Validation Error',
-                    description: 'Tracking ID must not be empty.',
-                    variant: 'destructive',
-                });
-                return;
-            }
-            if (!editing.trackingSource.trim()) {
-                toast({
-                    title: 'Validation Error',
-                    description: 'Tracking Source must not be empty.',
-                    variant: 'destructive',
-                });
-                return;
-            }
-            if (!editing.orderStatus) {
-                toast({
-                    title: 'Validation Error',
-                    description: 'Order Status must be selected.',
-                    variant: 'destructive',
-                });
-                return;
-            }
+                // Validate
+                if (!currentEditing.trackingId.trim()) {
+                    toast({
+                        title: 'Validation Error',
+                        description: 'Tracking ID must not be empty.',
+                        variant: 'destructive',
+                    });
+                    return currentEditing;
+                }
+                if (!currentEditing.trackingSource.trim()) {
+                    toast({
+                        title: 'Validation Error',
+                        description: 'Tracking Source must not be empty.',
+                        variant: 'destructive',
+                    });
+                    return currentEditing;
+                }
+                if (!currentEditing.orderStatus) {
+                    toast({
+                        title: 'Validation Error',
+                        description: 'Order Status must be selected.',
+                        variant: 'destructive',
+                    });
+                    return currentEditing;
+                }
 
-            setEditing((prev) => (prev ? { ...prev, isSaving: true } : null));
+                // Fire the API call (async, outside the setState)
+                const doSave = async () => {
+                    try {
+                        await updatePaymentLogTracking({
+                            payment_log_id: entry.payment_log.id,
+                            tracking_id: currentEditing.trackingId.trim(),
+                            tracking_source: currentEditing.trackingSource.trim(),
+                            order_status: currentEditing.orderStatus,
+                        });
 
-            try {
-                await updatePaymentLogTracking({
-                    payment_log_id: entry.payment_log.id,
-                    tracking_id: editing.trackingId.trim(),
-                    tracking_source: editing.trackingSource.trim(),
-                    order_status: editing.orderStatus,
-                });
+                        toast({
+                            title: 'Success',
+                            description: 'Tracking info updated successfully.',
+                        });
 
-                toast({
-                    title: 'Success',
-                    description: 'Tracking info updated successfully.',
-                });
+                        setEditing(null);
+                        onRefresh?.();
+                    } catch (err: unknown) {
+                        const message =
+                            err instanceof Error
+                                ? err.message
+                                : 'Failed to update tracking info.';
+                        toast({
+                            title: 'Error',
+                            description: message,
+                            variant: 'destructive',
+                        });
+                        setEditing((prev) =>
+                            prev ? { ...prev, isSaving: false } : null
+                        );
+                    }
+                };
 
-                setEditing(null);
-                onRefresh?.();
-            } catch (err: unknown) {
-                const message =
-                    err instanceof Error
-                        ? err.message
-                        : 'Failed to update tracking info.';
-                toast({
-                    title: 'Error',
-                    description: message,
-                    variant: 'destructive',
-                });
-                setEditing((prev) => (prev ? { ...prev, isSaving: false } : null));
-            }
+                doSave();
+
+                // Set isSaving immediately
+                return { ...currentEditing, isSaving: true };
+            });
         },
-        [editing, toast, onRefresh]
+        [toast, onRefresh]
+    );
+
+    // Context value — cell components consume this
+    const editingContextValue = useMemo<EditingContextType>(
+        () => ({ editing, setEditing, onSave, onStartEdit, onCancel }),
+        [editing, onSave, onStartEdit, onCancel]
     );
 
     // Transform API response to TableData format
@@ -230,6 +448,7 @@ export function PaymentLogsTable({
         };
     }, [data]);
 
+    // Columns — only depends on layout flags, NOT editing state
     const columns = useMemo<ColumnDef<PaymentLogEntry>[]>(
         () => [
             {
@@ -269,14 +488,14 @@ export function PaymentLogsTable({
                       } as ColumnDef<PaymentLogEntry>,
                   ]
                 : []),
-            // Conditionally add Organization Name column if institute has org-associated batches
             ...(hasOrgAssociatedBatches
                 ? [
                       {
                           id: 'org_name',
                           header: 'Organization Name',
                           accessorFn: (row: PaymentLogEntry) =>
-                              row?.user_plan?.sub_org_details?.name || '',                          cell: ({ row }: { row: { original: PaymentLogEntry } }) => {
+                              row?.user_plan?.sub_org_details?.name || '',
+                          cell: ({ row }: { row: { original: PaymentLogEntry } }) => {
                               const userPlan = row.original?.user_plan;
                               const source = userPlan?.source;
                               const orgDetails = userPlan?.sub_org_details;
@@ -297,7 +516,6 @@ export function PaymentLogsTable({
                                       );
                                   }
                               }
-                              // For USER source or SUB_ORG without details, show N/A
                               return (
                                   <div className="text-xs text-gray-500 italic">N/A</div>
                               );
@@ -397,182 +615,11 @@ export function PaymentLogsTable({
                 size: 140,
             },
 
-            // ─── Tracking Columns (inline-editable) ────────────────────────
-
-            {
-                id: 'tracking_id',
-                header: 'Tracking ID',
-                accessorFn: (row) => row?.payment_log?.tracking_id || '',
-                cell: ({ row }) => {
-                    const entry = row.original;
-                    const isEditing = editing?.rowId === entry.payment_log.id;
-
-                    if (isEditing) {
-                        return (
-                            <Input
-                                value={editing.trackingId}
-                                onChange={(e) =>
-                                    setEditing((prev) =>
-                                        prev ? { ...prev, trackingId: e.target.value } : null
-                                    )
-                                }
-                                placeholder="Enter tracking ID"
-                                className="h-8 text-xs"
-                                disabled={editing.isSaving}
-                            />
-                        );
-                    }
-
-                    return (
-                        <div className="font-mono text-xs text-gray-600">
-                            {entry.payment_log.tracking_id || '—'}
-                        </div>
-                    );
-                },
-                size: 150,
-            },
-            {
-                id: 'tracking_source',
-                header: 'Tracking Source',
-                accessorFn: (row) => row?.payment_log?.tracking_source || '',
-                cell: ({ row }) => {
-                    const entry = row.original;
-                    const isEditing = editing?.rowId === entry.payment_log.id;
-
-                    if (isEditing) {
-                        return (
-                            <Input
-                                value={editing.trackingSource}
-                                onChange={(e) =>
-                                    setEditing((prev) =>
-                                        prev ? { ...prev, trackingSource: e.target.value } : null
-                                    )
-                                }
-                                placeholder="Enter source"
-                                className="h-8 text-xs"
-                                disabled={editing.isSaving}
-                            />
-                        );
-                    }
-
-                    return (
-                        <div className="text-xs text-gray-600">
-                            {entry.payment_log.tracking_source || '—'}
-                        </div>
-                    );
-                },
-                size: 140,
-            },
-            {
-                id: 'order_status',
-                header: 'Order Status',
-                accessorFn: (row) => row?.payment_log?.order_status || '',
-                cell: ({ row }) => {
-                    const entry = row.original;
-                    const isEditing = editing?.rowId === entry.payment_log.id;
-
-                    if (isEditing) {
-                        return (
-                            <Select
-                                value={editing.orderStatus}
-                                onValueChange={(val) =>
-                                    setEditing((prev) =>
-                                        prev ? { ...prev, orderStatus: val } : null
-                                    )
-                                }
-                                disabled={editing.isSaving}
-                            >
-                                <SelectTrigger className="h-8 text-xs">
-                                    <SelectValue placeholder="Select status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {ORDER_STATUS_OPTIONS.map((opt) => (
-                                        <SelectItem key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        );
-                    }
-
-                    const status = entry.payment_log.order_status;
-                    if (!status) {
-                        return <span className="text-xs text-gray-400">—</span>;
-                    }
-
-                    const colorClasses =
-                        ORDER_STATUS_COLOR_MAP[status] || 'bg-gray-100 text-gray-700 border-gray-300';
-                    const label = ORDER_STATUS_LABEL_MAP[status] || status.replace(/_/g, ' ');
-
-                    return (
-                        <span
-                            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${colorClasses}`}
-                        >
-                            {label}
-                        </span>
-                    );
-                },
-                size: 160,
-            },
-
-            // ─── Actions Column ─────────────────────────────────────────────
-
-            {
-                id: 'tracking_actions',
-                header: 'Actions',
-                cell: ({ row }) => {
-                    const entry = row.original;
-                    const isPaid = entry.current_payment_status === 'PAID';
-                    const isEditing = editing?.rowId === entry.payment_log.id;
-
-                    if (!isPaid) {
-                        return <span className="text-xs text-gray-300">—</span>;
-                    }
-
-                    if (isEditing) {
-                        return (
-                            <div className="flex items-center gap-1">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
-                                    onClick={() => handleSave(entry)}
-                                    disabled={editing.isSaving}
-                                    title="Save"
-                                >
-                                    <FloppyDisk size={16} weight="bold" />
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 p-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                                    onClick={cancelEditing}
-                                    disabled={editing.isSaving}
-                                    title="Cancel"
-                                >
-                                    <X size={16} weight="bold" />
-                                </Button>
-                            </div>
-                        );
-                    }
-
-                    return (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                            onClick={() => startEditing(entry)}
-                            title="Edit tracking info"
-                        >
-                            <PencilSimple size={16} />
-                        </Button>
-                    );
-                },
-                size: 80,
-            },
-
-            // ─── Payment Plan Column ────────────────────────────────────────
+            // ─── Tracking columns (rendered by context-aware components) ────
+            trackingIdColumn,
+            trackingSourceColumn,
+            orderStatusColumn,
+            actionsColumn,
 
             {
                 id: 'payment_plan',
@@ -590,10 +637,11 @@ export function PaymentLogsTable({
                             </div>
                         </div>
                     );
-                },                size: 180,
+                },
+                size: 180,
             },
         ],
-        [hasOrgAssociatedBatches, hideUserColumn, editing, startEditing, cancelEditing, handleSave]
+        [hasOrgAssociatedBatches, hideUserColumn]
     );
 
     if (isLoading) {
@@ -631,36 +679,37 @@ export function PaymentLogsTable({
     }
 
     return (
-        <div className="space-y-4">
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-                <MyTable
-                    data={tableData}
-                    columns={columns}
-                    isLoading={false}
-                    error={null}
-                    currentPage={currentPage}
-                    scrollable={true}
-                    enableColumnResizing={true}
-                    enableColumnPinning={false}
-                />
-            </div>
-
-            {/* Pagination: always show when there is data so next/prev and page info are ready */}
-            <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
-                <div className="text-sm text-gray-600">
-                    Showing {tableData.page_no * tableData.page_size + 1} -{' '}
-                    {Math.min(
-                        (tableData.page_no + 1) * tableData.page_size,
-                        tableData.total_elements
-                    )}{' '}
-                    of {tableData.total_elements} payments
+        <EditingContext.Provider value={editingContextValue}>
+            <div className="space-y-4">
+                <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+                    <MyTable
+                        data={tableData}
+                        columns={columns}
+                        isLoading={false}
+                        error={null}
+                        currentPage={currentPage}
+                        scrollable={true}
+                        enableColumnResizing={true}
+                        enableColumnPinning={false}
+                    />
                 </div>
-                <MyPagination
-                    currentPage={currentPage}
-                    totalPages={tableData.total_pages}
-                    onPageChange={onPageChange}
-                />
+
+                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
+                    <div className="text-sm text-gray-600">
+                        Showing {tableData.page_no * tableData.page_size + 1} -{' '}
+                        {Math.min(
+                            (tableData.page_no + 1) * tableData.page_size,
+                            tableData.total_elements
+                        )}{' '}
+                        of {tableData.total_elements} payments
+                    </div>
+                    <MyPagination
+                        currentPage={currentPage}
+                        totalPages={tableData.total_pages}
+                        onPageChange={onPageChange}
+                    />
+                </div>
             </div>
-        </div>
+        </EditingContext.Provider>
     );
 }

@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { MyButton } from '@/components/design-system/button';
-import { FileCsv, DownloadSimple, UploadSimple, X } from '@phosphor-icons/react';
+import { FileCsv, FileXls, DownloadSimple, UploadSimple, X } from '@phosphor-icons/react';
 import { UploadQuestionPaperFormType } from '@/routes/assessment/question-papers/-components/QuestionPaperUpload';
+import * as XLSX from 'xlsx';
 
 interface QuizAddViaCSVDialogProps {
     open: boolean;
@@ -19,6 +20,23 @@ const CSV_SAMPLE_ROWS = [
     'Which planet is closest to the Sun?,MCQS,Venus,Mercury,Mars,Earth,B,Mercury is the closest planet to the Sun.',
 ];
 
+const EXCEL_TEMPLATE_HEADERS = [
+    'question_text',
+    'question_type',
+    'option_a',
+    'option_b',
+    'option_c',
+    'option_d',
+    'correct_answer',
+    'explanation',
+];
+
+const EXCEL_TEMPLATE_DATA = [
+    ['What is 2 + 2?', 'MCQS', '1', '2', '4', '8', 'C', '2 + 2 equals 4 by basic arithmetic.'],
+    ['Is the Earth flat?', 'TRUE_FALSE', 'True', 'False', '', '', 'B', 'The Earth is an oblate spheroid.'],
+    ['Which planet is closest to the Sun?', 'MCQS', 'Venus', 'Mercury', 'Mars', 'Earth', 'B', 'Mercury is the closest planet to the Sun.'],
+];
+
 const CORRECT_ANSWER_MAP: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
 
 interface ParseError {
@@ -32,7 +50,7 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
     const [parseErrors, setParseErrors] = useState<ParseError[]>([]);
     const [parsedCount, setParsedCount] = useState<number | null>(null);
 
-    const handleDownloadTemplate = () => {
+    const handleDownloadCSVTemplate = () => {
         const content = [CSV_TEMPLATE_HEADER, ...CSV_SAMPLE_ROWS].join('\n');
         const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -41,6 +59,13 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
         link.download = 'quiz_questions_template.csv';
         link.click();
         URL.revokeObjectURL(url);
+    };
+
+    const handleDownloadExcelTemplate = () => {
+        const ws = XLSX.utils.aoa_to_sheet([EXCEL_TEMPLATE_HEADERS, ...EXCEL_TEMPLATE_DATA]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Questions');
+        XLSX.writeFile(wb, 'quiz_questions_template.xlsx');
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,21 +77,37 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
         }
     };
 
-    const parseCSV = (text: string): { questions: UploadQuestionPaperFormType['questions']; errors: ParseError[] } => {
+    const isExcelFile = (file: File): boolean => {
+        return file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+    };
+
+    const parseExcel = async (file: File): Promise<string[][]> => {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]!]!;
+        const rows: string[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+        return rows.map((row) => row.map((cell) => String(cell).trim()));
+    };
+
+    const parseCSVText = (text: string): string[][] => {
         const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+        return lines.map((line) => line.split(',').map((col) => col.trim()));
+    };
+
+    const parseRows = (rows: string[][]): { questions: UploadQuestionPaperFormType['questions']; errors: ParseError[] } => {
         const questions: UploadQuestionPaperFormType['questions'] = [];
         const errors: ParseError[] = [];
 
         // Skip header row (index 0)
-        for (let i = 1; i < lines.length; i++) {
+        for (let i = 1; i < rows.length; i++) {
             const rowNum = i + 1; // 1-based for display
-            const line = lines[i];
-            if (!line) continue;
-            // Simple CSV split — handles basic cases; doesn't handle quoted commas
-            const cols = line.split(',');
+            const cols = rows[i]!;
+
+            // Skip fully empty rows
+            if (cols.every((c) => !c)) continue;
 
             if (cols.length < 7) {
-                errors.push({ row: rowNum, message: 'Not enough columns (need at least 7).' });
+                errors.push({ row: rowNum, message: `Not enough columns (got ${cols.length}, need at least 7).` });
                 continue;
             }
 
@@ -77,7 +118,7 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
             const optC = (cols[4] || '').trim();
             const optD = (cols[5] || '').trim();
             const correctAnswer = (cols[6] || '').trim().toUpperCase();
-            const explanation = cols.slice(7).join(',').trim(); // rest of line is explanation
+            const explanation = cols.slice(7).join(',').trim();
 
             if (!questionText) {
                 errors.push({ row: rowNum, message: 'question_text is empty.' });
@@ -104,7 +145,6 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
 
                 const rawOptions = [optA, optB, optC, optD];
 
-                // Validate the correct answer option is not empty
                 if (!rawOptions[answerIndex]) {
                     errors.push({
                         row: rowNum,
@@ -122,9 +162,6 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                     continue;
                 }
 
-                // Find the correct answer index within the FILTERED options array
-                // (answerIndex is relative to the original A/B/C/D slots, but
-                // filtering out empty options may shift it).
                 const filteredAnswerIndex = options.findIndex((opt) => opt.isSelected);
 
                 questions.push({
@@ -181,15 +218,25 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
     const handleUpload = async () => {
         if (!selectedFile) return;
 
-        const text = await selectedFile.text();
-        const { questions, errors } = parseCSV(text);
+        let rows: string[][];
+
+        if (isExcelFile(selectedFile)) {
+            rows = await parseExcel(selectedFile);
+        } else {
+            const text = await selectedFile.text();
+            rows = parseCSVText(text);
+        }
+
+        const { questions, errors } = parseRows(rows);
         setParseErrors(errors);
         setParsedCount(questions.length);
 
         if (questions.length > 0) {
             onQuestionsReady(questions);
-            handleReset();
-            onOpenChange(false);
+            if (errors.length === 0) {
+                handleReset();
+                onOpenChange(false);
+            }
         }
     };
 
@@ -210,7 +257,7 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
             <DialogContent className="no-scrollbar !m-0 flex h-auto !w-full !max-w-lg flex-col !gap-0 overflow-y-auto !rounded-lg !p-0">
                 {/* Header */}
                 <div className="flex items-center justify-between bg-primary-50 px-5 py-4">
-                    <h1 className="font-semibold text-primary-500">Upload CSV</h1>
+                    <h1 className="font-semibold text-primary-500">Upload Questions</h1>
                     <button
                         type="button"
                         className="text-neutral-500 hover:text-neutral-700"
@@ -221,27 +268,39 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                 </div>
 
                 <div className="flex flex-col gap-5 p-5">
-                    {/* Template download */}
+                    {/* Template downloads */}
                     <div className="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
                         <div>
-                            <p className="text-sm font-medium text-neutral-700">CSV Template</p>
+                            <p className="text-sm font-medium text-neutral-700">Download Template</p>
                             <p className="text-xs text-neutral-500">
                                 Supports MCQS and TRUE_FALSE question types
                             </p>
                         </div>
-                        <MyButton
-                            type="button"
-                            buttonType="secondary"
-                            scale="small"
-                            layoutVariant="default"
-                            onClick={handleDownloadTemplate}
-                        >
-                            <DownloadSimple size={14} />
-                            Download
-                        </MyButton>
+                        <div className="flex gap-2">
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                layoutVariant="default"
+                                onClick={handleDownloadCSVTemplate}
+                            >
+                                <DownloadSimple size={14} />
+                                CSV
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                layoutVariant="default"
+                                onClick={handleDownloadExcelTemplate}
+                            >
+                                <DownloadSimple size={14} />
+                                Excel
+                            </MyButton>
+                        </div>
                     </div>
 
-                    {/* CSV column reference */}
+                    {/* Column reference */}
                     <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs text-neutral-600">
                         <p className="mb-1 font-medium">Columns:</p>
                         <code className="block text-neutral-500">
@@ -258,7 +317,10 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                         className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 p-8 transition-colors hover:border-primary-400 hover:bg-primary-50"
                         onClick={() => fileInputRef.current?.click()}
                     >
-                        <FileCsv size={40} className="text-primary-400" />
+                        <div className="flex gap-2">
+                            <FileCsv size={36} className="text-primary-400" />
+                            <FileXls size={36} className="text-green-500" />
+                        </div>
                         {selectedFile ? (
                             <div className="text-center">
                                 <p className="text-sm font-medium text-primary-600">
@@ -271,19 +333,28 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                         ) : (
                             <div className="text-center">
                                 <p className="text-sm font-medium text-neutral-700">
-                                    Click to select a CSV file
+                                    Click to select a file
                                 </p>
-                                <p className="text-xs text-neutral-400">Only .csv files are supported</p>
+                                <p className="text-xs text-neutral-400">.csv, .xlsx, or .xls files are supported</p>
                             </div>
                         )}
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept=".csv"
+                            accept=".csv,.xlsx,.xls"
                             className="hidden"
                             onChange={handleFileChange}
                         />
                     </div>
+
+                    {/* Parse summary */}
+                    {parsedCount !== null && parsedCount > 0 && parseErrors.length > 0 && (
+                        <div className="rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2">
+                            <p className="text-sm font-medium text-yellow-700">
+                                {parsedCount} question(s) added successfully, {parseErrors.length} row(s) skipped.
+                            </p>
+                        </div>
+                    )}
 
                     {/* Parse errors */}
                     {parseErrors.length > 0 && (

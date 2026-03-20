@@ -624,9 +624,9 @@ const FinancialManagementCollectionDashboardIndexRoute =
     path: "/financial-management/collection-dashboard/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import("./routes/financial-management/collection-dashboard/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/financial-management/collection-dashboard/index.lazy"
+    ).then((d) => d.Route),
   )
 const EvaluatorAiStudentsIndexRoute =
   EvaluatorAiStudentsIndexRouteImport.update({
@@ -1075,9 +1075,9 @@ const StudyLibraryCoursesCourseDetailsSubjectsIndexRoute =
     path: "/study-library/courses/course-details/subjects/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import("./routes/study-library/courses/course-details/subjects/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/study-library/courses/course-details/subjects/index.lazy"
+    ).then((d) => d.Route),
   )
 const StudyLibraryAiCopilotCourseOutlineGeneratingIndexRoute =
   StudyLibraryAiCopilotCourseOutlineGeneratingIndexRouteImport.update({
@@ -1085,9 +1085,9 @@ const StudyLibraryAiCopilotCourseOutlineGeneratingIndexRoute =
     path: "/study-library/ai-copilot/course-outline/generating/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import("./routes/study-library/ai-copilot/course-outline/generating/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/study-library/ai-copilot/course-outline/generating/index.lazy"
+    ).then((d) => d.Route),
   )
 const HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRoute =
   HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRouteImport.update({
@@ -1095,9 +1095,9 @@ const HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRoute =
     path: "/homework-creation/create-assessment/$assessmentId/$examtype/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import("./routes/homework-creation/create-assessment/$assessmentId/$examtype/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/homework-creation/create-assessment/$assessmentId/$examtype/index.lazy"
+    ).then((d) => d.Route),
   )
 const AudienceManagerListCampaignUsersAddIndexRoute =
   AudienceManagerListCampaignUsersAddIndexRouteImport.update({
@@ -1117,9 +1117,9 @@ const AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute =
     path: "/assessment/create-assessment/$assessmentId/$examtype/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import("./routes/assessment/create-assessment/$assessmentId/$examtype/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/assessment/create-assessment/$assessmentId/$examtype/index.lazy"
+    ).then((d) => d.Route),
   )
 const StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute =
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRouteImport.update({
@@ -1133,9 +1133,9 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRoute =
     path: "/study-library/courses/course-details/subjects/modules/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import("./routes/study-library/courses/course-details/subjects/modules/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/study-library/courses/course-details/subjects/modules/index.lazy"
+    ).then((d) => d.Route),
   )
 const StudyLibraryAiCopilotCourseOutlineGeneratingViewerIndexRoute =
   StudyLibraryAiCopilotCourseOutlineGeneratingViewerIndexRouteImport.update({
@@ -1143,9 +1143,9 @@ const StudyLibraryAiCopilotCourseOutlineGeneratingViewerIndexRoute =
     path: "/study-library/ai-copilot/course-outline/generating/viewer/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import("./routes/study-library/ai-copilot/course-outline/generating/viewer/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/study-library/ai-copilot/course-outline/generating/viewer/index.lazy"
+    ).then((d) => d.Route),
   )
 const StudyLibraryAiCopilotCourseOutlineGeneratingProcessingIndexRoute =
   StudyLibraryAiCopilotCourseOutlineGeneratingProcessingIndexRouteImport.update(
@@ -1161,9 +1161,9 @@ const EvaluationEvaluateAssessmentIdAttemptIdExamTypeIndexRoute =
     path: "/evaluation/evaluate/$assessmentId/$attemptId/$examType/",
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
-    import("./routes/evaluation/evaluate/$assessmentId/$attemptId/$examType/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/evaluation/evaluate/$assessmentId/$attemptId/$examType/index.lazy"
+    ).then((d) => d.Route),
   )
 const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRoute =
   StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRouteImport.update(
@@ -1173,9 +1173,9 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRoute =
       getParentRoute: () => rootRouteImport,
     } as any,
   ).lazy(() =>
-    import("./routes/study-library/courses/course-details/subjects/modules/chapters/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/study-library/courses/course-details/subjects/modules/chapters/index.lazy"
+    ).then((d) => d.Route),
   )
 const EvaluationEvaluationsAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeIndexRoute =
   EvaluationEvaluationsAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeIndexRouteImport.update(
@@ -1185,9 +1185,9 @@ const EvaluationEvaluationsAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeI
       getParentRoute: () => rootRouteImport,
     } as any,
   ).lazy(() =>
-    import("./routes/evaluation/evaluations/assessment-details/$assessmentId/$examType/$assesssmentType/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/evaluation/evaluations/assessment-details/$assessmentId/$examType/$assesssmentType/index.lazy"
+    ).then((d) => d.Route),
   )
 const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
   StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRouteImport.update(
@@ -1197,9 +1197,9 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
       getParentRoute: () => rootRouteImport,
     } as any,
   ).lazy(() =>
-    import("./routes/study-library/courses/course-details/subjects/modules/chapters/slides/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/study-library/courses/course-details/subjects/modules/chapters/slides/index.lazy"
+    ).then((d) => d.Route),
   )
 const HomeworkCreationAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeAssessmentTabIndexRoute =
   HomeworkCreationAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeAssessmentTabIndexRouteImport.update(
@@ -1209,9 +1209,9 @@ const HomeworkCreationAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesss
       getParentRoute: () => rootRouteImport,
     } as any,
   ).lazy(() =>
-    import("./routes/homework-creation/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/homework-creation/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/index.lazy"
+    ).then((d) => d.Route),
   )
 const AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeAssessmentTabIndexRoute =
   AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTypeAssessmentTabIndexRouteImport.update(
@@ -1221,9 +1221,9 @@ const AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTy
       getParentRoute: () => rootRouteImport,
     } as any,
   ).lazy(() =>
-    import("./routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/index.lazy").then(
-      (d) => d.Route,
-    ),
+    import(
+      "./routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/index.lazy"
+    ).then((d) => d.Route),
   )
 
 export interface FileRoutesByFullPath {

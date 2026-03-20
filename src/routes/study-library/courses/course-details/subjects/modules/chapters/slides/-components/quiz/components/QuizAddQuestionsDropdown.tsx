@@ -55,7 +55,7 @@ const QuizAddQuestionsDropdown = ({
                     onClick={onCSV}
                 >
                     <FileCsv size={16} className="text-primary-500" />
-                    <span>Upload CSV</span>
+                    <span>Upload CSV/Excel</span>
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>

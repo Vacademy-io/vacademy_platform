@@ -14,7 +14,6 @@ import {
   QuestionSlide,
   AssignmentSlide,
 } from "../../-services/getAllSlides";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
@@ -624,7 +623,7 @@ export const CourseDetailsPage = () => {
 
   // Fetch single course details using the new scalable endpoint
   const { data: courseDetailsData, isLoading: isCourseDetailsLoading } =
-    useSuspenseQuery(
+    useQuery(
       handleGetCourseInit({
         courseId: searchParams.courseId || "",
         instituteId: instituteId || "",

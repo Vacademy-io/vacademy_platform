@@ -43,7 +43,9 @@ export function Navbar() {
   } = useSuspenseQuery(handleFetchUserRoleDetails());
 
   // Fetch cached institute logo URL (cached for 24 hours)
-  const { data: cachedLogoUrl } = useSuspenseQuery(
+  // Use useQuery (not useSuspenseQuery) because getInstituteLogoQuery has enabled: !!fileId
+  // and useSuspenseQuery does not support enabled: false in TanStack Query v5
+  const { data: cachedLogoUrl } = useQuery(
     getInstituteLogoQuery(instituteDetails?.institute_logo_file_id ?? null),
   );
   const isIOS = useIsIOS();

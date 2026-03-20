@@ -536,7 +536,9 @@ export const Route = createRootRouteWithContext<{
           }
           throw redirect({ to: route as never });
         }
-      } catch {
+      } catch (error) {
+        // Re-throw redirects so the router can handle them
+        if (error instanceof Response) throw error;
         // fallthrough to public handling
       }
 
@@ -597,8 +599,10 @@ export const Route = createRootRouteWithContext<{
           throw redirect({ to: route as never });
         }
       }
-    } catch {
-      // ignore
+    } catch (error) {
+      // Re-throw redirects so the router can handle them
+      if (error instanceof Response) throw error;
+      // ignore other errors
     }
 
     // Check authentication for all other routes

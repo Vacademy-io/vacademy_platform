@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Student } from "@phosphor-icons/react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, useQuery } from "@tanstack/react-query";
 import { handleFetchUserRoleDetails } from "@/routes/study-library/courses/-services/institute-details";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { TokenKey } from "@/constants/auth/tokens";

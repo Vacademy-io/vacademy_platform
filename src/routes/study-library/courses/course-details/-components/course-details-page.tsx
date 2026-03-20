@@ -760,6 +760,34 @@ export const CourseDetailsPage = () => {
       if (!resolved && searchParams.packageSessionId) {
         resolved = searchParams.packageSessionId;
         setPackageSessionIdForCurrentLevel(searchParams.packageSessionId);
+        // Also set session/level so the UI renders correctly
+        const enrolledMatch = enrolledPackageSessionsForCourse.find(
+          (ps) => ps.id === searchParams.packageSessionId,
+        );
+        if (enrolledMatch) {
+          if (enrolledMatch.session?.id && !selectedSession) {
+            setSelectedSession(enrolledMatch.session.id);
+          }
+          if (enrolledMatch.level?.id && !selectedLevel) {
+            setSelectedLevel(enrolledMatch.level.id);
+          }
+        } else {
+          // Enrolled data not ready yet — try course-init package_sessions
+          const initData = courseDetailsData as
+            | { package_sessions?: Array<{ id: string; session?: { id: string }; level?: { id: string } }> }
+            | null | undefined;
+          const pkgSession = Array.isArray(initData?.package_sessions)
+            ? initData.package_sessions.find((ps) => ps.id === searchParams.packageSessionId)
+            : undefined;
+          if (pkgSession) {
+            if (pkgSession.session?.id && !selectedSession) {
+              setSelectedSession(pkgSession.session.id);
+            }
+            if (pkgSession.level?.id && !selectedLevel) {
+              setSelectedLevel(pkgSession.level.id);
+            }
+          }
+        }
         return;
       }
     }

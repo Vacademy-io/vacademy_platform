@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
+import vacademy.io.admin_core_service.features.course.dto.SubgroupDTO;
 import vacademy.io.admin_core_service.features.group.dto.AddGroupDTO;
 
 import java.util.List;
@@ -27,4 +28,10 @@ public class AddLevelWithSessionDTO {
     private Boolean isParent;
     /** Optional: parent batch id if this is a child batch. */
     private String parentId;
+    /**
+     * Optional list of subgroups for this level within the session.
+     * When present, child package sessions will be created under the
+     * parent batch corresponding to this (session, level) combination.
+     */
+    private List<SubgroupDTO> subgroups;
 }

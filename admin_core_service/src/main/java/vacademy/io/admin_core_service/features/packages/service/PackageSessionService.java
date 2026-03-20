@@ -1,10 +1,12 @@
 package vacademy.io.admin_core_service.features.packages.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
+import vacademy.io.admin_core_service.features.course.dto.SubgroupDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.service.DefaultEnrollInviteService;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
@@ -27,9 +29,10 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
+import org.springframework.util.StringUtils;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PackageSessionService {
@@ -54,7 +57,7 @@ public class PackageSessionService {
                 addFacultyToCourseDTOS, maxSeats, null, null);
     }
 
-    public void createPackageSession(Level level, Session session, PackageEntity packageEntity, Group group,
+    public PackageSession createPackageSession(Level level, Session session, PackageEntity packageEntity, Group group,
             Date startTime, String instituteId, CustomUserDetails userDetails,
             List<AddFacultyToCourseDTO> addFacultyToCourseDTOS, Integer maxSeats, Boolean isParent, String parentId) {
         PackageSession packageSession = new PackageSession();
@@ -77,22 +80,29 @@ public class PackageSessionService {
         facultyService.addFacultyToBatch(addFacultyToCourseDTOS, packageSession.getId(), instituteId);
         defaultEnrollInviteService.createDefaultEnrollInvite(packageSession, instituteId);
         createLearnerInvitationForm(List.of(packageSession), instituteId, userDetails);
+        return packageSession;
     }
 
     @Transactional
-    public PackageSession updateInventory(String packageSessionId, Integer maxSeats) {
+    public PackageSession updateInventory(String packageSessionId, Integer maxSeats, Integer availableSlots) {
         PackageSession packageSession = findById(packageSessionId);
 
         Integer currentMax = packageSession.getMaxSeats();
         Integer currentAvailable = packageSession.getAvailableSlots();
 
-        if (maxSeats == null) {
+        // If admin is directly setting availableSlots (e.g., new books arrived, donated, damaged)
+        if (availableSlots != null) {
+            packageSession.setAvailableSlots(availableSlots);
+            log.info("Admin directly set availableSlots to {} for packageSession {}", availableSlots, packageSessionId);
+        }
+
+        if (maxSeats == null && availableSlots == null) {
             // Switching to unlimited
             packageSession.setMaxSeats(null);
             packageSession.setAvailableSlots(null);
-        } else {
+        } else if (maxSeats != null) {
             // Switching to limited or updating limit
-            if (currentMax == null) {
+            if (currentMax == null && availableSlots == null) {
                 // Was unlimited, now limited.
                 // We must check current usage to set accurate available slots.
                 long currentEnrollments = studentSessionRepository.countByPackageSessionIdAndStatus(packageSessionId,
@@ -106,9 +116,9 @@ public class PackageSessionService {
                 }
                 packageSession.setAvailableSlots(newAvailable);
 
-            } else {
-                // Adjust available slots by the difference
-                int diff = maxSeats - currentMax;
+            } else if (availableSlots == null) {
+                // Adjust available slots by the difference (only if admin didn't directly set availableSlots)
+                int diff = maxSeats - (currentMax != null ? currentMax : 0);
                 if (currentAvailable == null) {
                     // Should not happen if maxSeats was not null, but for safety:
                     long currentEnrollments = studentSessionRepository
@@ -155,6 +165,68 @@ public class PackageSessionService {
         }
     }
 
+    /**
+     * Decrements available slots when a user enrolls in a package session (borrows a book).
+     * - If maxSeats is null (unlimited), we skip inventory update.
+     * - If available slots are insufficient, we log a warning but do NOT block the enrollment.
+     *
+     * @param packageSessionId the package session being enrolled into
+     * @param count            number of slots to decrement (usually 1)
+     */
+    @Transactional
+    public void decrementAvailability(String packageSessionId, int count) {
+        PackageSession packageSession = findById(packageSessionId);
+
+        if (packageSession.getMaxSeats() == null) {
+            log.debug("Skipping inventory decrement for packageSession {} — unlimited seats", packageSessionId);
+            return;
+        }
+
+        Integer currentAvailable = packageSession.getAvailableSlots();
+        if (currentAvailable == null || currentAvailable <= 0) {
+            log.warn("Inventory decrement skipped for packageSession {} — availableSlots is {} but enrollment proceeding",
+                    packageSessionId, currentAvailable);
+            return;
+        }
+
+        int newAvailable = Math.max(currentAvailable - count, 0);
+        packageSession.setAvailableSlots(newAvailable);
+        packageRepository.save(packageSession);
+
+        log.info("Decremented inventory for packageSession {}: availableSlots {} -> {}",
+                packageSessionId, currentAvailable, newAvailable);
+    }
+
+    /**
+     * Increments available slots when a user returns a book / is de-assigned.
+     * - If maxSeats is null (unlimited), we skip.
+     * - Caps at maxSeats to prevent exceeding total stock.
+     *
+     * @param packageSessionId the package session being returned
+     * @param count            number of slots to increment (usually 1)
+     */
+    @Transactional
+    public void incrementAvailability(String packageSessionId, int count) {
+        PackageSession packageSession = findById(packageSessionId);
+
+        if (packageSession.getMaxSeats() == null) {
+            log.debug("Skipping inventory increment for packageSession {} — unlimited seats", packageSessionId);
+            return;
+        }
+
+        Integer currentAvailable = packageSession.getAvailableSlots();
+        if (currentAvailable == null) {
+            currentAvailable = 0;
+        }
+
+        int newAvailable = Math.min(currentAvailable + count, packageSession.getMaxSeats());
+        packageSession.setAvailableSlots(newAvailable);
+        packageRepository.save(packageSession);
+
+        log.info("Incremented inventory for packageSession {}: availableSlots {} -> {}",
+                packageSessionId, currentAvailable, newAvailable);
+    }
+
     public java.util.Map<String, Object> getAvailability(String packageSessionId) {
         PackageSession packageSession = findById(packageSessionId);
         java.util.Map<String, Object> map = new java.util.HashMap<>();
@@ -175,8 +247,8 @@ public class PackageSessionService {
 
     public PackageSession updatePackageSession(String packageSessionId, String status, String instituteId,
             List<AddFacultyToCourseDTO> addFacultyToCourseDTOS) {
-        System.out.println(packageSessionId);
-        PackageSession packageSession = packageRepository.findById(packageSessionId).get();
+        PackageSession packageSession = packageRepository.findById(packageSessionId)
+                .orElseThrow(() -> new VacademyException("Package session not found: " + packageSessionId));
         packageSession.setStatus(status);
         packageRepository.save(packageSession);
         facultyService.updateFacultyToSubjectPackageSession(addFacultyToCourseDTOS, packageSessionId, instituteId);
@@ -278,5 +350,78 @@ public class PackageSessionService {
                 safeChildIds.size(),
                 safeChildIds
         );
+    }
+
+    /**
+     * Sync child package sessions (subgroups) for a parent batch to match the requested list.
+     * Used when editing course: update existing (by id), add new, remove ones no longer in the list.
+     * - Subgroup with id: update that package_session's name (edit); if not found, create new.
+     * - Subgroup without id: create new child batch.
+     * - Existing children whose id is not in the list: mark DELETED.
+     * Backward compatible: null or empty subgroups = remove all children (leave parent as-is).
+     */
+    @Transactional
+    public void syncSubgroupsForParent(String parentPackageSessionId, List<SubgroupDTO> subgroups, String instituteId) {
+        PackageSession parent = findById(parentPackageSessionId);
+        List<PackageSession> existingChildren = packageRepository.findByParentIdAndStatusIn(
+                parentPackageSessionId, List.of(PackageSessionStatusEnum.ACTIVE.name()));
+
+        List<SubgroupDTO> requested = (subgroups != null ? subgroups : List.<SubgroupDTO>of()).stream()
+                .filter(s -> s != null && StringUtils.hasText(s.getName()))
+                .toList();
+
+        List<String> keptChildIds = new ArrayList<>();
+
+        for (SubgroupDTO s : requested) {
+            String name = s.getName().trim();
+            if (StringUtils.hasText(s.getId())) {
+                var existingOpt = existingChildren.stream()
+                        .filter(c -> s.getId().equals(c.getId()))
+                        .findFirst();
+                if (existingOpt.isPresent()) {
+                    PackageSession child = existingOpt.get();
+                    child.setName(name);
+                    packageRepository.save(child);
+                    keptChildIds.add(child.getId());
+                } else {
+                    PackageSession child = createChildPackageSession(parent, name);
+                    keptChildIds.add(child.getId());
+                }
+            } else {
+                PackageSession child = createChildPackageSession(parent, name);
+                keptChildIds.add(child.getId());
+            }
+        }
+
+        for (PackageSession child : existingChildren) {
+            if (!keptChildIds.contains(child.getId())) {
+                child.setStatus(PackageSessionStatusEnum.DELETED.name());
+                packageRepository.save(child);
+            }
+        }
+
+        if (!keptChildIds.isEmpty()) {
+            mapParentAndChildren(instituteId, parentPackageSessionId, keptChildIds);
+        } else {
+            parent.setIsParent(false);
+            parent.setParentId(null);
+            packageRepository.save(parent);
+        }
+    }
+
+    private PackageSession createChildPackageSession(PackageSession parent, String name) {
+        PackageSession child = new PackageSession();
+        child.setPackageEntity(parent.getPackageEntity());
+        child.setLevel(parent.getLevel());
+        child.setSession(parent.getSession());
+        child.setGroup(parent.getGroup());
+        child.setStatus(PackageSessionStatusEnum.ACTIVE.name());
+        child.setStartTime(parent.getStartTime());
+        child.setIsParent(false);
+        child.setParentId(null);
+        child.setName(name);
+        child.setMaxSeats(parent.getMaxSeats());
+        child.setAvailableSlots(parent.getAvailableSlots());
+        return packageRepository.save(child);
     }
 }

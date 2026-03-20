@@ -36,4 +36,16 @@ public class AddCourseDTO {
     private String createdByUserId;
     private String originalCourseId;
     private Integer versionNumber;
+
+    /**
+     * Optional: whether this course's batches contain subgroups.
+     * Backward compatible – if not sent or false, behaves as today.
+     */
+    private Boolean containsSubgroup;
+
+    /**
+     * Optional: definitions of subgroups to create as additional package sessions.
+     * Only considered when contains_subgroup = true.
+     */
+    private List<SubgroupDTO> subgroups;
 }

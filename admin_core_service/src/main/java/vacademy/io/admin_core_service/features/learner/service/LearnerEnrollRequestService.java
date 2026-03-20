@@ -122,6 +122,9 @@ public class LearnerEnrollRequestService {
     @Autowired
     private StudentSessionInstituteGroupMappingRepository ssigmRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.packages.service.PackageSessionService packageSessionService;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         return recordLearnerRequest(learnerEnrollRequestDTO, Map.of());
@@ -314,6 +317,18 @@ public class LearnerEnrollRequestService {
         // For PAID enrollments, notifications will be sent after webhook confirms
         // payment
         if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+
+            // Decrement inventory (available slots) for each enrolled package session
+            // For FREE enrollments, decrement immediately since no payment webhook follows
+            for (String packageSessionId : enrollDTO.getPackageSessionIds()) {
+                try {
+                    packageSessionService.decrementAvailability(packageSessionId, 1);
+                } catch (Exception e) {
+                    log.warn("Failed to decrement inventory for packageSession {} on free enrollment: {}",
+                            packageSessionId, e.getMessage());
+                    // Don't block enrollment if inventory update fails
+                }
+            }
             // Check if workflow is configured for the package session
             // If workflow exists, skip notifications - workflow will handle them
             boolean hasWorkflow = false;

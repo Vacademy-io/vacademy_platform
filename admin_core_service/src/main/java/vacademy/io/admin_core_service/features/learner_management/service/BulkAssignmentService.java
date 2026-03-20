@@ -60,6 +60,10 @@ public class BulkAssignmentService {
     private final StudentRegistrationManager studentRegistrationManager;
     private final SubOrgAutoLinkService subOrgAutoLinkService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private vacademy.io.admin_core_service.features.packages.service.PackageSessionService packageSessionService;
+
     private static final String DUPLICATE_SKIP = "SKIP";
     private static final String DUPLICATE_ERROR = "ERROR";
     private static final String DUPLICATE_RE_ENROLL = "RE_ENROLL";
@@ -455,6 +459,14 @@ public class BulkAssignmentService {
         log.info("Created enrollment: userId={}, packageSession={}, userPlan={}, mapping={}",
                 userId, config.getPackageSession().getId(), userPlan.getId(), mappingId);
 
+        // Decrement inventory (available slots) upon valid enrollment
+        try {
+            packageSessionService.decrementAvailability(config.getPackageSession().getId(), 1);
+        } catch (Exception e) {
+            log.warn("Failed to decrement inventory for admin assign packageSession {}: {}",
+                    config.getPackageSession().getId(), e.getMessage());
+        }
+
         // Auto-link learner to sub-org if the enrolling admin belongs to one
         subOrgAutoLinkService.linkIfSubOrgAdmin(userId, config.getPackageSession().getId(), mappingId, adminUserId);
 
@@ -506,7 +518,7 @@ public class BulkAssignmentService {
             studentRegistrationManager.createStudentFromRequest(userDTO, extraDetails);
         }
 
-        // Update existing mapping
+        // Restore mapping status
         existingMapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
         existingMapping.setEnrolledDate(new Date());
         existingMapping.setUserPlanId(userPlan.getId());

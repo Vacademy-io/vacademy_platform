@@ -371,4 +371,10 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             """, nativeQuery = true)
     List<PackageSessionDetailProjection> findPackageSessionDetailsByIds(@Param("ids") List<String> ids);
 
+    /**
+     * Find child package sessions (subgroups) for a given parent batch.
+     * Used when syncing subgroups on edit course.
+     */
+    List<PackageSession> findByParentIdAndStatusIn(String parentId, List<String> statuses);
+
 }

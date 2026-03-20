@@ -287,11 +287,10 @@ public class CourseApprovalService {
         );
         
         return packageRepository.findTeacherPackagesWithRelationshipDetailsV2(
-            teacherId, 
-            packageStatuses, 
-            facultyMappingStatuses,
-            pageable
-        );
+                teacherId,
+                packageStatuses,
+                facultyMappingStatuses,
+                pageable);
     }
     
     /**

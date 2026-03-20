@@ -63,7 +63,8 @@ public class TeacherCourseApprovalController {
             @RequestAttribute("user") CustomUserDetails teacher,
             Pageable pageable) {
         try {
-            Page<TeacherCourseDetailDTO> coursesWithDetails = courseApprovalService.getTeacherCoursesAsDTOV2(teacher.getUserId(), pageable);
+            Page<TeacherCourseDetailDTO> coursesWithDetails = courseApprovalService
+                    .getTeacherCoursesAsDTOV2(teacher.getUserId(), pageable);
             return ResponseEntity.ok(coursesWithDetails);
         } catch (VacademyException e) {
             log.error("Validation error getting teacher courses with details for {}: {}", teacher.getUserId(), e.getMessage());

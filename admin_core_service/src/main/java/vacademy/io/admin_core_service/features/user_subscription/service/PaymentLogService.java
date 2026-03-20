@@ -906,19 +906,13 @@ public class PaymentLogService {
 
     /**
      * Updates the tracking fields (tracking_id, tracking_source, order_status)
-     * for a specific payment log row. All three fields and the payment log ID
-     * are mandatory.
+     * for a specific payment log row. Payment log ID and order status are
+     * mandatory; tracking_id and tracking_source are optional (can be added later).
      */
     public void updatePaymentLogTracking(UpdatePaymentLogTrackingDTO dto) {
-        // --- Validate all fields ---
+        // --- Validate required fields ---
         if (!StringUtils.hasText(dto.getPaymentLogId())) {
             throw new VacademyException("Payment log ID must not be empty.");
-        }
-        if (!StringUtils.hasText(dto.getTrackingId())) {
-            throw new VacademyException("Tracking ID must not be empty.");
-        }
-        if (!StringUtils.hasText(dto.getTrackingSource())) {
-            throw new VacademyException("Tracking source must not be empty.");
         }
         if (!StringUtils.hasText(dto.getOrderStatus())) {
             throw new VacademyException("Order status must not be empty.");
@@ -932,8 +926,9 @@ public class PaymentLogService {
                 .orElseThrow(() -> new VacademyException(
                         "Payment log not found with ID: " + dto.getPaymentLogId()));
 
-        paymentLog.setTrackingId(dto.getTrackingId());
-        paymentLog.setTrackingSource(dto.getTrackingSource());
+        // Set tracking fields (nullable — tracking info may not be available yet)
+        paymentLog.setTrackingId(StringUtils.hasText(dto.getTrackingId()) ? dto.getTrackingId().trim() : null);
+        paymentLog.setTrackingSource(StringUtils.hasText(dto.getTrackingSource()) ? dto.getTrackingSource().trim() : null);
         paymentLog.setOrderStatus(validatedStatus.name());
 
         paymentLogRepository.save(paymentLog);

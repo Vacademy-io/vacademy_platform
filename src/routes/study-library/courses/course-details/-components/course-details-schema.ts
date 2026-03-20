@@ -55,6 +55,9 @@ const levelDetailsSchema = z.object({
             })
         )
         .optional(), // Changed to support SubjectType structure
+    // Edit course: subgroups under this (session, level) from GET /batches; id = batch id when editing existing
+    subgroups: z.array(z.object({ id: z.string().optional(), name: z.string() })).optional(),
+    parentPackageSessionId: z.string().optional(),
 });
 
 // Define the schema for session details

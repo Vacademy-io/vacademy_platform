@@ -40,6 +40,11 @@ export interface SessionWithLevelsType {
 // Package session mapping from course-init API
 export interface PackageSessionType {
     id: string;
+    /**
+     * Optional display name for this package session (child batch),
+     * backed by the `name` column on the package_session table.
+     */
+    name?: string | null;
     level: {
         id: string;
         level_name: string;

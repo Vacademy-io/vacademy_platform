@@ -70,9 +70,16 @@ export interface CourseFormData extends Step1Data, Step2Data {
 export const AddCourseForm = ({
     isEdit,
     initialCourseData,
+    getParentPackageSessionId,
 }: {
     isEdit?: boolean;
     initialCourseData?: CourseDetailsFormValues;
+    /** When editing, use this to send the parent batch id per (session, level) for update-course-details. */
+    getParentPackageSessionId?: (params: {
+        courseId: string;
+        sessionId: string;
+        levelId: string;
+    }) => string;
 }) => {
     const { getPackageSessionId } = useInstituteDetailsStore();
     const addSubjectMutation = useAddSubject();
@@ -129,9 +136,34 @@ export const AddCourseForm = ({
         // @ts-expect-error
         initialCourseData ? transformCourseData(initialCourseData) : {}
     );
+    const lastLoadedCourseIdRef = useRef<string | undefined>(
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        initialCourseData?.courseData?.id
+    );
 
     const [isOpen, setIsOpen] = useState(!isEdit);
     const [isCreating, setIsCreating] = useState(false);
+
+    // When editing, ensure the internal step-2 state is refreshed whenever the
+    // user opens Edit Course on a different course. Previously, the state was
+    // initialised only once, so the dialog could show data for a previously
+    // visited course.
+    useEffect(() => {
+        if (!isEdit || !initialCourseData) return;
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        const currentCourseId: string | undefined = initialCourseData.courseData?.id;
+        if (!currentCourseId || lastLoadedCourseIdRef.current === currentCourseId) {
+            return;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        const transformed = transformCourseData(initialCourseData) as CourseFormData;
+        lastLoadedCourseIdRef.current = currentCourseId;
+        setFormData(transformed);
+        oldFormData.current = transformed;
+        setStep(1);
+    }, [isEdit, initialCourseData]);
 
     const handleStep1Submit = (data: Step1Data) => {
         setFormData((prev) => ({ ...prev, ...data }));
@@ -218,7 +250,9 @@ export const AddCourseForm = ({
             // @ts-expect-error
             oldFormData.current,
             finalData,
-            getPackageSessionId
+            isEdit && getParentPackageSessionId
+                ? getParentPackageSessionId
+                : getPackageSessionId
         );
 
         const previousSessions = retainNewActiveLevels(formattedDataUpdate.sessions);

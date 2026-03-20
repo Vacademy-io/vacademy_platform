@@ -35,7 +35,13 @@ import {
 } from '@/types/display-settings';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 
-const InviteDetailsComponent = ({ form }: { form: UseFormReturn<CourseDetailsFormValues> }) => {
+const InviteDetailsComponent = ({
+    form,
+    selectedBatchId,
+}: {
+    form: UseFormReturn<CourseDetailsFormValues>;
+    selectedBatchId?: string;
+}) => {
     const sessionsData = form.getValues('courseData.sessions');
     const queryClient = useQueryClient();
     const navigate = useNavigate();
@@ -79,8 +85,8 @@ const InviteDetailsComponent = ({ form }: { form: UseFormReturn<CourseDetailsFor
         isEditInviteLink: boolean;
     } | null>(null);
 
-    // Generate array of packageSessionIds for each level in each session
-    const packageSessionIds: string[] = sessionsData
+    // Generate base list of packageSessionIds for each level in each session
+    const allPackageSessionIds: string[] = sessionsData
         .flatMap((session) =>
             session.levelDetails.map(
                 (level) =>
@@ -92,6 +98,13 @@ const InviteDetailsComponent = ({ form }: { form: UseFormReturn<CourseDetailsFor
             )
         )
         .filter(Boolean);
+
+    // If a specific batch/subgroup is selected and present in the list,
+    // narrow the invite links to just that package_session_id.
+    const packageSessionIds: string[] =
+        selectedBatchId && allPackageSessionIds.includes(selectedBatchId)
+            ? [selectedBatchId]
+            : allPackageSessionIds;
 
     const { page, pageSize, handlePageChange } = usePaginationState({
         initialPage: 0,

@@ -184,11 +184,16 @@ export function MembershipExpiryTable({
                                     {policy.package_session_name}
                                 </div>
                             )}
-                            {info.row.original.package_sessions?.map((ps, idx) => (
-                                <div key={idx} className="text-xs text-gray-500">
-                                    {ps.package_name} - {ps.session_name} ({ps.level_name})
-                                </div>
-                            ))}
+                            {info.row.original.package_sessions?.map((ps, idx) => {
+                                const displayName = ps.name
+                                    ? `${ps.package_name} ${ps.name}`
+                                    : `${ps.package_name} - ${ps.session_name} (${ps.level_name})`;
+                                return (
+                                    <div key={idx} className="text-xs text-gray-500">
+                                        {displayName}
+                                    </div>
+                                );
+                            })}
                         </div>
                     );
                 },

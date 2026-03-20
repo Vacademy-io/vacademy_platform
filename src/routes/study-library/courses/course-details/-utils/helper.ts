@@ -91,9 +91,19 @@ export const transformApiDataToCourseData = async (apiData: CourseWithSessionsTy
     async function getUrlOnce(fileId: string | null | undefined): Promise<string> {
         if (!fileId) return '';
         if (fileUrlCache[fileId] !== undefined) return fileUrlCache[fileId] ?? '';
-        const url = (await getPublicUrl(fileId)) ?? '';
-        fileUrlCache[fileId] = url;
-        return url;
+        try {
+            const url = (await getPublicUrl(fileId)) ?? '';
+            fileUrlCache[fileId] = url;
+            return url;
+        } catch (error) {
+            // If media files are missing or GET_PUBLIC_URL fails (e.g., 404),
+            // don't fail the entire course-init transform. Just log and fall
+            // back to an empty URL so the rest of the course data (sessions,
+            // levels, subjects) can still render.
+            console.error('Error fetching public URL for fileId', fileId, error);
+            fileUrlCache[fileId] = '';
+            return '';
+        }
     }
 
     try {
@@ -205,9 +215,15 @@ export const transformApiDataToCourseDataForInvite = async (apiData: CourseWithS
     async function getUrlOnce(fileId: string | null | undefined): Promise<string> {
         if (!fileId) return '';
         if (fileUrlCache[fileId] !== undefined) return fileUrlCache[fileId] ?? '';
-        const url = (await getPublicUrl(fileId)) ?? '';
-        fileUrlCache[fileId] = url;
-        return url;
+        try {
+            const url = (await getPublicUrl(fileId)) ?? '';
+            fileUrlCache[fileId] = url;
+            return url;
+        } catch (error) {
+            console.error('Error fetching public URL for fileId (invite)', fileId, error);
+            fileUrlCache[fileId] = '';
+            return '';
+        }
     }
 
     try {

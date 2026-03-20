@@ -15,13 +15,20 @@ export const TeachersList = ({ packageSessionId }: { packageSessionId: string })
     const INSTITUTE_ID = (tokenData?.authorities && Object.keys(tokenData.authorities)[0]) ?? '';
     const filters: FacultyFilterParams = {
         name: '',
-        batches: [packageSessionId],
+        batches: packageSessionId ? [packageSessionId] : [],
         subjects: [],
         status: [],
         sort_columns: { name: 'DESC' },
     };
 
-    const { data, isLoading, error } = useTeacherList(INSTITUTE_ID, page, pageSize, filters);
+    const hasValidContext = Boolean(INSTITUTE_ID && packageSessionId);
+    const { data, isLoading, error } = useTeacherList(
+        INSTITUTE_ID,
+        page,
+        pageSize,
+        filters,
+        hasValidContext
+    );
 
     const handlePageChange = (newPage: number) => {
         setPage(newPage);
@@ -51,7 +58,16 @@ export const TeachersList = ({ packageSessionId }: { packageSessionId: string })
     ];
 
     if (isLoading) return <DashboardLoader />;
-    if (error) return <div>Error loading teachers</div>;
+    if (error) {
+        const is403 = (error as { response?: { status?: number } })?.response?.status === 403;
+        return (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                {is403
+                    ? "You don't have permission to load teachers for this batch. If this persists, the backend may need to allow the faculty-by-institute endpoint for your role."
+                    : 'Error loading teachers'}
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-5">

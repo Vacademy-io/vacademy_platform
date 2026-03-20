@@ -34,7 +34,9 @@ export default function TimelineLogCard({
     });
 
     const packageSessionName = batchDetails
-        ? `${batchDetails.package_dto.package_name} - ${batchDetails.level.level_name} - ${batchDetails.session.session_name}`
+        ? batchDetails.name
+            ? `${batchDetails.package_dto.package_name} ${batchDetails.name}`
+            : `${batchDetails.package_dto.package_name} - ${batchDetails.level.level_name} - ${batchDetails.session.session_name}`
         : '';
 
     return (

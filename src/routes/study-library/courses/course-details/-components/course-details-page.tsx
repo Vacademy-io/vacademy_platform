@@ -39,6 +39,7 @@ import {
 } from '../../-services/getAllSlides';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { handleGetSlideCountDetails } from '../-services/get-slides-count';
+import { fetchCourseStudyLibraryDetails } from '../../-services/getStudyLibraryDetails';
 
 import { CourseDetailsRatingsComponent } from './course-details-ratings-page';
 import {
@@ -68,6 +69,8 @@ import {
 } from '@/types/display-settings';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 import { extractTextFromHTML } from '@/constants/helper';
+import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
+import { fetchCourseBatches } from '@/routes/admin-package-management/-services/package-service';
 
 type SlideType = {
     id: string;
@@ -129,6 +132,18 @@ type SlideCountType = {
     source_type: string;
 };
 
+// Batches model used on Course Details page
+export type CourseBatch = PackageSessionDTO & {
+    /**
+     * Optional human-friendly name for this specific package session
+     * (e.g. "Morning Batch A"). When present, the UI will use it in
+     * the Batch/Subgroup dropdown. This is typically backed by the
+     * `name` column on the package_session table, or a dedicated
+     * `package_session_name` field in the API response.
+     */
+    package_session_name?: string | null;
+};
+
 const mockCourses: Course[] = [
     {
         id: '1',
@@ -187,12 +202,64 @@ export const CourseDetailsPage = () => {
     const router = useRouter();
     const searchParams = router.state.location.search;
     const queryClient = useQueryClient();
+    const courseId = searchParams.courseId ?? '';
 
-    const { studyLibraryData } = useStudyLibraryStore();
+    const { studyLibraryData, isInitLoading, setStudyLibraryData } = useStudyLibraryStore();
 
-    const courseDetailsData = useMemo(() => {
-        return studyLibraryData?.find((item) => item.course.id === searchParams.courseId);
+    // Normalise study library data so it works whether the course-init API
+    // returns a single course object or an array of courses.
+    const normalizedStudyLibraryData = useMemo(() => {
+        if (!studyLibraryData) return null;
+        return Array.isArray(studyLibraryData) ? studyLibraryData : [studyLibraryData];
     }, [studyLibraryData]);
+
+    // Safely resolve the current course from studyLibraryData.
+    // Handles three cases:
+    // 1) Direct match on course.id === searchParams.courseId (ideal)
+    // 2) Single-course payload from course-init (fallback to the only item)
+    // 3) URL contains a package_session.id (child batch) – match via package_sessions[].id
+    const courseDetailsData = useMemo(() => {
+        if (!normalizedStudyLibraryData) return null;
+
+        // Prefer direct course.id match when possible
+        const byCourseId = normalizedStudyLibraryData.find(
+            (item) => item.course.id === searchParams.courseId
+        );
+        if (byCourseId) return byCourseId;
+
+        // If course-init returned a single course, fall back to it
+        if (normalizedStudyLibraryData.length === 1) {
+            return normalizedStudyLibraryData[0];
+        }
+
+        // Lastly, support URLs that were built with a child package_session.id
+        const byPackageSessionId = normalizedStudyLibraryData.find((item) =>
+            Array.isArray(item.package_sessions)
+                ? item.package_sessions.some((ps) => ps.id === searchParams.courseId)
+                : false
+        );
+
+        return byPackageSessionId ?? null;
+    }, [normalizedStudyLibraryData, searchParams.courseId]);
+
+    // Safety net: if course-init data for this specific courseId was not yet
+    // loaded into the studyLibraryStore (e.g. after navigating from a view
+    // that only fetched the global INIT_STUDY_LIBRARY payload), explicitly
+    // trigger the course-init API here so that sessions/levels/batches are
+    // available for the selectors.
+    useEffect(() => {
+        if (!courseDetailsData && courseId) {
+            fetchCourseStudyLibraryDetails(courseId)
+                .then((data: unknown) => {
+                    if (data) {
+                        setStudyLibraryData(data as never);
+                    }
+                })
+                .catch((error: unknown) => {
+                    console.error('Failed to load course-init data for course details', error);
+                });
+        }
+    }, [courseDetailsData, courseId, setStudyLibraryData]);
 
     const form = useForm<CourseDetailsFormValues>({
         resolver: zodResolver(courseDetailsSchema),
@@ -236,9 +303,13 @@ export const CourseDetailsPage = () => {
 
     const [selectedSession, setSelectedSession] = useState<string>('');
     const [selectedLevel, setSelectedLevel] = useState<string>('');
+    const [selectedBatchId, setSelectedBatchId] = useState<string>('');
     const [isRestoringSelections, setIsRestoringSelections] = useState<boolean>(false);
     const [dripConditionsEnabled, setDripConditionsEnabled] = useState<boolean>(false);
     const [dripConditions, setDripConditions] = useState<DripCondition[]>([]);
+    const [courseFilterType, setCourseFilterType] = useState<
+        'PARENTS_ONLY' | 'CHILDREN_ONLY' | null | undefined
+    >(null);
 
     // Use refs to preserve selections across re-renders and data fetches
     const preservedSessionRef = useRef<string>('');
@@ -314,21 +385,45 @@ export const CourseDetailsPage = () => {
         .sessions.find((session) => session.sessionDetails.id === selectedSession);
     const currentLevel = currentSession?.levelDetails.find((level) => level.id === selectedLevel);
 
+    // Resolve the effective courseId to use for mapping calls. This prefers the
+    // id coming back from course-init (courseDetailsData.course.id), but falls
+    // back to the raw search param when necessary.
+    const effectiveCourseId = courseDetailsData?.course.id ?? (searchParams.courseId ?? '');
+
     // Try to get packageSessionId from course-init API first (new approach)
     const packageSessionIdFromCourseInit = useGetPackageSessionIdFromCourseInit(
-        searchParams.courseId ?? '',
+        effectiveCourseId,
         currentSession?.sessionDetails.id ?? '',
         currentLevel?.id ?? ''
     );
     // Fallback to institute details if course-init doesn't have it
     const packageSessionIdFromInstitute =
         useGetPackageSessionId(
-            searchParams.courseId ?? '',
+            effectiveCourseId,
             currentSession?.sessionDetails.id ?? '',
             currentLevel?.id ?? ''
         ) || '';
-    // Prefer course-init data, fallback to institute details
-    const packageSessionIds = packageSessionIdFromCourseInit || packageSessionIdFromInstitute;
+
+    // ── Course batches (parent + child package sessions) ────────────────────────
+    const { data: rawBatches = [] } = useQuery({
+        queryKey: ['COURSE_BATCHES', courseId],
+        queryFn: () => (courseId ? fetchCourseBatches(courseId) : Promise.resolve([])),
+        enabled: !!courseId,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const batches: CourseBatch[] = useMemo(
+        () =>
+            (rawBatches as PackageSessionDTO[]).map((b) => ({
+                ...b,
+                // Keep backend-provided `package_session_name` (if present) separate from
+                // `name` (package_session table). The UI may concatenate both for display.
+                package_session_name:
+                    (b as unknown as { package_session_name?: string | null })
+                        .package_session_name ?? null,
+            })),
+        [rawBatches]
+    );
 
     // Convert sessions to select options format
     const sessionOptions = useMemo(() => {
@@ -341,6 +436,76 @@ export const CourseDetailsPage = () => {
 
         return options;
     }, [form.watch('courseData.sessions')]);
+
+    // Determine if the currently selected (session, level) actually has any
+    // child package sessions (subgroups). When there are no children for this
+    // combination, showing a Batch/Subgroup dropdown would be confusing, so we
+    // hide it and fall back to the legacy session+level mapping.
+    //
+    // Important: backend may return non-parent rows even when the user did NOT
+    // configure subgroups (e.g. “invite/default” rows). We only treat a child
+    // as a real subgroup when it has a meaningful name.
+    const isNamedChildSubgroup = (b: CourseBatch) => {
+        if (b.is_parent !== false) return false;
+        const name = (b.name ?? '').trim();
+        const psn = (b.package_session_name ?? '').trim();
+        return Boolean(name || psn);
+    };
+
+    const hasChildSubgroupsForSelection = useMemo(() => {
+        if (!selectedSession || !selectedLevel) return false;
+        return batches.some(
+            (b) =>
+                b.session.id === selectedSession &&
+                b.level.id === selectedLevel &&
+                isNamedChildSubgroup(b)
+        );
+    }, [batches, selectedSession, selectedLevel]);
+
+    // Batch/Subgroup dropdown should only be visible when:
+    // 1) Global course settings default filter is constrained to parents/children, AND
+    // 2) The current (session, level) has at least one child package session.
+    const shouldShowBatchDropdown =
+        (courseFilterType === 'PARENTS_ONLY' || courseFilterType === 'CHILDREN_ONLY') &&
+        hasChildSubgroupsForSelection;
+
+    // Only allow subgroup selection to influence content when the dropdown is visible.
+    // Prevents stale/incorrect batch scoping when there are no real subgroups.
+    const effectiveSelectedBatchId = shouldShowBatchDropdown ? selectedBatchId : '';
+
+    // Prefer the Batch/Subgroup dropdown selection so we can segregate when there
+    // are multiple package sessions (e.g. 1 parent + N children). Otherwise use
+    // session+level mapping from course-init or institute.
+    const packageSessionIds =
+        effectiveSelectedBatchId || packageSessionIdFromCourseInit || packageSessionIdFromInstitute;
+
+    // Additional guard specifically for edge cases where studyLibraryData exists
+    // but the transformed form state ends up with no sessions (e.g. a package
+    // that has multiple child package_sessions and only the global init payload
+    // was used). In that case, re-fire the course-init API for this courseId
+    // exactly once until sessions are populated. This keeps behaviour
+    // backward-compatible for existing courses that already have sessions.
+    useEffect(() => {
+        if (!courseId) return;
+
+        const sessions = form.getValues('courseData')?.sessions || [];
+        if (sessions.length > 0) {
+            return;
+        }
+
+        fetchCourseStudyLibraryDetails(courseId)
+            .then((data: unknown) => {
+                if (data) {
+                    setStudyLibraryData(data as never);
+                }
+            })
+            .catch((error: unknown) => {
+                console.error('Failed to reload course-init data for empty-session course', error);
+            });
+        // We intentionally only depend on courseId and the watched sessions
+        // collection length to avoid repeated refetches once sessions exist.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [courseId, form.watch('courseData.sessions')]);
 
     // Update level options when session changes
     const handleSessionChange = (sessionId: string, preserveLevel = false) => {
@@ -387,13 +552,84 @@ export const CourseDetailsPage = () => {
         setSelectedLevel(levelId);
     };
 
-    // Load drip conditions from course settings
+    // Build batch / subgroup dropdown options based on selected session + level.
+    // Label uses backend-provided package_session_name when available
+    // (e.g. "fs A", "fs B", "fs C") and falls back to package_name otherwise.
+    const batchOptions = useMemo(() => {
+        if (!selectedSession || !selectedLevel) return [];
+
+        return batches
+            .filter(
+                (b) =>
+                    b.session.id === selectedSession &&
+                    b.level.id === selectedLevel &&
+                    // Always keep parent rows. Only show child rows when they are real subgroups.
+                    (b.is_parent !== false || isNamedChildSubgroup(b))
+            )
+            .map((b) => {
+                // Prefer per-batch name from backend; fallback to package name.
+                const primary = (b.package_session_name ?? '').trim();
+                const fallback = (b.package_dto.package_name ?? '').trim();
+                let label = primary || fallback;
+
+                // As a last resort, use level name so the option is never empty.
+                if (!label && b.level?.level_name) {
+                    label = b.level.level_name.trim();
+                }
+
+                if (label && b.is_parent) {
+                    label += ' (Parent batch)';
+                }
+
+                return {
+                    id: b.id,
+                    label,
+                };
+            });
+    }, [batches, selectedSession, selectedLevel]);
+
+    // If dropdown is hidden (no real subgroups), clear any previously selected batch
+    // so session+level fallback mapping is used consistently.
+    useEffect(() => {
+        if (!shouldShowBatchDropdown && selectedBatchId) {
+            setSelectedBatchId('');
+        }
+    }, [shouldShowBatchDropdown, selectedBatchId]);
+
+    const handleBatchChange = (batchId: string) => {
+        setSelectedBatchId(batchId);
+    };
+
+    // Initial/default batch selection and when session/level changes
+    useEffect(() => {
+        if (!batchOptions.length) {
+            setSelectedBatchId('');
+            return;
+        }
+
+        // If current selection is still valid, keep it
+        const exists = batchOptions.some((opt) => opt.id === selectedBatchId);
+        if (selectedBatchId && exists) {
+            return;
+        }
+
+        // Prefer parent batch when available, otherwise first option
+        const preferredParent = batchOptions.find((opt) => {
+            const batch = batches.find((b) => b.id === opt.id);
+            return batch?.is_parent;
+        });
+
+        setSelectedBatchId(preferredParent?.id ?? batchOptions[0]?.id ?? '');
+    }, [batchOptions, batches, selectedBatchId]);
+
+    // Load drip conditions and permissions from course settings
     useEffect(() => {
         const loadDripSettings = async () => {
             try {
                 const settings = await getCourseSettings();
                 setDripConditionsEnabled(settings.dripConditions.enabled);
                 setDripConditions(settings.dripConditions.conditions);
+                setCourseFilterType(settings.permissions.courseFilterType);
             } catch (error) {
                 console.error('Error loading drip conditions:', error);
             }
@@ -525,6 +761,8 @@ export const CourseDetailsPage = () => {
 
     // Add a ref to track if we've already loaded the course data for this course
     const loadedCourseIdRef = useRef<string>('');
+    // Map key = `${sessionId}|${levelId}` -> parent package_session (batch) id for edit-course subgroup payload
+    const parentBatchIdRef = useRef<Map<string, string>>(new Map());
 
     // Add effect to reset loaded course ID when studyLibraryData changes (after mutations)
     useEffect(() => {
@@ -552,6 +790,77 @@ export const CourseDetailsPage = () => {
                     if (transformedData) {
                         // Mark this course as loaded BEFORE form reset to prevent race conditions
                         loadedCourseIdRef.current = currentCourseId;
+
+                        // Load batches to build Session → Level → Subgroups for edit form
+                        const parentMap = new Map<string, string>();
+                        const subgroupsMap = new Map<string, { id: string; name: string }[]>();
+                        try {
+                            const batchesList = await fetchCourseBatches(currentCourseId);
+                            const courseName = (courseDetailsData.course.package_name ?? '').trim();
+                            // Backend may not always populate `is_parent`. Prefer it when present,
+                            // but fall back to `parent_id === null` to identify parent rows.
+                            const parents = batchesList.filter((b: { is_parent?: boolean; parent_id?: string | null }) =>
+                                b.is_parent === true || (b.parent_id == null && b.is_parent !== false)
+                            );
+                            parents.forEach(
+                                (p: { id: string; session: { id: string }; level: { id: string } }) => {
+                                    const key = `${p.session.id}|${p.level.id}`;
+                                    parentMap.set(key, p.id);
+                                    if (!subgroupsMap.has(key)) subgroupsMap.set(key, []);
+                                }
+                            );
+
+                            // Child rows: either explicitly marked, or anything with a parent_id.
+                            const children = batchesList.filter(
+                                (b: { is_parent?: boolean; parent_id?: string | null }) =>
+                                    b.is_parent === false || (b.parent_id != null && b.is_parent !== true)
+                            );
+                            children.forEach(
+                                (child: {
+                                    id: string;
+                                    parent_id?: string | null;
+                                    name?: string | null;
+                                    session: { id: string };
+                                    level: { id: string };
+                                }) => {
+                                    const key = `${child.session.id}|${child.level.id}`;
+
+                                    // If we didn't find the parent row explicitly, still record the
+                                    // parent batch id for update payload mapping.
+                                    if (!parentMap.get(key) && child.parent_id) {
+                                        parentMap.set(key, child.parent_id);
+                                    }
+
+                                const pkgSessionName = (child as CourseBatch).package_session_name;
+                                const subName =
+                                    (child.name && child.name.trim()) ||
+                                    (typeof pkgSessionName === 'string'
+                                        ? pkgSessionName.replace(
+                                              new RegExp(`^${courseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+`, 'i'),
+                                              ''
+                                          ).trim() || pkgSessionName
+                                        : '');
+                                if (subName) {
+                                    const arr = subgroupsMap.get(key) ?? [];
+                                    arr.push({ id: child.id, name: subName });
+                                    subgroupsMap.set(key, arr);
+                                }
+                                }
+                            );
+                            parentBatchIdRef.current = parentMap;
+                        } catch (_) {
+                            parentBatchIdRef.current = new Map();
+                        }
+
+                        // Merge subgroups (with batch id for existing) and parent id into each level for edit UI
+                        const sessionsToMerge = transformedData.sessions ?? [];
+                        sessionsToMerge.forEach((session: { sessionDetails: { id: string }; levelDetails: Array<{ id: string; subgroups?: { id?: string; name: string }[]; parentPackageSessionId?: string }> }) => {
+                            (session.levelDetails ?? []).forEach((level: { id: string; subgroups?: { id?: string; name: string }[]; parentPackageSessionId?: string }) => {
+                                const key = `${session.sessionDetails.id}|${level.id}`;
+                                level.subgroups = subgroupsMap.get(key) ?? [];
+                                level.parentPackageSessionId = parentMap.get(key);
+                            });
+                        });
 
                         form.reset({
                             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -613,7 +922,9 @@ export const CourseDetailsPage = () => {
         loadCourseData();
     }, [courseDetailsData]);
 
-    // Add this with other queries at the top level of the component
+    // Slide count is tied to shared course content (outline/slides) and follows
+    // the legacy mapping from session+level → packageSessionId, independent of
+    // the Batch/Subgroup selection.
     const slideCountQuery = useQuery({
         ...handleGetSlideCountDetails(packageSessionIds),
         enabled: !!packageSessionIds,
@@ -658,18 +969,21 @@ export const CourseDetailsPage = () => {
         };
     }, [packageSessionIds, queryClient]);
 
+    // Keep the form's instructors field in sync with the currently selected
+    // session + level so downstream UI (stats card, authors list) always
+    // reflects the active configuration.
     useEffect(() => {
         form.setValue(
             'courseData.instructors',
             getInstructorsBySessionAndLevel(
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-expect-error
+                // @ts-expect-error – courseDetailsData.sessions shape is normalized by transformer
                 courseDetailsData?.sessions,
                 selectedSession,
                 selectedLevel
             )
         );
-    }, [currentLevel, currentSession]);
+    }, [courseDetailsData, currentSession, currentLevel, selectedSession, selectedLevel, form]);
 
     const [resolvedInstructors, setResolvedInstructors] = useState<InstructorWithPicUrl[]>([]);
     const [loadingInstructors, setLoadingInstructors] = useState(false);
@@ -679,42 +993,15 @@ export const CourseDetailsPage = () => {
     // Cache for profilePicId -> url
     const profilePicUrlCache = useRef<Record<string, string>>({});
 
-    // Determine if we should show the dashboard loader
-    const isLoading = useMemo(() => {
-        // Show loader if study library data is not loaded yet
-        if (!studyLibraryData) {
-            return true;
-        }
-
-        // Show loader if course details data is not found for the current courseId
-        if (!courseDetailsData) {
-            return true;
-        }
-
-        // Show loader if form data hasn't been loaded yet (title is empty)
-        if (!form.getValues('courseData')?.title) {
-            return true;
-        }
-
-        // Show loader if instructor avatars are loading
-        if (loadingInstructors) {
-            return true;
-        }
-
-        // Show loader if slide count query is loading and we have packageSessionIds
-        if (packageSessionIds && slideCountQuery.isLoading) {
-            return true;
-        }
-
-        return false;
-    }, [
-        studyLibraryData,
-        courseDetailsData,
-        form.watch('courseData.title'),
-        loadingInstructors,
-        packageSessionIds,
-        slideCountQuery.isLoading,
-    ]);
+    // Determine if we should show the dashboard loader.
+    // We only block on the initial course-init load; once that finishes,
+    // we always render the page (even if slide counts or avatars are
+    // still loading) to avoid getting stuck on a spinner for edge cases
+    // like courses with multiple child package sessions.
+    const isLoading = useMemo(
+        () => Boolean(isInitLoading && !courseDetailsData),
+        [isInitLoading, courseDetailsData]
+    );
 
     useEffect(() => {
         let isMounted = true;
@@ -908,6 +1195,15 @@ export const CourseDetailsPage = () => {
                                             <AddCourseForm
                                                 isEdit={true}
                                                 initialCourseData={form.getValues()}
+                                                getParentPackageSessionId={({
+                                                    sessionId,
+                                                    levelId,
+                                                }: {
+                                                    sessionId: string;
+                                                    levelId: string;
+                                                }) =>
+                                                    parentBatchIdRef.current.get(`${sessionId}|${levelId}`) ?? ''
+                                                }
                                             />
                                         </div>
                                     )}
@@ -1070,9 +1366,7 @@ export const CourseDetailsPage = () => {
                                             <Select
                                                 value={selectedLevel}
                                                 onValueChange={handleLevelChange}
-                                                disabled={
-                                                    !selectedSession || isTeacherOnPublishedCourse
-                                                }
+                                                disabled={!selectedSession}
                                             >
                                                 <SelectTrigger className="h-8 w-full rounded-md text-sm sm:w-40 lg:w-48">
                                                     <SelectValue
@@ -1096,10 +1390,49 @@ export const CourseDetailsPage = () => {
                                             </Select>
                                         </div>
                                     )}
+                                    {/* Batch / Subgroup dropdown
+                                     * Only show when the global course settings
+                                     * default filter is PARENTS_ONLY or CHILDREN_ONLY.
+                                     */}
+                                    {shouldShowBatchDropdown && (
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-xs font-medium text-gray-700">
+                                                Batch / Subgroup
+                                            </label>
+                                            <Select
+                                                value={selectedBatchId}
+                                                onValueChange={handleBatchChange}
+                                                disabled={
+                                                    !selectedSession ||
+                                                    !selectedLevel ||
+                                                    isTeacherOnPublishedCourse ||
+                                                    batchOptions.length === 0
+                                                }
+                                            >
+                                                <SelectTrigger className="h-8 w-full rounded-md text-sm sm:w-40 lg:w-48">
+                                                    <SelectValue placeholder="Select batch" />
+                                                </SelectTrigger>
+                                                <SelectContent className="rounded-md">
+                                                    {batchOptions.map((option) => (
+                                                        <SelectItem
+                                                            key={option.id}
+                                                            value={option.id}
+                                                            className="text-sm"
+                                                        >
+                                                            {option.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             {coursePage?.viewInviteLinks !== false && (
-                                <InviteDetailsComponent form={form} />
+                                <InviteDetailsComponent
+                                    form={form}
+                                    selectedBatchId={effectiveSelectedBatchId}
+                                />
                             )}
                         </div>
 
@@ -1108,6 +1441,7 @@ export const CourseDetailsPage = () => {
                             selectedLevel={selectedLevel}
                             courseStructure={form.getValues('courseData.courseStructure')}
                             isReadOnly={isTeacherOnPublishedCourse}
+                            selectedBatchId={effectiveSelectedBatchId}
                         />
 
                         {/* What You'll Learn Section */}

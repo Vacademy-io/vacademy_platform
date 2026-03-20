@@ -33,6 +33,11 @@ export const BatchForSessionSchema = z.object({
     start_time: z.string().nullable(),
     status: z.string(),
     package_dto: PackageSchema,
+    /**
+     * Optional display name for this package session (child batch).
+     * Backed by the `name` column on the package_session table.
+     */
+    name: z.string().nullable().optional(),
     is_org_associated: z.boolean().optional(),
     group: z.any().nullable().optional(),
     is_parent: z.boolean().optional(),

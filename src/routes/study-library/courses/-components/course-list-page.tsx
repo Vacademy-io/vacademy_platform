@@ -330,6 +330,14 @@ const CourseListPage = ({
                                         .split(',')
                                         .map((t: string) => t.trim())
                                     : [];
+                                const displayName = course.package_session_name
+                                    ? `${convertCapitalToTitleCase(
+                                          course.package_name
+                                      )} ${convertCapitalToTitleCase(
+                                          course.package_session_name
+                                      )}`
+                                    : convertCapitalToTitleCase(course.package_name);
+
                                 return (
                                     <div
                                         key={course.id}
@@ -354,7 +362,7 @@ const CourseListPage = ({
                                         <div className="flex flex-col gap-1 p-3 sm:p-4">
                                             <div className="flex items-start justify-between gap-2">
                                                 <div className="min-w-0 flex-1 text-base font-extrabold text-neutral-800 sm:text-lg">
-                                                    {convertCapitalToTitleCase(course.package_name)}
+                                                    {displayName}
                                                 </div>
                                                 <div
                                                     className={`flex-shrink-0 rounded-lg bg-gray-100 p-1 px-2 text-xs font-semibold text-gray-700`}

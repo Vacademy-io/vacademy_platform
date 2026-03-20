@@ -44,6 +44,13 @@ interface AddChapterFormProps {
     session_id?: string;
     level_id?: string;
     subject_id?: string;
+    /**
+     * Optional override for the current package_session_id. When provided
+     * (for example from Course Details > Batch/Subgroup selection), new
+     * chapters will default to this specific package session instead of
+     * the generic session+level mapping.
+     */
+    package_session_id_override?: string;
     hideSubmitButton?: boolean;
     onFormReady?: (submitFn: () => void, isPending: boolean) => void;
 }
@@ -56,6 +63,7 @@ export const AddChapterForm = ({
     session_id,
     level_id,
     subject_id,
+    package_session_id_override,
     hideSubmitButton = false,
     onFormReady,
 }: AddChapterFormProps) => {
@@ -76,8 +84,15 @@ export const AddChapterForm = ({
     // Fallback to institute details if course-init doesn't have it
     const packageSessionIdFromInstitute =
         useGetPackageSessionId(courseId, sessionId, levelId) || '';
-    // Prefer course-init data, fallback to institute details
-    const package_session_id = packageSessionIdFromCourseInit || packageSessionIdFromInstitute;
+    // Prefer explicit override from parent (Batch/Subgroup selection). When not
+    // provided, fall back to session+level mapping as before.
+    const package_session_id =
+        package_session_id_override || packageSessionIdFromCourseInit || packageSessionIdFromInstitute;
+
+    // When a specific Batch/Subgroup is driving this form (override present),
+    // we treat the chapter as belonging ONLY to that package_session_id and
+    // do not allow multi-batch visibility selection.
+    const isPerBatchMode = Boolean(package_session_id_override);
     const { getPackageWiseLevels, getPackageSessionId } = useInstituteDetailsStore();
 
     // Image upload states
@@ -209,9 +224,16 @@ export const AddChapterForm = ({
 
             try {
                 const displaySettings = await getDisplaySettingsWithFallback(roleKey);
-                setRequirePackageSelection(
-                    displaySettings.courseCreation?.requirePackageSelectionForNewChapter ?? true
-                );
+                // If we're in per-batch mode (Course Details with a selected
+                // Batch/Subgroup), force package selection OFF so chapters are
+                // always scoped to the current package_session_id only.
+                if (isPerBatchMode) {
+                    setRequirePackageSelection(false);
+                } else {
+                    setRequirePackageSelection(
+                        displaySettings.courseCreation?.requirePackageSelectionForNewChapter ?? true
+                    );
+                }
             } catch (error) {
                 console.error('Error loading display settings:', error);
                 // Default to true on error
@@ -220,7 +242,7 @@ export const AddChapterForm = ({
         };
 
         loadDisplaySettings();
-    }, []);
+    }, [isPerBatchMode]);
 
     // Fetch complete chapter data when in edit mode
     useEffect(() => {
@@ -400,11 +422,24 @@ export const AddChapterForm = ({
     const onSubmit = useCallback(
         async (data: FormValues) => {
             try {
-                // Use current package session if selection is not required, otherwise use selected packages
-                // Deduplicate IDs using Set to prevent sending duplicate package session IDs
-                const selectedPackageSessionIds = requirePackageSelection
-                    ? [...new Set(Object.values(data.visibility).flat())].join(',')
-                    : package_session_id;
+                // Determine which package_session_ids this chapter should belong to.
+                // In per-batch mode (when a specific Batch/Subgroup override is
+                // provided), ALWAYS use that single package_session_id so that
+                // content stays isolated per subgroup. In all other cases,
+                // fall back to the original behaviour: either use the explicit
+                // visibility selection or the resolved package_session_id.
+                let selectedPackageSessionIds: string | null = null;
+
+                if (isPerBatchMode) {
+                    selectedPackageSessionIds = package_session_id || null;
+                } else if (requirePackageSelection) {
+                    // Deduplicate IDs using Set to prevent sending duplicate package session IDs
+                    selectedPackageSessionIds = [...new Set(Object.values(data.visibility).flat())].join(
+                        ','
+                    );
+                } else {
+                    selectedPackageSessionIds = package_session_id || null;
+                }
 
                 if (!selectedPackageSessionIds) {
                     toast.error(
@@ -470,6 +505,7 @@ export const AddChapterForm = ({
             subjectId,
             moduleId,
             onSubmitSuccess,
+            isPerBatchMode,
             requirePackageSelection,
             package_session_id,
         ]
@@ -597,8 +633,12 @@ export const AddChapterForm = ({
                     )}
                 />
 
-                {/* Conditionally render Chapter Visibility section based on display settings */}
-                {requirePackageSelection && (
+                {/* Conditionally render Chapter Visibility section based on display settings.
+                 * When isPerBatchMode is true (i.e., Chapter is being created from a specific
+                 * Batch/Subgroup in Course Details), we hide this section entirely so the
+                 * chapter is always scoped to that single package_session_id.
+                 */}
+                {requirePackageSelection && !isPerBatchMode && (
                     <div className="flex flex-col gap-2 overflow-y-auto">
                         <div className="text-subtitle font-semibold">
                             {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} Visibility

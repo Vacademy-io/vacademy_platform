@@ -45,6 +45,7 @@ import {
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
 import { useImageCache } from '@/hooks/use-image-cache';
 import { fetchMultipleImagesWithCache } from '@/utils/image-cache-utils';
+import { useCourseSettings } from '@/hooks/useCourseSettings';
 
 export interface AllCourseFilters {
     status: string[];
@@ -57,6 +58,7 @@ export interface AllCourseFilters {
     sort_columns: Record<string, 'ASC' | 'DESC'>;
     package_ids?: string[];
     package_session_ids?: string[];
+    package_session_filter?: 'PARENTS_ONLY' | 'CHILDREN_ONLY' | null;
 }
 
 // Add types for API response and course item
@@ -81,6 +83,12 @@ export interface CourseInstructor {
 export interface CourseItem {
     id: string;
     package_name: string;
+    /**
+     * Optional human-friendly name for the specific package session
+     * (e.g. "Morning Batch A"). When present, the UI concatenates
+     * this with `package_name` for display on the All Courses page.
+     */
+    package_session_name?: string | null;
     thumbnail_file_id: string;
     is_course_published_to_catalaouge: boolean;
     course_preview_image_media_id: string;
@@ -140,6 +148,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         }
     };
     const deleteCourseMutation = useDeleteCourse();
+    const { permissions } = useCourseSettings();
     const { instituteDetails } = useInstituteDetailsStore();
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const tokenData = getTokenDecodedData(accessToken);
@@ -247,10 +256,11 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             faculty_ids: [],
             search_by_name: '',
             min_percentage_completed: 0,
-            max_percentage_completed: 0,
+            max_percentage_completed: 100,
             sort_columns: { created_at: 'DESC' },
             package_ids: filters?.package_ids || [],
             package_session_ids: filters?.package_session_ids || [],
+            package_session_filter: null,
         };
     });
 
@@ -341,10 +351,11 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             faculty_ids: [],
             search_by_name: '',
             min_percentage_completed: 0,
-            max_percentage_completed: 0,
+            max_percentage_completed: 100,
             sort_columns: { created_at: 'DESC' },
             package_ids: [],
             package_session_ids: [],
+            package_session_filter: null,
         });
         setSearchValue('');
     };
@@ -392,6 +403,33 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             return prev;
         });
     }, [sortBy]);
+
+    // Apply default course session filter from course settings permissions
+    useEffect(() => {
+        const defaultFilter = permissions?.courseFilterType;
+        if (defaultFilter === 'PARENTS_ONLY' || defaultFilter === 'CHILDREN_ONLY') {
+            setSelectedFilters((prev) => {
+                if (prev.package_session_filter === defaultFilter) {
+                    return prev;
+                }
+                return {
+                    ...prev,
+                    package_session_filter: defaultFilter,
+                };
+            });
+        } else {
+            // No default filter configured – remove any previously applied default
+            setSelectedFilters((prev) => {
+                if (!prev.package_session_filter) {
+                    return prev;
+                }
+                return {
+                    ...prev,
+                    package_session_filter: null,
+                };
+            });
+        }
+    }, [permissions?.courseFilterType]);
 
     useEffect(() => {
         if (tokenData && tokenData.authorities && instituteDetails?.id) {
@@ -474,6 +512,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             sort_columns: selectedFilters.sort_columns,
             package_ids: selectedFilters.package_ids,
             package_session_ids: selectedFilters.package_session_ids,
+            package_session_filter: selectedFilters.package_session_filter,
         };
     }, [selectedFilters]);
 

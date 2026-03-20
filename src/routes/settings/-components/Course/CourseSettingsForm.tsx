@@ -117,7 +117,10 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
         }));
     };
 
-    const updatePermissions = (key: keyof typeof formData.permissions, value: boolean) => {
+    const updatePermissions = (
+        key: keyof typeof formData.permissions,
+        value: boolean | 'PARENTS_ONLY' | 'CHILDREN_ONLY' | null
+    ) => {
         setFormData((prev) => ({
             ...prev,
             permissions: {
@@ -560,6 +563,50 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                         updatePermissions('allowReferralOptionChange', value)
                                     }
                                 />
+                            </div>
+
+                            <div className="space-y-2 md:col-span-2">
+                                <Label
+                                    htmlFor="course-filter-type"
+                                    className="flex items-center gap-2"
+                                >
+                                    <span>Default Course Filter (Explore Courses)</span>
+                                </Label>
+                                <Select
+                                    value={
+                                        formData.permissions.courseFilterType === 'PARENTS_ONLY' ||
+                                        formData.permissions.courseFilterType === 'CHILDREN_ONLY'
+                                            ? formData.permissions.courseFilterType
+                                            : 'ALL'
+                                    }
+                                    onValueChange={(value) => {
+                                        if (value === 'ALL') {
+                                            updatePermissions('courseFilterType', null);
+                                        } else {
+                                            updatePermissions(
+                                                'courseFilterType',
+                                                value as 'PARENTS_ONLY' | 'CHILDREN_ONLY'
+                                            );
+                                        }
+                                    }}
+                                >
+                                    <SelectTrigger id="course-filter-type" className="w-full max-w-xs">
+                                        <SelectValue placeholder="Select default filter" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="ALL">Show all (no default filter)</SelectItem>
+                                        <SelectItem value="PARENTS_ONLY">
+                                            Only parent batches (PARENTS_ONLY)
+                                        </SelectItem>
+                                        <SelectItem value="CHILDREN_ONLY">
+                                            Only child batches (CHILDREN_ONLY)
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Controls whether Explore Courses shows only parent batches, only child
+                                    batches, or all batches by default.
+                                </p>
                             </div>
                         </div>
                     </CardContent>

@@ -31,6 +31,13 @@ export interface OutlineSettings {
 }
 
 export interface Permissions {
+    /**
+     * Default course filter for Explore Courses:
+     * - 'PARENTS_ONLY'   → only parent batches
+     * - 'CHILDREN_ONLY'  → only child batches
+     * - null / undefined → no default filter (show all)
+     */
+    courseFilterType?: 'PARENTS_ONLY' | 'CHILDREN_ONLY' | null;
     allowLearnersToCreateCourses: boolean;
     allowPaymentOptionChange: boolean;
     allowDiscountOptionChange: boolean;
@@ -162,6 +169,7 @@ export const DEFAULT_COURSE_SETTINGS: CourseSettingsData = {
         defaultState: 'expanded',
     },
     permissions: {
+        courseFilterType: null,
         allowLearnersToCreateCourses: false,
         allowPaymentOptionChange: true,
         allowDiscountOptionChange: true,

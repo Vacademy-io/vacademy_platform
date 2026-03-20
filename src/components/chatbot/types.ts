@@ -55,12 +55,21 @@ export interface QuizSubmission {
   time_taken_seconds?: number;
 }
 
+export interface Attachment {
+  type: 'image' | 'video';
+  url: string;
+  mime_type?: string;
+  name?: string;
+}
+
 export interface ChatMessage {
   id: number;
   role: MessageRole;
   content: string;
   timestamp: number;
   context?: ChatbotContext;
+  status?: 'sent' | 'pending' | 'failed';
+  attachments?: Attachment[];
   metadata?: {
     tool_name?: string;
     tool_arguments?: object;

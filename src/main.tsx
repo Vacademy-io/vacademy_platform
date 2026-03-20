@@ -3,6 +3,14 @@ import { RouterProvider, createRouter } from "@tanstack/react-router";
 import React, { StrictMode, lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 
+// DEBUG: Catch unhandled promise rejections to trace the '.data' error
+window.addEventListener("unhandledrejection", (event) => {
+  if (event.reason?.message?.includes("reading 'data'")) {
+    console.error("🔴 CAUGHT .data ERROR — Full details:", event.reason);
+    console.error("🔴 Stack trace:", event.reason?.stack);
+  }
+});
+
 import RootErrorComponent from "./components/core/deafult-error";
 import RootNotFoundComponent from "./components/core/default-not-found";
 import RootPendingComponent from "./components/core/default-pending";

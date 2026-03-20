@@ -3,12 +3,13 @@ import { Helmet } from "react-helmet";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import ZoomEmbedPlayer from "./-components/ZoomEmbedPlayer";
+import ZohoEmbedPlayer from "./-components/ZohoEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
 import { toast } from "sonner";
@@ -18,6 +19,10 @@ import { SessionDetailsResponse } from "../-types/types";
 import { useLiveSessions } from "../-hooks/useLiveSessions";
 import { getAllPackageSessionIds } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { DefaultClassCard } from "../-components/DefaultClassCard";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { BASE_URL } from "@/constants/urls";
+import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 
 const LearnerButtonConfigSchema = z.object({
   text: z.string(),
@@ -48,14 +53,31 @@ function EmbedComponent() {
   const { setNavHeading } = useNavHeadingStore();
   const navigate = useNavigate();
   const [batchIds, setBatchIds] = useState<string[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // null = checking
+
+  // Check authentication status
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { getTokenFromStorage } = await import("@/lib/auth/sessionUtility");
+        const { TokenKey } = await import("@/constants/auth/tokens");
+        const token = await getTokenFromStorage(TokenKey.accessToken);
+        setIsAuthenticated(!!token);
+      } catch {
+        setIsAuthenticated(false);
+      }
+    };
+    checkAuth();
+  }, []);
 
   useEffect(() => {
+    if (isAuthenticated !== true) return;
     const fetchBatchIds = async () => {
       const ids = await getAllPackageSessionIds();
       setBatchIds(ids);
     };
     fetchBatchIds();
-  }, []);
+  }, [isAuthenticated]);
 
   const { data: sessions } = useLiveSessions(batchIds);
 
@@ -86,6 +108,37 @@ function EmbedComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId || null);
+
+  // BBB join URL state
+  const [bbbJoinUrl, setBbbJoinUrl] = useState<string | null>(null);
+  const [bbbLoading, setBbbLoading] = useState(false);
+  const bbbFetchedRef = useRef(false);
+
+  // Auto-fetch BBB join URL when session is identified as BBB
+  useEffect(() => {
+    if (!sessionId || bbbFetchedRef.current) return;
+    const lt = fetchedSessionDetails?.linkType;
+    if (lt !== LinkType.BBB_MEETING && lt !== "bbb") return;
+
+    bbbFetchedRef.current = true;
+    setBbbLoading(true);
+
+    authenticatedAxiosInstance
+      .get(`${BASE_URL}/admin-core-service/live-sessions/provider/meeting/join`, {
+        params: { scheduleId: sessionId, role: "VIEWER" },
+      })
+      .then((response) => {
+        setBbbJoinUrl(response.data.joinUrl);
+      })
+      .catch((err) => {
+        console.error("Failed to get BBB join URL:", err);
+        toast.error("Failed to join video class. Please try again.");
+        bbbFetchedRef.current = false; // allow retry
+      })
+      .finally(() => {
+        setBbbLoading(false);
+      });
+  }, [sessionId, fetchedSessionDetails?.linkType]);
 
   // If safety modal is disabled, we are "verified" by default.
   const [isSafetyVerified, setIsSafetyVerified] = useState(
@@ -178,13 +231,54 @@ function EmbedComponent() {
   };
 
   const renderEmbeddedSession = () => {
-    // Fixed typo: "Embeded" -> "Embedded"
-    if (!sessionDetails?.defaultMeetLink) return null;
-
-    // Check link type - default to YouTube if we have a videoUrl but no valid linkType
+    console.log("[LearnerEmbed] Session details:", sessionDetails);
+    // Check link type first — BBB sessions may not have a defaultMeetLink
     const linkType =
-      sessionDetails.linkType ||
-      (videoUrl ? LinkType.YOUTUBE : LinkType.UNKNOWN);
+      sessionDetails?.linkType ||
+      (videoUrl ? LinkType.YOUTUBE : undefined);
+
+    // Handle BBB early — room is auto-created, no defaultMeetLink needed
+    if (linkType === LinkType.BBB_MEETING || linkType === "bbb") {
+      if (bbbLoading) {
+        return <DashboardLoader />;
+      }
+
+      if (bbbJoinUrl) {
+        return (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-4 p-8">
+            <div className="text-center space-y-3">
+              <h3 className="text-lg font-semibold">Live Class is Ready</h3>
+              <p className="text-sm text-muted-foreground">
+                {Capacitor.getPlatform() === "web"
+                  ? "Click below to join the video class in a new window."
+                  : "Tap below to join the video class."}
+              </p>
+              <Button
+                onClick={() => {
+                  if (Capacitor.isNativePlatform()) {
+                    Browser.open({ url: bbbJoinUrl, presentationStyle: "fullscreen" });
+                  } else {
+                    window.open(bbbJoinUrl, "_blank", "noopener,noreferrer");
+                  }
+                }}
+                className="gap-2"
+              >
+                <ArrowSquareOut size={18} />
+                Join Live Class
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex items-center justify-center p-8">
+          <DashboardLoader />
+        </div>
+      );
+    }
+
+    if (!sessionDetails?.defaultMeetLink) return null;
 
     // --- YouTube & recorded YouTube links ---
     if (
@@ -289,6 +383,53 @@ function EmbedComponent() {
       );
     }
 
+    // --- Zoho links ---
+    if (
+      linkType === LinkType.ZOHO ||
+      linkType === LinkType.ZOHO_MEETING ||
+      linkType === LinkType.ZOHO_RECORDED
+    ) {
+      const zohoUrl = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      return (
+        <div className="w-full h-full flex flex-col gap-4">
+          <ZohoEmbedPlayer
+            providerHostUrl={sessionDetails.providerHostUrl}
+            meetingUrl={zohoUrl}
+          />
+          {learnerButtonConfig?.visible && (
+            <div className="flex justify-end w-full mt-2">
+              <Button
+                variant="default"
+                size="sm"
+                className="h-9 px-6 text-sm font-medium shadow-sm hover:shadow transition-all duration-200 rounded-full"
+                style={{
+                  backgroundColor: learnerButtonConfig.background_color,
+                  color: learnerButtonConfig.text_color,
+                  border: `1px solid ${learnerButtonConfig.background_color}20`,
+                }}
+                onClick={() => window.open(learnerButtonConfig.url, "_blank")}
+              >
+                <span>{learnerButtonConfig.text}</span>
+                <ArrowSquareOut size={14} weight="bold" className="ml-2 opacity-90" />
+              </Button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Check if embedding is enabled — if not, open the link in a new tab
+    if (sessionDetails.sessionStreamingServiceType &&
+      sessionDetails.sessionStreamingServiceType.toLowerCase() !== "embed") {
+      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      window.open(joinLink, "_blank", "noopener,noreferrer");
+      return (
+        <div className="flex flex-col items-center justify-center p-8 h-full">
+          <p className="mt-4 text-neutral-600">Opening meeting link in a new tab...</p>
+        </div>
+      );
+    }
+
     // Handle unsupported link types
     return (
       <div className="p-4 border border-yellow-200 rounded-lg bg-yellow-50 text-yellow-700">
@@ -296,6 +437,33 @@ function EmbedComponent() {
       </div>
     );
   };
+
+  // Auth check: show loading while checking, then login prompt if unauthenticated
+  if (isAuthenticated === null) return <DashboardLoader />;
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center space-y-4 p-8 max-w-md">
+          <div className="mx-auto w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-800">Login Required</h2>
+          <p className="text-gray-600">
+            Please log in to attend this session. This is a private session and requires authentication.
+          </p>
+          <Button
+            onClick={() => navigate({ to: "/login" })}
+            className="mt-4"
+          >
+            Go to Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading && sessionId) return <DashboardLoader />;
 
@@ -309,7 +477,13 @@ function EmbedComponent() {
     );
   }
 
-  if (!sessionDetails?.defaultMeetLink) {
+  // BBB sessions may not have a defaultMeetLink — the room is auto-created on join
+  const isBbbSession = sessionDetails?.linkType === LinkType.BBB_MEETING ||
+    sessionDetails?.linkType === "bbb" ||
+    fetchedSessionDetails?.linkType === LinkType.BBB_MEETING ||
+    fetchedSessionDetails?.linkType === "bbb";
+
+  if (!sessionDetails?.defaultMeetLink && !isBbbSession) {
     if ((sessions as any)?.defaultDayConfig?.defaultClassLink) {
       return (
         <LayoutContainer>

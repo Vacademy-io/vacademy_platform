@@ -26,6 +26,12 @@ export interface InstituteDetails {
   batches_for_sessions: null;
   subjects: string[];
   institute_settings_json: string;
+  sub_orgs?: Array<{
+    sub_org_id: string;
+    name: string;
+    logo_file_id: string | null;
+    status: string;
+  }>;
 }
 
 // Type for the expected structure of institute_settings_json

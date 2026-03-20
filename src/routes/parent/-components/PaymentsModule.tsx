@@ -1,114 +1,649 @@
-// ─────────────────────────────────────────────────────────────
-// Payments Module — Fee breakdown, payment, receipts
-// ─────────────────────────────────────────────────────────────
-
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useMemo, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { motion } from "framer-motion";
+import type { ChildProfile } from "@/types/parent-portal";
 import type {
-  ChildProfile,
-  PaymentFeeItem,
-  PaymentTransaction,
+  StudentFeeDue,
+  InvoiceReceipt,
+  DuesFilterBody,
 } from "@/types/parent-portal";
 import {
-  usePaymentSummary,
-  usePaymentHistory,
-  useInitiatePayment,
-} from "@/hooks/use-parent-portal";
-import { downloadReceipt } from "@/services/parent-portal/parent-api";
-import { AdmissionPaymentSection } from "./AdmissionPaymentSection";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+  getStudentDues,
+  getStudentReceipts,
+  getReceiptDownloadUrl,
+} from "@/services/parent-portal/parent-api";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "sonner";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  Receipt,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
-  Download,
-  ChevronDown,
-  ChevronUp,
-  CreditCard,
-  Loader2,
-} from "lucide-react";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { toast } from "sonner";
+import { AlertTriangle, Receipt, Download, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 
 interface PaymentsModuleProps {
   child: ChildProfile;
 }
 
+const formatINR = (amount: number | null | undefined) =>
+  `₹${(amount ?? 0).toLocaleString("en-IN")}`;
+
+const formatDueDate = (dateStr: string) => {
+  try {
+    return format(new Date(dateStr), "dd MMM yyyy");
+  } catch {
+    return dateStr;
+  }
+};
+
+const formatReceiptDate = (dateStr: string) => {
+  try {
+    return format(new Date(dateStr), "dd MMM yyyy, hh:mm a");
+  } catch {
+    return dateStr;
+  }
+};
+
 export function PaymentsModule({ child }: PaymentsModuleProps) {
-  const { data: summary, isLoading: loadingSummary } = usePaymentSummary(
-    child.id,
+  const userId = child.id;
+  const instituteId = child.institute_id;
+
+  const [activeTab, setActiveTab] = useState("installments");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState<DuesFilterBody>({});
+
+  const hasActiveFilters = Object.keys(appliedFilters).length > 0;
+
+  // Unfiltered dues — powers summary cards and default table
+  const {
+    data: allDues = [],
+    isLoading: loadingAllDues,
+    isError: allDuesError,
+    error: allDuesErrorObj,
+  } = useQuery({
+    queryKey: ["student-dues-summary", userId, instituteId],
+    queryFn: () => getStudentDues(userId, instituteId),
+    enabled: !!userId && !!instituteId,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // Filtered dues — runs only when user applies filters
+  const {
+    data: filteredDuesData = [],
+    isLoading: loadingFilteredDues,
+    error: filteredDuesErrorObj,
+  } = useQuery({
+    queryKey: ["student-dues-filtered", userId, instituteId, appliedFilters],
+    queryFn: () => getStudentDues(userId, instituteId, appliedFilters),
+    enabled: !!userId && !!instituteId && hasActiveFilters,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // Receipts for payment history tab
+  const {
+    data: receipts = [],
+    isLoading: loadingReceipts,
+  } = useQuery({
+    queryKey: ["student-receipts", userId, instituteId],
+    queryFn: () => getStudentReceipts(userId, instituteId),
+    enabled: !!userId && !!instituteId,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (allDuesErrorObj) {
+      toast.error("Failed to load fee data. Please try again.");
+    }
+  }, [allDuesErrorObj]);
+
+  useEffect(() => {
+    if (filteredDuesErrorObj) {
+      toast.error("Failed to load fee data. Please try again.");
+    }
+  }, [filteredDuesErrorObj]);
+
+  const tableDues = hasActiveFilters ? filteredDuesData : allDues;
+
+  // Summary computations (always from unfiltered data)
+  const totalDues = useMemo(
+    () => allDues.reduce((sum, d) => sum + d.amount_due, 0),
+    [allDues],
   );
-  const { data: history, isLoading: loadingHistory } = usePaymentHistory(
-    child.id,
+  const overdueAmount = useMemo(
+    () =>
+      allDues
+        .filter((d) => d.is_overdue)
+        .reduce((sum, d) => sum + d.amount_due, 0),
+    [allDues],
   );
-  const paymentMutation = useInitiatePayment();
-  const [selectedFees, setSelectedFees] = useState<string[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const totalPaid = useMemo(
+    () => allDues.reduce((sum, d) => sum + d.amount_paid, 0),
+    [allDues],
+  );
 
-  const isLoading = loadingSummary || loadingHistory;
+  // Tab data derived from potentially-filtered dues
+  const installmentItems = useMemo(
+    () => tableDues.filter((d) => d.status !== "PAID"),
+    [tableDues],
+  );
+  const overdueItems = useMemo(
+    () => tableDues.filter((d) => d.is_overdue),
+    [tableDues],
+  );
+  const overdueCount = useMemo(
+    () => allDues.filter((d) => d.is_overdue).length,
+    [allDues],
+  );
 
-  // Calculate selected total
-  const selectedTotal =
-    summary?.fee_items
-      .filter((f) => selectedFees.includes(f.id))
-      .reduce((sum, f) => sum + f.total, 0) ?? 0;
-
-  const handleToggleFee = (feeId: string) => {
-    setSelectedFees((prev) =>
-      prev.includes(feeId)
-        ? prev.filter((id) => id !== feeId)
-        : [...prev, feeId],
-    );
+  const handleApplyFilters = () => {
+    const body: DuesFilterBody = {};
+    if (statusFilter !== "ALL") body.status = statusFilter;
+    if (startDate) body.startDueDate = startDate;
+    if (endDate) body.endDueDate = endDate;
+    setAppliedFilters(body);
   };
 
-  const handlePay = () => {
-    if (selectedFees.length === 0) {
-      toast.error("Please select at least one fee item to pay");
+  if (!instituteId) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Please select an institute</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadingAllDues) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-3 gap-3">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-24" />
+          ))}
+        </div>
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (allDuesError) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+        <div className="text-center py-12">
+          <AlertTriangle
+            size={32}
+            className="mx-auto text-destructive/60 mb-2"
+          />
+          <p className="text-sm text-muted-foreground">
+            Failed to load fee data. Please try again.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full min-h-[calc(100vh-8rem)] space-y-5 pb-20 lg:pb-8">
+      {/* Header */}
+      <div>
+        <h2 className="text-lg sm:text-xl font-bold text-foreground">
+          Parent Payment
+        </h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Fee details and payment history for {child.full_name}
+        </p>
+      </div>
+
+      {/* Summary Cards */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+      >
+        <Card className="shadow-sm bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="p-4 text-center">
+            <p className="text-[10px] font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">
+              Total Dues
+            </p>
+            <p className="text-lg sm:text-xl font-bold text-blue-700 dark:text-blue-300">
+              {formatINR(totalDues)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
+          <CardContent className="p-4 text-center">
+            <p className="text-[10px] font-medium text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">
+              Overdue Amount
+            </p>
+            <p className="text-lg sm:text-xl font-bold text-red-700 dark:text-red-300">
+              {formatINR(overdueAmount)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800">
+          <CardContent className="p-4 text-center">
+            <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">
+              Total Paid
+            </p>
+            <p className="text-lg sm:text-xl font-bold text-emerald-700 dark:text-emerald-300">
+              {formatINR(totalPaid)}
+            </p>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="w-full sm:w-auto">
+          <TabsTrigger value="installments">Installments</TabsTrigger>
+          <TabsTrigger value="overdues" className="gap-1.5">
+            Overdues
+            {overdueCount > 0 && (
+              <Badge
+                variant="destructive"
+                className="ml-1 text-[10px] px-1.5 py-0 h-4 leading-4"
+              >
+                {overdueCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="history">Payment History</TabsTrigger>
+        </TabsList>
+
+        {/* Filters — visible in Installments & Overdues tabs */}
+        {(activeTab === "installments" || activeTab === "overdues") && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4"
+          >
+            <Card className="shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex flex-col sm:flex-row items-end gap-3">
+                  <div className="w-full sm:w-40">
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                      Status
+                    </label>
+                    <Select
+                      value={statusFilter}
+                      onValueChange={setStatusFilter}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All</SelectItem>
+                        <SelectItem value="PENDING">Pending</SelectItem>
+                        <SelectItem value="PARTIAL_PAID">
+                          Partial Paid
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="w-full sm:w-40">
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                      Start Date
+                    </label>
+                    <Input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+
+                  <div className="w-full sm:w-40">
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                      End Date
+                    </label>
+                    <Input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+
+                  <Button onClick={handleApplyFilters} className="h-9 px-6">
+                    Apply
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* Tab: Installments */}
+        <TabsContent value="installments" className="mt-4">
+          <DuesTable
+            items={installmentItems}
+            isLoading={hasActiveFilters ? loadingFilteredDues : false}
+            emptyMessage="No installments found"
+          />
+        </TabsContent>
+
+        {/* Tab: Overdues */}
+        <TabsContent value="overdues" className="mt-4 space-y-3">
+          {overdueItems.length > 0 && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
+              <AlertTriangle
+                size={16}
+                className="text-red-600 dark:text-red-400 shrink-0"
+              />
+              <p className="text-sm text-red-700 dark:text-red-300">
+                You have{" "}
+                <strong>{overdueItems.length}</strong> overdue
+                {" installment"}
+                {overdueItems.length !== 1 ? "s" : ""} totaling{" "}
+                <strong>
+                  {formatINR(
+                    overdueItems.reduce((s, d) => s + d.amount_due, 0),
+                  )}
+                </strong>
+              </p>
+            </div>
+          )}
+          <DuesTable
+            items={overdueItems}
+            isLoading={hasActiveFilters ? loadingFilteredDues : false}
+            emptyMessage="No overdue installments"
+          />
+        </TabsContent>
+
+        {/* Tab: Payment History */}
+        <TabsContent value="history" className="mt-4">
+          <ReceiptsTable
+            items={receipts}
+            isLoading={loadingReceipts}
+            emptyMessage="No payment history"
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+// ── Dues Table ──────────────────────────────────────────────────
+
+function DuesTable({
+  items,
+  isLoading,
+  emptyMessage,
+}: {
+  items: StudentFeeDue[];
+  isLoading: boolean;
+  emptyMessage: string;
+}) {
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [items]);
+
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const startIdx = (safePage - 1) * PAGE_SIZE;
+  const endIdx = Math.min(startIdx + PAGE_SIZE, totalItems);
+  const pageItems = items.slice(startIdx, endIdx);
+
+  if (isLoading) {
+    return (
+      <Card className="shadow-sm">
+        <CardContent className="p-4 space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <Card className="shadow-sm">
+        <CardContent className="py-12 text-center">
+          <Receipt
+            size={24}
+            className="mx-auto text-muted-foreground/40 mb-2"
+          />
+          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="shadow-sm overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/40">
+            <TableHead className="w-10">#</TableHead>
+            <TableHead>Fees</TableHead>
+            <TableHead>Due Date</TableHead>
+            <TableHead className="text-right">Expected</TableHead>
+            <TableHead className="text-right">Discount</TableHead>
+            <TableHead className="text-right">Paid</TableHead>
+            <TableHead className="text-right font-semibold">Amt Due</TableHead>
+            <TableHead className="text-center">Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {pageItems.map((item, idx) => (
+            <TableRow
+              key={item.id}
+              className={
+                item.is_overdue ? "bg-red-50/50 dark:bg-red-950/10" : ""
+              }
+            >
+              <TableCell className="text-muted-foreground">
+                {startIdx + idx + 1}
+              </TableCell>
+              <TableCell
+                className="max-w-[180px] truncate"
+                title={item.fee_type_name || undefined}
+              >
+                {item.fee_type_name || "—"}
+              </TableCell>
+              <TableCell className="whitespace-nowrap">
+                {formatDueDate(item.due_date)}
+              </TableCell>
+              <TableCell className="text-right">
+                {formatINR(item.amount_expected)}
+              </TableCell>
+              <TableCell
+                className="text-right"
+                title={item.discount_reason || undefined}
+              >
+                {formatINR(item.discount_amount)}
+              </TableCell>
+              <TableCell className="text-right">
+                {formatINR(item.amount_paid)}
+              </TableCell>
+              <TableCell className="text-right font-bold">
+                {formatINR(item.amount_due)}
+              </TableCell>
+              <TableCell className="text-center">
+                <StatusBadge
+                  status={item.status}
+                  isOverdue={item.is_overdue}
+                  daysOverdue={item.days_overdue}
+                />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      <CardContent className="py-2 px-3 border-t flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+        <p className="text-xs text-muted-foreground">
+          Showing <span className="font-medium text-foreground">{startIdx + 1}</span>
+          –<span className="font-medium text-foreground">{endIdx}</span> of{" "}
+          <span className="font-medium text-foreground">{totalItems}</span>
+        </p>
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            disabled={safePage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Prev
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Page <span className="font-medium text-foreground">{safePage}</span> of{" "}
+            <span className="font-medium text-foreground">{totalPages}</span>
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Status Badge ────────────────────────────────────────────────
+
+function StatusBadge({
+  status,
+  isOverdue,
+  daysOverdue,
+}: {
+  status: string;
+  isOverdue: boolean;
+  daysOverdue: number | null;
+}) {
+  if (isOverdue) {
+    return (
+      <div className="flex flex-col items-center gap-0.5">
+        <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-[10px] hover:bg-red-100">
+          {status === "PARTIAL_PAID" ? "PARTIAL PAID" : status}
+        </Badge>
+        {daysOverdue != null && (
+          <span className="text-[10px] text-red-600 dark:text-red-400">
+            {daysOverdue} days overdue
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (status === "PARTIAL_PAID") {
+    return (
+      <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 text-[10px] hover:bg-yellow-100">
+        PARTIAL PAID
+      </Badge>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-[10px] hover:bg-emerald-100">
+        {status}
+      </Badge>
+      <span className="text-[10px] text-muted-foreground">upcoming</span>
+    </div>
+  );
+}
+
+// ── Receipts Table (Invoice-wise) ──────────────────────────────────────────────
+
+const invoiceTypeColors: Record<string, string> = {
+  SCHOOL_FEE_RECEIPT:
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 hover:bg-emerald-100",
+  REFUND:
+    "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 hover:bg-red-100",
+};
+
+function ReceiptsTable({
+  items,
+  isLoading,
+  emptyMessage,
+}: {
+  items: InvoiceReceipt[];
+  isLoading: boolean;
+  emptyMessage: string;
+}) {
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPage(1);
+    setExpandedId(null);
+  }, [items]);
+
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const startIdx = (safePage - 1) * PAGE_SIZE;
+  const endIdx = Math.min(startIdx + PAGE_SIZE, totalItems);
+  const pageItems = items.slice(startIdx, endIdx);
+
+  const toggleExpand = (invoiceId: string) => {
+    setExpandedId((prev) => (prev === invoiceId ? null : invoiceId));
+  };
+
+  const handleDownloadReceipt = async (invoice: InvoiceReceipt) => {
+    if (!invoice.pdf_file_id) {
+      toast.error("Receipt PDF not available yet", {
+        description: `Receipt: ${invoice.invoice_number}`,
+      });
       return;
     }
 
-    paymentMutation.mutate(
-      {
-        child_id: child.id,
-        fee_item_ids: selectedFees,
-        payment_method: "ONLINE",
-        amount: selectedTotal,
-      },
-      {
-        onSuccess: (response) => {
-          if (response.gateway_url) {
-            window.open(response.gateway_url, "_self");
-          } else {
-            toast.success("Payment initiated. Redirecting...");
-          }
-        },
-      },
-    );
-  };
-
-  const handleDownloadReceipt = async (transactionId: string) => {
+    setDownloadingId(invoice.invoice_id);
     try {
-      setDownloadingId(transactionId);
-      const blob = await downloadReceipt(transactionId);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `receipt-${transactionId}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success("Receipt downloaded");
-    } catch {
-      toast.error("Failed to download receipt");
+      const { download_url, file_name } = await getReceiptDownloadUrl(invoice.invoice_id);
+
+      const link = document.createElement("a");
+      link.href = download_url;
+      link.download = file_name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success("Download started", {
+        description: `Receipt: ${invoice.invoice_number}`,
+      });
+    } catch (error) {
+      console.error("Failed to download receipt:", error);
+      toast.error("Failed to download receipt", {
+        description: "Please try again later.",
+      });
     } finally {
       setDownloadingId(null);
     }
@@ -116,414 +651,219 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
 
   if (isLoading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-3 gap-3">
+      <Card className="shadow-sm">
+        <CardContent className="p-4 space-y-3">
           {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-20" />
+            <Skeleton key={i} className="h-10 w-full" />
           ))}
-        </div>
-        <Skeleton className="h-48" />
-      </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <Card className="shadow-sm">
+        <CardContent className="py-12 text-center">
+          <Receipt
+            size={24}
+            className="mx-auto text-muted-foreground/40 mb-2"
+          />
+          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto w-full space-y-5 pb-20 lg:pb-8">
-      {/* Header */}
-      <div>
-        <h2 className="text-lg sm:text-xl font-bold text-foreground">
-          Fees & Payments
-        </h2>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Fee details and payment history for {child.full_name}
-        </p>
-      </div>
+    <Card className="shadow-sm overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/40">
+            <TableHead className="w-8"></TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead className="text-right">Amount</TableHead>
+            <TableHead className="text-center">Type</TableHead>
+            <TableHead>Receipt No.</TableHead>
+            <TableHead className="text-right">Action</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {pageItems.map((invoice) => {
+            const isExpanded = expandedId === invoice.invoice_id;
+            return (
+              <>
+                <TableRow
+                  key={invoice.invoice_id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => toggleExpand(invoice.invoice_id)}
+                >
+                  <TableCell className="w-8 pr-0">
+                    {isExpanded ? (
+                      <ChevronUp size={16} className="text-muted-foreground" />
+                    ) : (
+                      <ChevronDown size={16} className="text-muted-foreground" />
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {formatReceiptDate(invoice.invoice_date)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {formatINR(invoice.amount_paid_now)}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge
+                      className={`text-[10px] ${
+                        invoiceTypeColors[invoice.type] ||
+                        "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300"
+                      }`}
+                    >
+                      PAYMENT
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {invoice.invoice_number}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 gap-1"
+                      disabled={!invoice.pdf_file_id || downloadingId === invoice.invoice_id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadReceipt(invoice);
+                      }}
+                      title={invoice.pdf_file_id ? "Download receipt" : "PDF not available"}
+                    >
+                      {downloadingId === invoice.invoice_id ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Download size={14} />
+                      )}
+                      <span className="text-xs">
+                        {!invoice.pdf_file_id
+                          ? "Generating..."
+                          : downloadingId === invoice.invoice_id
+                            ? "Downloading..."
+                            : "Download"}
+                      </span>
+                    </Button>
+                  </TableCell>
+                </TableRow>
+                {isExpanded && (
+                  <TableRow key={`${invoice.invoice_id}-details`}>
+                    <TableCell colSpan={6} className="bg-muted/30 p-0">
+                      <div className="p-4 space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                              Amount Paid Now
+                            </p>
+                            <p className="font-semibold text-foreground">
+                              {formatINR(invoice.amount_paid_now)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                              Total Paid
+                            </p>
+                            <p className="font-semibold text-emerald-600 dark:text-emerald-400">
+                              {formatINR(invoice.total_paid)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                              Balance Due
+                            </p>
+                            <p className="font-semibold text-red-600 dark:text-red-400">
+                              {formatINR(invoice.balance_due)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                              Total Expected
+                            </p>
+                            <p className="font-semibold text-foreground">
+                              {formatINR(invoice.total_expected)}
+                            </p>
+                          </div>
+                        </div>
 
-      {/* ── Admission Payment Flow ─────────────────────────────── */}
-      <AdmissionPaymentSection child={child} />
-
-      {/* ── Summary Cards ─────────────────────────────────────── */}
-      {summary && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="grid grid-cols-3 gap-3"
-        >
-          <SummaryCard
-            label="Total Amount"
-            amount={summary.total_fees}
-            currency={summary.currency}
-            color="text-foreground"
-            bg="bg-card"
-          />
-          <SummaryCard
-            label="Total Paid"
-            amount={summary.total_paid}
-            currency={summary.currency}
-            color="text-emerald-600 dark:text-emerald-400"
-            bg="bg-emerald-50 dark:bg-emerald-950/20"
-          />
-          <SummaryCard
-            label="Balance Due"
-            amount={summary.total_pending}
-            currency={summary.currency}
-            color="text-amber-600 dark:text-amber-400"
-            bg="bg-amber-50 dark:bg-amber-950/20"
-            highlight={summary.total_overdue > 0}
-          />
-        </motion.div>
-      )}
-
-      {/* ── Fee Breakdown ─────────────────────────────────────── */}
-      {summary && summary.fee_items.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-        >
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">
-                Outstanding Payment Items
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Select items to proceed with payment
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {summary.fee_items.map((item) => (
-                <FeeItemRow
-                  key={item.id}
-                  item={item}
-                  isSelected={selectedFees.includes(item.id)}
-                  onToggle={() => handleToggleFee(item.id)}
-                  currency={summary.currency}
-                />
-              ))}
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
-
-      {/* ── Pay Now Bar ───────────────────────────────────────── */}
-      {selectedFees.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="sticky bottom-20 lg:bottom-4 z-30"
-        >
-          <Card className="shadow-lg border-primary/20 bg-card/95 backdrop-blur-sm">
-            <CardContent className="p-3 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  {selectedFees.length} item(s) selected
-                </p>
-                <p className="text-lg font-bold text-foreground">
-                  {summary?.currency || "₹"}
-                  {selectedTotal.toLocaleString()}
-                </p>
-              </div>
-              <Button
-                onClick={handlePay}
-                disabled={paymentMutation.isPending}
-                className="gap-1.5 h-10 px-6 shadow-sm"
-              >
-                {paymentMutation.isPending ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <CreditCard size={16} />
+                        {invoice.line_items.length > 0 && (
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                              Installments Covered:
+                            </p>
+                            <div className="border rounded-md overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="bg-muted/50">
+                                    <TableHead className="text-xs">Description</TableHead>
+                                    <TableHead className="text-xs">Fee Type</TableHead>
+                                    <TableHead className="text-xs text-right">Amount</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {invoice.line_items.map((item) => (
+                                    <TableRow key={item.line_item_id}>
+                                      <TableCell className="text-sm">
+                                        {item.description}
+                                      </TableCell>
+                                      <TableCell className="text-sm text-muted-foreground">
+                                        {item.fee_type_name || "—"}
+                                      </TableCell>
+                                      <TableCell className="text-sm text-right font-medium">
+                                        {formatINR(item.amount)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 )}
-                Proceed to Payment
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+              </>
+            );
+          })}
+        </TableBody>
+      </Table>
 
-      {/* ── Payment History ───────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3">
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="w-full flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <Receipt size={18} className="text-muted-foreground" />
-                <CardTitle className="text-base">Payment History</CardTitle>
-              </div>
-              {showHistory ? (
-                <ChevronUp size={16} className="text-muted-foreground" />
-              ) : (
-                <ChevronDown size={16} className="text-muted-foreground" />
-              )}
-            </button>
-          </CardHeader>
-          <AnimatePresence>
-            {showHistory && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
-              >
-                <CardContent className="pt-0 space-y-2">
-                  {history?.transactions && history.transactions.length > 0 ? (
-                    history.transactions.map((txn) => (
-                      <TransactionRow
-                        key={txn.id}
-                        transaction={txn}
-                        onDownload={() => handleDownloadReceipt(txn.id)}
-                        isDownloading={downloadingId === txn.id}
-                      />
-                    ))
-                  ) : (
-                    <div className="py-6 text-center">
-                      <Receipt
-                        size={24}
-                        className="mx-auto text-muted-foreground/40 mb-2"
-                      />
-                      <p className="text-sm text-muted-foreground">
-                        No payment transactions yet
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </Card>
-      </motion.div>
-    </div>
-  );
-}
-
-// ── Summary Card ─────────────────────────────────────────────
-
-function SummaryCard({
-  label,
-  amount,
-  currency,
-  color,
-  bg,
-  highlight,
-}: {
-  label: string;
-  amount: number;
-  currency: string;
-  color: string;
-  bg: string;
-  highlight?: boolean;
-}) {
-  return (
-    <Card
-      className={`shadow-sm ${bg} ${highlight ? "border-amber-300 dark:border-amber-700" : ""}`}
-    >
-      <CardContent className="p-3 text-center">
-        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
-          {label}
+      <CardContent className="py-2 px-3 border-t flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+        <p className="text-xs text-muted-foreground">
+          Showing <span className="font-medium text-foreground">{startIdx + 1}</span>
+          –<span className="font-medium text-foreground">{endIdx}</span> of{" "}
+          <span className="font-medium text-foreground">{totalItems}</span>
         </p>
-        <p className={`text-base sm:text-lg font-bold ${color}`}>
-          {currency}
-          {amount.toLocaleString()}
-        </p>
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            disabled={safePage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Prev
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Page <span className="font-medium text-foreground">{safePage}</span> of{" "}
+            <span className="font-medium text-foreground">{totalPages}</span>
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </Button>
+        </div>
       </CardContent>
     </Card>
-  );
-}
-
-// ── Fee Item Row ─────────────────────────────────────────────
-
-function FeeItemRow({
-  item,
-  isSelected,
-  onToggle,
-  currency,
-}: {
-  item: PaymentFeeItem;
-  isSelected: boolean;
-  onToggle: () => void;
-  currency: string;
-}) {
-  const isPaid = item.status === "COMPLETED" || item.status === "WAIVED";
-  const isOverdue = item.status === "OVERDUE";
-
-  const categoryColors: Record<string, string> = {
-    REGISTRATION:
-      "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-    ADMISSION:
-      "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
-    TUITION:
-      "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-    HOSTEL:
-      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-    MESS: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
-    LIBRARY: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300",
-    TRANSPORT:
-      "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
-    ADDITIONAL:
-      "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300",
-  };
-
-  return (
-    <div
-      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-        isSelected
-          ? "border-primary/40 bg-primary/5"
-          : isPaid
-            ? "border-border/50 bg-muted/20 opacity-70"
-            : isOverdue
-              ? "border-destructive/30 bg-destructive/5"
-              : "border-border hover:border-border/80"
-      }`}
-    >
-      {/* Checkbox */}
-      {!isPaid && (
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={onToggle}
-          className="rounded border-input h-4 w-4 shrink-0"
-        />
-      )}
-      {isPaid && (
-        <CheckCircle size={16} className="text-emerald-500 shrink-0" />
-      )}
-
-      {/* Details */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <p className="text-sm font-medium text-foreground truncate">
-            {item.description}
-          </p>
-          <Badge
-            className={`text-[9px] px-1.5 ${categoryColors[item.category] || categoryColors["ADDITIONAL"]}`}
-          >
-            {item.category}
-          </Badge>
-        </div>
-        {item.due_date && !isPaid && (
-          <p
-            className={`text-[11px] ${
-              isOverdue
-                ? "text-destructive font-medium"
-                : "text-muted-foreground"
-            }`}
-          >
-            {isOverdue ? "⚠ Overdue — " : "Due "}
-            {new Date(item.due_date).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            })}
-          </p>
-        )}
-      </div>
-
-      {/* Amount */}
-      <div className="text-right shrink-0">
-        <p
-          className={`text-sm font-bold ${isPaid ? "text-muted-foreground line-through" : "text-foreground"}`}
-        >
-          {currency}
-          {item.total.toLocaleString()}
-        </p>
-        {item.discount !== undefined && item.discount > 0 && (
-          <p className="text-[10px] text-emerald-600">
-            -{currency}
-            {item.discount.toLocaleString()} off
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Transaction Row ──────────────────────────────────────────
-
-function TransactionRow({
-  transaction,
-  onDownload,
-  isDownloading,
-}: {
-  transaction: PaymentTransaction;
-  onDownload: () => void;
-  isDownloading: boolean;
-}) {
-  const statusColors: Record<string, { bg: string; text: string }> = {
-    SUCCESS: {
-      bg: "bg-emerald-100 dark:bg-emerald-900/30",
-      text: "text-emerald-700 dark:text-emerald-300",
-    },
-    FAILED: {
-      bg: "bg-red-100 dark:bg-red-900/30",
-      text: "text-red-700 dark:text-red-300",
-    },
-    PENDING: {
-      bg: "bg-amber-100 dark:bg-amber-900/30",
-      text: "text-amber-700 dark:text-amber-300",
-    },
-    REFUNDED: {
-      bg: "bg-blue-100 dark:bg-blue-900/30",
-      text: "text-blue-700 dark:text-blue-300",
-    },
-  };
-
-  const style = statusColors[transaction.status] || statusColors["PENDING"]!;
-
-  return (
-    <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:bg-muted/20 transition-colors">
-      <div className={`p-1.5 rounded-lg ${style.bg} shrink-0`}>
-        {transaction.status === "SUCCESS" ? (
-          <CheckCircle size={16} className={style.text} />
-        ) : transaction.status === "FAILED" ? (
-          <AlertTriangle size={16} className={style.text} />
-        ) : (
-          <Clock size={16} className={style.text} />
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground">
-          {transaction.currency}
-          {transaction.amount.toLocaleString()}
-        </p>
-        <p className="text-[11px] text-muted-foreground">
-          {new Date(transaction.paid_at).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })}{" "}
-          &bull; {transaction.payment_method}
-        </p>
-      </div>
-
-      <div className="flex items-center gap-1.5 shrink-0">
-        <Badge className={`${style.bg} ${style.text} text-[9px]`}>
-          {transaction.status}
-        </Badge>
-        {transaction.status === "SUCCESS" && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={onDownload}
-            disabled={isDownloading}
-            title="Download receipt"
-          >
-            {isDownloading ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Download size={14} />
-            )}
-          </Button>
-        )}
-      </div>
-    </div>
   );
 }

@@ -1,13 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { SessionCustomFieldsResponse } from "../-types/type";
 import { LIVE_SESSION_GET_REGISTRATION_DATA } from "@/constants/urls";
-import axios from "axios";
+import { guestAxiosInstance } from "@/lib/auth/axiosInstance";
 
 const fetchSessionCustomFields = async (
   sessionId: string
 ): Promise<SessionCustomFieldsResponse> => {
   try {
-    const response = await axios({
+    const response = await guestAxiosInstance({
       method: "GET",
       url: LIVE_SESSION_GET_REGISTRATION_DATA,
       params: {

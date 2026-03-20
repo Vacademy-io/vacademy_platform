@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/sidebar";
 import { SidebarItemProps } from "../../../../types/layout-container-types";
 
-export const CollapsibleItem = ({ icon, title, subItems }: SidebarItemProps) => {
+export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemProps) => {
     const router = useRouter();
     const currentRoute = router.state.location.pathname;
     const isChildActive = subItems?.some((item) => item.subItemLink === currentRoute);
@@ -20,7 +20,7 @@ export const CollapsibleItem = ({ icon, title, subItems }: SidebarItemProps) => 
         <Collapsible asChild defaultOpen={isChildActive} className="group/collapsible">
             <SidebarMenuItem>
                 <CollapsibleTrigger asChild>
-                    <SidebarMenuButton tooltip={title} isActive={isChildActive} size="lg">
+                    <SidebarMenuButton tooltip={title} isActive={isChildActive} size="default">
                         {icon && React.createElement(icon, {
                             weight: "duotone",
                             className: "size-4"
@@ -34,7 +34,7 @@ export const CollapsibleItem = ({ icon, title, subItems }: SidebarItemProps) => 
                         {subItems?.map((item) => (
                             <SidebarMenuSubItem key={item.subItem}>
                                 <SidebarMenuSubButton asChild isActive={item.subItemLink === currentRoute}>
-                                    <Link to={item.subItemLink}>
+                                    <Link to={item.subItemLink} onClick={onClick}>
                                         <span>{item.subItem}</span>
                                     </Link>
                                 </SidebarMenuSubButton>

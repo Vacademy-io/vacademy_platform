@@ -90,6 +90,7 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
     "myClasses",
     "myMembership",
     "myBooks",
+    "upcomingLiveClasses",
   ];
   return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
 }
@@ -111,7 +112,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     passwordDelivery: "none",
   },
   permissions: {
-    canViewProfile: false,
+    canViewProfile: true,
     canEditProfile: false,
     canDeleteProfile: false,
     canViewFiles: false,

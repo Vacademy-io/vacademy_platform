@@ -86,11 +86,13 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                 }
             } catch (error) {
                 console.error('Error rendering mermaid diagram:', error);
-                // Removed visual error fallback as per user request
                 // The component will render null if hasError is true
                 setSvgHtml(''); // Clear SVG on error
                 setHasError(true);
                 setErrorMessage(error instanceof Error ? error.message : 'Unknown error');
+
+                // Clean up any orphaned mermaid error elements from the DOM
+                document.querySelectorAll('[id^="dmermaid-"]').forEach((el) => el.remove());
             }
         };
 

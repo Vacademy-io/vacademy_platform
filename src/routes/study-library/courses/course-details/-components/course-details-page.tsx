@@ -132,7 +132,7 @@ const mockCourses: Course[] = [
     id: "1",
     title: `2-Level ${getTerminology(
       ContentTerms.Course,
-      SystemTerms.Course
+      SystemTerms.Course,
     )} Structure`,
     level: 2,
     structure: {
@@ -144,7 +144,7 @@ const mockCourses: Course[] = [
     id: "2",
     title: `3-Level ${getTerminology(
       ContentTerms.Course,
-      SystemTerms.Course
+      SystemTerms.Course,
     )} Structure`,
     level: 3,
     structure: {
@@ -156,7 +156,7 @@ const mockCourses: Course[] = [
     id: "3",
     title: `4-Level ${getTerminology(
       ContentTerms.Course,
-      SystemTerms.Course
+      SystemTerms.Course,
     )} Structure`,
     level: 4,
     structure: {
@@ -168,7 +168,7 @@ const mockCourses: Course[] = [
     id: "4",
     title: `5-Level ${getTerminology(
       ContentTerms.Course,
-      SystemTerms.Course
+      SystemTerms.Course,
     )} Structure`,
     level: 5,
     structure: {
@@ -208,7 +208,7 @@ export const CourseDetailsPage = () => {
   // Navigation helper function
   const navigateTo = (
     pathname: string,
-    searchParamsObj: Record<string, string | undefined>
+    searchParamsObj: Record<string, string | undefined>,
   ) => router.navigate({ to: pathname, search: searchParamsObj });
 
   // Access the store setter
@@ -247,7 +247,7 @@ export const CourseDetailsPage = () => {
       await addEnrolledSession(newEnrolledSession);
     } catch {
       toast.error(
-        "Failed to update enrollment status. Please refresh the page."
+        "Failed to update enrollment status. Please refresh the page.",
       );
       return;
     }
@@ -274,7 +274,7 @@ export const CourseDetailsPage = () => {
     const currentSubjects = getSubjectDetails(
       form.getValues(),
       selectedSession,
-      selectedLevel
+      selectedLevel,
     );
 
     if (currentSubjects.length > 0) {
@@ -284,13 +284,12 @@ export const CourseDetailsPage = () => {
       if (packageSessionIdForCurrentLevel && subjectId) {
         try {
           // Import the API function dynamically to avoid circular dependencies
-          const { fetchModulesWithChapters } = await import(
-            "@/services/study-library/getModulesWithChapters"
-          );
+          const { fetchModulesWithChapters } =
+            await import("@/services/study-library/getModulesWithChapters");
 
           const modulesData = await fetchModulesWithChapters(
             subjectId,
-            packageSessionIdForCurrentLevel
+            packageSessionIdForCurrentLevel,
           );
 
           if (modulesData && modulesData.length > 0) {
@@ -304,9 +303,8 @@ export const CourseDetailsPage = () => {
               // For slides, we need to fetch them separately
               if (chapterId) {
                 try {
-                  const { fetchSlidesByChapterId } = await import(
-                    "@/hooks/study-library/use-slides"
-                  );
+                  const { fetchSlidesByChapterId } =
+                    await import("@/hooks/study-library/use-slides");
                   const slides = await fetchSlidesByChapterId(chapterId);
 
                   if (slides && slides.length > 0) {
@@ -337,7 +335,7 @@ export const CourseDetailsPage = () => {
 
     navigateTo(
       `/study-library/courses/course-details/subjects/modules/chapters/slides`,
-      navigationParams
+      navigationParams,
     );
   };
 
@@ -361,18 +359,17 @@ export const CourseDetailsPage = () => {
 
     try {
       // Import the payment status API function
-      const { fetchUserPlanStatus } = await import(
-        "@/services/payment-status-api"
-      );
+      const { fetchUserPlanStatus } =
+        await import("@/services/payment-status-api");
 
       const response = await fetchUserPlanStatus(
         packageSessionIdForCurrentLevel,
-        authToken
+        authToken,
       );
 
       // Parse learner status
       const parseLearnerStatus = (
-        status: string
+        status: string,
       ): "INVITED" | "PENDING_FOR_APPROVAL" | "ACTIVE" | "UNKNOWN" => {
         const normalizedStatus = status?.toUpperCase()?.trim();
         switch (normalizedStatus) {
@@ -408,7 +405,7 @@ export const CourseDetailsPage = () => {
     } catch (error) {
       console.error(
         "handleFreeEnrollmentClick - Error checking user status",
-        error
+        error,
       );
 
       // If it's a 510 error (no enrollment request), proceed with enrollment
@@ -417,7 +414,7 @@ export const CourseDetailsPage = () => {
       } else {
         // For other errors, proceed with enrollment (fallback behavior)
         console.warn(
-          "handleFreeEnrollmentClick - Error checking status, proceeding with enrollment as fallback"
+          "handleFreeEnrollmentClick - Error checking status, proceeding with enrollment as fallback",
         );
         setEnrollmentDialogOpen(true);
       }
@@ -449,7 +446,7 @@ export const CourseDetailsPage = () => {
     (key: keyof typeof loadingStates, value: boolean) => {
       setLoadingStates((prev) => ({ ...prev, [key]: value }));
     },
-    []
+    [],
   );
 
   // Check if all loading states are complete
@@ -469,14 +466,14 @@ export const CourseDetailsPage = () => {
     (loading: boolean) => {
       updateLoadingState("modulesData", loading);
     },
-    [updateLoadingState]
+    [updateLoadingState],
   );
 
   const handleRatingsLoadingChange = useCallback(
     (loading: boolean) => {
       updateLoadingState("ratingsData", loading);
     },
-    [updateLoadingState]
+    [updateLoadingState],
   );
 
   // Get selectedTab from route params, default to "ALL" if not provided
@@ -540,7 +537,9 @@ export const CourseDetailsPage = () => {
   >(null);
 
   // Store fetched batches to avoid re-fetching on session/level changes
-  const [fetchedBatches, setFetchedBatches] = useState<BatchForSessionType[]>([]);
+  const [fetchedBatches, setFetchedBatches] = useState<BatchForSessionType[]>(
+    [],
+  );
   const hasFetchedRef = useRef(false);
 
   // Effect 1: Fetch institute details and batches ONCE when instituteId is available
@@ -550,34 +549,35 @@ export const CourseDetailsPage = () => {
 
     const fetchInstituteAndBatches = async () => {
       updateLoadingState("instituteDetails", true);
-      const fetchedInstituteId = instituteId || await getInstituteId();
-      
+      const fetchedInstituteId = instituteId || (await getInstituteId());
+
       if (!fetchedInstituteId) {
-          updateLoadingState("instituteDetails", false);
-          return;
+        updateLoadingState("instituteDetails", false);
+        return;
       }
 
       try {
         // Prepare promises for parallel execution
         const instituteDetailsPromise = axios.get(
-          `${urlInstituteDetails}/${fetchedInstituteId}`
+          `${urlInstituteDetails}/${fetchedInstituteId}`,
         );
 
-        const batchesPromise = searchParams.courseId 
-            ? (async () => {
-                const { fetchBatchesForCourse } = await import("@/services/courseBatches");
-                return fetchBatchesForCourse(searchParams.courseId!);
-              })()
-            : Promise.resolve([]);
+        const batchesPromise = searchParams.courseId
+          ? (async () => {
+              const { fetchBatchesForCourse } =
+                await import("@/services/courseBatches");
+              return fetchBatchesForCourse(searchParams.courseId!);
+            })()
+          : Promise.resolve([]);
 
         // Execute in parallel
         const [instituteResponse, batches] = await Promise.all([
-            instituteDetailsPromise,
-            batchesPromise
+          instituteDetailsPromise,
+          batchesPromise,
         ]);
 
         const instituteData = instituteResponse.data;
-        
+
         // Update institute details store
         setInstituteDetails(instituteData);
         // Store batches for mapping
@@ -598,9 +598,14 @@ export const CourseDetailsPage = () => {
     };
 
     if (instituteId) {
-        fetchInstituteAndBatches();
+      fetchInstituteAndBatches();
     }
-  }, [instituteId, searchParams.courseId, updateLoadingState, setInstituteDetails]);
+  }, [
+    instituteId,
+    searchParams.courseId,
+    updateLoadingState,
+    setInstituteDetails,
+  ]);
 
   // Fetch payment type when institute ID is available
   useEffect(() => {
@@ -621,7 +626,6 @@ export const CourseDetailsPage = () => {
       }
     };
 
-
     fetchPaymentType();
   }, [instituteId]);
 
@@ -631,34 +635,70 @@ export const CourseDetailsPage = () => {
       handleGetCourseInit({
         courseId: searchParams.courseId || "",
         instituteId: instituteId || "",
-      })
+      }),
     );
 
   // Course depth from course-init API (so we show correct structure before form is reset)
-  const courseStructureFromApi = (courseDetailsData as { course?: { course_depth?: number } } | null)?.course?.course_depth;
+  const courseStructureFromApi = (
+    courseDetailsData as { course?: { course_depth?: number } } | null
+  )?.course?.course_depth;
 
   // Subjects from course-init (first session, first level); used to call modules-with-chapters and show content when form isn't ready
   const courseInitSubjectsFromCourseInit = useMemo(() => {
-    const data = courseDetailsData as {
-      sessions?: Array<{
-        level_with_details?: Array<{
-          subjects?: Array<{
-            id: string;
-            subject_name?: string;
-            subject_code?: string;
-            credit?: number;
-            thumbnail_id?: string | null;
-            created_at?: string | null;
-            updated_at?: string | null;
-            subject_order?: number;
+    const data = courseDetailsData as
+      | {
+          sessions?: Array<{
+            level_with_details?: Array<{
+              subjects?: Array<{
+                id: string;
+                subject_name?: string;
+                subject_code?: string;
+                credit?: number;
+                thumbnail_id?: string | null;
+                created_at?: string | null;
+                updated_at?: string | null;
+                subject_order?: number;
+              }>;
+            }>;
           }>;
-        }>;
-      }>;
-    } | null | undefined;
+        }
+      | null
+      | undefined;
     const firstLevel = data?.sessions?.[0]?.level_with_details?.[0];
     const subjects = firstLevel?.subjects;
-    return Array.isArray(subjects) && subjects.length > 0 ? subjects : undefined;
+    return Array.isArray(subjects) && subjects.length > 0
+      ? subjects
+      : undefined;
   }, [courseDetailsData]);
+
+  // Find enrolled package_sessions for THIS course by matching student package_session_ids
+  // against courseDetailsData.package_sessions (source of truth for level mapping)
+  const enrolledPackageSessionsForCourse = useMemo(() => {
+    const safeEnrolledSessions = enrolledSessions || [];
+    // Get all package_session_ids the user is enrolled in
+    const enrolledPkgSessionIds = safeEnrolledSessions.map((e) => e.id);
+
+    // Get package_sessions from course-init (source of truth for level/session mapping)
+    const data = courseDetailsData as
+      | {
+          package_sessions?: Array<{
+            id: string;
+            session?: { id: string };
+            level?: { id: string };
+            package_dto?: { id?: string };
+          }>;
+        }
+      | null
+      | undefined;
+    const packageSessions = Array.isArray(data?.package_sessions)
+      ? data.package_sessions
+      : [];
+
+    // Match: only keep package_sessions the user is enrolled in
+    return packageSessions.filter((ps) =>
+      enrolledPkgSessionIds.includes(ps.id),
+    );
+  }, [enrolledSessions, courseDetailsData]);
 
   // Effect 2: Map session/level to packageSessionId when batches or selections change.
   // Uses batches API when available; falls back to course-init's package_sessions when
@@ -741,10 +781,10 @@ export const CourseDetailsPage = () => {
       const byCourseAndSession = fetchedBatches.find(
         (b) =>
           b.package_dto?.id === (searchParams.courseId || "") &&
-          b.session?.id === selectedSession
+          b.session?.id === selectedSession,
       );
       const byCourseOnly = fetchedBatches.find(
-        (b) => b.package_dto?.id === (searchParams.courseId || "")
+        (b) => b.package_dto?.id === (searchParams.courseId || ""),
       );
       const chosen = byCourseAndSession || byCourseOnly;
       if (chosen?.id) {
@@ -752,26 +792,41 @@ export const CourseDetailsPage = () => {
         if (!selectedSession && chosen.session?.id) {
           setSelectedSession(chosen.session.id);
         }
-        if (!selectedLevel && chosen.level?.id) {
-          setSelectedLevel(chosen.level.id);
-        }
         return;
       }
     }
 
     // 3) Fallback: use course-init's package_sessions so content loads even when
     // batches are empty or session/level IDs don't match (e.g. "DEFAULT" in init, UUIDs in batches).
+    // IMPORTANT: Skip this fallback if enrollment data is still loading — setting the wrong
+    // level triggers a module fetch with wrong subjects that blocks the correct fetch later.
+    if (isEnrollmentLoading) {
+      return;
+    }
     try {
-      const data = courseDetailsData as {
-        package_sessions?: Array<{ id: string; session?: { id: string }; level?: { id: string }; package_dto?: { id?: string } }>;
-        sessions?: Array<{ session_dto?: { id: string }; level_with_details?: Array<{ id: string; name?: string }> }>;
-      } | null | undefined;
-      const packageSessions = Array.isArray(data?.package_sessions) ? data.package_sessions : undefined;
+      const data = courseDetailsData as
+        | {
+            package_sessions?: Array<{
+              id: string;
+              session?: { id: string };
+              level?: { id: string };
+              package_dto?: { id?: string };
+            }>;
+            sessions?: Array<{
+              session_dto?: { id: string };
+              level_with_details?: Array<{ id: string; name?: string }>;
+            }>;
+          }
+        | null
+        | undefined;
+      const packageSessions = Array.isArray(data?.package_sessions)
+        ? data.package_sessions
+        : undefined;
       const courseId = searchParams.courseId || "";
       if (packageSessions && packageSessions.length > 0 && courseId) {
         // Prefer package_session that matches current course (and optionally session/level)
         const forCourse = packageSessions.filter(
-          (ps) => !ps.package_dto?.id || ps.package_dto.id === courseId
+          (ps) => !ps.package_dto?.id || ps.package_dto.id === courseId,
         );
         const list = forCourse.length > 0 ? forCourse : packageSessions;
         const match =
@@ -779,35 +834,26 @@ export const CourseDetailsPage = () => {
             ? list.find(
                 (ps) =>
                   ps.session?.id === selectedSession &&
-                  ps.level?.id === selectedLevel
+                  ps.level?.id === selectedLevel,
               )
             : null;
         const toUse = match ?? list[0];
         if (toUse?.id) {
           setPackageSessionIdForCurrentLevel(toUse.id);
-          // Set session/level from course-init so getSubjectDetails() returns subjects and modules-with-chapters runs.
-          // (Auto-select may be delayed by isEnrollmentLoading; without this, module fetch never fires.)
+          // Only set session here — level selection is handled by re-filter effect / handleSessionChange
           const firstSession = data?.sessions?.[0];
-          const levelDetails = firstSession?.level_with_details;
-          const firstLevel = levelDetails?.[0];
-          if (firstSession?.session_dto?.id && firstLevel?.id) {
-            if (!selectedSession) setSelectedSession(firstSession.session_dto.id);
-            if (!selectedLevel) setSelectedLevel(firstLevel.id);
-            if (Array.isArray(levelDetails) && levelDetails.length > 0) {
-              setLevelOptions(
-                levelDetails.map((l) => ({
-                  _id: l.id,
-                  value: l.id,
-                  label: l.name ?? l.id,
-                }))
-              );
-            }
+          if (firstSession?.session_dto?.id) {
+            if (!selectedSession)
+              setSelectedSession(firstSession.session_dto.id);
           }
           if (import.meta.env.MODE !== "production") {
-            console.info("[CourseDetailsPage] packageSessionId from course-init fallback", {
-              packageSessionId: toUse.id,
-              fromMatch: !!match,
-            });
+            console.info(
+              "[CourseDetailsPage] packageSessionId from course-init fallback",
+              {
+                packageSessionId: toUse.id,
+                fromMatch: !!match,
+              },
+            );
           }
         }
       }
@@ -824,13 +870,14 @@ export const CourseDetailsPage = () => {
     searchParams.courseId,
     searchParams.packageSessionId,
     courseDetailsData,
+    enrolledPackageSessionsForCourse,
+    isEnrollmentLoading,
   ]);
 
   // Update course details loading state
   useEffect(() => {
     updateLoadingState("courseDetails", isCourseDetailsLoading);
   }, [isCourseDetailsLoading, updateLoadingState]);
-
 
   // Update completion percentage when course details data changes
   useEffect(() => {
@@ -903,10 +950,10 @@ export const CourseDetailsPage = () => {
           typeof pctFromQuery === "number" && !Number.isNaN(pctFromQuery)
             ? pctFromQuery
             : typeof pctFromCourse === "number"
-            ? pctFromCourse
-            : typeof pctFromLocal === "number"
-            ? pctFromLocal
-            : undefined;
+              ? pctFromCourse
+              : typeof pctFromLocal === "number"
+                ? pctFromLocal
+                : undefined;
 
         // Set completion percentage for banner display
         if (typeof percentageCompleted === "number") {
@@ -925,7 +972,7 @@ export const CourseDetailsPage = () => {
         // Always surface cached certificate if present
         const cached = getCachedCertificateStatus(
           userId,
-          packageSessionIdForCurrentLevel
+          packageSessionIdForCurrentLevel,
         );
         if (cached?.url) {
           setCertificateUrl(cached.url);
@@ -967,7 +1014,7 @@ export const CourseDetailsPage = () => {
                 particleRatio: number,
                 opts: {
                   [K in keyof import("canvas-confetti").Options]?: import("canvas-confetti").Options[K];
-                } = {}
+                } = {},
               ) {
                 confetti({
                   ...defaults,
@@ -1100,35 +1147,37 @@ export const CourseDetailsPage = () => {
 
   // Watch entire courseData to get stable reference for child components
   const watchedCourseData = form.watch();
-  
+
   // Create a stable key based on session IDs to detect when data actually changes
-  const sessionIdsKey = useMemo(() => 
-    JSON.stringify((watchedSessions || []).map((s: { sessionDetails?: { id?: string } }) => s.sessionDetails?.id)),
-    [watchedSessions]
+  const sessionIdsKey = useMemo(
+    () =>
+      JSON.stringify(
+        (watchedSessions || []).map(
+          (s: { sessionDetails?: { id?: string } }) => s.sessionDetails?.id,
+        ),
+      ),
+    [watchedSessions],
   );
-  
+
   // Memoize the courseData to prevent new object reference on every render
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const stableCourseData = useMemo(() => watchedCourseData, [sessionIdsKey]);
 
-  // Convert sessions to select options format - filter based on selectedTab
+  // Convert sessions to select options format - filter to enrolled sessions for this course
   const sessionOptions = useMemo(() => {
     const sessions = watchedSessions || [];
-    const safeEnrolledSessions = enrolledSessions || [];
 
-    // For PROGRESS and COMPLETED tabs, only show enrolled sessions
-    // For ALL tab, show all available sessions
-    if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
-      const enrolledSessionIds = safeEnrolledSessions.map(
-        (enrolled) => enrolled.session.id
-      );
+    // If user has enrollments for this course, filter sessions to enrolled ones
+    if (enrolledPackageSessionsForCourse.length > 0) {
+      const enrolledSessionIds = enrolledPackageSessionsForCourse
+        .map((ps) => ps.session?.id)
+        .filter(Boolean);
       const filteredSessions = sessions.filter((session) =>
-        enrolledSessionIds.includes(session.sessionDetails.id)
+        enrolledSessionIds.includes(session.sessionDetails.id),
       );
 
-      // If no enrolled sessions found, show all sessions as fallback
-      if (filteredSessions.length === 0 && sessions.length > 0) {
-        return sessions.map((session) => ({
+      if (filteredSessions.length > 0) {
+        return filteredSessions.map((session) => ({
           _id: session.sessionDetails.id,
           value: session.sessionDetails.id,
           label: toTitleCase(session.sessionDetails.session_name),
@@ -1186,52 +1235,44 @@ export const CourseDetailsPage = () => {
       setSelectedBatchId("");
       const sessions = form.getValues("courseData")?.sessions || [];
       const selectedSessionData = sessions.find(
-        (session) => session.sessionDetails.id === sessionId
+        (session) => session.sessionDetails.id === sessionId,
       );
 
       if (selectedSessionData) {
         let newLevelOptions;
 
-        // For PROGRESS and COMPLETED tabs, only show enrolled levels
-        if (selectedTab === "PROGRESS" || selectedTab === "COMPLETED") {
-          // Find the enrolled session to get enrolled level IDs
-          const safeEnrolledSessions = enrolledSessions || [];
-          const enrolledSession = safeEnrolledSessions.find(
-            (enrolled) => enrolled.session.id === sessionId
-          );
+        // Find enrolled package_sessions matching this session (source of truth for levels)
+        const matchingPkgSessions = enrolledPackageSessionsForCourse.filter(
+          (ps) => ps.session?.id === sessionId,
+        );
 
-          let enrolledLevelIds: string[] = [];
-          if (enrolledSession) {
-            // Extract level ID from enrolled session
-            enrolledLevelIds = [enrolledSession.level.id].filter(
-              Boolean
-            ) as string[];
-          }
-
-          // Filter levels based on enrollment
+        if (matchingPkgSessions.length > 0) {
+          // User is enrolled — show only enrolled levels
+          const enrolledLevelIds = matchingPkgSessions
+            .map((ps) => ps.level?.id)
+            .filter(Boolean);
           const filteredLevels = selectedSessionData.levelDetails.filter(
-            (level) => enrolledLevelIds.includes(level.id)
+            (level) => enrolledLevelIds.includes(level.id),
           );
 
-          // If no enrolled levels found, show all levels as fallback
-          if (
-            filteredLevels.length === 0 &&
-            selectedSessionData.levelDetails.length > 0
-          ) {
-            newLevelOptions = selectedSessionData.levelDetails.map((level) => ({
-              _id: level.id,
-              value: level.id,
-              label: level.name,
-            }));
-          } else {
-            newLevelOptions = filteredLevels.map((level) => ({
-              _id: level.id,
-              value: level.id,
-              label: level.name,
-            }));
-          }
+          newLevelOptions =
+            filteredLevels.length > 0
+              ? filteredLevels.map((level) => ({
+                  _id: level.id,
+                  value: level.id,
+                  label: level.name,
+                }))
+              : selectedSessionData.levelDetails.map((level) => ({
+                  _id: level.id,
+                  value: level.id,
+                  label: level.name,
+                }));
+        } else if ((enrolledSessions || []).length > 0 && enrolledPackageSessionsForCourse.length === 0) {
+          // User has enrollments but package_sessions haven't matched yet — wait
+          // Don't set level options or select a level; re-filter effect will handle it
+          return;
         } else {
-          // For ALL tab, show all levels
+          // User not enrolled in this course/session — show all levels (browsing)
           newLevelOptions = selectedSessionData.levelDetails.map((level) => ({
             _id: level.id,
             value: level.id,
@@ -1240,27 +1281,17 @@ export const CourseDetailsPage = () => {
         }
 
         setLevelOptions(newLevelOptions);
-        const { value } = await Preferences.get({ key: "sessionList" });
-        let course: { level?: { id?: string } } | undefined;
-        if (value) {
-          try {
-            const parsedData = JSON.parse(value);
-            if (Array.isArray(parsedData) && parsedData.length > 0) {
-              course = parsedData[0] as { level?: { id?: string } };
-            }
-          } catch {
-            console.error("Error parsing sessionList from preferences");
-          }
-        }
-        // Select a valid level when session changes
-        if (newLevelOptions.length > 0 && newLevelOptions[0]?.value) {
-          const preferred = course?.level?.id;
-          const exists = preferred
-            ? newLevelOptions.some((l) => l.value === preferred)
+
+        // Auto-select level from enrolled data or first available
+        if (matchingPkgSessions.length > 0) {
+          // Prefer the enrolled level
+          const enrolledLevelId = matchingPkgSessions[0]?.level?.id;
+          const exists = enrolledLevelId
+            ? newLevelOptions.some((l) => l.value === enrolledLevelId)
             : false;
           const choosingLevelId = exists
-            ? (preferred as string)
-            : newLevelOptions[0].value;
+            ? enrolledLevelId!
+            : newLevelOptions[0]?.value || "";
           setSelectedLevel(choosingLevelId);
           if (import.meta.env.MODE !== "production") {
             console.info("[CourseDetailsPage] handleSessionChange", {
@@ -1269,21 +1300,27 @@ export const CourseDetailsPage = () => {
               choosingLevelId,
             });
           }
+        } else if (newLevelOptions.length > 0 && newLevelOptions[0]?.value) {
+          // Browsing mode — select first available level
+          setSelectedLevel(newLevelOptions[0].value);
+          if (import.meta.env.MODE !== "production") {
+            console.info("[CourseDetailsPage] handleSessionChange (browsing)", {
+              selectedSession: sessionId,
+              choosingLevelId: newLevelOptions[0].value,
+            });
+          }
         } else {
           setSelectedLevel("");
-          if (import.meta.env.MODE !== "production") {
-            console.info(
-              "[CourseDetailsPage] handleSessionChange - no levels",
-              {
-                selectedSession: sessionId,
-                newLevelOptionsCount: newLevelOptions.length,
-              }
-            );
-          }
         }
       }
     },
-    [form, selectedTab, enrolledSessions, isEnrollmentLoading]
+    [
+      form,
+      selectedTab,
+      enrolledSessions,
+      isEnrollmentLoading,
+      enrolledPackageSessionsForCourse,
+    ],
   );
 
   // Handle level change - clear expanded items and reset state
@@ -1328,6 +1365,55 @@ export const CourseDetailsPage = () => {
     isEnrollmentLoading,
   ]);
 
+  // Re-filter levels when enrollment data becomes available after initial selection
+  useEffect(() => {
+    if (!selectedSession || enrolledPackageSessionsForCourse.length === 0)
+      return;
+
+    // Directly filter and set levels here (bypassing handleSessionChange which may be
+    // blocked by isEnrollmentLoading or have stale closure)
+    const sessions = form.getValues("courseData")?.sessions || [];
+    const sessionData = sessions.find(
+      (s: any) => s.sessionDetails?.id === selectedSession,
+    );
+    if (!sessionData) return;
+
+    const matchingPkgSessions = enrolledPackageSessionsForCourse.filter(
+      (ps) => ps.session?.id === selectedSession,
+    );
+    const enrolledLevelIds = matchingPkgSessions
+      .map((ps) => ps.level?.id)
+      .filter(Boolean);
+
+    if (enrolledLevelIds.length > 0) {
+      const filteredLevels = sessionData.levelDetails.filter((level: any) =>
+        enrolledLevelIds.includes(level.id),
+      );
+      const levelsToShow =
+        filteredLevels.length > 0 ? filteredLevels : sessionData.levelDetails;
+
+      setLevelOptions(
+        levelsToShow.map((level: any) => ({
+          _id: level.id,
+          value: level.id,
+          label: level.name,
+        })),
+      );
+      // Set selected level to enrolled level
+      const enrolledLevelId = enrolledLevelIds[0] as string;
+      if (!selectedLevel || !enrolledLevelIds.includes(selectedLevel)) {
+        setSelectedLevel(enrolledLevelId);
+      }
+      // Also set packageSessionId for the enrolled level so modules can load
+      const enrolledPkgSession = matchingPkgSessions.find(
+        (ps) => ps.level?.id === enrolledLevelId
+      );
+      if (enrolledPkgSession?.id) {
+        setPackageSessionIdForCurrentLevel(enrolledPkgSession.id);
+      }
+    }
+  }, [enrolledPackageSessionsForCourse, selectedSession, watchedSessions]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Trace selection state changes
   useEffect(() => {
     if (import.meta.env.MODE !== "production") {
@@ -1343,9 +1429,8 @@ export const CourseDetailsPage = () => {
     const loadCourseData = async () => {
       if (courseDetailsData?.course) {
         try {
-          const transformedData = await transformApiDataToCourseData(
-            courseDetailsData
-          );
+          const transformedData =
+            await transformApiDataToCourseData(courseDetailsData);
           if (transformedData) {
             form.reset({
               courseData: transformedData,
@@ -1366,7 +1451,7 @@ export const CourseDetailsPage = () => {
     const currentSubjects = getSubjectDetails(
       form.getValues(),
       selectedSession,
-      selectedLevel
+      selectedLevel,
     );
 
     let totalModules = 0;
@@ -1468,7 +1553,7 @@ export const CourseDetailsPage = () => {
         count.source_type === "JUPYTER_NOTEBOOK" ||
         count.source_type === "CODE_EDITOR" ||
         count.source_type === "PRESENTATION" ||
-        count.source_type === "SCRATCH_PROJECT"
+        count.source_type === "SCRATCH_PROJECT",
     );
 
     counts.forEach((count) => {
@@ -1564,18 +1649,17 @@ export const CourseDetailsPage = () => {
 
     try {
       // Import the payment status API function
-      const { fetchUserPlanStatus } = await import(
-        "@/services/payment-status-api"
-      );
+      const { fetchUserPlanStatus } =
+        await import("@/services/payment-status-api");
 
       const response = await fetchUserPlanStatus(
         packageSessionIdForCurrentLevel,
-        authToken
+        authToken,
       );
 
       // Parse payment status
       const parseUserPlanStatus = (
-        status: string
+        status: string,
       ): "PAID" | "FAILED" | "PAYMENT_PENDING" | "UNKNOWN" => {
         const normalizedStatus = status?.toUpperCase()?.trim();
         switch (normalizedStatus) {
@@ -1594,7 +1678,7 @@ export const CourseDetailsPage = () => {
                 originalStatus: status,
                 normalizedStatus,
                 packageSessionId: packageSessionIdForCurrentLevel,
-              }
+              },
             );
             return "UNKNOWN";
         }
@@ -1602,7 +1686,7 @@ export const CourseDetailsPage = () => {
 
       // Parse learner status
       const parseLearnerStatus = (
-        status: string
+        status: string,
       ): "INVITED" | "PENDING_FOR_APPROVAL" | "ACTIVE" | "UNKNOWN" => {
         const normalizedStatus = status?.toUpperCase()?.trim();
         switch (normalizedStatus) {
@@ -1620,7 +1704,7 @@ export const CourseDetailsPage = () => {
                 originalStatus: status,
                 normalizedStatus,
                 packageSessionId: packageSessionIdForCurrentLevel,
-              }
+              },
             );
             return "UNKNOWN";
         }
@@ -1637,7 +1721,7 @@ export const CourseDetailsPage = () => {
           (enrolledSession) =>
             enrolledSession.package_dto.id === searchParams.courseId &&
             enrolledSession.session.id === selectedSession &&
-            enrolledSession.level.id === selectedLevel
+            enrolledSession.level.id === selectedLevel,
         );
 
         if (!isAlreadyEnrolled) {
@@ -1675,10 +1759,10 @@ export const CourseDetailsPage = () => {
           } catch (error) {
             console.error(
               "CourseDetailsPage - Error enrolling user on page load:",
-              error
+              error,
             );
             toast.error(
-              "Failed to update enrollment status. Please refresh the page."
+              "Failed to update enrollment status. Please refresh the page.",
             );
           }
         }
@@ -1686,7 +1770,7 @@ export const CourseDetailsPage = () => {
     } catch (error) {
       console.error(
         "CourseDetailsPage - Error checking payment status on load:",
-        error
+        error,
       );
       // Don't show error toast for this background check
     } finally {
@@ -1801,7 +1885,7 @@ export const CourseDetailsPage = () => {
 
   // Function to update module statistics for depth 5 courses
   const updateModuleStats = (
-    modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>
+    modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>,
   ) => {
     if (form.getValues("courseData.courseStructure") === 5) {
       let totalModules = 0;
@@ -1872,15 +1956,7 @@ export const CourseDetailsPage = () => {
         courseTitle={form.getValues("courseData").title}
       />
 
-      <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative w-full max-w-full">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-32 md:w-64 h-32 md:h-64 bg-gradient-to-br from-primary-100/20 to-transparent rounded-full blur-3xl animate-gentle-pulse"></div>
-          <div
-            className="absolute bottom-1/3 right-1/3 w-40 md:w-80 h-40 md:h-80 bg-gradient-to-br from-primary-50/30 to-transparent rounded-full blur-3xl animate-gentle-pulse"
-            style={{ animationDelay: "2s" }}
-          ></div>
-        </div>
+      <div className="min-h-screen bg-background relative w-full max-w-full">
 
         {/* Course Header */}
         <CourseHeader
@@ -1970,14 +2046,18 @@ export const CourseDetailsPage = () => {
                 <CourseStructureDetails
                   selectedSession={selectedSession}
                   selectedLevel={selectedLevel}
-                  courseStructure={courseStructureFromApi ?? stableCourseData?.courseData?.courseStructure ?? 5}
+                  courseStructure={
+                    courseStructureFromApi ??
+                    stableCourseData?.courseData?.courseStructure ??
+                    5
+                  }
                   courseData={stableCourseData}
                   packageSessionId={packageSessionIdForCurrentLevel || ""}
                   selectedTab={selectedTab}
                   updateModuleStats={updateModuleStats}
                   isEnrolledInCourse={(enrolledSessions || []).some(
                     (enrolledSession) =>
-                      enrolledSession.package_dto.id === searchParams.courseId
+                      enrolledSession.package_dto.id === searchParams.courseId,
                   )}
                   onLoadingChange={handleModulesLoadingChange}
                   courseInitSubjects={courseInitSubjectsFromCourseInit}
@@ -2014,10 +2094,10 @@ export const CourseDetailsPage = () => {
                     currentSubjects={getSubjectDetails(
                       form.getValues(),
                       selectedSession,
-                      selectedLevel
+                      selectedLevel,
                     )}
                     courseStructure={form.getValues(
-                      "courseData.courseStructure"
+                      "courseData.courseStructure",
                     )}
                     instructorsCount={
                       form.getValues("courseData").instructors.length

@@ -9,6 +9,12 @@ import { useState, useEffect } from "react";
 import { Search, ShoppingCart } from "lucide-react";
 import { useCartStore } from "../../-stores/cart-store";
 import { isIOSPlatform } from "@/hooks/useIsIOS";
+import { Capacitor } from "@capacitor/core";
+import { getAccessToken, isTokenExpired } from "@/lib/auth/sessionUtility";
+import { SystemAlertsBar } from "@/components/announcements";
+import { LogoutSidebar } from "@/components/common/layout-container/sidebar/logoutSidebar";
+import useStore from "@/components/common/layout-container/sidebar/useSidebar";
+import { List } from "@phosphor-icons/react";
 
 export const HeaderComponent: React.FC<HeaderProps & {
   navigation?: Array<{ label: string; route: string; openInSameTab?: boolean }>;
@@ -27,6 +33,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const domainRouting = useDomainRouting();
     const { getItemCountByMode, items, syncCart } = useCartStore();
     const [cartItemCount, setCartItemCount] = useState(0);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const { setSidebarOpen } = useStore();
     const [currentMode, setCurrentMode] = useState<'buy' | 'rent'>(() => {
       const levelFilter = sessionStorage.getItem('levelFilter') || '';
       return levelFilter.toLowerCase().includes('rent') ? 'rent' : 'buy';
@@ -36,9 +44,20 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const [mobileMenuRef, setMobileMenuRef] = useState<HTMLDivElement | null>(null);
     const [hamburgerButtonRef, setHamburgerButtonRef] = useState<HTMLButtonElement | null>(null);
     const isIOS = isIOSPlatform();
+    const isAndroid = Capacitor.getPlatform() === 'android';
 
     // Calculate cart item count based on current mode (Buy or Rent)
     useEffect(() => {
+      const checkAuth = async () => {
+        try {
+          const token = await getAccessToken();
+          setIsAuthenticated(!!token && !isTokenExpired(token));
+        } catch (error) {
+          setIsAuthenticated(false);
+        }
+      };
+      checkAuth();
+
       const updateCartCount = async () => {
         const levelFilter = sessionStorage.getItem('levelFilter') || '';
         const isRentMode = levelFilter.toLowerCase().includes('rent');
@@ -252,10 +271,26 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
 
 
-    // Check if logo from JSON should be used (when courseCatalogeType.enabled is true and layout.header.props.logo exists)
-    const jsonLogoUrl = isCourseCatalogeTypeEnabled && catalogueData?.globalSettings?.layout?.header?.props?.logo
-      ? catalogueData.globalSettings.layout.header.props.logo
-      : null;
+    // Use JSON logo and title from the page builder if configured
+    const jsonLogoRaw = catalogueData?.globalSettings?.layout?.header?.props?.logo || null;
+    const jsonTitle = catalogueData?.globalSettings?.layout?.header?.props?.title || null;
+
+    // Resolve jsonLogoRaw — it may be a file ID or a full URL
+    const [jsonLogoUrl, setJsonLogoUrl] = useState<string | null>(null);
+    useEffect(() => {
+      if (!jsonLogoRaw) { setJsonLogoUrl(null); return; }
+      // Already a URL — use directly
+      if (jsonLogoRaw.startsWith('http://') || jsonLogoRaw.startsWith('https://')) {
+        setJsonLogoUrl(jsonLogoRaw);
+        return;
+      }
+      // Looks like a file ID — resolve it
+      let cancelled = false;
+      getPublicUrlWithoutLogin(jsonLogoRaw).then(url => {
+        if (!cancelled && url) setJsonLogoUrl(url);
+      }).catch(() => {});
+      return () => { cancelled = true; };
+    }, [jsonLogoRaw]);
 
     // Check if we should hide search and cart icons
     const shouldHideSearchAndCart = () => {
@@ -324,7 +359,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
         } as React.CSSProperties}
       >
         {/* Container with consistent responsive padding */}
-        <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-12">
+        <LogoutSidebar />
+        <div className={`w-full px-4 sm:px-6 lg:px-8 xl:px-12 ${isAndroid || isIOS ? 'mt-6' : ''}`}>
           <div className={`flex items-center justify-between ${headerHeight}`}>
             {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
             {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
@@ -354,18 +390,25 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
             {/* Logo and Brand */}
             <div className={`flex items-center gap-3 ${isCourseCatalogeTypeEnabled ? 'flex-1 md:flex-none justify-center md:justify-start' : ''}`}>
-              {/* JSON logo (rectangular) when courseCatalogeType is enabled */}
+              {/* JSON logo (from page builder) */}
               {jsonLogoUrl ? (
-                <img
-                  src={jsonLogoUrl}
-                  alt="Logo"
-                  onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                  className={`max-h-12 md:max-h-16 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
-                    }`}
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
+                <>
+                  <img
+                    src={jsonLogoUrl}
+                    alt="Logo"
+                    onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                    className={`max-h-12 md:max-h-16 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
+                      }`}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                  {jsonTitle && (
+                    <span className="text-base md:text-lg font-semibold text-[hsl(var(--catalogue-text-primary))] truncate max-w-[200px] md:max-w-none">
+                      {jsonTitle}
+                    </span>
+                  )}
+                </>
               ) : (
                 <>
                   {/* Institute circular logo */}
@@ -381,9 +424,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       }}
                     />
                   )}
-                  {/* Institute name */}
+                  {/* Title: use JSON title if set, else institute name */}
                   <span className="text-base md:text-lg font-semibold text-[hsl(var(--catalogue-text-primary))] truncate max-w-[200px] md:max-w-none">
-                    {domainRouting.instituteName || "Learning Platform"}
+                    {jsonTitle || domainRouting.instituteName || ""}
                   </span>
                 </>
               )}
@@ -469,26 +512,41 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
               {/* Auth Links - Desktop only */}
               <div className="hidden md:flex items-center gap-2">
-                {authLinks.map((link, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      if (link.route === 'login' || link.route === 'signup') {
-                        window.location.href = `/${link.route}`;
-                      } else if (link.route === '' || link.route === 'get-started') {
-                        window.dispatchEvent(new CustomEvent('openLeadCollection'));
-                      } else {
-                        navigate({ to: link.route });
-                      }
-                    }}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
-                      ? 'text-white bg-primary-500 hover:bg-primary-400'
-                      : 'text-primary-500 border border-primary-500 hover:bg-primary-50'
-                      }`}
-                  >
-                    {link.label}
-                  </button>
-                ))}
+                {isAuthenticated ? (
+                  <div className="flex items-center gap-3 shrink-0">
+                    <SystemAlertsBar />
+                    <div className="w-px h-6 bg-primary-200/60 dark:bg-neutral-700"></div>
+                    <button
+                      className="group relative flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200"
+                      onClick={() => {
+                        setSidebarOpen();
+                      }}
+                    >
+                      <List className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
+                    </button>
+                  </div>
+                ) : (
+                  authLinks.map((link, index) => (
+                    <button
+                      key={index}
+                      onClick={() => {
+                        if (link.route === 'login' || link.route === 'signup') {
+                          window.location.href = `/${link.route}`;
+                        } else if (link.route === '' || link.route === 'get-started') {
+                          window.dispatchEvent(new CustomEvent('openLeadCollection'));
+                        } else {
+                          navigate({ to: link.route });
+                        }
+                      }}
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
+                        ? 'text-white bg-primary-500 hover:bg-primary-400'
+                        : 'text-primary-500 border border-primary-500 hover:bg-primary-50'
+                        }`}
+                    >
+                      {link.label}
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -497,7 +555,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
           {isCourseCatalogeTypeEnabled ? (
             <div
               ref={setMobileMenuRef}
-              className={`md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] bg-white border-b border-[hsl(var(--catalogue-border))] transition-all duration-300 ease-out ${isMobileMenuOpen
+              className={`md:hidden  fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] bg-white border-b border-[hsl(var(--catalogue-border))] transition-all duration-300 ease-out ${isMobileMenuOpen
                 ? 'opacity-100 visible'
                 : 'opacity-0 invisible pointer-events-none'
                 }`}
@@ -616,7 +674,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
               <div
                 ref={setMobileMenuRef}
-                className="md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] border-t border-[hsl(var(--catalogue-border-subtle))] bg-white"
+                className={`md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] border-t border-[hsl(var(--catalogue-border-subtle))] bg-white ${isAndroid || isIOS ? 'mt-8' : ''}`}
                 style={{ top: isIOS ? 'calc(56px + 32px)' : '56px' }}
               >
                 <div className="px-4 py-3 space-y-1">
@@ -642,32 +700,50 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   })}
 
                   {/* Auth Links */}
-                  {authLinks.length > 0 && (
+                  {(authLinks.length > 0 || isAuthenticated) && (
                     <div className="border-t border-[hsl(var(--catalogue-border-subtle))] pt-3 mt-3 space-y-2">
-                      {authLinks.map((link, index) => (
-                        <button
-                          key={`auth-${index}`}
-                          onClick={() => {
-                            if (link.route === 'login' || link.route === 'signup') {
-                              navigate({ to: `/${link.route}` });
-                            } else if (link.route === 'getStarted' || link.label.toLowerCase().includes('get started')) {
-                              const event = new CustomEvent('openLeadCollection', {
-                                detail: { source: 'mobileMenu' }
-                              });
-                              window.dispatchEvent(event);
-                            } else {
-                              navigate({ to: link.route });
-                            }
-                            setIsMobileMenuOpen(false);
-                          }}
-                          className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
-                            ? 'text-white bg-primary-500 hover:bg-primary-400'
-                            : 'text-primary-500 hover:bg-primary-50'
-                            }`}
-                        >
-                          {link.label}
-                        </button>
-                      ))}
+                      {isAuthenticated ? (
+                        <>
+                          <button
+                            onClick={() => {
+                              setIsMobileMenuOpen(false);
+                              navigate({ to: '/dashboard' });
+                            }}
+                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 text-white bg-primary-500 hover:bg-primary-400`}
+                          >
+                            Dashboard
+                          </button>
+                          <div className="px-4 py-1">
+                            {/* In mobile maybe don't need notification bell alone, they can see from dashboard */}
+                            {/* Just have dashboard link */}
+                          </div>
+                        </>
+                      ) : (
+                        authLinks.map((link, index) => (
+                          <button
+                            key={`auth-${index}`}
+                            onClick={() => {
+                              if (link.route === 'login' || link.route === 'signup') {
+                                navigate({ to: `/${link.route}` });
+                              } else if (link.route === 'getStarted' || link.label.toLowerCase().includes('get started')) {
+                                const event = new CustomEvent('openLeadCollection', {
+                                  detail: { source: 'mobileMenu' }
+                                });
+                                window.dispatchEvent(event);
+                              } else {
+                                navigate({ to: link.route });
+                              }
+                              setIsMobileMenuOpen(false);
+                            }}
+                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
+                              ? 'text-white bg-primary-500 hover:bg-primary-400'
+                              : 'text-primary-500 hover:bg-primary-50'
+                              }`}
+                          >
+                            {link.label}
+                          </button>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>

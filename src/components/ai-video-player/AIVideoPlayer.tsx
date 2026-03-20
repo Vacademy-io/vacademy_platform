@@ -715,24 +715,69 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   const rootRef = useRef<HTMLDivElement>(null);
 
   const handleToggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      // Use the root element of the player for fullscreen
-      rootRef.current?.requestFullscreen().catch((err) => {
-        console.error(`Error attempting to enable fullscreen: ${err.message} `);
-      });
+    if (!rootRef.current) return;
+
+    const doc = document as any;
+    const player = rootRef.current as any;
+
+    if (!isFullscreen) {
+        const requestFS = player.requestFullscreen || player.webkitRequestFullscreen || player.mozRequestFullScreen || player.msRequestFullscreen;
+        
+        if (requestFS) {
+            const promise = requestFS.call(player);
+            if (promise && promise.then) {
+                promise.then(() => {
+                    setIsFullscreen(true);
+                    try { (screen.orientation as any)?.lock?.('landscape').catch(() => {}); } catch (e) { /* ignore */ }
+                }).catch((err: any) => console.error(`Error attempting to enable fullscreen: ${err.message}`));
+            } else {
+                setIsFullscreen(true);
+                try { (screen.orientation as any)?.lock?.('landscape').catch(() => {}); } catch (e) { /* ignore */ }
+            }
+        } else {
+            setIsFullscreen(true);
+        }
     } else {
-      document.exitFullscreen();
+        const exitFS = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
+        const isNativeFullscreen = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement);
+        
+        if (exitFS && isNativeFullscreen) {
+            const promise = exitFS.call(doc);
+            if (promise && promise.then) {
+                promise.then(() => {
+                    setIsFullscreen(false);
+                    try { (screen.orientation as any)?.unlock?.(); } catch (e) { /* ignore */ }
+                }).catch((err: any) => console.error('Error exiting fullscreen:', err));
+            } else {
+                setIsFullscreen(false);
+                try { (screen.orientation as any)?.unlock?.(); } catch (e) { /* ignore */ }
+            }
+        } else {
+            setIsFullscreen(false);
+        }
     }
-  }, []);
+  }, [isFullscreen]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const doc = document as any;
+      const isNativeFullscreen = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement);
+      if (!isNativeFullscreen) {
+          setIsFullscreen(false);
+      } else {
+          setIsFullscreen(true);
+      }
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
     };
   }, []);
 

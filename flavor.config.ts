@@ -26,13 +26,6 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "ssdc",
   },
 
-  // Vacademy Learner iOS app
-  "io.vacademy.student.app": {
-    appName: "Vacademy Learner",
-    domain: "vacademy.io",
-    subdomain: "learner",
-  },
-
   // iThinkers by Fivesep iOS app
   "io.fivesep.student.app": {
     appName: "iThinkers by Fivesep",
@@ -62,5 +55,12 @@ export const flavorConfig: FlavorConfigs = {
     appName: "Shiksha Nation",
     domain: "vacademy.io",
     subdomain: "shiksha-nation",
+  },
+
+  //SSDC Android App
+   "io.vacademy.student.app": {
+    appName: "Vacademy Learner",
+    domain: "vacademy.io",
+    subdomain: "ssdc",
   },
 };

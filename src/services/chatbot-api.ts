@@ -12,7 +12,8 @@ export type MessageType =
   | "tool_call"
   | "tool_result"
   | "quiz"
-  | "quiz_feedback";
+  | "quiz_feedback"
+  | "token";
 export type AIStatus = "idle" | "thinking" | "generating_quiz";
 export type SessionStatus = "ACTIVE" | "CLOSED";
 export type MessageIntent = "doubt" | "practice" | "general";
@@ -81,6 +82,8 @@ export interface SendMessageRequest {
   message: string;
   intent?: MessageIntent;
   quiz_submission?: QuizSubmission;
+  idempotency_key?: string;
+  attachments?: Array<{type: string; url: string; mime_type?: string; name?: string}>;
 }
 
 export interface SendMessageResponse {
@@ -194,11 +197,14 @@ class ChatbotAPIService {
     message: string,
     intent?: MessageIntent,
     quizSubmission?: QuizSubmission,
+    attachments?: Array<{type: string; url: string; mime_type?: string; name?: string}>,
   ): Promise<SendMessageResponse> {
     const request: SendMessageRequest = {
       message,
+      idempotency_key: crypto.randomUUID(),
       ...(intent && { intent }),
       ...(quizSubmission && { quiz_submission: quizSubmission }),
+      ...(attachments?.length && { attachments }),
     };
 
     const response = await axios.post<SendMessageResponse>(

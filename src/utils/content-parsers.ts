@@ -84,6 +84,7 @@ export const initializeMermaid = async (container?: HTMLElement | null): Promise
         startOnLoad: false, // We'll manually trigger rendering
         theme: 'default',
         securityLevel: 'loose',
+        suppressErrorRendering: true,
         fontFamily: 'inherit',
         flowchart: {
           useMaxWidth: true,
@@ -124,8 +125,7 @@ export const initializeMermaid = async (container?: HTMLElement | null): Promise
       errorElements.forEach((el) => {
         el.removeAttribute('data-processing');
         el.setAttribute('data-processed', 'true');
-        (el as HTMLElement).style.color = 'red';
-        (el as HTMLElement).textContent = 'Error rendering diagram';
+        (el as HTMLElement).style.display = 'none';
       });
     }
   }

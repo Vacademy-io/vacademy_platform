@@ -49,6 +49,8 @@ import type {
 } from "../../../../types/layout-container-types";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { useIsIOS } from "@/hooks/useIsIOS";
+import { Capacitor } from "@capacitor/core";
+import { X } from "lucide-react";
 
 // Local letter-based icon factory for tabs without predefined icons
 const createLetterIcon =
@@ -78,7 +80,8 @@ export const MySidebar = ({
   sidebarComponent?: React.ReactNode;
 }) => {
   const navigate = useNavigate();
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, toggleSidebar } = useSidebar();
+  const isAndroid = Capacitor.getPlatform() === 'android';
   const {
     sideBarState,
     instituteName,
@@ -90,6 +93,8 @@ export const MySidebar = ({
     macAppLink,
     learnerPortalUrl,
     instructorPortalUrl,
+    subOrgName,
+    subOrgLogoUrl,
   } = useStore();
   const handleInstituteLogoClick = () => {
     if (homeIconClickRoute) {
@@ -206,42 +211,85 @@ export const MySidebar = ({
 
   return (
     <Sidebar side="left" collapsible={sidebarComponent ? "offcanvas" : "icon"}>
-      <SidebarContent className={`sidebar-content flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
+      <SidebarContent className={`sidebar-content flex flex-col bg-white dark:bg-neutral-900 py-1 transition-all  duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
         <SidebarHeader>
-          <SidebarMenu className="px-2">
+          {isAndroid && (
+            <button
+              onClick={toggleSidebar}
+              className="absolute top-4 mt-6 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
+            >
+              <X size={18} />
+            </button>
+          )}
+          <SidebarMenu className={`px-2 ${isAndroid || isIOS ? 'mt-12' : ''}`}>
             <SidebarMenuItem>
               <SidebarMenuButton
-                size="lg"
-                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                size="default"
+                className="h-auto min-h-10 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 onClick={
                   homeIconClickRoute ? handleInstituteLogoClick : undefined
                 }
               >
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg  text-sidebar-primary-foreground ">
-                  {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
-                    <img
-                      src={instituteLogoFileUrl}
-                      alt="Logo"
-                      className="size-8 object-contain rounded-md bg-white border border-neutral-100 dark:border-neutral-800"
-                    />
-                  ) : (
-                    <div className="h-8 w-8 rounded-md bg-primary-100 dark:bg-neutral-800 border border-primary-200 dark:border-neutral-700 flex items-center justify-center text-sm font-semibold text-primary-700 dark:text-neutral-200 [.ui-vibrant_&]:bg-indigo-100 [.ui-vibrant_&]:border-indigo-200 [.ui-vibrant_&]:text-indigo-700">
-                      {(instituteName?.[0] || "I").toUpperCase()}
+                {subOrgName ? (
+                  /* Sub-org branding: show sub-org logo/name + "Powered by parent" */
+                  <div className="flex flex-col gap-1 py-1 w-full">
+                    <div className="flex items-center gap-2">
+                      <div className="flex aspect-square size-7 items-center justify-center rounded-md text-sidebar-primary-foreground shrink-0">
+                        {subOrgLogoUrl ? (
+                          <img src={subOrgLogoUrl} alt="Logo" className="size-7 object-contain rounded-md bg-white" />
+                        ) : (
+                          <div className="h-7 w-7 rounded-md bg-primary-50 dark:bg-neutral-800 flex items-center justify-center text-xs font-semibold text-primary-700 dark:text-neutral-200">
+                            {(subOrgName[0] || "S").toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      {isExpanded && (
+                        <span className="truncate font-semibold uppercase text-sm leading-tight">
+                          {subOrgName}
+                        </span>
+                      )}
                     </div>
-                  )}
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold uppercase">
-                    {instituteName}
-                  </span>
-                </div>
+                    {isExpanded && (
+                      <div className="flex items-center gap-1.5 pl-9">
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">Powered by</span>
+                        {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
+                          <img src={instituteLogoFileUrl} alt={instituteName} className="h-4 w-auto max-w-[80px] object-contain" />
+                        ) : (
+                          <span className="text-[10px] font-semibold text-muted-foreground truncate">{instituteName}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Default: parent institute branding */
+                  <>
+                    <div className="flex aspect-square size-7 items-center justify-center rounded-md text-sidebar-primary-foreground">
+                      {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
+                        <img
+                          src={instituteLogoFileUrl}
+                          alt="Logo"
+                          className="size-7 object-contain rounded-md bg-white"
+                        />
+                      ) : (
+                        <div className="h-7 w-7 rounded-md bg-primary-50 dark:bg-neutral-800 flex items-center justify-center text-xs font-semibold text-primary-700 dark:text-neutral-200">
+                          {(instituteName?.[0] || "I").toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold uppercase">
+                        {instituteName}
+                      </span>
+                    </div>
+                  </>
+                )}
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
 
         <SidebarMenu
-          className={`flex flex-col space-y-2 px-2 flex-1 transition-all duration-200 max-w-full w-full overflow-x-hidden ${isExpanded ? "items-stretch" : "items-center"
+          className={`flex flex-col space-y-1 px-2 flex-1 transition-all duration-200 max-w-full w-full overflow-x-hidden ${isExpanded ? "items-stretch" : "items-center"
             }`}
         >
           {sidebarComponent

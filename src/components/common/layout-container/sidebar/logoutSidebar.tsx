@@ -1,5 +1,6 @@
 import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { SidebarMenu } from "@/components/ui/sidebar";
+import { useNavigate } from "@tanstack/react-router";
 
 import { SidebarItem } from "./sidebar-item";
 import {
@@ -16,8 +17,9 @@ import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { Preferences } from "@capacitor/preferences";
 import { Student } from "@/types/user/user-detail";
 import { getPublicUrl } from "@/services/upload_file";
-import { User } from "lucide-react";
+import { User, X } from "lucide-react";
 import { useIsIOS } from "@/hooks/useIsIOS";
+import { Capacitor } from "@capacitor/core";
 
 export const LogoutSidebar = ({
   sidebarComponent,
@@ -30,7 +32,9 @@ export const LogoutSidebar = ({
     setSidebarOpen,
     homeIconClickRoute,
   } = useStore();
+  const navigate = useNavigate();
   const isIOS = useIsIOS();
+  const isMobile = Capacitor.isNativePlatform();
   const handleInstituteLogoClick = () => {
     if (homeIconClickRoute) {
       window.location.href = homeIconClickRoute;
@@ -156,7 +160,13 @@ export const LogoutSidebar = ({
 
         {/* User Profile Section */}
         {studentData && (
-          <div className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-neutral-50/50 to-white/50 dark:from-neutral-900/50 dark:to-neutral-900/50">
+          <div 
+            onClick={() => {
+              setSidebarOpen();
+              navigate({ to: '/user-profile' as any });
+            }}
+            className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-neutral-50/50 to-white/50 dark:from-neutral-900/50 dark:to-neutral-900/50 cursor-pointer hover:from-neutral-100/50 hover:to-neutral-50/50 dark:hover:from-neutral-800/50 dark:hover:to-neutral-800/50 transition-colors"
+          >
             <div className="flex items-center gap-3">
               <div className="relative group">
                 {profileImageUrl ? (
@@ -232,6 +242,7 @@ export const LogoutSidebar = ({
                       }
                       title={obj.title}
                       to={(obj.to || "/") as string}
+                      onClick={setSidebarOpen}
                     />
                   </div>
                 </div>

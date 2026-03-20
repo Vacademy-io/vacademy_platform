@@ -12,7 +12,7 @@ export const DEFAULT_CHATBOT_SETTINGS = {
 };
 export const CHATBOT_SETTINGS_KEY = "CHATBOT_SETTING";
 const LS_KEY = `${CHATBOT_SETTINGS_KEY}_cache_v1`;
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — keeps settings fresh after admin updates
 
 export const avatarUrl = DEFAULT_CHATBOT_SETTINGS.avatarUrl;
 
@@ -58,7 +58,7 @@ function readCacheForInstitute(
       ts: number;
       data: ChatbotSettingsData;
     };
-    return parsed?.ts && Date.now() - parsed.ts <= ONE_DAY_MS
+    return parsed?.ts && Date.now() - parsed.ts <= CACHE_TTL_MS
       ? parsed.data
       : null;
   } catch {
@@ -98,18 +98,18 @@ export async function getChatbotSettings(
   }
 
   try {
+    // API returns SettingDto: { key, name, data: { enable, assistant_name, ... } }
     const res = await authenticatedAxiosInstance.get<{
+      key: string;
+      name: string;
       data: ChatbotSettingsData | null;
     }>(`${BASE_URL}/admin-core-service/institute/setting/v1/get`, {
       params: { instituteId, settingKey: CHATBOT_SETTINGS_KEY },
     });
 
-    console.log("Fetched chatbot settings from API:", res.data.data);
-    await writeCacheForInstitute(
-      instituteId,
-      res.data.data || DEFAULT_CHATBOT_SETTINGS
-    );
-    return res.data.data || DEFAULT_CHATBOT_SETTINGS;
+    const settings = res.data?.data || DEFAULT_CHATBOT_SETTINGS;
+    await writeCacheForInstitute(instituteId, settings);
+    return settings;
   } catch {
     const defaults = DEFAULT_CHATBOT_SETTINGS;
     await writeCacheForInstitute(instituteId, defaults);

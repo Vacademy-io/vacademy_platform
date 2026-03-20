@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Student } from "@phosphor-icons/react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, useQuery } from "@tanstack/react-query";
 import { handleFetchUserRoleDetails } from "@/routes/study-library/courses/-services/institute-details";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { TokenKey } from "@/constants/auth/tokens";
@@ -63,6 +63,8 @@ export function Navbar() {
     instituteLogoFileUrl,
     hasCustomSidebar,
     homeIconClickRoute,
+    subOrgName,
+    subOrgLogoUrl,
   } = useStore();
   const router = useRouter();
   const [canGoBack, setCanGoBack] = useState(false);
@@ -164,7 +166,7 @@ export function Navbar() {
     );
     // Return a simplified navbar without role-dependent features
     return (
-      <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap">
+      <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap">
         <LogoutSidebar />
 
         {/* Left Section */}
@@ -201,30 +203,71 @@ export function Navbar() {
             hasCustomSidebar
           ) && (
             <div className="flex items-center gap-3">
-              {/* Institute brand */}
+              {/* Institute / Sub-org brand */}
               <div className="flex items-center gap-2">
-                {instituteLogoFileUrl ? (
-                  <img
-                    src={instituteLogoFileUrl}
-                    alt={instituteName || "Institute"}
-                    onClick={
-                      homeIconClickRoute ? handleInstituteLogoClick : undefined
-                    }
-                    className={`h-8 md:h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm${
-                      homeIconClickRoute ? " cursor-pointer" : ""
-                    }`}
-                  />
-                ) : (
-                  <div
-                    className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200${
-                      homeIconClickRoute ? " cursor-pointer" : ""
-                    }`}
-                    onClick={
-                      homeIconClickRoute ? handleInstituteLogoClick : undefined
-                    }
-                  >
-                    {(instituteName?.[0] || "I").toUpperCase()}
+                {subOrgName ? (
+                  /* Sub-org branding: sub-org logo + "Powered by parent" */
+                  <div className="flex items-center gap-2">
+                    {subOrgLogoUrl ? (
+                      <img
+                        src={subOrgLogoUrl}
+                        alt={subOrgName}
+                        className={`h-8 md:h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm${
+                          homeIconClickRoute ? " cursor-pointer" : ""
+                        }`}
+                        onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                      />
+                    ) : (
+                      <div
+                        className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200${
+                          homeIconClickRoute ? " cursor-pointer" : ""
+                        }`}
+                        onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                      >
+                        {(subOrgName[0] || "S").toUpperCase()}
+                      </div>
+                    )}
+                    <div className="hidden md:flex flex-col leading-tight">
+                      <span className="text-xs font-semibold text-primary-900 dark:text-primary-100 truncate max-w-[120px]">
+                        {subOrgName}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] text-muted-foreground">Powered by</span>
+                        {instituteLogoFileUrl ? (
+                          <img src={instituteLogoFileUrl} alt={instituteName} className="h-3 w-auto max-w-[60px] object-contain" />
+                        ) : (
+                          <span className="text-[9px] font-medium text-muted-foreground">{instituteName}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
+                ) : (
+                  /* Default parent institute brand */
+                  <>
+                    {instituteLogoFileUrl ? (
+                      <img
+                        src={instituteLogoFileUrl}
+                        alt={instituteName || "Institute"}
+                        onClick={
+                          homeIconClickRoute ? handleInstituteLogoClick : undefined
+                        }
+                        className={`h-8 md:h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm${
+                          homeIconClickRoute ? " cursor-pointer" : ""
+                        }`}
+                      />
+                    ) : (
+                      <div
+                        className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200${
+                          homeIconClickRoute ? " cursor-pointer" : ""
+                        }`}
+                        onClick={
+                          homeIconClickRoute ? handleInstituteLogoClick : undefined
+                        }
+                      >
+                        {(instituteName?.[0] || "I").toUpperCase()}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
               <div className="h-7 md:h-8 w-px bg-primary-200/50 dark:bg-neutral-700" />
@@ -252,7 +295,7 @@ export function Navbar() {
 
   return (
     <div
-      className={`navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-[60px] items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap ${isIOS ? "mt-10" : ""}`}
+      className={`navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap ${isIOS ? "mt-10" : ""}`}
     >
       <LogoutSidebar />
 

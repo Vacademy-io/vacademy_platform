@@ -109,11 +109,15 @@ export const REGISTER_PARTICIPANT_URL = `${BASE_URL}/assessment-service/open-reg
 export const GET_USERID_URL = `${BASE_URL}/admin-core-service/institute/open_learner/v1/add-institute_learner`;
 export const GET_LAST_7_DAYS_PROGRESS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/learner/v1/daily-time-spent`;
 
+// Live session — Zoho Meeting integration
+export const ZOHO_PARTICIPANT_JOIN_LINK = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/participant-join-link`;
+
 // Live session
 export const LIVE_SESSION_REQUEST_OTP = `${BASE_URL}/notification-service/v1/send-email-otp`;
 export const LIVE_SESSION_VERIFY_OTP = `${BASE_URL}/notification-service/v1/verify-email-otp`;
 export const REQUEST_WHATSAPP_OTP = `${BASE_URL}/auth-service/v1/request-generic-whatsapp-otp`;
 export const VERIFY_WHATSAPP_OTP = `${BASE_URL}/auth-service/v1/verify-generic-whatsapp-otp`;
+export const VERIFY_WHATSAPP_OTP_LOGIN = `${BASE_URL}/auth-service/v1/verify-generic-whatsapp-otp-login`;
 export const LEAD_COLLECTION_ENROLL_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll/detail`;
 export const LIVE_SESSION_GET_REGISTRATION_DATA = `${BASE_URL}/admin-core-service/live-session/get-registration-data`;
 export const LIVE_SESSION_GET_LIVE_AND_UPCOMING = `${BASE_URL}/admin-core-service/get-sessions/learner/live-and-upcoming`;
@@ -144,6 +148,7 @@ export const urlInstructor = `${BASE_URL}/admin-core-service/open/institute/v1/f
 export const FEEDBACK_URL = `${BASE_URL}/admin-core-service/rating`;
 
 export const SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/add-or-update-quiz-slide-activity-log`;
+export const GET_QUIZ_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/quiz-slide-activity-logs`;
 export const LIVE_SESSION_ATTENDANCE_REPORT_BY_BATCH = `${BASE_URL}/admin-core-service/live-session-report/by-batch-session`;
 export const LIVE_SESSION_ATTENDANCE_REPORT_BY_STUDENT = `${BASE_URL}/admin-core-service/live-session-report/student-report`;
 

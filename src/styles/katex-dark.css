@@ -1,0 +1,18 @@
+/* Dark mode overrides for KaTeX math rendering */
+.dark .katex,
+.dark .katex .mord,
+.dark .katex .mbin,
+.dark .katex .mrel,
+.dark .katex .mopen,
+.dark .katex .mclose,
+.dark .katex .mpunct,
+.dark .katex .mop,
+.dark .katex .minner,
+.dark .katex .mfrac,
+.dark .katex .msupsub {
+  color: inherit;
+}
+
+.dark .katex .katex-html {
+  color: inherit;
+}

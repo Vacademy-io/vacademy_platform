@@ -259,6 +259,75 @@ export interface InitiatePaymentResponse {
   currency: string;
 }
 
+export interface StudentFeeDue {
+  id: string;
+  user_plan_id: string;
+  cpo_id: string;
+  cpo_name?: string;
+  fee_type_name?: string;
+  fee_type_code?: string;
+  fee_type_description?: string;
+  amount_expected: number;
+  discount_amount: number;
+  discount_reason: string | null;
+  amount_paid: number;
+  due_date: string;
+  status: string;
+  amount_due: number;
+  is_overdue: boolean;
+  days_overdue: number | null;
+}
+
+/** @deprecated Use InvoiceReceipt instead - kept for backward compatibility */
+export interface StudentFeeReceipt {
+  id: string;
+  payment_log_id: string;
+  student_fee_payment_id: string;
+  cpo_name?: string;
+  fee_type_name?: string;
+  fee_type_code?: string;
+  fee_type_description?: string;
+  amount_allocated: number;
+  allocation_type: string;
+  remarks: string;
+  created_at: string;
+}
+
+export interface InvoiceLineItem {
+  line_item_id: string;
+  item_type: string;
+  description: string;
+  amount: number | null;
+  source_id: string;
+  fee_type_name?: string;
+  fee_type_code?: string;
+  cpo_name?: string;
+}
+
+export interface InvoiceReceipt {
+  invoice_id: string;
+  invoice_number: string;
+  total_amount: number | null;
+  currency: string;
+  status: string;
+  pdf_file_id: string | null;
+  type: string;
+  invoice_date: string;
+  created_at: string;
+  amount_paid_now: number | null;
+  total_paid: number | null;
+  balance_due: number | null;
+  total_discount: number | null;
+  total_expected: number | null;
+  line_items: InvoiceLineItem[];
+}
+
+export interface DuesFilterBody {
+  status?: string;
+  startDueDate?: string;
+  endDueDate?: string;
+}
+
 // ======================== DOCUMENTS ========================
 
 export type DocumentStatus =

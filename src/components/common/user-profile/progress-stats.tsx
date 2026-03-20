@@ -63,26 +63,26 @@ const ProgressStats = ({ userId }: { userId: string }) => {
     const displayedItems = showAll ? items : items.slice(0, limit);
     return (
       <div className="space-y-3">
-        <h4 className="text-sm font-medium text-gray-700">{title}</h4>
+        <h4 className="text-sm font-medium text-foreground">{title}</h4>
         {displayedItems.length === 0 ? (
           <div className="text-muted-foreground">No stats available.</div>
         ) : (
           displayedItems.map((item) => (
             <div key={item.id} className="">
-              <CardTitle className="text-sm text-gray-900 mb-2">
+              <CardTitle className="text-sm text-foreground mb-2">
                 {item.data}
               </CardTitle>
               <div className="flex items-center space-x-2">
                 <Progress
                   value={item.percentage}
                   className={cn(
-                    "flex-1 !bg-gray-200",
+                    "flex-1 !bg-muted",
                     title === "Strengths"
                       ? "[&>div]:bg-green-500"
                       : "[&>div]:bg-red-500"
                   )}
                 />
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-muted-foreground">
                   {item.percentage}%
                 </span>
               </div>
@@ -94,7 +94,7 @@ const ProgressStats = ({ userId }: { userId: string }) => {
             buttonType="text"
             size="sm"
             onClick={() => setShowAll(!showAll)}
-            className="w-full text-sm font-medium text-gray-700"
+            className="w-full text-sm font-medium text-foreground"
           >
             {showAll ? "Show Less" : `View More (${items.length - limit})`}
           </MyButton>
@@ -105,18 +105,18 @@ const ProgressStats = ({ userId }: { userId: string }) => {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">
+      <div className="bg-card rounded-xl border shadow p-6">
+        <h3 className="text-sm font-semibold text-foreground mb-4">
           Progress Stats
         </h3>
-        <div className="text-center text-gray-500">Loading...</div>
+        <div className="text-center text-muted-foreground">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-      <h3 className="text-sm font-semibold text-gray-900 mb-4">
+    <div className="bg-card rounded-xl border shadow p-6">
+      <h3 className="text-sm font-semibold text-foreground mb-4">
         Progress Stats
       </h3>
       <div className="space-y-6">

@@ -1,10 +1,10 @@
 import { GraduationCap } from "@phosphor-icons/react";
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,15 +12,15 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 interface SessionOption {
-    _id: string;
-    value: string;
-    label: string;
+  _id: string;
+  value: string;
+  label: string;
 }
 
 interface LevelOption {
-    _id: string;
-    value: string;
-    label: string;
+  _id: string;
+  value: string;
+  label: string;
 }
 
 interface BatchOption {
@@ -30,26 +30,26 @@ interface BatchOption {
 }
 
 interface EnrolledSession {
+  id: string;
+  session: {
     id: string;
-    session: {
-        id: string;
-        session_name: string;
-        status: string;
-        start_date: string;
-    };
-    level: {
-        id: string;
-        level_name: string;
-        duration_in_days: number | null;
-        thumbnail_id: string | null;
-    };
-    start_time: string | null;
+    session_name: string;
     status: string;
-    package_dto: {
-        id: string;
-        package_name: string;
-        thumbnail_id?: string | null;
-    };
+    start_date: string;
+  };
+  level: {
+    id: string;
+    level_name: string;
+    duration_in_days: number | null;
+    thumbnail_id: string | null;
+  };
+  start_time: string | null;
+  status: string;
+  package_dto: {
+    id: string;
+    package_name: string;
+    thumbnail_id?: string | null;
+  };
 }
 
 interface CourseEnrollmentProps {
@@ -93,102 +93,101 @@ export const CourseEnrollment = ({
     onBatchChange,
     onEnrollmentClick,
 }: CourseEnrollmentProps) => {
-    if (!showCourseConfiguration) return null;
+  if (!showCourseConfiguration) return null;
 
-    const safeEnrolledSessions = enrolledSessions || [];
-    const isEnrolledInCourse = safeEnrolledSessions.some(
-        (enrolledSession) => enrolledSession.package_dto.id === courseId
-    );
+  const safeEnrolledSessions = enrolledSessions || [];
+  const isEnrolledInCourse = safeEnrolledSessions.some(
+    (enrolledSession) => enrolledSession.package_dto.id === courseId,
+  );
 
-    return (
-        <Card
-            className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg animate-fade-in-up border-border/60"
-            style={{ animationDelay: "0.1s" }}
-        >
-            {/* Background gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+  return (
+    <Card
+      className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg animate-fade-in-up border-border/60"
+      style={{ animationDelay: "0.1s" }}
+    >
+      {/* Background gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
 
-            {/* Floating orb effect */}
-            <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3 pointer-events-none"></div>
+      {/* Floating orb effect */}
+      <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3 pointer-events-none"></div>
 
-            <CardHeader className="pb-3 md:pb-4 space-y-0">
-                <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-primary/10 rounded-lg shadow-sm ring-1 ring-primary/20">
-                        <GraduationCap
-                            size={20}
-                            className="text-primary"
-                            weight="duotone"
-                        />
-                    </div>
-                    <CardTitle className="text-base md:text-lg font-bold">
-                        {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
-                        Configuration
-                    </CardTitle>
+      <CardHeader className="pb-3 md:pb-4 space-y-0">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-primary/10 rounded-lg shadow-sm ring-1 ring-primary/20">
+            <GraduationCap
+              size={20}
+              className="text-primary"
+              weight="duotone"
+            />
+          </div>
+          <CardTitle className="text-base md:text-lg font-bold">
+            {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
+            Configuration
+          </CardTitle>
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        {sessionOptions && sessionOptions.length > 0 ? (
+          <div className="space-y-4">
+            {/* Preview notice for ALL tab - only show if user is not enrolled */}
+            {selectedTab === "ALL" && !isEnrolledInCourse && (
+              <div className="p-3 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
+                <div className="flex items-center space-x-2 text-blue-700 dark:text-blue-300 font-medium mb-1">
+                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                  <span>
+                    {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
+                    Preview Mode
+                  </span>
                 </div>
-            </CardHeader>
+                <p className="text-blue-600/90 dark:text-blue-400 pl-3.5 text-xs leading-relaxed">
+                  Browse structure. Enroll to access{" "}
+                  {getTerminology(
+                    ContentTerms.Slides,
+                    SystemTerms.Slides,
+                  ).toLocaleLowerCase()}
+                  s and materials.
+                </p>
+              </div>
+            )}
 
-            <CardContent>
-                {sessionOptions && sessionOptions.length > 0 ? (
-                    <div className="space-y-4">
-                        {/* Preview notice for ALL tab - only show if user is not enrolled */}
-                        {selectedTab === "ALL" && !isEnrolledInCourse && (
-                            <div className="p-3 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
-                                <div className="flex items-center space-x-2 text-blue-700 dark:text-blue-300 font-medium mb-1">
-                                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-                                    <span>
-                                        {getTerminology(
-                                            ContentTerms.Course,
-                                            SystemTerms.Course
-                                        )}{" "}
-                                        Preview Mode
-                                    </span>
-                                </div>
-                                <p className="text-blue-600/90 dark:text-blue-400 pl-3.5 text-xs leading-relaxed">
-                                    Browse structure. Enroll to access{" "}
-                                    {getTerminology(
-                                        ContentTerms.Slides,
-                                        SystemTerms.Slides
-                                    ).toLocaleLowerCase()}
-                                    s and materials.
-                                </p>
-                            </div>
-                        )}
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {/* Session Selector */}
-                            {sessionOptions &&
-                                sessionOptions.length > 0 &&
-                                (sessionOptions.length === 1 &&
-                                    sessionOptions[0].label === "default" ? null : sessionOptions.length === 1 ? (
-                                        <div className="flex flex-col gap-1.5">
-                                            <span className="text-xs font-medium text-muted-foreground ml-1">Session</span>
-                                            <div className="px-3 py-2.5 bg-muted/50 rounded-md border text-sm font-medium">
-                                                {sessionOptions[0]?.label}
-                                            </div>
-                                        </div>
-                                    ) : sessionOptions.length > 1 ? (
-                                        <div className="flex flex-col gap-1.5">
-                                            <span className="text-xs font-medium text-muted-foreground ml-1">Session</span>
-                                            <Select
-                                                value={selectedSession}
-                                                onValueChange={onSessionChange}
-                                            >
-                                                <SelectTrigger className="w-full bg-background">
-                                                    <SelectValue placeholder="Select Session" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {sessionOptions.map((option) => (
-                                                        <SelectItem
-                                                            key={option._id}
-                                                            value={option.value}
-                                                        >
-                                                            {option.label}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    ) : null)}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Session Selector */}
+              {sessionOptions &&
+                sessionOptions.length > 0 &&
+                (sessionOptions.length === 1 &&
+                sessionOptions[0].label ===
+                  "default" ? null : sessionOptions.length === 1 ? (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground ml-1">
+                      Session
+                    </span>
+                    <div className="px-3 py-2.5 bg-muted/50 rounded-md border text-sm font-medium">
+                      {sessionOptions[0]?.label}
+                    </div>
+                  </div>
+                ) : sessionOptions.length > 1 ? (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground ml-1">
+                      Session
+                    </span>
+                    <Select
+                      value={selectedSession}
+                      onValueChange={onSessionChange}
+                    >
+                      <SelectTrigger className="w-full bg-background">
+                        <SelectValue placeholder="Select Session" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sessionOptions.map((option) => (
+                          <SelectItem key={option._id} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null)}
 
                             {/* Level Selector */}
                             {levelOptions &&

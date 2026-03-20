@@ -4,6 +4,9 @@ import { getInstituteIdSync } from "../../helper";
 
 export const getPublicInstituteDetails = async () => {
   const instituteId = await getInstituteIdSync();
+  if (!instituteId) {
+    throw new Error("Institute ID not available");
+  }
   try {
     const response = await axios.get(
       `${BASE_URL}/admin-core-service/public/institute/v1/details-non-batches/${instituteId}`

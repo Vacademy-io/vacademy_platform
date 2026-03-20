@@ -784,8 +784,8 @@ button:focus-visible {
 }
 
 .card-hover:hover {
-  transform: translateY(-4px) scale(1.02);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 /* Professional gradient overlays */
@@ -970,10 +970,8 @@ html, body {
 }
 
 .course-card-hover:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 
-    0 25px 50px -12px rgba(0, 0, 0, 0.15),
-    0 0 0 1px rgba(59, 130, 246, 0.05);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
 /* Professional shimmer effect for buttons */

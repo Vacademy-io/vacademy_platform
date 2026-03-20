@@ -2558,7 +2558,7 @@ export const CourseStructureDetails = ({
             {studyLibraryData?.map((subject) => (
               <Card
                 key={subject.id}
-                className="group h-full hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-1 bg-white"
+                className="group h-full hover:shadow-sm transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-0.5 bg-white"
                 onClick={() => {
                   setSelectedSubjectId(subject.id);
                 }}
@@ -2605,7 +2605,7 @@ export const CourseStructureDetails = ({
             {(subjectModulesMap[selectedSubjectId] || []).map((m) => (
               <Card
                 key={m.module.id}
-                className="group h-full hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-1 bg-white"
+                className="group h-full hover:shadow-sm transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-0.5 bg-white"
                 onClick={() => {
                   setSelectedModuleId(m.module.id);
                 }}
@@ -2669,7 +2669,7 @@ export const CourseStructureDetails = ({
                         "group h-full transition-all duration-300 overflow-hidden border-neutral-200 bg-white",
                         isChapterLocked
                           ? "opacity-70 bg-neutral-50 cursor-not-allowed"
-                          : "hover:shadow-lg cursor-pointer hover:border-primary-300/50 transform hover:-translate-y-1"
+                          : "hover:shadow-sm cursor-pointer hover:border-primary-300/50 transform hover:-translate-y-0.5"
                       )}
                       onClick={async () => {
                         if (isChapterLocked) return;
@@ -2932,10 +2932,12 @@ export const CourseStructureDetails = ({
   }, [courseInitSubjects]);
 
   // Subjects to use: from form (getSubjectDetails) or fallback to course-init when form not ready
+  // Don't fallback to course-init subjects until level is selected (avoids fetching wrong level's modules)
   const effectiveSubjects = useMemo(() => {
     const fromForm = getSubjectDetails(courseData, selectedSession, selectedLevel);
     if (fromForm.length > 0) return fromForm;
-    return courseInitSubjectsAsSubjectType;
+    if (selectedLevel) return courseInitSubjectsAsSubjectType;
+    return [];
   }, [courseData, selectedSession, selectedLevel, courseInitSubjectsAsSubjectType]);
 
   // Key that changes when subjects for current session/level become available (form or course-init).
@@ -2945,30 +2947,36 @@ export const CourseStructureDetails = ({
   );
 
   // Trigger module loading when session, level, or courseData (subjects) changes
-  // Use an additional ref to prevent running while already loading
-  const isLoadingModulesRef = useRef(false);
+  // Use a counter ref to discard stale fetches (e.g. when level changes mid-flight)
+  const fetchGenerationRef = useRef(0);
 
   useEffect(() => {
     // Use effectiveSubjects (form or course-init) so we call modules-with-chapters as soon as we have packageSessionId + subjects
     const subjects = effectiveSubjects;
     const fetchKey = `${packageSessionId}:${subjects.map((s) => s.id).join(",")}`;
 
-    // Skip if we've already fetched for this exact combination OR if currently loading
+    // Skip if level not selected, no packageSessionId, or already fetched this exact combo
     if (
+      !selectedLevel ||
       !packageSessionId ||
       !subjects.length ||
-      fetchKey === lastFetchedKeyRef.current ||
-      isLoadingModulesRef.current
+      fetchKey === lastFetchedKeyRef.current
     ) {
       return;
     }
 
+    // Increment generation so any in-flight fetch becomes stale
+    const generation = ++fetchGenerationRef.current;
+
     const loadModules = async () => {
-      isLoadingModulesRef.current = true;
       handleLoadingChangeRef.current(true);
       setIsModulesLoading(true);
       try {
         const modulesMap = await fetchModulesRef.current({ subjects });
+
+        // Discard result if a newer fetch was started while this one was in-flight
+        if (generation !== fetchGenerationRef.current) return;
+
         setSubjectModulesMap(modulesMap);
         lastFetchedKeyRef.current = fetchKey;
 
@@ -3014,11 +3022,14 @@ export const CourseStructureDetails = ({
           updateModuleStatsRef.current(modulesMap);
         }
       } catch {
-        setSubjectModulesMap({});
+        if (generation === fetchGenerationRef.current) {
+          setSubjectModulesMap({});
+        }
       } finally {
-        isLoadingModulesRef.current = false;
-        handleLoadingChangeRef.current(false);
-        setIsModulesLoading(false);
+        if (generation === fetchGenerationRef.current) {
+          handleLoadingChangeRef.current(false);
+          setIsModulesLoading(false);
+        }
       }
     };
     loadModules();

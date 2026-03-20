@@ -51,15 +51,15 @@ export const ContinueLearningCard = ({
     return (
         <Card className={cn(
             "h-full flex flex-col shadow-sm hover:shadow-md transition-all duration-300 group",
-            // Vibrant Mode Styles - Flat Pastel
-            "[.ui-vibrant_&]:bg-indigo-50/50 dark:[.ui-vibrant_&]:bg-indigo-950/20",
-            "[.ui-vibrant_&]:border-indigo-200/50 dark:[.ui-vibrant_&]:border-indigo-800/30"
+            // Vibrant Mode Styles
+            "[.ui-vibrant_&]:bg-indigo-50 dark:[.ui-vibrant_&]:bg-indigo-950/30",
+            "[.ui-vibrant_&]:border-indigo-200 dark:[.ui-vibrant_&]:border-indigo-800/50"
         )}>
             <CardHeader className="pb-3 px-4 sm:px-6 flex flex-row items-center justify-between space-y-0">
                 <div className="flex items-center space-x-3">
                     <div className={cn(
                         "p-2 bg-primary/10 rounded-md text-primary",
-                        "[.ui-vibrant_&]:bg-white/80 [.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:text-indigo-600 [.ui-vibrant_&]:dark:bg-indigo-500/20 [.ui-vibrant_&]:dark:text-indigo-300"
+                        "[.ui-vibrant_&]:bg-indigo-100 [.ui-vibrant_&]:text-indigo-600 [.ui-vibrant_&]:dark:bg-indigo-500/20 [.ui-vibrant_&]:dark:text-indigo-300"
                     )}>
                         <Play weight="duotone" size={18} />
                     </div>
@@ -92,7 +92,7 @@ export const ContinueLearningCard = ({
                             key={slide.slide_id}
                             onClick={() => onResumeClick(slide)}
                             className={cn(
-                                "group/item flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer border border-transparent hover:border-muted-foreground/10",
+                                "group/item flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/80 transition-colors cursor-pointer border border-transparent hover:border-border",
                                 "[.ui-vibrant_&]:hover:bg-white/60 [.ui-vibrant_&]:hover:border-primary/20"
                             )}
                         >

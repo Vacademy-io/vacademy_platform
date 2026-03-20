@@ -361,23 +361,7 @@ export function PaymentLogsTable({
                     return null; // exit edit mode
                 }
 
-                // Validate
-                if (!currentEditing.trackingId.trim()) {
-                    toast({
-                        title: 'Validation Error',
-                        description: 'Tracking ID must not be empty.',
-                        variant: 'destructive',
-                    });
-                    return currentEditing;
-                }
-                if (!currentEditing.trackingSource.trim()) {
-                    toast({
-                        title: 'Validation Error',
-                        description: 'Tracking Source must not be empty.',
-                        variant: 'destructive',
-                    });
-                    return currentEditing;
-                }
+                // Validate — only order status is required (tracking info can be added later)
                 if (!currentEditing.orderStatus) {
                     toast({
                         title: 'Validation Error',

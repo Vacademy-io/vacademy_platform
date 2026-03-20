@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
@@ -7,6 +8,7 @@ import { JsonRenderer } from "./JsonRenderer";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { classNames } from "@react-pdf-viewer/core";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -30,6 +32,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
+  const isAndroid = Capacitor.getPlatform() === 'android';
+  const isIOS = Capacitor.getPlatform() === 'ios';
   const [catalogueData, setCatalogueData] = useState<CourseCatalogueData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -467,7 +471,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             </button>}
 
             {/* Login Text */}
-            <div className="text-center ">
+            <div className={`text-center ${isAndroid || isIOS ? 'mb-8' : ''}`}>
               <span
                 onClick={handleIntroLogin}
                 className="cursor-pointer text-sm transition-colors"

@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 import { Search, ShoppingCart } from "lucide-react";
 import { useCartStore } from "../../-stores/cart-store";
 import { isIOSPlatform } from "@/hooks/useIsIOS";
+import { Capacitor } from "@capacitor/core";
 import { getAccessToken, isTokenExpired } from "@/lib/auth/sessionUtility";
 import { SystemAlertsBar } from "@/components/announcements";
 import { LogoutSidebar } from "@/components/common/layout-container/sidebar/logoutSidebar";
@@ -43,6 +44,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const [mobileMenuRef, setMobileMenuRef] = useState<HTMLDivElement | null>(null);
     const [hamburgerButtonRef, setHamburgerButtonRef] = useState<HTMLButtonElement | null>(null);
     const isIOS = isIOSPlatform();
+    const isAndroid = Capacitor.getPlatform() === 'android';
 
     // Calculate cart item count based on current mode (Buy or Rent)
     useEffect(() => {
@@ -358,7 +360,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
       >
         {/* Container with consistent responsive padding */}
         <LogoutSidebar />
-        <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-12">
+        <div className={`w-full px-4 sm:px-6 lg:px-8 xl:px-12 ${isAndroid || isIOS ? 'mt-6' : ''}`}>
           <div className={`flex items-center justify-between ${headerHeight}`}>
             {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
             {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
@@ -553,7 +555,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
           {isCourseCatalogeTypeEnabled ? (
             <div
               ref={setMobileMenuRef}
-              className={`md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] bg-white border-b border-[hsl(var(--catalogue-border))] transition-all duration-300 ease-out ${isMobileMenuOpen
+              className={`md:hidden  fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] bg-white border-b border-[hsl(var(--catalogue-border))] transition-all duration-300 ease-out ${isMobileMenuOpen
                 ? 'opacity-100 visible'
                 : 'opacity-0 invisible pointer-events-none'
                 }`}
@@ -672,7 +674,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
               <div
                 ref={setMobileMenuRef}
-                className="md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] border-t border-[hsl(var(--catalogue-border-subtle))] bg-white"
+                className={`md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] border-t border-[hsl(var(--catalogue-border-subtle))] bg-white ${isAndroid || isIOS ? 'mt-8' : ''}`}
                 style={{ top: isIOS ? 'calc(56px + 32px)' : '56px' }}
               >
                 <div className="px-4 py-3 space-y-1">

@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { Capacitor } from '@capacitor/core';
 import { Bell, X, ChevronDown, ChevronUp, Loader2, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,6 +51,9 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
     markAsReadDelay: 1000,
   });
 
+  const isAndroid = Capacitor.getPlatform() === 'android';
+  const isIOS = Capacitor.getPlatform() === 'ios';
+
   const [isOpen, setIsOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<UserMessage | null>(null);
   const [showFullContent, setShowFullContent] = useState(false);
@@ -88,6 +93,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
   }, [alerts]);
 
   const handleAlertClick = (alert: UserMessage) => {
+    setIsOpen(false); // Close dropdown first
     setSelectedAlert(alert);
     setShowFullContent(true);
     markAsRead(alert.messageId);
@@ -160,12 +166,12 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
       data-message-id={alert.messageId}
       onClick={() => handleAlertClick(alert)}
     >
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
+      <CardContent className="p-3 sm:p-4">
+        <div className="flex items-start justify-between gap-1">
           <div className="flex-1 min-w-0 overflow-hidden">
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2 flex-wrap">
               {alert.title && (
-                <h4 className="font-medium text-gray-900 truncate max-w-full">{alert.title}</h4>
+                <h4 className="font-medium text-gray-900 truncate max-w-full text-sm">{alert.title}</h4>
               )}
               {alert.priority && (
                 <Badge
@@ -196,7 +202,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
           <Button
             variant="ghost"
             size="sm"
-            className="ml-2 h-6 w-6 p-0 hover:bg-gray-100"
+            className="ml-1 h-6 w-6 p-0 hover:bg-gray-100 flex-shrink-0"
             onClick={(e) => handleDismiss(alert.messageId, e)}
           >
             <X className="h-3 w-3" />
@@ -212,6 +218,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
   }
 
   return (
+    <>
     <div className={className}>
       <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
         <DropdownMenuTrigger asChild>
@@ -231,27 +238,27 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
 
         <DropdownMenuContent
           align="end"
-          className="w-[calc(100vw-2rem)] sm:w-[32rem] md:w-96 max-h-96 p-0"
+          className="w-[calc(100vw-1rem)] sm:w-[32rem] md:w-96 max-h-[80vh] sm:max-h-96 p-0 z-[10000]"
           sideOffset={8}
         >
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium text-gray-900">System Alerts</h3>
-              <div className="flex items-center gap-2">
+          <div className="p-3 sm:p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-medium text-gray-900 text-sm sm:text-base">System Alerts</h3>
+              <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                 {alerts.length > 0 && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 text-xs sm:text-sm px-2 sm:px-3"
                         disabled={loading}
                       >
                         <Trash2 className="h-4 w-4 mr-1" />
                         Clear All
                       </Button>
                     </AlertDialogTrigger>
-                    <AlertDialogContent>
+                    <AlertDialogContent className="z-[10001]">
                       <AlertDialogHeader>
                         <AlertDialogTitle>Clear All Notifications</AlertDialogTitle>
                         <AlertDialogDescription>
@@ -283,8 +290,8 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
             </div>
           </div>
 
-          <ScrollArea className="h-80">
-            <div className="p-4">
+          <ScrollArea className="h-[60vh] sm:h-80">
+            <div className="p-3 sm:p-4">
               {error && (
                 <div className="text-sm text-red-600 mb-4 p-3 bg-red-50 rounded-md">
                   {error}
@@ -331,51 +338,60 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Full Content Modal */}
-      {selectedAlert && showFullContent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            <CardContent className="p-4 sm:p-6 flex flex-col overflow-hidden">
-              <div className="flex items-start justify-between mb-4 flex-shrink-0">
-                <div className="flex-1 min-w-0 mr-2">
-                  {selectedAlert.title && (
-                    <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 break-words">
-                      {selectedAlert.title}
-                    </h2>
-                  )}
-                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 flex-wrap">
-                    {selectedAlert.priority && (
-                      <Badge variant="secondary" className={getPriorityColor(selectedAlert.priority)}>
-                        {getPriorityText(selectedAlert.priority)}
-                      </Badge>
-                    )}
-                    {selectedAlert.createdByName && <span className="truncate">By {selectedAlert.createdByName}</span>}
-                    {selectedAlert.createdAt && (
-                      <span className="truncate">{formatLocalDateTime(selectedAlert.createdAt)}</span>
-                    )}
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowFullContent(false)}
-                  className="flex-shrink-0"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <Separator className="mb-4 flex-shrink-0" />
-
-              <div className="overflow-y-auto flex-1 min-h-0">
-                <div className="prose prose-sm max-w-none">
-                  {renderAlertContent(selectedAlert)}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
+
+    {/* Full Content Modal — portaled to body so it's never clipped by navbar stacking context */}
+    {selectedAlert && showFullContent && createPortal(
+      <div
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] p-4"
+        onClick={() => setShowFullContent(false)}
+      >
+        <Card
+          className="w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh]  overflow-hidden flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <CardContent className="p-1 sm:p-8 flex flex-col overflow-hidden">
+            <div className="flex items-start justify-between mb-4 flex-shrink-0">
+              <div className="flex-1 min-w-0 mr-2">
+                {selectedAlert.title && (
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 break-words">
+                    {selectedAlert.title}
+                  </h2>
+                )}
+                <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 flex-wrap">
+                  {selectedAlert.priority && (
+                    <Badge variant="secondary" className={getPriorityColor(selectedAlert.priority)}>
+                      {getPriorityText(selectedAlert.priority)}
+                    </Badge>
+                  )}
+                  {selectedAlert.createdByName && <span className="truncate">By {selectedAlert.createdByName}</span>}
+                  {selectedAlert.createdAt && (
+                    <span className="truncate">{formatLocalDateTime(selectedAlert.createdAt)}</span>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowFullContent(false)}
+                className="flex-shrink-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <Separator className="mb-4 flex-shrink-0" />
+
+            <div className="overflow-y-auto flex-1 min-h-0">
+              <div className="prose prose-sm max-w-none">
+                {renderAlertContent(selectedAlert)}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>,
+      document.body
+    )}
+    </>
   );
 };

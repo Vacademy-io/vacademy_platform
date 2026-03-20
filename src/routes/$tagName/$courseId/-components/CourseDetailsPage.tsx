@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "../../-components/LeadCollectionModal";
@@ -91,6 +92,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 }) => {
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
+  const isAndroid = Capacitor.getPlatform() === 'android';
+  const isIOS = Capacitor.getPlatform() === 'ios';
   const [courseData, setCourseData] = useState<CourseData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1334,7 +1337,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             </button>
 
             {/* Login Text */}
-            <div className="text-center border-gray-200">
+            <div className={`text-center border-gray-200 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
               <span
                 onClick={() => navigate({ to: '/login' })}
                 className="cursor-pointer text-sm transition-colors"

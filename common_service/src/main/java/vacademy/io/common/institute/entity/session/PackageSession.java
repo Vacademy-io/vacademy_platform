@@ -54,6 +54,13 @@ public class PackageSession {
     @ManyToOne
     private Group group;
 
+    /**
+     * Optional human-readable name for this batch / subgroup.
+     * Used when courses have subgroups under the same level + session.
+     */
+    @Column(name = "name")
+    private String name;
+
     @Column(name = "is_org_associated")
     private Boolean isOrgAssociated;
 

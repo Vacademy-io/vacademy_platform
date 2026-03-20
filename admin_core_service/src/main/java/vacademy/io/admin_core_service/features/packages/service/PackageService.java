@@ -53,6 +53,18 @@ public class PackageService {
         Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
         Page<PackageDetailProjection> learnerPackageDetail = null;
+
+        // Use package_session_filter from request only (no institute-level default)
+        String effectiveFilter = null;
+        if (learnerPackageFilterDTO != null
+                && learnerPackageFilterDTO.getPackageSessionFilter() != null
+                && !learnerPackageFilterDTO.getPackageSessionFilter().isBlank()) {
+            String v = learnerPackageFilterDTO.getPackageSessionFilter();
+            if ("PARENTS_ONLY".equals(v) || "CHILDREN_ONLY".equals(v)) {
+                effectiveFilter = v;
+            }
+        }
+
         if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
             learnerPackageDetail = packageRepository.getCatalogPackageDetail(
                     learnerPackageFilterDTO.getSearchByName(),
@@ -70,6 +82,7 @@ public class PackageService {
                     List.of(ChapterStatus.ACTIVE.name()),
                     learnerPackageFilterDTO.getPackageIds(),
                     learnerPackageFilterDTO.getPackageSessionIds(),
+                    effectiveFilter,
                     pageable);
         } else {
             learnerPackageDetail = packageRepository.getCatalogPackageDetail(
@@ -89,6 +102,7 @@ public class PackageService {
                     List.of(ChapterStatus.ACTIVE.name()),
                     learnerPackageFilterDTO.getPackageIds(),
                     learnerPackageFilterDTO.getPackageSessionIds(),
+                    effectiveFilter,
                     pageable);
         }
 
@@ -129,6 +143,7 @@ public class PackageService {
                     projection.getPercentageCompleted(),
                     projection.getRating(),
                     projection.getPackageSessionId(),
+                    projection.getPackageSessionName(),
                     projection.getLevelId(),
                     projection.getLevelName(),
                     projection.getDripConditionJson(),
@@ -185,6 +200,7 @@ public class PackageService {
                 projection.getPercentageCompleted(),
                 projection.getRating(),
                 projection.getPackageSessionId(),
+                projection.getPackageSessionName(),
                 projection.getLevelId(),
                 projection.getLevelName(),
                 projection.getDripConditionJson(),

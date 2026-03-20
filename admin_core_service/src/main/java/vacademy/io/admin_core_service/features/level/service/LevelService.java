@@ -148,11 +148,20 @@ public class LevelService {
     public void addOrUpdateLevel(AddLevelWithSessionDTO addLevelWithSessionDTO,Session session,PackageEntity packageEntity,String instituteId,CustomUserDetails user){
         Level level = createOrAddLevel(addLevelWithSessionDTO.getId(), addLevelWithSessionDTO.getNewLevel(), addLevelWithSessionDTO.getLevelName(), addLevelWithSessionDTO.getDurationInDays(), addLevelWithSessionDTO.getThumbnailFileId(),instituteId);
         if (addLevelWithSessionDTO.isNewPackageSession()) {
-            packageSessionService.createPackageSession(level, session, packageEntity, null, session.getStartDate(),
+            PackageSession created = packageSessionService.createPackageSession(level, session, packageEntity, null, session.getStartDate(),
                     instituteId, user, addLevelWithSessionDTO.getAddFacultyToCourse(), null,
                     addLevelWithSessionDTO.getIsParent(), addLevelWithSessionDTO.getParentId());
+            if (addLevelWithSessionDTO.getSubgroups() != null && !addLevelWithSessionDTO.getSubgroups().isEmpty()) {
+                packageSessionService.syncSubgroupsForParent(created.getId(), addLevelWithSessionDTO.getSubgroups(), instituteId);
+            }
         } else {
-            packageSessionService.updatePackageSession(addLevelWithSessionDTO.getPackageSessionId(),addLevelWithSessionDTO.getPackageSessionStatus(),instituteId,addLevelWithSessionDTO.getAddFacultyToCourse());
+            String packageSessionId = addLevelWithSessionDTO.getPackageSessionId();
+            if (StringUtils.hasText(packageSessionId)) {
+                packageSessionService.updatePackageSession(packageSessionId, addLevelWithSessionDTO.getPackageSessionStatus(), instituteId, addLevelWithSessionDTO.getAddFacultyToCourse());
+                if (addLevelWithSessionDTO.getSubgroups() != null) {
+                    packageSessionService.syncSubgroupsForParent(packageSessionId, addLevelWithSessionDTO.getSubgroups(), instituteId);
+                }
+            }
         }
     }
 

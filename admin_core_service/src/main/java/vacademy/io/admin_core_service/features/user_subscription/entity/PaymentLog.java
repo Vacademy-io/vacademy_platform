@@ -85,6 +85,15 @@ public class PaymentLog {
     @Column(name = "payment_specific_data")
     private String paymentSpecificData;
 
+    @Column(name = "tracking_id")
+    private String trackingId;
+
+    @Column(name = "tracking_source")
+    private String trackingSource;
+
+    @Column(name = "order_status")
+    private String orderStatus;
+
     public PaymentLogDTO mapToDTO() {
         PaymentLogDTO paymentLogDTO = new PaymentLogDTO();
         paymentLogDTO.setId(id);
@@ -96,6 +105,9 @@ public class PaymentLog {
         paymentLogDTO.setDate(date);
         paymentLogDTO.setCurrency(currency);
         paymentLogDTO.setPaymentAmount(paymentAmount);
+        paymentLogDTO.setTrackingId(trackingId);
+        paymentLogDTO.setTrackingSource(trackingSource);
+        paymentLogDTO.setOrderStatus(orderStatus);
 
         // Safely parse transactionId if possible
         if (paymentSpecificData != null) {

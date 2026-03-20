@@ -52,6 +52,15 @@ public class UserPlanController {
         return ResponseEntity.ok(paymentLogs);
     }
 
+    @PostMapping("/payment-logs/update-tracking")
+    public ResponseEntity<Void> updatePaymentLogTracking(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody UpdatePaymentLogTrackingDTO trackingDTO) {
+
+        paymentLogService.updatePaymentLogTracking(trackingDTO);
+        return ResponseEntity.ok().build();
+    }
+
     @PutMapping("/status")
     public ResponseEntity<Void> updateUserPlanStatuses(
             @RequestAttribute("user") CustomUserDetails userDetails,

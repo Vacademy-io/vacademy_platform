@@ -19,7 +19,7 @@ public class PackageSessionInventoryController {
     @PutMapping("/update-capacity")
     public ResponseEntity<PackageSession> updateCapacity(@PathVariable String packageSessionId,
             @RequestBody PackageSessionInventoryDTO inventoryDTO) {
-        return ResponseEntity.ok(packageSessionService.updateInventory(packageSessionId, inventoryDTO.getMaxSeats()));
+        return ResponseEntity.ok(packageSessionService.updateInventory(packageSessionId, inventoryDTO.getMaxSeats(), inventoryDTO.getAvailableSlots()));
     }
 
     @PostMapping("/reserve")

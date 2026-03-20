@@ -1,0 +1,5 @@
+provider: github
+owner: Vacademy-io
+repo: electron-build-repo
+publishAutoUpdate: true
+

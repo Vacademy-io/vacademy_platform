@@ -1,0 +1,130 @@
+# Docker Compose for Vacademy Learner Dashboard - Production Environment
+version: '3.8'
+
+services:
+  # Main application service - Production optimized
+  vacademy-learner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: vacademy-learner:latest
+    container_name: vacademy-learner-prod
+    ports:
+      - "80:80"
+      - "443:443"  # For HTTPS if using SSL termination in container
+    environment:
+      # API Configuration
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-https://api.vacademy.io}
+      - VITE_INSTITUTE_ID=${VITE_INSTITUTE_ID}
+      
+      # Firebase Configuration (required in production)
+      - VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY}
+      - VITE_FIREBASE_AUTH_DOMAIN=${VITE_FIREBASE_AUTH_DOMAIN}
+      - VITE_FIREBASE_PROJECT_ID=${VITE_FIREBASE_PROJECT_ID}
+      - VITE_FIREBASE_STORAGE_BUCKET=${VITE_FIREBASE_STORAGE_BUCKET}
+      - VITE_FIREBASE_MESSAGING_SENDER_ID=${VITE_FIREBASE_MESSAGING_SENDER_ID}
+      - VITE_FIREBASE_APP_ID=${VITE_FIREBASE_APP_ID}
+      - VITE_FIREBASE_MEASUREMENT_ID=${VITE_FIREBASE_MEASUREMENT_ID}
+      
+      # Analytics
+      - VITE_AMPLITUDE_API_KEY=${VITE_AMPLITUDE_API_KEY}
+      
+      # App Configuration
+      - VITE_APP_NAME=${VITE_APP_NAME:-Vacademy Learner}
+      - VITE_APP_VERSION=${VITE_APP_VERSION:-1.0.3}
+      - VITE_ENVIRONMENT=production
+      
+      # Feature Flags
+      - VITE_ENABLE_ANALYTICS=${VITE_ENABLE_ANALYTICS:-true}
+      - VITE_ENABLE_PUSH_NOTIFICATIONS=${VITE_ENABLE_PUSH_NOTIFICATIONS:-true}
+      - VITE_ENABLE_PROCTORING=${VITE_ENABLE_PROCTORING:-true}
+      
+      # Debug Settings (disabled for production)
+      - VITE_DEBUG_MODE=false
+      - VITE_LOG_LEVEL=error
+    volumes:
+      # Production log management
+      - nginx_logs:/var/log/nginx
+      - app_data:/usr/share/nginx/html/data
+    networks:
+      - vacademy-prod-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    labels:
+      - "com.vacademy.app=learner-dashboard"
+      - "com.vacademy.environment=production"
+      - "traefik.enable=true"
+      - "traefik.http.routers.vacademy-learner.rule=Host(`learner.vacademy.io`)"
+      - "traefik.http.routers.vacademy-learner.tls=true"
+      - "traefik.http.routers.vacademy-learner.tls.certresolver=letsencrypt"
+
+  # Reverse proxy with SSL termination (optional - if not using external load balancer)
+  # traefik:
+  #   image: traefik:v3.0
+  #   container_name: vacademy-traefik
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #     - "8080:8080"  # Traefik dashboard
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - ./traefik/traefik.yml:/etc/traefik/traefik.yml
+  #     - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml
+  #     - traefik_certificates:/certificates
+  #   networks:
+  #     - vacademy-prod-network
+  #   restart: always
+
+  # Log aggregation (optional)
+  # logspout:
+  #   image: gliderlabs/logspout:latest
+  #   container_name: vacademy-logspout
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #   environment:
+  #     - ROUTE_URIS=syslog+tcp://logs.vacademy.io:514
+  #   networks:
+  #     - vacademy-prod-network
+  #   restart: always
+
+  # Monitoring (optional)
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: vacademy-prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - prometheus_data:/prometheus
+  #   networks:
+  #     - vacademy-prod-network
+  #   restart: always
+
+networks:
+  vacademy-prod-network:
+    driver: bridge
+    name: vacademy-prod-network
+
+volumes:
+  nginx_logs:
+    driver: local
+  app_data:
+    driver: local
+  # traefik_certificates:
+  #   driver: local
+  # prometheus_data:
+  #   driver: local 

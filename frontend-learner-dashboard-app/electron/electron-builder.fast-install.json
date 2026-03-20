@@ -1,0 +1,57 @@
+{
+  "appId": "com.vacademy.io",
+  "productName": "SSDC Horizon",
+  "directories": {
+    "buildResources": "resources"
+  },
+  "files": [
+    "assets/**/*",
+    "build/**/*",
+    "capacitor.config.*",
+    "app/**/*",
+    "node_modules/**/*",
+    "node_modules/.pnpm/**/*",
+    "node_modules/.modules.yaml",
+    "package.json"
+  ],
+  "asar": false,
+  "compression": "store",
+  "publish": { 
+    "provider": "github",
+    "owner": "Vacademy-io",
+    "repo": "electron-build-repo", 
+    "private": false
+  },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": false,
+    "allowElevation": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "differentialPackage": false,
+    "displayLanguageSelector": false,
+    "installerHeaderIcon": "assets/ssdc_horizon.ico",
+    "deleteAppDataOnUninstall": false,
+    "runAfterFinish": true
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "assets/ssdc_horizon.ico",
+    "signingHashAlgorithms": [
+      "sha256"
+    ]
+  },
+  "mac": {
+    "category": "your.app.category.type",
+    "target": "dmg"
+  }
+}
+

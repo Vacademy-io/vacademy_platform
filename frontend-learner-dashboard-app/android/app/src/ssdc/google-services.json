@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "117550803134",
+    "project_id": "vacademy-app",
+    "storage_bucket": "vacademy-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:117550803134:android:50cb1bab815df2c7bdd6ef",
+        "android_client_info": {
+          "package_name": "io.vacademy.student.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzPX1uPRzBiKDbGJJwDo0gDkcSm27lPkk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -34,6 +34,8 @@ import { getInstituteId } from '@/constants/helper';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { toast } from 'sonner';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     X,
     FileText,
@@ -315,7 +317,7 @@ function RouteComponent() {
     };
 
     useEffect(() => {
-        setNavHeading('Create with Ai');
+        setNavHeading('Create with AI');
     }, [setNavHeading]);
 
     // Fetch course settings to get default course depth
@@ -817,13 +819,13 @@ function RouteComponent() {
                                 <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
                                     <div className="flex items-center gap-1.5">
                                         <BookOpen className="size-3.5 text-neutral-500" />
-                                        <SelectValue placeholder="Chapters" />
+                                        <SelectValue placeholder={getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)} />
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent>
                                     {[3, 4, 5, 6, 7, 8, 10, 12, 15, 20].map((num) => (
                                         <SelectItem key={num} value={num.toString()}>
-                                            {num} Chapters
+                                            {num} {getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)}
                                         </SelectItem>
                                     ))}
                                     <SelectItem value="custom">Custom...</SelectItem>
@@ -853,13 +855,13 @@ function RouteComponent() {
                                 <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
                                     <div className="flex items-center gap-1.5">
                                         <FileText className="size-3.5 text-neutral-500" />
-                                        <SelectValue placeholder="Slides/Chapter" />
+                                        <SelectValue placeholder={`${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}/${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`} />
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent>
                                     {[3, 4, 5, 6, 7, 8, 10].map((num) => (
                                         <SelectItem key={num} value={num.toString()}>
-                                            {num} Slides/Chapter
+                                            {num} {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}/{getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -876,7 +878,7 @@ function RouteComponent() {
                                             numberOfChapters === 'custom' ? '' : numberOfChapters
                                         }
                                         onChange={(e) => setNumberOfChapters(e.target.value)}
-                                        placeholder="Enter number of chapters"
+                                        placeholder={`Enter number of ${getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()}`}
                                         className="h-8 w-40 text-xs"
                                     />
                                 )}
@@ -1136,15 +1138,15 @@ function RouteComponent() {
                         )}
                         {courseDepth > 3 && (
                             <div>
-                                <Label className="mb-2 block text-sm">Number of Modules</Label>
+                                <Label className="mb-2 block text-sm">Number of {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}</Label>
                                 <Select value={numberOfModules} onValueChange={setNumberOfModules}>
                                     <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select modules" />
+                                        <SelectValue placeholder={`Select ${getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules).toLowerCase()}`} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {[2, 3, 4, 5, 6, 8, 10].map((num) => (
                                             <SelectItem key={num} value={num.toString()}>
-                                                {num} Modules
+                                                {num} {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -1519,7 +1521,7 @@ function RouteComponent() {
                                 {numberOfModules && (
                                     <div>
                                         <h4 className="mb-1 text-sm font-semibold text-neutral-900">
-                                            Number of Modules
+                                            Number of {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}
                                         </h4>
                                         <p className="text-sm text-neutral-600">
                                             {numberOfModules}
@@ -1529,7 +1531,7 @@ function RouteComponent() {
                                 {numberOfChapters && (
                                     <div>
                                         <h4 className="mb-1 text-sm font-semibold text-neutral-900">
-                                            Number of Chapters
+                                            Number of {getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)}
                                         </h4>
                                         <p className="text-sm text-neutral-600">
                                             {numberOfChapters}
@@ -1553,7 +1555,7 @@ function RouteComponent() {
                                 {slidesPerChapter && (
                                     <div>
                                         <h4 className="mb-1 text-sm font-semibold text-neutral-900">
-                                            Slides per Chapter
+                                            {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)} per {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
                                         </h4>
                                         <p className="text-sm text-neutral-600">
                                             {slidesPerChapter}

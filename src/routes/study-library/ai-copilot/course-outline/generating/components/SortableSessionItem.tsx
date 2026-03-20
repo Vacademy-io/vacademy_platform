@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { GripVertical, Edit2, Trash2, CheckCircle, X } from 'lucide-react';
 import { SessionProgress } from '../../../shared/types';
 import { CircularProgress } from './CircularProgress';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface SortableSessionItemProps {
     session: SessionProgress;
@@ -85,9 +87,9 @@ export const SortableSessionItem = ({
                             ) : (
                                 <h3 className="truncate text-sm font-semibold text-neutral-900 sm:text-base">
                                     <span className="hidden sm:inline">
-                                        Chapter {sessionIndex + 1}:{' '}
+                                        {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} {sessionIndex + 1}:{' '}
                                     </span>
-                                    <span className="sm:hidden">Ch {sessionIndex + 1}: </span>
+                                    <span className="sm:hidden">{getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).slice(0, 2)} {sessionIndex + 1}: </span>
                                     {session.sessionTitle}
                                 </h3>
                             )}

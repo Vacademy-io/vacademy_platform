@@ -1,10 +1,12 @@
 import { BrainCircuit, FileText, Layers, Sparkles, CheckCircle } from 'lucide-react';
 import { AiGeneratingLoader } from '@/components/common/slides/AiGeneratingLoader';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const outlineSteps = [
     { text: 'Analyzing your topic...', icon: BrainCircuit },
     { text: 'Structuring the outline...', icon: FileText },
-    { text: 'Organizing chapters and topics...', icon: Layers },
+    { text: `Organizing ${getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()} and topics...`, icon: Layers },
     { text: 'Creating learning objectives...', icon: Sparkles },
     { text: 'Finalizing your course outline...', icon: CheckCircle },
 ];

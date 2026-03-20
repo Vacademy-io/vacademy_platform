@@ -79,6 +79,8 @@ import type {
     SortableSessionItemProps,
     CircularProgressProps
 } from '../../../shared/types';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 // Route definition only - component is lazy loaded from index.lazy.tsx
 export const Route = createFileRoute('/study-library/ai-copilot/course-outline/generating/viewer/')({
@@ -194,7 +196,7 @@ const SortableSessionItem = ({
                                 />
                             ) : (
                                 <h3 className="text-base font-semibold text-neutral-900">
-                                    Session {sessionIndex + 1}: {session.sessionTitle}
+                                    {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} {sessionIndex + 1}: {session.sessionTitle}
                                 </h3>
                             )}
                         </div>
@@ -594,7 +596,7 @@ function RouteComponent() {
     };
 
     const handleSlideDelete = (slideId: string) => {
-        if (confirm('Are you sure you want to delete this slide?')) {
+        if (confirm(`Are you sure you want to delete this ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLowerCase()}?`)) {
             setSlides((prev) => prev.filter((slide) => slide.id !== slideId));
         }
     };

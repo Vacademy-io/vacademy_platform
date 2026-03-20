@@ -32,6 +32,8 @@ import {
     AlertTriangle,
 } from 'lucide-react';
 import { SlideType, SessionProgress } from '../../../shared/types';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface RegenerateSlideDialogProps {
     open: boolean;
@@ -145,7 +147,7 @@ export function RegenerateSessionDialog({
             <DialogContent className="flex max-h-[90vh] w-[95vw] max-w-[95vw] flex-col p-0 sm:w-[80vw] sm:max-w-[80vw]">
                 <DialogHeader className="shrink-0 border-b px-6 pb-4 pt-6">
                     <DialogTitle>
-                        Regenerate Chapter{session ? `: ${session.sessionTitle}` : ''}
+                        {`Regenerate ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}${session ? `: ${session.sessionTitle}` : ''}`}
                     </DialogTitle>
                 </DialogHeader>
                 <div className="flex-1 space-y-6 overflow-y-auto px-6 py-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -162,7 +164,7 @@ export function RegenerateSessionDialog({
 
                     <div>
                         <Label htmlFor="regenerateSessionLength" className="mb-2 block">
-                            Chapter Length
+                            {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} Length
                         </Label>
                         <div className="space-y-2">
                             <Select value={sessionLength} onValueChange={onSessionLengthChange}>
@@ -287,7 +289,7 @@ export function RegenerateSessionDialog({
 
                     <div>
                         <Label htmlFor="regenerateSessionNumberOfTopics" className="mb-2 block">
-                            Number of Slides
+                            {`Number of ${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}`}
                         </Label>
                         <Input
                             id="regenerateSessionNumberOfTopics"
@@ -301,7 +303,7 @@ export function RegenerateSessionDialog({
                     </div>
 
                     <div>
-                        <Label className="mb-2 block">Slides in Chapter (Optional)</Label>
+                        <Label className="mb-2 block">{`${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)} in ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} (Optional)`}</Label>
                         <TagInput
                             tags={topics}
                             onChange={onTopicsChange}
@@ -502,18 +504,18 @@ export function AddSessionDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="w-[95vw] sm:w-full sm:max-w-[500px]">
                 <DialogHeader>
-                    <DialogTitle>Add New Chapter</DialogTitle>
+                    <DialogTitle>{`Add New ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <div>
                         <Label htmlFor="sessionName" className="mb-2 block">
-                            Chapter Name
+                            {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} Name
                         </Label>
                         <Input
                             id="sessionName"
                             value={sessionName}
                             onChange={(e) => onSessionNameChange(e.target.value)}
-                            placeholder="Enter chapter name"
+                            placeholder={`Enter ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()} name`}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' && sessionName.trim()) {
                                     onConfirm();
@@ -532,7 +534,7 @@ export function AddSessionDialog({
                         onClick={onConfirm}
                         disabled={!sessionName.trim()}
                     >
-                        Add Chapter
+                        {`Add ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`}
                     </MyButton>
                 </div>
             </DialogContent>

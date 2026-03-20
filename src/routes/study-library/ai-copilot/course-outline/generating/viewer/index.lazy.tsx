@@ -61,6 +61,8 @@ import {
     verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const Route = createLazyFileRoute('/study-library/ai-copilot/course-outline/generating/viewer/')({
     component: RouteComponent,
@@ -244,7 +246,7 @@ const SortableSessionItem = ({
                                 />
                             ) : (
                                 <h3 className="text-base font-semibold text-neutral-900">
-                                    Session {sessionIndex + 1}: {session.sessionTitle}
+                                    {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} {sessionIndex + 1}: {session.sessionTitle}
                                 </h3>
                             )}
                         </div>
@@ -1959,7 +1961,7 @@ function RouteComponent() {
     };
 
     const handleSlideDelete = (slideId: string) => {
-        if (confirm('Are you sure you want to delete this slide?')) {
+        if (confirm(`Are you sure you want to delete this ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLowerCase()}?`)) {
             setSlides((prev) => prev.filter((slide) => slide.id !== slideId));
         }
     };

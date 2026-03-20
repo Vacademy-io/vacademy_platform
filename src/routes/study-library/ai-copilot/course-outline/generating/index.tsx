@@ -114,6 +114,8 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TagInput } from '@/components/ui/tag-input';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -1076,7 +1078,7 @@ export function RouteComponent() {
         const slideTitles = extractSlideTitlesFromSlides(session.slides);
 
         // Pre-fill prompt with a default based on chapter data
-        const defaultPrompt = `Regenerate the chapter "${session.sessionTitle}"${slideTitles.length > 0 ? ` with the following slides: ${slideTitles.join(', ')}.` : `.`}`;
+        const defaultPrompt = `Regenerate the ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()} "${session.sessionTitle}"${slideTitles.length > 0 ? ` with the following ${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides).toLowerCase()}: ${slideTitles.join(', ')}.` : `.`}`;
         setRegenerateSessionPrompt(defaultPrompt);
 
         // Default chapter length (we don't have duration info in SessionProgress)
@@ -1869,7 +1871,7 @@ export function RouteComponent() {
                                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm font-medium text-neutral-600 transition-colors hover:border-indigo-400 hover:bg-indigo-50"
                             >
                                 <Plus className="size-4" />
-                                Add Chapter
+                                {`Add ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`}
                             </button>
                         </motion.div>
 
@@ -3208,7 +3210,7 @@ export function RouteComponent() {
                                     const slideTitles = extractSlideTitlesFromSlides(
                                         session.slides
                                     );
-                                    const defaultPrompt = `Regenerate the chapter "${session.sessionTitle}"${slideTitles.length > 0 ? ` with the following slides: ${slideTitles.join(', ')}.` : `.`}`;
+                                    const defaultPrompt = `Regenerate the ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()} "${session.sessionTitle}"${slideTitles.length > 0 ? ` with the following ${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides).toLowerCase()}: ${slideTitles.join(', ')}.` : `.`}`;
                                     setRegenerateSessionPrompt(defaultPrompt);
                                     setRegenerateSessionTopics(slideTitles);
                                     setRegenerateSessionNumberOfTopics(

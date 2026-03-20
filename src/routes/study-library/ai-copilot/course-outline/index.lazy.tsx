@@ -89,6 +89,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const Route = createLazyFileRoute('/study-library/ai-copilot/course-outline/')({
     component: RouteComponent,
@@ -2000,13 +2002,13 @@ function RouteComponent() {
                                 </SortableContext>
                             </DndContext>
 
-                            {/* Add Chapter Button */}
+                            {/* {`Add ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`} Button */}
                             <button
                                 onClick={handleAddSession}
                                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm font-medium text-neutral-600 transition-colors hover:border-indigo-400 hover:bg-indigo-50"
                             >
                                 <Plus className="h-4 w-4" />
-                                Add Chapter
+                                {`Add ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`}
                             </button>
                         </motion.div>
 
@@ -2864,7 +2866,7 @@ function RouteComponent() {
                                 <div className="space-y-4">
                                     <div>
                                         <Label htmlFor="regenerateCourseNumberOfSessions" className="mb-2 block">
-                                            Number of Chapters
+                                            Number of {getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)}
                                         </Label>
                                         <Input
                                             id="regenerateCourseNumberOfSessions"
@@ -3190,7 +3192,7 @@ function RouteComponent() {
                 </DialogContent>
             </Dialog>
 
-            {/* Add Chapter Dialog */}
+            {/* {`Add ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`} Dialog */}
             <Dialog open={addSessionDialogOpen} onOpenChange={(open) => {
                 setAddSessionDialogOpen(open);
                 if (!open) {
@@ -3199,18 +3201,18 @@ function RouteComponent() {
             }}>
                 <DialogContent className="sm:max-w-[500px]">
                     <DialogHeader>
-                        <DialogTitle>Add New Chapter</DialogTitle>
+                        <DialogTitle>{`Add New ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div>
                             <Label htmlFor="addSessionName" className="mb-2 block">
-                                Chapter Name
+                                {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} Name
                             </Label>
                             <Input
                                 id="addSessionName"
                                 value={addSessionName}
                                 onChange={(e) => setAddSessionName(e.target.value)}
-                                placeholder="Enter chapter name"
+                                placeholder={`Enter ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()} name`}
                                 className="w-full"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && addSessionName.trim()) {
@@ -3232,7 +3234,7 @@ function RouteComponent() {
                             onClick={handleConfirmAddSession}
                             disabled={!addSessionName.trim()}
                         >
-                            Add Chapter
+                            {`Add ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`}
                         </MyButton>
                     </div>
                 </DialogContent>
@@ -3321,7 +3323,7 @@ function RouteComponent() {
                                                     <span className="ml-1 font-medium text-neutral-700">{session.topics.length}</span>
                                                 </div>
                                                 <div>
-                                                    <span className="text-neutral-500">Slides:</span>
+                                                    <span className="text-neutral-500">{getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}:</span>
                                                     <span className="ml-1 font-medium text-neutral-700">{session.slides.length}</span>
                                                 </div>
                                                 <div className="flex items-center gap-2">
@@ -3372,7 +3374,7 @@ function RouteComponent() {
                                         </p>
                                     </div>
                                     <div>
-                                        <span className="text-indigo-600 font-medium">Slides:</span>
+                                        <span className="text-indigo-600 font-medium">{getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}:</span>
                                         <p className="text-sm font-semibold text-indigo-900">
                                             {courseData.sessions.reduce((sum, s) => sum + s.slides.length, 0)}
                                         </p>

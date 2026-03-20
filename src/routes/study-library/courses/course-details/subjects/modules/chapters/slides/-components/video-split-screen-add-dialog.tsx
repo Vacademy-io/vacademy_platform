@@ -140,9 +140,9 @@ export const VideoSplitScreenAddDialog: React.FC<VideoSplitScreenAddDialogProps>
                 case 'CODE':
                     data = {
                         ...data,
-                        language: 'javascript',
+                        language: 'python',
                         theme: 'dark',
-                        code: '// Welcome to the split-screen code editor\nconsole.log("Hello, World!");',
+                        code: '# Welcome to the split-screen code editor\nprint("Hello, World!")',
                         readOnly: false,
                         showLineNumbers: true,
                         fontSize: 14,

@@ -1,0 +1,83 @@
+.tiptap-content table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.tiptap-content {
+  width: 100%;
+  max-height: inherit;
+}
+
+.tiptap-content .ProseMirror {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: inherit;
+  max-height: inherit;
+  overflow-y: auto;
+  padding: 6px 8px; /* compact padding for small inline editors */
+  background: #ffffff; /* ensure white typing area */
+  border-radius: 6px;
+}
+
+.tiptap-content th,
+.tiptap-content td {
+  border: 1px solid #e5e7eb; /* neutral-200 */
+  padding: 6px 8px;
+  vertical-align: top;
+}
+
+.tiptap-content th {
+  background-color: #f9fafb; /* neutral-50 */
+  font-weight: 600;
+}
+
+/* TipTap table resize handle */
+.tiptap-content .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: rgba(37, 99, 235, 0.35); /* blue-600 @ 35% */
+  pointer-events: none;
+}
+
+/* Make selected cell stand out */
+.tiptap-content .selectedCell::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(37, 99, 235, 0.08); /* subtle blue */
+  pointer-events: none;
+}
+
+/* Ensure lists render bullets/numbers inside the editor even if global CSS resets them */
+.tiptap-content .ProseMirror ul {
+  list-style: disc;
+  margin-left: 1.25rem;
+  padding-left: 1.25rem;
+}
+
+.tiptap-content .ProseMirror ol {
+  list-style: decimal;
+  margin-left: 1.25rem;
+  padding-left: 1.25rem;
+}
+
+.tiptap-content .ProseMirror li {
+  display: list-item;
+}
+
+/* Blockquote visual styling */
+.tiptap-content .ProseMirror blockquote {
+  border-left: 4px solid #e5e7eb; /* neutral-200 */
+  padding-left: 0.875rem; /* 14px */
+  margin: 0.75rem 0;
+  color: #374151; /* neutral-700 */
+}
+
+

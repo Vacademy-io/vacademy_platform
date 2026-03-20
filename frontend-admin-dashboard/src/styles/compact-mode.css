@@ -1,0 +1,420 @@
+/**
+ * Compact Mode CSS Utilities
+ * 
+ * This file defines CSS custom properties and utility classes for compact mode.
+ * Import this in your main CSS file: @import './compact-mode.css';
+ */
+
+/* ============================================================================
+   COMPACT MODE ROOT VARIABLES
+   ============================================================================ */
+
+:root {
+  /* Compact Mode Spacing Scale */
+  --compact-spacing-0: 0;
+  --compact-spacing-px: 1px;
+  --compact-spacing-0-5: 0.125rem;  /* 2px */
+  --compact-spacing-1: 0.25rem;     /* 4px */
+  --compact-spacing-1-5: 0.375rem;  /* 6px */
+  --compact-spacing-2: 0.5rem;      /* 8px */
+  --compact-spacing-2-5: 0.625rem;  /* 10px */
+  --compact-spacing-3: 0.75rem;     /* 12px */
+  --compact-spacing-3-5: 0.875rem;  /* 14px */
+  --compact-spacing-4: 1rem;        /* 16px */
+  --compact-spacing-5: 1.25rem;     /* 20px */
+  --compact-spacing-6: 1.5rem;      /* 24px */
+  
+  /* Compact Mode Typography Scale */
+  --compact-text-2xs: 0.688rem;    /* 11px */
+  --compact-text-xs: 0.75rem;      /* 12px */
+  --compact-text-sm: 0.875rem;     /* 14px */
+  --compact-text-base: 1rem;       /* 16px */
+  --compact-text-lg: 1.125rem;     /* 18px */
+  --compact-text-xl: 1.25rem;      /* 20px */
+  --compact-text-2xl: 1.5rem;      /* 24px */
+  
+  /* Compact Mode Component Sizes */
+  --compact-sidebar-expanded: 220px;
+  --compact-sidebar-collapsed: 56px;
+  --compact-navbar-height: 48px;
+  --compact-button-height-sm: 32px;
+  --compact-button-height-md: 36px;
+  --compact-button-height-lg: 40px;
+  --compact-input-height: 36px;
+  --compact-avatar-sm: 28px;
+  --compact-avatar-md: 32px;
+  --compact-avatar-lg: 40px;
+  --compact-icon-sm: 14px;
+  --compact-icon-md: 16px;
+  --compact-icon-lg: 20px;
+  
+  /* Compact Mode Border Radius */
+  --compact-radius-sm: 0.25rem;    /* 4px */
+  --compact-radius-md: 0.375rem;   /* 6px */
+  --compact-radius-lg: 0.5rem;     /* 8px */
+  --compact-radius-xl: 0.75rem;    /* 12px */
+}
+
+/* ============================================================================
+   COMPACT MODE CLASS
+   ============================================================================ */
+
+/**
+ * Apply to root element when compact mode is active.
+ * This class switches all components to compact sizing.
+ */
+.compact-mode {
+  /* Override default spacing with compact spacing */
+  --spacing-unit: var(--compact-spacing-1);
+  
+  /* Adjust default font size slightly */
+  font-size: 14px;
+}
+
+/* ============================================================================
+   COMPACT MODE UTILITY CLASSES
+   ============================================================================ */
+
+@layer utilities {
+  
+  /* Spacing Utilities */
+  .compact\:p-0 { padding: 0; }
+  .compact\:p-1 { padding: var(--compact-spacing-1); }
+  .compact\:p-2 { padding: var(--compact-spacing-2); }
+  .compact\:p-3 { padding: var(--compact-spacing-3); }
+  .compact\:p-4 { padding: var(--compact-spacing-4); }
+  .compact\:p-5 { padding: var(--compact-spacing-5); }
+  .compact\:p-6 { padding: var(--compact-spacing-6); }
+  
+  .compact\:px-2 { padding-left: var(--compact-spacing-2); padding-right: var(--compact-spacing-2); }
+  .compact\:px-3 { padding-left: var(--compact-spacing-3); padding-right: var(--compact-spacing-3); }
+  .compact\:px-4 { padding-left: var(--compact-spacing-4); padding-right: var(--compact-spacing-4); }
+  
+  .compact\:py-1 { padding-top: var(--compact-spacing-1); padding-bottom: var(--compact-spacing-1); }
+  .compact\:py-2 { padding-top: var(--compact-spacing-2); padding-bottom: var(--compact-spacing-2); }
+  .compact\:py-3 { padding-top: var(--compact-spacing-3); padding-bottom: var(--compact-spacing-3); }
+  
+  .compact\:m-0 { margin: 0; }
+  .compact\:m-1 { margin: var(--compact-spacing-1); }
+  .compact\:m-2 { margin: var(--compact-spacing-2); }
+  .compact\:m-3 { margin: var(--compact-spacing-3); }
+  .compact\:m-4 { margin: var(--compact-spacing-4); }
+  
+  .compact\:gap-1 { gap: var(--compact-spacing-1); }
+  .compact\:gap-2 { gap: var(--compact-spacing-2); }
+  .compact\:gap-3 { gap: var(--compact-spacing-3); }
+  .compact\:gap-4 { gap: var(--compact-spacing-4); }
+  
+  /* Typography Utilities */
+  .compact\:text-2xs { font-size: var(--compact-text-2xs); }
+  .compact\:text-xs { font-size: var(--compact-text-xs); }
+  .compact\:text-sm { font-size: var(--compact-text-sm); }
+  .compact\:text-base { font-size: var(--compact-text-base); }
+  .compact\:text-lg { font-size: var(--compact-text-lg); }
+  .compact\:text-xl { font-size: var(--compact-text-xl); }
+  .compact\:text-2xl { font-size: var(--compact-text-2xl); }
+  
+  /* Size Utilities */
+  .compact\:h-8 { height: 2rem; }
+  .compact\:h-9 { height: 2.25rem; }
+  .compact\:h-10 { height: 2.5rem; }
+  .compact\:h-12 { height: 3rem; }
+  
+  .compact\:w-full { width: 100%; }
+  .compact\:w-auto { width: auto; }
+  
+  .compact\:size-3 { width: 0.75rem; height: 0.75rem; }
+  .compact\:size-4 { width: 1rem; height: 1rem; }
+  .compact\:size-5 { width: 1.25rem; height: 1.25rem; }
+  .compact\:size-6 { width: 1.5rem; height: 1.5rem; }
+  .compact\:size-8 { width: 2rem; height: 2rem; }
+  
+  /* Border Radius Utilities */
+  .compact\:rounded { border-radius: var(--compact-radius-sm); }
+  .compact\:rounded-md { border-radius: var(--compact-radius-md); }
+  .compact\:rounded-lg { border-radius: var(--compact-radius-lg); }
+  .compact\:rounded-xl { border-radius: var(--compact-radius-xl); }
+  
+  /* Line Height Utilities */
+  .compact\:leading-tight { line-height: 1.25; }
+  .compact\:leading-snug { line-height: 1.375; }
+  .compact\:leading-normal { line-height: 1.5; }
+}
+
+/* ============================================================================
+   COMPACT MODE COMPONENT OVERRIDES
+   ============================================================================ */
+
+/**
+ * These styles are automatically applied when .compact-mode is present
+ */
+
+/* Sidebar Compact Styles */
+.compact-mode .sidebar-content {
+  --sidebar-expanded-width: var(--compact-sidebar-expanded);
+  --sidebar-collapsed-width: var(--compact-sidebar-collapsed);
+}
+
+/* Navbar Compact Styles */
+.compact-mode .navbar {
+  height: var(--compact-navbar-height);
+  padding: var(--compact-spacing-2) var(--compact-spacing-4);
+}
+
+/* Card Compact Styles */
+.compact-mode .card {
+  padding: var(--compact-spacing-3);
+  gap: var(--compact-spacing-2);
+  border-radius: var(--compact-radius-md);
+}
+
+/* Button Compact Styles */
+.compact-mode .btn-sm {
+  height: var(--compact-button-height-sm);
+  padding: var(--compact-spacing-1-5) var(--compact-spacing-3);
+  font-size: var(--compact-text-xs);
+}
+
+.compact-mode .btn-md,
+.compact-mode .btn {
+  height: var(--compact-button-height-md);
+  padding: var(--compact-spacing-2) var(--compact-spacing-4);
+  font-size: var(--compact-text-sm);
+}
+
+.compact-mode .btn-lg {
+  height: var(--compact-button-height-lg);
+  padding: var(--compact-spacing-2-5) var(--compact-spacing-5);
+  font-size: var(--compact-text-base);
+}
+
+/* Input Compact Styles */
+.compact-mode input,
+.compact-mode textarea,
+.compact-mode select {
+  height: var(--compact-input-height);
+  padding: var(--compact-spacing-2) var(--compact-spacing-3);
+  font-size: var(--compact-text-sm);
+}
+
+.compact-mode textarea {
+  height: auto;
+  min-height: calc(var(--compact-input-height) * 2);
+}
+
+/* Table Compact Styles */
+.compact-mode table {
+  font-size: var(--compact-text-xs);
+}
+
+.compact-mode th {
+  padding: var(--compact-spacing-2) var(--compact-spacing-3);
+  font-size: var(--compact-text-xs);
+}
+
+.compact-mode td {
+  padding: var(--compact-spacing-2) var(--compact-spacing-3);
+}
+
+/* Avatar Compact Styles */
+.compact-mode .avatar-sm {
+  width: var(--compact-avatar-sm);
+  height: var(--compact-avatar-sm);
+}
+
+.compact-mode .avatar-md,
+.compact-mode .avatar {
+  width: var(--compact-avatar-md);
+  height: var(--compact-avatar-md);
+}
+
+.compact-mode .avatar-lg {
+  width: var(--compact-avatar-lg);
+  height: var(--compact-avatar-lg);
+}
+
+/* Modal/Dialog Compact Styles */
+.compact-mode .dialog-content,
+.compact-mode .modal-content {
+  padding: var(--compact-spacing-4);
+  gap: var(--compact-spacing-3);
+}
+
+.compact-mode .dialog-header,
+.compact-mode .modal-header {
+  padding: var(--compact-spacing-3) var(--compact-spacing-4);
+}
+
+.compact-mode .dialog-footer,
+.compact-mode .modal-footer {
+  padding: var(--compact-spacing-3) var(--compact-spacing-4);
+  gap: var(--compact-spacing-2);
+}
+
+/* Badge Compact Styles */
+.compact-mode .badge {
+  padding: var(--compact-spacing-1) var(--compact-spacing-2);
+  font-size: var(--compact-text-xs);
+}
+
+/* Icon Compact Styles */
+.compact-mode .icon-sm {
+  width: var(--compact-icon-sm);
+  height: var(--compact-icon-sm);
+}
+
+.compact-mode .icon-md,
+.compact-mode .icon {
+  width: var(--compact-icon-md);
+  height: var(--compact-icon-md);
+}
+
+.compact-mode .icon-lg {
+  width: var(--compact-icon-lg);
+  height: var(--compact-icon-lg);
+}
+
+/* ============================================================================
+   RESPONSIVE COMPACT MODE
+   ============================================================================ */
+
+/**
+ * Don't apply compact mode on mobile devices
+ * Mobile needs touch-friendly spacing
+ */
+@media (max-width: 768px) {
+  .compact-mode {
+    /* Reset to normal spacing on mobile */
+    font-size: 16px;
+  }
+  
+  .compact-mode .navbar {
+    height: 56px;
+    padding: 0.5rem 1rem;
+  }
+  
+  .compact-mode .card {
+    padding: 1rem;
+  }
+  
+  .compact-mode input,
+  .compact-mode textarea,
+  .compact-mode select {
+    height: 44px; /* Touch-friendly minimum */
+    padding: 0.75rem;
+    font-size: 16px; /* Prevent zoom on iOS */
+  }
+  
+  .compact-mode .btn {
+    height: 44px;
+    padding: 0.75rem 1.5rem;
+    font-size: 16px;
+  }
+}
+
+/* ============================================================================
+   DARK MODE SUPPORT
+   ============================================================================ */
+
+.dark.compact-mode {
+  /* Compact mode works the same in dark mode */
+  /* Just inherits dark mode color variables */
+}
+
+/* ============================================================================
+   PRINT STYLES
+   ============================================================================ */
+
+@media print {
+  .compact-mode {
+    /* Use compact spacing for efficient printing */
+  }
+  
+  .compact-mode .navbar {
+    display: none;
+  }
+  
+  .compact-mode .sidebar {
+    display: none;
+  }
+}
+
+/* ============================================================================
+   ANIMATION UTILITIES
+   ============================================================================ */
+
+/**
+ * Smooth transitions when switching between modes
+ */
+.compact-mode-transition {
+  transition: 
+    padding 200ms ease-in-out,
+    margin 200ms ease-in-out,
+    font-size 200ms ease-in-out,
+    height 200ms ease-in-out,
+    width 200ms ease-in-out,
+    gap 200ms ease-in-out;
+}
+
+/* Apply transition to common elements */
+.compact-mode .sidebar-content,
+.compact-mode .navbar,
+.compact-mode .card,
+.compact-mode .btn,
+.compact-mode input,
+.compact-mode textarea {
+  @extend .compact-mode-transition;
+}
+
+/* ============================================================================
+   ACCESSIBILITY
+   ============================================================================ */
+
+/**
+ * Ensure compact mode maintains accessibility
+ */
+.compact-mode {
+  /* Minimum touch target size */
+  --min-touch-target: 44px;
+}
+
+.compact-mode button,
+.compact-mode a,
+.compact-mode [role="button"] {
+  min-height: var(--min-touch-target);
+  min-width: var(--min-touch-target);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  /* Desktop can use smaller touch targets */
+  .compact-mode {
+    --min-touch-target: 32px;
+  }
+}
+
+/* ============================================================================
+   USAGE EXAMPLES
+   ============================================================================ */
+
+/*
+Example 1: Using CSS classes directly
+<div class="compact:p-2 p-6 compact:gap-2 gap-4">
+  Content
+</div>
+
+Example 2: Using .compact-mode wrapper
+<div class="compact-mode">
+  <button class="btn">Auto-compact button</button>
+</div>
+
+Example 3: Using CSS variables
+.my-component {
+  padding: var(--compact-spacing-3);
+  font-size: var(--compact-text-sm);
+}
+
+Example 4: Responsive compact
+<div class="p-6 lg:compact:p-3">
+  Compact only on large screens
+</div>
+*/

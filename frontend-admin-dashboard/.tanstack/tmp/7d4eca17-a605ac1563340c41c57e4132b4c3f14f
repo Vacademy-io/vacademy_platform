@@ -1,0 +1,9 @@
+import { createLazyFileRoute } from "@tanstack/react-router"
+
+export const Route = createLazyFileRoute("/explore-ai")({
+  component: RouteComponent,
+})
+
+function RouteComponent() {
+  return <div>Hello "/explore-ai"!</div>
+}

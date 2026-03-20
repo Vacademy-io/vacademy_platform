@@ -29,6 +29,7 @@ export const UpdateCapacityDialog = ({
 }: UpdateCapacityDialogProps) => {
     const [isUnlimited, setIsUnlimited] = useState(false);
     const [maxSeats, setMaxSeats] = useState<string>('');
+    const [availableSlots, setAvailableSlots] = useState<string>('');
 
     const updateCapacity = useUpdateCapacity();
 
@@ -37,6 +38,7 @@ export const UpdateCapacityDialog = ({
         if (item) {
             setIsUnlimited(item.isUnlimited ?? false);
             setMaxSeats(item.maxSeats?.toString() ?? '');
+            setAvailableSlots(item.availableSlots?.toString() ?? '');
         }
     }, [item]);
 
@@ -44,9 +46,20 @@ export const UpdateCapacityDialog = ({
         if (!item) return;
 
         const newMaxSeats = isUnlimited ? null : parseInt(maxSeats, 10);
+        const newAvailableSlots =
+            isUnlimited || availableSlots.trim() === '' ? null : parseInt(availableSlots, 10);
 
         if (!isUnlimited && (isNaN(newMaxSeats!) || newMaxSeats! < 0)) {
             toast.error('Please enter a valid capacity number');
+            return;
+        }
+
+        if (
+            !isUnlimited &&
+            newAvailableSlots !== null &&
+            (isNaN(newAvailableSlots) || newAvailableSlots < 0 || (newMaxSeats !== null && newAvailableSlots > newMaxSeats))
+        ) {
+            toast.error('Please enter a valid available slots number (0 to max seats)');
             return;
         }
 
@@ -54,6 +67,7 @@ export const UpdateCapacityDialog = ({
             await updateCapacity.mutateAsync({
                 packageSessionId: item.id,
                 maxSeats: newMaxSeats,
+                availableSlots: newAvailableSlots,
             });
             toast.success('Capacity updated successfully');
             onClose();
@@ -127,20 +141,38 @@ export const UpdateCapacityDialog = ({
 
                         {/* Max Seats Input */}
                         {!isUnlimited && (
-                            <div className="space-y-2">
-                                <Label htmlFor="max-seats">Maximum Seats</Label>
-                                <Input
-                                    id="max-seats"
-                                    type="number"
-                                    min="0"
-                                    placeholder="Enter maximum capacity"
-                                    value={maxSeats}
-                                    onChange={(e) => setMaxSeats(e.target.value)}
-                                    className="text-lg"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Available slots will be adjusted based on current enrollments.
-                                </p>
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="max-seats">Maximum Seats</Label>
+                                    <Input
+                                        id="max-seats"
+                                        type="number"
+                                        min="0"
+                                        placeholder="Enter maximum capacity"
+                                        value={maxSeats}
+                                        onChange={(e) => setMaxSeats(e.target.value)}
+                                        className="text-lg"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Total stock or maximum capacity.
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="available-slots">Available Slots (Override)</Label>
+                                    <Input
+                                        id="available-slots"
+                                        type="number"
+                                        min="0"
+                                        max={maxSeats || undefined}
+                                        placeholder="Optional: Override current availability"
+                                        value={availableSlots}
+                                        onChange={(e) => setAvailableSlots(e.target.value)}
+                                        className="text-lg"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Leave empty to auto-calculate based on current enrollments. Update this to manually correct inventory.
+                                    </p>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -156,7 +188,9 @@ export const UpdateCapacityDialog = ({
                     </Button>
                     <Button
                         onClick={handleSubmit}
-                        disabled={updateCapacity.isPending || (!isUnlimited && !maxSeats)}
+                        disabled={
+                            updateCapacity.isPending || (!isUnlimited && !maxSeats)
+                        }
                         className="gap-2"
                     >
                         {updateCapacity.isPending && (

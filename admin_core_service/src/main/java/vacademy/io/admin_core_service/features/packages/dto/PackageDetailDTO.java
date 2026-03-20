@@ -30,6 +30,7 @@ public class PackageDetailDTO {
     private Double percentageCompleted;
     private Double rating;
     private String packageSessionId;
+    private String packageSessionName;
     private String levelId;
     private String levelName;
     private String dripConditionJson;

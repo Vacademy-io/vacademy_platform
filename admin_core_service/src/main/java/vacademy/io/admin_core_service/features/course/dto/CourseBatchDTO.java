@@ -21,6 +21,12 @@ public class CourseBatchDTO {
     private Integer readTimeInMinutes;
     private Boolean isParent;
     private String parentId;
+    /**
+     * Optional human-readable name for this batch / subgroup.
+     * Mirrors {@code package_session.name}. May be null for parents or
+     * older data.
+     */
+    private String packageSessionName;
 
     @Data
     @Builder

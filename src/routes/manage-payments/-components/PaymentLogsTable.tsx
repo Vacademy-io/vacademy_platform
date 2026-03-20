@@ -1,11 +1,47 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { MyTable, TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import type { PaymentLogEntry, PaymentLogsResponse } from '@/types/payment-logs';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { formatDistanceToNow } from 'date-fns';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
+import { PencilSimple, FloppyDisk, X } from '@phosphor-icons/react';
+import { updatePaymentLogTracking } from '@/services/payment-logs';
+import { useToast } from '@/hooks/use-toast';
+
+// ─── Order Status Constants ───────────────────────────────────────────────────
+
+const ORDER_STATUS_OPTIONS = [
+    { value: 'ORDERED', label: 'Ordered' },
+    { value: 'PREPARING_TO_SHIP', label: 'Preparing to Ship' },
+    { value: 'SHIPPED', label: 'Shipped' },
+    { value: 'IN_TRANSIT', label: 'In Transit' },
+    { value: 'DELIVERED', label: 'Delivered' },
+] as const;
+
+const ORDER_STATUS_LABEL_MAP: Record<string, string> = Object.fromEntries(
+    ORDER_STATUS_OPTIONS.map((o) => [o.value, o.label])
+);
+
+const ORDER_STATUS_COLOR_MAP: Record<string, string> = {
+    ORDERED: 'bg-gray-100 text-gray-700 border-gray-300',
+    PREPARING_TO_SHIP: 'bg-amber-50 text-amber-700 border-amber-300',
+    SHIPPED: 'bg-blue-50 text-blue-700 border-blue-300',
+    IN_TRANSIT: 'bg-orange-50 text-orange-700 border-orange-300',
+    DELIVERED: 'bg-green-50 text-green-700 border-green-300',
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 interface PaymentLogsTableProps {
     data: PaymentLogsResponse | undefined;
@@ -17,6 +53,16 @@ interface PaymentLogsTableProps {
     hasOrgAssociatedBatches: boolean;
     /** When true, hides the User column (e.g. when showing logs for a single student) */
     hideUserColumn?: boolean;
+    /** Called after a successful tracking update so the parent can refetch */
+    onRefresh?: () => void;
+}
+
+interface EditingState {
+    rowId: string;
+    trackingId: string;
+    trackingSource: string;
+    orderStatus: string;
+    isSaving: boolean;
 }
 
 const getStatusBadgeVariant = (
@@ -64,6 +110,8 @@ const formatRelativeTime = (dateString: string) => {
     }
 };
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function PaymentLogsTable({
     data,
     isLoading,
@@ -72,7 +120,103 @@ export function PaymentLogsTable({
     onPageChange,
     hasOrgAssociatedBatches,
     hideUserColumn = false,
+    onRefresh,
 }: PaymentLogsTableProps) {
+    const { toast } = useToast();
+    const [editing, setEditing] = useState<EditingState | null>(null);
+
+    const startEditing = useCallback((entry: PaymentLogEntry) => {
+        setEditing({
+            rowId: entry.payment_log.id,
+            trackingId: entry.payment_log.tracking_id || '',
+            trackingSource: entry.payment_log.tracking_source || '',
+            orderStatus: entry.payment_log.order_status || '',
+            isSaving: false,
+        });
+    }, []);
+
+    const cancelEditing = useCallback(() => {
+        setEditing(null);
+    }, []);
+
+    const handleSave = useCallback(
+        async (entry: PaymentLogEntry) => {
+            if (!editing) return;
+
+            const originalTrackingId = entry.payment_log.tracking_id || '';
+            const originalTrackingSource = entry.payment_log.tracking_source || '';
+            const originalOrderStatus = entry.payment_log.order_status || '';
+
+            const hasChanges =
+                editing.trackingId !== originalTrackingId ||
+                editing.trackingSource !== originalTrackingSource ||
+                editing.orderStatus !== originalOrderStatus;
+
+            if (!hasChanges) {
+                // Nothing changed — just exit edit mode
+                setEditing(null);
+                return;
+            }
+
+            // Validate: all three must be non-empty if any has changed
+            if (!editing.trackingId.trim()) {
+                toast({
+                    title: 'Validation Error',
+                    description: 'Tracking ID must not be empty.',
+                    variant: 'destructive',
+                });
+                return;
+            }
+            if (!editing.trackingSource.trim()) {
+                toast({
+                    title: 'Validation Error',
+                    description: 'Tracking Source must not be empty.',
+                    variant: 'destructive',
+                });
+                return;
+            }
+            if (!editing.orderStatus) {
+                toast({
+                    title: 'Validation Error',
+                    description: 'Order Status must be selected.',
+                    variant: 'destructive',
+                });
+                return;
+            }
+
+            setEditing((prev) => (prev ? { ...prev, isSaving: true } : null));
+
+            try {
+                await updatePaymentLogTracking({
+                    payment_log_id: entry.payment_log.id,
+                    tracking_id: editing.trackingId.trim(),
+                    tracking_source: editing.trackingSource.trim(),
+                    order_status: editing.orderStatus,
+                });
+
+                toast({
+                    title: 'Success',
+                    description: 'Tracking info updated successfully.',
+                });
+
+                setEditing(null);
+                onRefresh?.();
+            } catch (err: unknown) {
+                const message =
+                    err instanceof Error
+                        ? err.message
+                        : 'Failed to update tracking info.';
+                toast({
+                    title: 'Error',
+                    description: message,
+                    variant: 'destructive',
+                });
+                setEditing((prev) => (prev ? { ...prev, isSaving: false } : null));
+            }
+        },
+        [editing, toast, onRefresh]
+    );
+
     // Transform API response to TableData format
     const tableData: TableData<PaymentLogEntry> | undefined = useMemo(() => {
         if (!data) return undefined;
@@ -252,6 +396,184 @@ export function PaymentLogsTable({
                 },
                 size: 140,
             },
+
+            // ─── Tracking Columns (inline-editable) ────────────────────────
+
+            {
+                id: 'tracking_id',
+                header: 'Tracking ID',
+                accessorFn: (row) => row?.payment_log?.tracking_id || '',
+                cell: ({ row }) => {
+                    const entry = row.original;
+                    const isEditing = editing?.rowId === entry.payment_log.id;
+
+                    if (isEditing) {
+                        return (
+                            <Input
+                                value={editing.trackingId}
+                                onChange={(e) =>
+                                    setEditing((prev) =>
+                                        prev ? { ...prev, trackingId: e.target.value } : null
+                                    )
+                                }
+                                placeholder="Enter tracking ID"
+                                className="h-8 text-xs"
+                                disabled={editing.isSaving}
+                            />
+                        );
+                    }
+
+                    return (
+                        <div className="font-mono text-xs text-gray-600">
+                            {entry.payment_log.tracking_id || '—'}
+                        </div>
+                    );
+                },
+                size: 150,
+            },
+            {
+                id: 'tracking_source',
+                header: 'Tracking Source',
+                accessorFn: (row) => row?.payment_log?.tracking_source || '',
+                cell: ({ row }) => {
+                    const entry = row.original;
+                    const isEditing = editing?.rowId === entry.payment_log.id;
+
+                    if (isEditing) {
+                        return (
+                            <Input
+                                value={editing.trackingSource}
+                                onChange={(e) =>
+                                    setEditing((prev) =>
+                                        prev ? { ...prev, trackingSource: e.target.value } : null
+                                    )
+                                }
+                                placeholder="Enter source"
+                                className="h-8 text-xs"
+                                disabled={editing.isSaving}
+                            />
+                        );
+                    }
+
+                    return (
+                        <div className="text-xs text-gray-600">
+                            {entry.payment_log.tracking_source || '—'}
+                        </div>
+                    );
+                },
+                size: 140,
+            },
+            {
+                id: 'order_status',
+                header: 'Order Status',
+                accessorFn: (row) => row?.payment_log?.order_status || '',
+                cell: ({ row }) => {
+                    const entry = row.original;
+                    const isEditing = editing?.rowId === entry.payment_log.id;
+
+                    if (isEditing) {
+                        return (
+                            <Select
+                                value={editing.orderStatus}
+                                onValueChange={(val) =>
+                                    setEditing((prev) =>
+                                        prev ? { ...prev, orderStatus: val } : null
+                                    )
+                                }
+                                disabled={editing.isSaving}
+                            >
+                                <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {ORDER_STATUS_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        );
+                    }
+
+                    const status = entry.payment_log.order_status;
+                    if (!status) {
+                        return <span className="text-xs text-gray-400">—</span>;
+                    }
+
+                    const colorClasses =
+                        ORDER_STATUS_COLOR_MAP[status] || 'bg-gray-100 text-gray-700 border-gray-300';
+                    const label = ORDER_STATUS_LABEL_MAP[status] || status.replace(/_/g, ' ');
+
+                    return (
+                        <span
+                            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${colorClasses}`}
+                        >
+                            {label}
+                        </span>
+                    );
+                },
+                size: 160,
+            },
+
+            // ─── Actions Column ─────────────────────────────────────────────
+
+            {
+                id: 'tracking_actions',
+                header: 'Actions',
+                cell: ({ row }) => {
+                    const entry = row.original;
+                    const isPaid = entry.current_payment_status === 'PAID';
+                    const isEditing = editing?.rowId === entry.payment_log.id;
+
+                    if (!isPaid) {
+                        return <span className="text-xs text-gray-300">—</span>;
+                    }
+
+                    if (isEditing) {
+                        return (
+                            <div className="flex items-center gap-1">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
+                                    onClick={() => handleSave(entry)}
+                                    disabled={editing.isSaving}
+                                    title="Save"
+                                >
+                                    <FloppyDisk size={16} weight="bold" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                                    onClick={cancelEditing}
+                                    disabled={editing.isSaving}
+                                    title="Cancel"
+                                >
+                                    <X size={16} weight="bold" />
+                                </Button>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                            onClick={() => startEditing(entry)}
+                            title="Edit tracking info"
+                        >
+                            <PencilSimple size={16} />
+                        </Button>
+                    );
+                },
+                size: 80,
+            },
+
+            // ─── Payment Plan Column ────────────────────────────────────────
+
             {
                 id: 'payment_plan',
                 header: 'Payment Plan',
@@ -271,7 +593,7 @@ export function PaymentLogsTable({
                 },                size: 180,
             },
         ],
-        [hasOrgAssociatedBatches, hideUserColumn]
+        [hasOrgAssociatedBatches, hideUserColumn, editing, startEditing, cancelEditing, handleSave]
     );
 
     if (isLoading) {

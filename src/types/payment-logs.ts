@@ -10,6 +10,9 @@ export interface PaymentLog {
     payment_amount: number;
     payment_specific_data: string | null;
     transaction_id?: string;
+    tracking_id?: string | null;
+    tracking_source?: string | null;
+    order_status?: string | null;
 }
 
 export interface EnrollInvite {

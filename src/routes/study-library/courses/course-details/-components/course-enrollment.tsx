@@ -23,6 +23,12 @@ interface LevelOption {
   label: string;
 }
 
+interface BatchOption {
+    id: string;
+    label: string;
+    isParent: boolean;
+}
+
 interface EnrolledSession {
   id: string;
   session: {
@@ -47,37 +53,45 @@ interface EnrolledSession {
 }
 
 interface CourseEnrollmentProps {
-  showCourseConfiguration: boolean;
-  selectedTab: string;
-  sessionOptions: SessionOption[];
-  levelOptions: LevelOption[];
-  selectedSession: string;
-  selectedLevel: string;
-  enrolledSessions: EnrolledSession[];
-  courseId: string;
-  hasRightSidebar: boolean;
-  paymentType?: string | null;
-  certificateUrl?: string | null;
-  onSessionChange: (value: string) => void;
-  onLevelChange: (value: string) => void;
-  onEnrollmentClick: () => void;
+    showCourseConfiguration: boolean;
+    selectedTab: string;
+    sessionOptions: SessionOption[];
+    levelOptions: LevelOption[];
+    batchOptions: BatchOption[];
+    selectedSession: string;
+    selectedLevel: string;
+    selectedBatchId: string;
+    shouldShowBatchDropdown: boolean;
+    enrolledSessions: EnrolledSession[];
+    courseId: string;
+    hasRightSidebar: boolean;
+    paymentType?: string | null;
+    certificateUrl?: string | null;
+    onSessionChange: (value: string) => void;
+    onLevelChange: (value: string) => void;
+    onBatchChange: (value: string) => void;
+    onEnrollmentClick: () => void;
 }
 
 export const CourseEnrollment = ({
-  showCourseConfiguration,
-  selectedTab,
-  sessionOptions,
-  levelOptions,
-  selectedSession,
-  selectedLevel,
-  enrolledSessions,
-  courseId,
-  hasRightSidebar,
-  paymentType,
-  certificateUrl,
-  onSessionChange,
-  onLevelChange,
-  onEnrollmentClick,
+    showCourseConfiguration,
+    selectedTab,
+    sessionOptions,
+    levelOptions,
+    batchOptions,
+    selectedSession,
+    selectedLevel,
+    selectedBatchId,
+    shouldShowBatchDropdown,
+    enrolledSessions,
+    courseId,
+    hasRightSidebar,
+    paymentType,
+    certificateUrl,
+    onSessionChange,
+    onLevelChange,
+    onBatchChange,
+    onEnrollmentClick,
 }: CourseEnrollmentProps) => {
   if (!showCourseConfiguration) return null;
 
@@ -175,99 +189,130 @@ export const CourseEnrollment = ({
                   </div>
                 ) : null)}
 
-              {/* Level Selector */}
-              {levelOptions &&
-                levelOptions.length > 0 &&
-                (levelOptions.length === 1 &&
-                levelOptions[0].label ===
-                  "default" ? null : levelOptions.length === 1 ? (
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground ml-1">
-                      Level
-                    </span>
-                    <div className="px-3 py-2.5 bg-muted/50 rounded-md border text-sm font-medium">
-                      {levelOptions[0]?.label}
-                    </div>
-                  </div>
-                ) : levelOptions.length > 1 ? (
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground ml-1">
-                      Level
-                    </span>
-                    <Select
-                      value={selectedLevel}
-                      onValueChange={onLevelChange}
-                      disabled={!selectedSession}
-                    >
-                      <SelectTrigger className="w-full bg-background">
-                        <SelectValue placeholder="Select Level" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {levelOptions.map((option) => (
-                          <SelectItem key={option._id} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null)}
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 bg-yellow-50/50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-            <div className="flex items-center space-x-2 mb-1.5">
-              <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
-              <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                {selectedTab === "ALL"
-                  ? `No active ${getTerminology(
-                      ContentTerms.Session,
-                      SystemTerms.Session,
-                    ).toLocaleLowerCase()}s`
-                  : `Not enrolled`}
-              </span>
-            </div>
-            <p className="text-xs text-yellow-700 dark:text-yellow-400 pl-3.5 leading-relaxed">
-              {selectedTab === "ALL"
-                ? `This ${getTerminology(
-                    ContentTerms.Course,
-                    SystemTerms.Course,
-                  ).toLocaleLowerCase()} requires configuration.`
-                : `Please contact your ${getTerminology(
-                    RoleTerms.Teacher,
-                    SystemTerms.Teacher,
-                  ).toLocaleLowerCase()} to get enrolled.`}
-            </p>
-          </div>
-        )}
+                            {/* Level Selector */}
+                            {levelOptions &&
+                                levelOptions.length > 0 &&
+                                (levelOptions.length === 1 &&
+                                    levelOptions[0].label === "default" ? null : levelOptions.length === 1 ? (
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-xs font-medium text-muted-foreground ml-1">Level</span>
+                                            <div className="px-3 py-2.5 bg-muted/50 rounded-md border text-sm font-medium">
+                                                {levelOptions[0]?.label}
+                                            </div>
+                                        </div>
+                                    ) : levelOptions.length > 1 ? (
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-xs font-medium text-muted-foreground ml-1">Level</span>
+                                            <Select
+                                                value={selectedLevel}
+                                                onValueChange={onLevelChange}
+                                                disabled={!selectedSession}
+                                            >
+                                                <SelectTrigger className="w-full bg-background">
+                                                    <SelectValue placeholder="Select Level" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {levelOptions.map((option) => (
+                                                        <SelectItem
+                                                            key={option._id}
+                                                            value={option.value}
+                                                        >
+                                                            {option.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    ) : null)}
 
-        {/* Inline Enroll card when sidebar is hidden */}
-        {!hasRightSidebar &&
-          selectedTab === "ALL" &&
-          (() => {
-            if (!selectedSession || !selectedLevel) return null;
-            const safeEnrolledSessions = enrolledSessions || [];
-            const isAlreadyEnrolled = safeEnrolledSessions.some(
-              (enrolledSession) =>
-                enrolledSession.package_dto.id === courseId &&
-                enrolledSession.session.id === selectedSession &&
-                enrolledSession.level.id === selectedLevel,
-            );
-            if (isAlreadyEnrolled) return null;
-            return (
-              <div className="mt-4 pt-4 border-t border-border/50">
-                <Button
-                  type="button"
-                  size="lg"
-                  className="w-full font-semibold shadow-sm"
-                  onClick={onEnrollmentClick}
-                >
-                  Enroll Now
-                </Button>
-              </div>
-            );
-          })()}
-      </CardContent>
-    </Card>
-  );
+                            {/* Batch / Subgroup Selector - only when child subgroups exist */}
+                            {shouldShowBatchDropdown &&
+                                batchOptions.length > 0 &&
+                                selectedSession &&
+                                selectedLevel && (
+                                    <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                        <span className="text-xs font-medium text-muted-foreground ml-1">
+                                            Class / Section
+                                        </span>
+                                        <Select
+                                            value={selectedBatchId}
+                                            onValueChange={onBatchChange}
+                                        >
+                                            <SelectTrigger className="w-full bg-background">
+                                                <SelectValue placeholder="Select class or section" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {batchOptions.map((option) => (
+                                                    <SelectItem
+                                                        key={option.id}
+                                                        value={option.id}
+                                                    >
+                                                        {option.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="p-4 bg-yellow-50/50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                        <div className="flex items-center space-x-2 mb-1.5">
+                            <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
+                            <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                                {selectedTab === "ALL"
+                                    ? `No active ${getTerminology(
+                                        ContentTerms.Session,
+                                        SystemTerms.Session
+                                    ).toLocaleLowerCase()}s`
+                                    : `Not enrolled`}
+                            </span>
+                        </div>
+                        <p className="text-xs text-yellow-700 dark:text-yellow-400 pl-3.5 leading-relaxed">
+                            {selectedTab === "ALL"
+                                ? `This ${getTerminology(
+                                    ContentTerms.Course,
+                                    SystemTerms.Course
+                                ).toLocaleLowerCase()} requires configuration.`
+                                : `Please contact your ${getTerminology(
+                                    RoleTerms.Teacher,
+                                    SystemTerms.Teacher
+                                ).toLocaleLowerCase()} to get enrolled.`}
+                        </p>
+                    </div>
+                )}
+
+                {/* Inline Enroll card when sidebar is hidden */}
+                {!hasRightSidebar &&
+                    selectedTab === "ALL" &&
+                    (() => {
+                        if (!selectedSession || !selectedLevel)
+                            return null;
+                        const safeEnrolledSessions = enrolledSessions || [];
+                        const isAlreadyEnrolled =
+                            safeEnrolledSessions.some(
+                                (enrolledSession) =>
+                                    enrolledSession.package_dto.id === courseId &&
+                                    enrolledSession.session.id === selectedSession &&
+                                    enrolledSession.level.id === selectedLevel &&
+                                    (!selectedBatchId || enrolledSession.id === selectedBatchId)
+                            );
+                        if (isAlreadyEnrolled) return null;
+                        return (
+                            <div className="mt-4 pt-4 border-t border-border/50">
+                                <Button
+                                    type="button"
+                                    size="lg"
+                                    className="w-full font-semibold shadow-sm"
+                                    onClick={onEnrollmentClick}
+                                >
+                                    Enroll Now
+                                </Button>
+                            </div>
+                        );
+                    })()}
+            </CardContent>
+        </Card>
+    );
 };

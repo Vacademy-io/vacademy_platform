@@ -1,0 +1,109 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { CourseCataloguePage } from "./-components/CourseCataloguePage";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
+import RootNotFoundComponent from "@/components/core/default-not-found";
+import { useEffect, useState } from "react";
+
+export const Route = createFileRoute("/$tagName/")({
+  component: RouteComponent,
+});
+
+//console.log("[Course Catalogue] Route file loaded");
+
+function RouteComponent() {
+  // console.log("[Course Catalogue] RouteComponent function called");
+  const params = Route.useParams() as { tagName: string };
+  const domainRouting = useDomainRouting();
+  
+  // Sometimes during SPA navigation/redirect, params might be undefined momentarily
+  // In that case, fall back to parsing the URL directly
+  let resolvedTagName = params.tagName || '';
+  
+  if (!resolvedTagName) {
+    // Fallback: Parse params from URL directly
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    if (pathParts.length >= 1) {
+      resolvedTagName = pathParts[0] || '';
+    }
+  }
+    
+  // console.log("[Course Catalogue] RouteComponent mounted with tagName:", resolvedTagName);
+  const [hasRetried, setHasRetried] = useState(false);
+
+  // Debug logging to track domain routing
+  // useEffect(() => {
+  //   console.log("[Course Catalogue] Domain routing state:", {
+  //     isLoading: domainRouting.isLoading,
+  //     instituteId: domainRouting.instituteId,
+  //     instituteName: domainRouting.instituteName,
+  //     instituteThemeCode: domainRouting.instituteThemeCode,
+  //     error: domainRouting.error,
+  //   });
+  // }, [domainRouting]);
+
+  // Handle retry logic if domain routing fails initially
+  useEffect(() => {
+    if (!domainRouting.isLoading && !domainRouting.instituteId && !hasRetried) {
+      console.log("[Course Catalogue] Domain routing failed, attempting retry...");
+      setHasRetried(true);
+      domainRouting.resolveRouting();
+    }
+  }, [domainRouting.isLoading, domainRouting.instituteId, hasRetried, domainRouting]);
+
+  // Guard: If tagName is still not available after URL fallback, show loading
+  if (!resolvedTagName) {
+    console.log("[Course Catalogue] Waiting for tagName param...", { tagName: params.tagName, resolvedTagName });
+    return <DashboardLoader />;
+  }
+
+  // Show loading while domain routing is resolving
+  // Also show loading if we are in the process of retrying
+  if (domainRouting.isLoading || (!domainRouting.instituteId && !hasRetried)) {
+   // console.log("[Course Catalogue] Domain routing in progress...");
+    return <DashboardLoader />;
+  }
+
+  // If there's an error in domain routing, show error
+  if (domainRouting.error) {
+    //console.error("[Course Catalogue] Domain routing error:", domainRouting.error);
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+            Domain Resolution Error
+          </h2>
+          <p className="text-gray-600 mb-4">
+            {domainRouting.error}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // If no institute ID found after domain routing completes, show not found
+  if (!domainRouting.instituteId) {
+  //  console.warn("[Course Catalogue] No institute ID found after domain routing");
+    return <RootNotFoundComponent />;
+  }
+
+  // console.log("[Course Catalogue] Rendering course catalogue for:", {
+  //   tagName,
+  //   instituteId: domainRouting.instituteId,
+  //   instituteThemeCode: domainRouting.instituteThemeCode,
+  // });
+
+  return (
+    <CourseCataloguePage
+      tagName={resolvedTagName}
+      instituteId={domainRouting.instituteId}
+      instituteThemeCode={domainRouting.instituteThemeCode}
+    />
+  );
+}

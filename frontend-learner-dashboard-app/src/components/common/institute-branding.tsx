@@ -1,0 +1,140 @@
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils";
+
+export interface InstituteBranding {
+  instituteId: string | null;
+  instituteName: string | null;
+  instituteLogoFileId: string | null;
+  instituteThemeCode: string | null;
+  homeIconClickRoute?: string | null;
+}
+
+interface InstituteBrandingProps {
+  branding: InstituteBranding;
+  size?: "small" | "medium" | "large";
+  showName?: boolean;
+  className?: string;
+}
+
+export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
+  branding,
+  size = "medium",
+  showName = true,
+  className = "",
+}) => {
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const isClickable = Boolean(branding.homeIconClickRoute);
+
+  const handleLogoClick = () => {
+    if (!branding.homeIconClickRoute) return;
+    window.location.href = branding.homeIconClickRoute;
+  };
+
+  useEffect(() => {
+    const loadLogo = async () => {
+      setIsLoading(true);
+      try {
+        if (branding.instituteLogoFileId) {
+          const url = await getPublicUrl(branding.instituteLogoFileId);
+          setLogoUrl(url);
+        } else {
+          setLogoUrl(null);
+        }
+      } catch (error) {
+        console.error("Error loading institute logo:", error);
+        setLogoUrl(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadLogo();
+  }, [branding.instituteLogoFileId]);
+
+  const sizeClasses = {
+    small: "w-10 h-10 sm:w-12 sm:h-12",
+    medium: "w-12 h-12 sm:w-14 sm:h-14",
+    large: "w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16",
+  };
+
+  const textSizes = {
+    small: "text-sm",
+    medium: "text-base",
+    large: "text-lg font-semibold",
+  };
+
+  const getInstituteDisplayName = (instituteName: string | null): string => {
+    return instituteName || "";
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className={`flex flex-col items-center gap-3 ${className}`}
+    >
+      {/* Logo */}
+      <motion.div
+        initial={{ scale: 0.8 }}
+        animate={{ scale: 1 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+        className={`relative ${sizeClasses[size]} flex-shrink-0 my-2${isClickable ? " cursor-pointer" : ""}`}
+        onClick={isClickable ? handleLogoClick : undefined}
+      >
+        {isLoading ? (
+          <div className={`${sizeClasses[size]} bg-gray-200 rounded-lg animate-pulse`} />
+        ) : logoUrl ? (
+          <img
+            src={logoUrl}            className={`${sizeClasses[size]} object-contain rounded-lg`}
+            onError={() => setLogoUrl(null)}
+          />
+        ) : (
+          <div className={`${sizeClasses[size]} bg-gray-100 rounded-lg flex items-center justify-center`}>
+            <div className="w-1/2 h-1/2 bg-gray-200 rounded animate-pulse" />
+          </div>
+        )}
+      </motion.div>
+
+      {/* Institute Name */}
+      {showName && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+          className="flex flex-col items-center text-center"
+        >
+          <h2 className={`font-semibold text-gray-900 ${textSizes[size]} leading-tight`}>
+            {getInstituteDisplayName(branding.instituteName)}
+          </h2>
+          
+        </motion.div>
+      )}
+    </motion.div>
+  );
+};
+
+// Specialized component for auth pages
+export const AuthPageBranding: React.FC<{ branding: InstituteBranding }> = ({ branding }) => {
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="text-center mb-8"
+    >
+      <InstituteBrandingComponent
+        branding={branding}
+        size="large"
+        showName={true}
+        className="justify-center mb-4"
+      />
+      
+    </motion.div>
+  );
+};
+
+export default InstituteBrandingComponent;

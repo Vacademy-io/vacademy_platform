@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth Authentication</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .container {
+            text-align: center;
+            max-width: 400px;
+        }
+        .spinner {
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status {
+            color: #64748b;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+        .message {
+            color: #475569;
+            font-size: 14px;
+        }
+        .error {
+            color: #dc2626;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <div class="status">Processing OAuth authentication...</div>
+        <div class="message">Please wait while we complete your signup process.</div>
+    </div>
+
+    <script>
+        // Debug flag: enable with ?debug=true or localStorage.OAUTH_DEBUG='true' (also supports DEBUG_AUTH_POPUP='1')
+        (function initDebugFlag() {
+            try {
+                const q = new URLSearchParams(window.location.search);
+                const h = new URLSearchParams(window.location.hash.substring(1));
+                const isTrueish = (v) => v === 'true' || v === '1' || v === 'yes' || v === 'on';
+                const lsTrue = (k) => {
+                    try { const v = localStorage.getItem(k); return isTrueish(v); } catch { return false; }
+                };
+                window.DEBUG = isTrueish(q.get('debug')) || isTrueish(h.get('debug')) || lsTrue('OAUTH_DEBUG') || lsTrue('DEBUG_AUTH_POPUP');
+                if (window.DEBUG) {
+                    console.log('[OAuth Popup][DEBUG] Debug mode enabled');
+                    const msg = document.querySelector('.message');
+                    if (msg) {
+                        msg.textContent = 'Debug mode: popup will not auto-close.';
+                    }
+                }
+            } catch (e) {
+                window.DEBUG = false;
+            }
+        })();
+
+        // Function to send message to parent window (with robust fallbacks)
+        function sendToParent(type, data) {
+            // Detect if this is a popup window (modal login) or same-tab flow (page-level login)
+            const isPopupWindow = (function(){
+                try {
+                    if (window.name && window.name.toLowerCase() === 'oauth_popup') return true;
+                } catch(e) {}
+                try {
+                    const q = new URLSearchParams(window.location.search);
+                    if (q.get('popup') === '1') return true;
+                } catch(e) {}
+                return false;
+            })();
+
+            const payload = { type, data, isModalLogin: isPopupWindow };
+            let openerMessageAttempted = false;
+            let openerMessageFailed = false;
+            // Try postMessage to opener (may be blocked by COOP)
+            try {
+                if (window.opener) {
+                    if (window.DEBUG) console.log('[OAuth Popup][DEBUG] Sending postMessage to opener', payload);
+                    openerMessageAttempted = true;
+                    window.opener.postMessage(payload, '*');
+                }
+            } catch (e) { openerMessageFailed = true; }
+
+            // Always write to localStorage so parent can pick it via storage event
+            try {
+                if (window.DEBUG) console.log('[OAuth Popup][DEBUG] Writing OAUTH_RESULT to localStorage');
+                localStorage.setItem('OAUTH_RESULT', JSON.stringify({ ...payload, ts: Date.now() }));
+            } catch (e) {}
+
+            // BroadcastChannel fallback (same-origin tabs/windows)
+            try {
+                if (typeof BroadcastChannel !== 'undefined') {
+                    if (window.DEBUG) console.log('[OAuth Popup][DEBUG] Broadcasting via BroadcastChannel');
+                    const bc = new BroadcastChannel('OAUTH_CHANNEL');
+                    bc.postMessage(payload);
+                    setTimeout(() => { try { bc.close(); } catch (e) {} }, 0);
+                }
+            } catch (e) {}
+
+            // Close or redirect after delay so parent has time to receive storage/BroadcastChannel
+            if (!window.DEBUG) {
+                setTimeout(() => {
+                    try {
+                        // If this page was opened in the same tab (no opener), redirect this window to /login
+                        // Otherwise, always close the popup and let the parent handle via storage/BroadcastChannel
+                        if (!window.opener && data && data.accessToken && data.refreshToken) {
+                            showRedirecting('Redirecting to app...');
+                            const next = new URL('/login', window.location.origin);
+                            next.searchParams.set('accessToken', data.accessToken);
+                            next.searchParams.set('refreshToken', data.refreshToken);
+                            window.location.replace(next.toString());
+                            return;
+                        }
+                        window.close();
+                    } catch (e) {}
+                }, 1200);
+            } else {
+                console.log('[OAuth Popup][DEBUG] Suppressed auto-close. Payload sent to parent.', payload);
+                // Offer a manual close button
+                try {
+                    let btn = document.getElementById('manual-close-btn');
+                    if (!btn) {
+                        btn = document.createElement('button');
+                        btn.id = 'manual-close-btn';
+                        btn.textContent = 'Close Popup';
+                        btn.style.marginTop = '16px';
+                        btn.style.padding = '8px 12px';
+                        btn.style.borderRadius = '6px';
+                        btn.style.border = '1px solid #cbd5e1';
+                        btn.style.background = '#fff';
+                        btn.style.cursor = 'pointer';
+                        document.querySelector('.container').appendChild(btn);
+                        btn.addEventListener('click', () => { try { window.close(); } catch (e) {} });
+                    }
+                    // Offer a continue button to navigate this window when opener is isolated
+                    if (data && data.accessToken && data.refreshToken) {
+                        let go = document.getElementById('manual-continue-btn');
+                        if (!go) {
+                            go = document.createElement('button');
+                            go.id = 'manual-continue-btn';
+                            go.textContent = 'Continue to App';
+                            go.style.marginTop = '8px';
+                            go.style.padding = '8px 12px';
+                            go.style.borderRadius = '6px';
+                            go.style.border = '1px solid #cbd5e1';
+                            go.style.background = '#fff';
+                            go.style.cursor = 'pointer';
+                            document.querySelector('.container').appendChild(go);
+                            go.addEventListener('click', () => {
+                                try {
+                                    const next = new URL('/login', window.location.origin);
+                                    next.searchParams.set('accessToken', data.accessToken);
+                                    next.searchParams.set('refreshToken', data.refreshToken);
+                                    window.location.replace(next.toString());
+                                } catch (e) {}
+                            });
+                        }
+                    }
+                } catch (e) {}
+            }
+        }
+
+        // Function to show error
+        function showError(message) {
+            document.querySelector('.spinner').style.display = 'none';
+            document.querySelector('.status').textContent = 'Authentication Failed';
+            document.querySelector('.message').textContent = message;
+            
+            // Add error display
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            document.querySelector('.container').appendChild(errorDiv);
+            
+            // Notify opener so it can show contextual UI
+            sendToParent('oauth_error', { message });
+            if (!window.DEBUG) {
+                // Auto-close after 2 seconds (postMessage already sent)
+                setTimeout(() => {
+                    try { window.close(); } catch {}
+                }, 2000);
+            } else {
+                console.log('[OAuth Popup][DEBUG] Error displayed, auto-close suppressed.');
+            }
+        }
+
+        // Parse URL parameters
+        function parseUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            
+            return {
+                signupData: urlParams.get('signupData'),
+                state: urlParams.get('state'),
+                emailVerified: urlParams.get('emailVerified'),
+                error: urlParams.get('error') || hashParams.get('error'),
+                error_description: urlParams.get('error_description') || hashParams.get('error_description'),
+                accessToken: urlParams.get('accessToken') || hashParams.get('accessToken'),
+                refreshToken: urlParams.get('refreshToken') || hashParams.get('refreshToken')
+            };
+        }
+
+        // Handle OAuth success (signup path: backend sent signupData + state, no tokens)
+        function handleOAuthSuccess(params) {
+            // Helper to safely decode possible base64 JSON, else try plain JSON
+            function safeDecode(payload) {
+                if (!payload) return null;
+                try { return JSON.parse(atob(payload)); } catch {}
+                try { return JSON.parse(payload); } catch {}
+                try { return JSON.parse(decodeURIComponent(payload)); } catch {}
+                return null;
+            }
+
+            const signupData = safeDecode(params.signupData);
+            const state = safeDecode(params.state);
+
+            if (window.DEBUG) {
+                console.log('[OAuth Popup][DEBUG] Raw params', params);
+                console.log('[OAuth Popup][DEBUG] Decoded', { signupData, state });
+            }
+
+            if (!signupData || !state) {
+                var friendlyMsg = 'We couldn\'t complete sign-in with this provider. Please try again or use another sign-in method.';
+                showError(friendlyMsg);
+                try { sendToParent('oauth_error', { message: friendlyMsg }); } catch (e) {}
+                return;
+            }
+
+            try {
+                sendToParent('oauth_success', {
+                    signupData,
+                    state,
+                    emailVerified: params.emailVerified === 'true'
+                });
+            } catch (error) {
+                showError('Failed to process OAuth response. If you already have an account, please sign in. Error: ' + error);
+            }
+        }
+
+        // Handle OAuth error
+        function handleOAuthError(params) {
+            const errorMessage = params.error_description || params.error || 'OAuth authentication failed';
+            showError(errorMessage);
+        }
+
+        // Show loading UI while redirecting
+        function showRedirecting(message) {
+            try {
+                const spinner = document.querySelector('.spinner');
+                if (spinner) spinner.style.display = 'block';
+                const statusEl = document.querySelector('.status');
+                if (statusEl) statusEl.textContent = 'Signing you in...';
+                const messageEl = document.querySelector('.message');
+                if (messageEl) messageEl.textContent = message || 'Redirecting, please wait...';
+            } catch (e) {}
+        }
+
+        // Main execution
+        try {
+            const params = parseUrlParams();
+            if (window.DEBUG) console.log('[OAuth Popup][DEBUG] Parsed params', params);
+            
+            // If backend returned tokens directly (login path), treat as success
+            if (params.accessToken && params.refreshToken) {
+                sendToParent('oauth_success', {
+                    accessToken: params.accessToken,
+                    refreshToken: params.refreshToken
+                });
+
+                // If opened in the same tab (no opener), redirect this window to /login so FE can consume tokens
+                try {
+                    const isPopupWindow = (function(){
+                        try {
+                            if (window.name && window.name.toLowerCase() === 'oauth_popup') return true;
+                        } catch(e) {}
+                        try {
+                            const q = new URLSearchParams(window.location.search);
+                            if (q.get('popup') === '1') return true;
+                        } catch(e) {}
+                        return false;
+                    })();
+
+                    if (!window.opener && !isPopupWindow) {
+                        const next = new URL('/login', window.location.origin);
+                        next.searchParams.set('accessToken', params.accessToken);
+                        next.searchParams.set('refreshToken', params.refreshToken);
+                        if (window.DEBUG) {
+                            // In debug mode, render a manual continue button instead of auto-redirect
+                            const container = document.querySelector('.container');
+                            const btn = document.createElement('button');
+                            btn.textContent = 'Continue to App';
+                            btn.style.marginTop = '16px';
+                            btn.style.padding = '8px 12px';
+                            btn.style.borderRadius = '6px';
+                            btn.style.border = '1px solid #cbd5e1';
+                            btn.style.background = '#fff';
+                            btn.style.cursor = 'pointer';
+                            btn.addEventListener('click', () => {
+                                window.location.replace(next.toString());
+                            });
+                            container.appendChild(btn);
+                        } else {
+                            // Auto-redirect in non-debug mode
+                            showRedirecting('Redirecting to app...');
+                            setTimeout(() => {
+                                window.location.replace(next.toString());
+                            }, 300);
+                        }
+                    } else if (isPopupWindow) {
+                        // In popup mode, close after delay so parent has time to receive storage/BroadcastChannel
+                        setTimeout(() => { try { window.close(); } catch(e) {} }, 1200);
+                    }
+                } catch (e) {}
+            // Special case: error=true with signupData means "email not found" (new user) - this is SUCCESS for signup
+            } else if (params.error === 'true' && params.signupData && params.state) {
+                handleOAuthSuccess(params);
+            } else if (params.error && !params.signupData) {
+                // Real OAuth error (no user data)
+                handleOAuthError(params);
+            } else if (params.signupData && params.state) {
+                // Normal OAuth success (signup path with valid params)
+                handleOAuthSuccess(params);
+            } else {
+                var msg = 'We couldn\'t complete sign-in with this provider. Please try again or use another sign-in method.';
+                showError(msg);
+                try { sendToParent('oauth_error', { message: msg }); } catch (e) {}
+            }
+        } catch (error) {
+            showError('An unexpected error occurred. Please try again.');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,602 @@
+/* eslint-disable */
+import { FormStepHeading } from '../form-components/form-step-heading';
+import { Form, FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
+import { FormItemWrapper } from '../form-components/form-item-wrapper';
+import { useForm } from 'react-hook-form';
+import { MyInput } from '@/components/design-system/input';
+import { MyDropdown } from '../dropdownForPackageItems';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useFormStore } from '@/stores/students/enroll-students-manually/enroll-manually-form-store';
+import {
+    StepThreeData,
+    stepThreeSchema,
+} from '@/schemas/student/student-list/schema-enroll-students-manually';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useEffect, useRef, useState } from 'react';
+import { DropdownItemType, DropdownValueType } from '../dropdownTypesForPackageItems';
+import { StudentTable } from '@/types/student-table-types';
+import { MyButton } from '@/components/design-system/button';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { useQuery } from '@tanstack/react-query';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { GET_INVITE_LINKS } from '@/constants/urls';
+import { getInstituteId } from '@/constants/helper';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+
+interface InviteItem {
+    id: string;
+    name: string;
+    invite_code: string;
+}
+
+export const StepThreeForm = ({
+    initialValues,
+    submitFn,
+}: {
+    initialValues?: StudentTable;
+    submitFn: (fn: () => void) => void;
+}) => {
+    const { stepThreeData, setStepThreeData, nextStep } = useFormStore();
+    const instituteId = getInstituteId();
+
+    const {
+        instituteDetails,
+        getCourseFromPackage,
+        getSessionFromPackage,
+        getLevelsFromPackage,
+        getDetailsFromPackageSessionId,
+    } = useInstituteDetailsStore();
+
+    const [courseList, setCourseList] = useState<DropdownItemType[]>(getCourseFromPackage());
+    const [sessionList, setSessionList] = useState<DropdownItemType[]>(getSessionFromPackage());
+    const [levelList, setLevelList] = useState<DropdownItemType[]>(getLevelsFromPackage());
+
+    // Fetch all invites for the institute
+    const { data: inviteListData, isLoading: isLoadingInvites } = useQuery({
+        queryKey: ['INVITE_LINKS_ALL', instituteId],
+        queryFn: async () => {
+            const response = await authenticatedAxiosInstance.post(
+                GET_INVITE_LINKS,
+                {
+                    search_name: '',
+                    package_session_ids: [],
+                    payment_option_ids: [],
+                    sort_columns: {},
+                    tags: [],
+                },
+                {
+                    params: {
+                        instituteId,
+                        pageNo: 0,
+                        pageSize: 100,
+                    },
+                }
+            );
+            return response.data;
+        },
+        enabled: !!instituteId,
+    });
+
+    const inviteList: InviteItem[] = inviteListData?.content || [];
+
+    // Prepare default form values
+    const prepareDefaultValues = (): StepThreeData => {
+        if (stepThreeData && Object.keys(stepThreeData).length > 0) {
+            return stepThreeData;
+        }
+
+        // For re-enrollment, pre-fill course details
+        if (initialValues) {
+            const details = getDetailsFromPackageSessionId({
+                packageSessionId: initialValues.package_session_id,
+            });
+            if (details) {
+                return {
+                    enrollment_type: 'course',
+                    course: {
+                        id: details?.package_dto?.id || '',
+                        name: details?.package_dto?.package_name || '',
+                    },
+                    session: {
+                        id: details?.session?.id || '',
+                        name: details?.session?.session_name || '',
+                    },
+                    level: {
+                        id: details?.level?.id || '',
+                        name: details?.level?.level_name || '',
+                    },
+                    access_days: initialValues?.session_expiry_days?.toString() || '',
+                    enrollment_number: initialValues?.institute_enrollment_id || '',
+                };
+            }
+        }
+
+        return {
+            enrollment_type: 'course',
+        };
+    };
+
+    const form = useForm<StepThreeData>({
+        resolver: zodResolver(stepThreeSchema),
+        defaultValues: prepareDefaultValues(),
+        mode: 'onChange',
+    });
+
+    const enrollmentType = form.watch('enrollment_type');
+    const courseValue = form.watch('course');
+    const sessionValue = form.watch('session');
+    const levelValue = form.watch('level');
+
+    // Track which field was most recently changed
+    const lastChangedField = useRef<string | null>(null);
+
+    // Update lists when instituteDetails changes
+    useEffect(() => {
+        setCourseList(getCourseFromPackage());
+        setSessionList(getSessionFromPackage());
+        setLevelList(getLevelsFromPackage());
+    }, [instituteDetails]);
+
+    // Handle course change
+    const handleCourseChange = (value: DropdownValueType) => {
+        lastChangedField.current = 'course';
+        if (typeof value === 'object' && 'id' in value && 'name' in value) {
+            form.setValue('course', value);
+        }
+    };
+
+    // Handle session change
+    const handleSessionChange = (value: DropdownValueType) => {
+        lastChangedField.current = 'session';
+        if (typeof value === 'object' && 'id' in value && 'name' in value) {
+            form.setValue('session', value);
+        }
+    };
+
+    // Handle level change
+    const handleLevelChange = (value: DropdownValueType) => {
+        lastChangedField.current = 'level';
+        if (typeof value === 'object' && 'id' in value && 'name' in value) {
+            form.setValue('level', value);
+        }
+    };
+
+    // Update dropdowns based on selections
+    useEffect(() => {
+        if (lastChangedField.current === 'course' && courseValue?.id) {
+            setSessionList(getSessionFromPackage({ courseId: courseValue?.id }));
+            setLevelList(getLevelsFromPackage({ courseId: courseValue?.id }));
+
+            const currentSession = form.getValues('session');
+            const currentLevel = form.getValues('level');
+
+            const validSessions = getSessionFromPackage({ courseId: courseValue?.id });
+            const sessionIsValid = validSessions.some((s) => s?.id === currentSession?.id);
+            if (!sessionIsValid && currentSession?.id) {
+                form.setValue('session', { id: '', name: '' });
+            }
+
+            const validLevels = getLevelsFromPackage({ courseId: courseValue?.id });
+            const levelIsValid = validLevels.some((l) => l?.id === currentLevel?.id);
+            if (!levelIsValid && currentLevel?.id) {
+                form.setValue('level', { id: '', name: '' });
+            }
+        }
+        lastChangedField.current = null;
+    }, [courseValue]);
+
+    useEffect(() => {
+        if (lastChangedField.current === 'session' && sessionValue?.id) {
+            setCourseList(getCourseFromPackage({ sessionId: sessionValue?.id }));
+            setLevelList(getLevelsFromPackage({ sessionId: sessionValue?.id }));
+
+            const currentCourse = form.getValues('course');
+            const currentLevel = form.getValues('level');
+
+            const validCourses = getCourseFromPackage({ sessionId: sessionValue?.id });
+            const courseIsValid = validCourses.some((c) => c?.id === currentCourse?.id);
+            if (!courseIsValid && currentCourse?.id) {
+                form.setValue('course', { id: '', name: '' });
+            }
+
+            const validLevels = getLevelsFromPackage({ sessionId: sessionValue?.id });
+            const levelIsValid = validLevels.some((l) => l?.id === currentLevel?.id);
+            if (!levelIsValid && currentLevel?.id) {
+                form.setValue('level', { id: '', name: '' });
+            }
+        }
+        lastChangedField.current = null;
+    }, [sessionValue]);
+
+    useEffect(() => {
+        if (lastChangedField.current === 'level' && levelValue?.id) {
+            setCourseList(getCourseFromPackage({ levelId: levelValue?.id }));
+            setSessionList(getSessionFromPackage({ levelId: levelValue?.id }));
+
+            const currentCourse = form.getValues('course');
+            const currentSession = form.getValues('session');
+
+            const validCourses = getCourseFromPackage({ levelId: levelValue?.id });
+            const courseIsValid = validCourses.some((c) => c?.id === currentCourse?.id);
+            if (!courseIsValid && currentCourse?.id) {
+                form.setValue('course', { id: '', name: '' });
+            }
+
+            const validSessions = getSessionFromPackage({ levelId: levelValue?.id });
+            const sessionIsValid = validSessions.some((s) => s?.id === currentSession?.id);
+            if (!sessionIsValid && currentSession?.id) {
+                form.setValue('session', { id: '', name: '' });
+            }
+        }
+        lastChangedField.current = null;
+    }, [levelValue]);
+
+    // Auto-select if only one option available
+    useEffect(() => {
+        if (enrollmentType === 'course') {
+            if (sessionList.length === 1 && !sessionValue?.id && sessionList[0]) {
+                handleSessionChange(sessionList[0]);
+            }
+            if (courseList.length === 1 && !courseValue?.id && courseList[0]) {
+                handleCourseChange(courseList[0]);
+            }
+            if (levelList.length === 1 && !levelValue?.id && levelList[0]) {
+                handleLevelChange(levelList[0]);
+            }
+        }
+    }, [sessionList, courseList, levelList, enrollmentType]);
+
+    const handleGenerateEnrollNum = () => {
+        const enrollNum = Math.floor(100000 + Math.random() * 900000).toString();
+        form.setValue('enrollment_number', enrollNum);
+    };
+
+    const onSubmit = (values: StepThreeData) => {
+        setStepThreeData(values);
+        nextStep();
+    };
+
+    const formRef = useRef<HTMLFormElement>(null);
+
+    const requestFormSubmit = () => {
+        if (formRef.current) {
+            formRef.current.requestSubmit();
+        }
+    };
+
+    useEffect(() => {
+        if (submitFn) {
+            submitFn(requestFormSubmit);
+        }
+    }, [submitFn]);
+
+    return (
+        <div>
+            <div className="flex flex-col justify-center px-6 text-neutral-600">
+                <Form {...form}>
+                    <form
+                        ref={formRef}
+                        onSubmit={form.handleSubmit(onSubmit)}
+                        className="flex flex-col gap-6"
+                    >
+                        <FormItemWrapper<StepThreeData>
+                            control={form.control}
+                            name="enrollment_type"
+                        >
+                            <FormStepHeading stepNumber={3} heading="Enrollment Selection" />
+                        </FormItemWrapper>
+
+                        <div className="flex flex-col gap-8">
+                            {/* Enrollment Type Radio Selection */}
+                            <FormField
+                                control={form.control}
+                                name="enrollment_type"
+                                render={({ field }) => (
+                                    <FormItem className="space-y-3">
+                                        <FormLabel className="text-subtitle font-semibold">
+                                            Choose Enrollment Method
+                                        </FormLabel>
+                                        <FormControl>
+                                            <RadioGroup
+                                                onValueChange={field.onChange}
+                                                defaultValue={field.value}
+                                                className="flex flex-col space-y-1"
+                                            >
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl>
+                                                        <RadioGroupItem value="course" />
+                                                    </FormControl>
+                                                    <FormLabel className="font-normal">
+                                                        Select{' '}
+                                                        {getTerminology(
+                                                            ContentTerms.Course,
+                                                            SystemTerms.Course
+                                                        )}
+                                                        /
+                                                        {getTerminology(
+                                                            ContentTerms.Session,
+                                                            SystemTerms.Session
+                                                        )}
+                                                        /
+                                                        {getTerminology(
+                                                            ContentTerms.Level,
+                                                            SystemTerms.Level
+                                                        )}
+                                                    </FormLabel>
+                                                </FormItem>
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl>
+                                                        <RadioGroupItem value="invite" />
+                                                    </FormControl>
+                                                    <FormLabel className="font-normal">
+                                                        Select Invite
+                                                    </FormLabel>
+                                                </FormItem>
+                                            </RadioGroup>
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+
+                            {/* Course Selection Fields */}
+                            {enrollmentType === 'course' && (
+                                <>
+                                    <FormField
+                                        control={form.control}
+                                        name="course"
+                                        render={({ field: { value } }) => (
+                                            <FormItem>
+                                                <FormControl>
+                                                    <div className="flex flex-col gap-1">
+                                                        <div>
+                                                            {getTerminology(
+                                                                ContentTerms.Course,
+                                                                SystemTerms.Course
+                                                            )}
+                                                            <span className="text-subtitle text-danger-600">
+                                                                *
+                                                            </span>
+                                                        </div>
+                                                        <MyDropdown
+                                                            currentValue={value?.name || ''}
+                                                            dropdownList={courseList}
+                                                            handleChange={handleCourseChange}
+                                                            placeholder={`Select ${getTerminology(
+                                                                ContentTerms.Course,
+                                                                SystemTerms.Course
+                                                            )}`}
+                                                            error={
+                                                                form.formState.errors.course?.id
+                                                                    ?.message ||
+                                                                form.formState.errors.course?.name
+                                                                    ?.message
+                                                            }
+                                                            required={true}
+                                                        />
+                                                    </div>
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="session"
+                                        render={({ field: { value } }) => (
+                                            <FormItem className="w-full">
+                                                <FormControl>
+                                                    <div className="flex flex-col gap-1">
+                                                        <div>
+                                                            {getTerminology(
+                                                                ContentTerms.Session,
+                                                                SystemTerms.Session
+                                                            )}
+                                                            <span className="text-subtitle text-danger-600">
+                                                                *
+                                                            </span>
+                                                        </div>
+                                                        <MyDropdown
+                                                            currentValue={value}
+                                                            dropdownList={sessionList}
+                                                            handleChange={handleSessionChange}
+                                                            placeholder={`Select ${getTerminology(
+                                                                ContentTerms.Session,
+                                                                SystemTerms.Session
+                                                            )}`}
+                                                            error={
+                                                                form.formState.errors.session?.id
+                                                                    ?.message ||
+                                                                form.formState.errors.session?.name
+                                                                    ?.message
+                                                            }
+                                                            required={true}
+                                                            disable={!courseValue?.id}
+                                                        />
+                                                    </div>
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="level"
+                                        render={({ field: { value } }) => (
+                                            <FormItem className="w-full">
+                                                <FormControl>
+                                                    <div className="flex flex-col gap-1">
+                                                        <div>
+                                                            {getTerminology(
+                                                                ContentTerms.Level,
+                                                                SystemTerms.Level
+                                                            )}
+                                                            <span className="text-subtitle text-danger-600">
+                                                                *
+                                                            </span>
+                                                        </div>
+                                                        <MyDropdown
+                                                            currentValue={value?.name || ''}
+                                                            dropdownList={levelList}
+                                                            handleChange={handleLevelChange}
+                                                            placeholder={`Select ${getTerminology(
+                                                                ContentTerms.Level,
+                                                                SystemTerms.Level
+                                                            )}`}
+                                                            error={
+                                                                form.formState.errors.level?.id
+                                                                    ?.message ||
+                                                                form.formState.errors.level?.name
+                                                                    ?.message
+                                                            }
+                                                            required={true}
+                                                            disable={!sessionValue?.id}
+                                                        />
+                                                    </div>
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="access_days"
+                                        render={({ field: { onChange, value, ...field } }) => (
+                                            <FormItem>
+                                                <FormControl>
+                                                    <MyInput
+                                                        inputType="number"
+                                                        label="Enter access days"
+                                                        inputPlaceholder="Eg. 365"
+                                                        input={value || ''}
+                                                        onChangeFunction={(e) => {
+                                                            const numValue = Math.floor(
+                                                                Number(e.target.value)
+                                                            );
+                                                            if (!isNaN(numValue)) {
+                                                                onChange(String(numValue));
+                                                            }
+                                                        }}
+                                                        error={
+                                                            form.formState.errors.access_days
+                                                                ?.message as string
+                                                        }
+                                                        required={true}
+                                                        size="large"
+                                                        className="w-full"
+                                                        {...field}
+                                                        step="1"
+                                                        min="1"
+                                                        onWheel={(e) => e.currentTarget.blur()}
+                                                    />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <div className="flex items-end justify-between gap-4">
+                                        <div className="w-full">
+                                            <FormField
+                                                control={form.control}
+                                                name="enrollment_number"
+                                                render={({
+                                                    field: { onChange, value, ...field },
+                                                }) => (
+                                                    <FormItem>
+                                                        <FormControl>
+                                                            <MyInput
+                                                                inputType="text"
+                                                                label="Enrollment Number"
+                                                                inputPlaceholder="123456"
+                                                                input={value || ''}
+                                                                onChangeFunction={onChange}
+                                                                error={
+                                                                    form.formState.errors
+                                                                        .enrollment_number
+                                                                        ?.message as string
+                                                                }
+                                                                required={true}
+                                                                size="large"
+                                                                className="w-full"
+                                                                {...field}
+                                                                onWheel={(e) =>
+                                                                    e.currentTarget.blur()
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        </div>
+                                        <MyButton
+                                            type="button"
+                                            buttonType="secondary"
+                                            scale="large"
+                                            onClick={handleGenerateEnrollNum}
+                                        >
+                                            Auto Generate
+                                        </MyButton>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Invite Selection Field */}
+                            {enrollmentType === 'invite' && (
+                                <FormField
+                                    control={form.control}
+                                    name="invite"
+                                    render={({ field }) => {
+                                        const inviteDropdownList = inviteList.map((invite) => ({
+                                            id: invite.id,
+                                            name: `${invite.name} - ${invite.invite_code}`,
+                                        }));
+
+                                        return (
+                                            <FormItem>
+                                                <FormControl>
+                                                    <div className="flex flex-col gap-1">
+                                                        <div>
+                                                            Select Invite
+                                                            <span className="text-subtitle text-danger-600 ml-1">
+                                                                *
+                                                            </span>
+                                                        </div>
+                                                        {isLoadingInvites ? (
+                                                            <div className="text-sm text-gray-500">
+                                                                Loading invites...
+                                                            </div>
+                                                        ) : (
+                                                            <MyDropdown
+                                                                currentValue={field.value}
+                                                                dropdownList={inviteDropdownList}
+                                                                handleChange={(value) => {
+                                                                    if (
+                                                                        typeof value === 'object' &&
+                                                                        'id' in value &&
+                                                                        'name' in value
+                                                                    ) {
+                                                                        field.onChange(value);
+                                                                    }
+                                                                }}
+                                                                placeholder="Select an invite"
+                                                                error={
+                                                                    form.formState.errors.invite
+                                                                        ?.message
+                                                                }
+                                                                required={true}
+                                                            />
+                                                        )}
+                                                    </div>
+                                                </FormControl>
+                                            </FormItem>
+                                        );
+                                    }}
+                                />
+                            )}
+                        </div>
+                    </form>
+                </Form>
+            </div>
+        </div>
+    );
+};

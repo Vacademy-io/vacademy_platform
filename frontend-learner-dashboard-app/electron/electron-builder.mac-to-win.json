@@ -1,0 +1,73 @@
+{
+  "appId": "com.vacademy.io",
+  "productName": "SSDC Horizon",
+  "directories": {
+    "buildResources": "resources",
+    "output": "dist"
+  },
+  "files": [
+    "assets/**/*",
+    "build/**/*",
+    "app/**/*",
+    "capacitor.config.*",
+    "package.json",
+    "node_modules/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "app-update.yml",
+      "to": "app-update.yml",
+      "filter": ["**/*"]
+    }
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node"
+  ],
+  "compression": "normal",
+  "nodeGypRebuild": true,
+  "buildDependenciesFromSource": false,
+  "npmRebuild": true,
+  "publish": { 
+    "provider": "github",
+    "owner": "Vacademy-io",
+    "repo": "electron-build-repo", 
+    "private": false
+  },
+  "nsis": {
+    "allowElevation": true,
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "differentialPackage": false,
+    "warningsAsErrors": false,
+    "displayLanguageSelector": false,
+    "installerHeaderIcon": "assets/ssdc_horizon.ico",
+    "deleteAppDataOnUninstall": false,
+    "runAfterFinish": true,
+    "packElevateHelper": true
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64", "ia32"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64", "ia32"]
+      }
+    ],
+    "icon": "assets/ssdc_horizon.ico",
+    "signingHashAlgorithms": ["sha256"],
+    "verifyUpdateCodeSignature": false
+  },
+  "mac": {
+    "category": "public.app-category.education",
+    "target": "dmg",
+    "icon": "assets/ssdc_horizon.icns"
+  }
+}
+

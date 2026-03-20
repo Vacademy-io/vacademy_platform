@@ -1,0 +1,735 @@
+/**
+ * Catalogue Design Tokens
+ * ========================
+ * Clean, minimal design system for course catalogue components.
+ * No shadows, no gradients — flat, modern UI.
+ */
+
+@layer base {
+  :root {
+    /* =============================================
+       SPACING TOKENS
+       Consistent spacing scale for padding/margin
+       ============================================= */
+    --space-0: 0;
+    --space-1: 0.25rem;   /* 4px */
+    --space-2: 0.5rem;    /* 8px */
+    --space-3: 0.75rem;   /* 12px */
+    --space-4: 1rem;      /* 16px */
+    --space-5: 1.25rem;   /* 20px */
+    --space-6: 1.5rem;    /* 24px */
+    --space-8: 2rem;      /* 32px */
+    --space-10: 2.5rem;   /* 40px */
+    --space-12: 3rem;     /* 48px */
+    --space-16: 4rem;     /* 64px */
+    --space-20: 5rem;     /* 80px */
+    --space-24: 6rem;     /* 96px */
+
+    /* =============================================
+       CATALOGUE-SPECIFIC COLORS
+       Theme-aware colors for catalogue pages
+       ============================================= */
+    /* Surface colors */
+    --catalogue-bg: 0 0% 100%;
+    --catalogue-bg-elevated: 0 0% 100%;
+    --catalogue-bg-subtle: 0 0% 98%;
+    --catalogue-bg-muted: 0 0% 96%;
+
+    /* Card colors */
+    --catalogue-card-bg: 0 0% 100%;
+    --catalogue-card-border: 0 0% 90%;
+    --catalogue-card-hover-border: 0 0% 82%;
+
+    /* Text colors */
+    --catalogue-text-primary: 222.2 47.4% 11.2%;
+    --catalogue-text-secondary: 215.4 16.3% 40%;
+    --catalogue-text-muted: 215.4 16.3% 56%;
+    --catalogue-text-placeholder: 215.4 16.3% 66%;
+
+    /* Border colors */
+    --catalogue-border: 0 0% 90%;
+    --catalogue-border-subtle: 0 0% 94%;
+    --catalogue-border-strong: 0 0% 82%;
+
+    /* Price colors */
+    --catalogue-price-primary: 142 56% 36%;
+    --catalogue-price-discount: 0 72% 50%;
+    --catalogue-price-original: 215.4 16.3% 56%;
+
+    /* Status colors */
+    --catalogue-status-available: 142 56% 36%;
+    --catalogue-status-limited: 37 100% 42%;
+    --catalogue-status-unavailable: 0 72% 50%;
+
+    /* Badge colors */
+    --catalogue-badge-bg: 0 0% 96%;
+    --catalogue-badge-text: 215.4 16.3% 40%;
+    --catalogue-badge-border: 0 0% 90%;
+
+    /* Interactive colors */
+    --catalogue-interactive-hover: 0 0% 97%;
+    --catalogue-interactive-active: 0 0% 95%;
+    --catalogue-interactive-focus-ring: 222.2 47.4% 11.2%;
+
+    /* =============================================
+       SIZING TOKENS
+       Component dimensions
+       ============================================= */
+    --catalogue-header-height: 64px;
+    --catalogue-header-height-mobile: 56px;
+    --catalogue-footer-min-height: 200px;
+    --catalogue-card-min-height: 320px;
+    --catalogue-hero-min-height: 400px;
+    --catalogue-hero-min-height-lg: 500px;
+
+    /* =============================================
+       BORDER RADIUS TOKENS
+       Consistent rounded corners
+       ============================================= */
+    --catalogue-radius-xs: 4px;
+    --catalogue-radius-sm: 6px;
+    --catalogue-radius-md: 8px;
+    --catalogue-radius-lg: 12px;
+    --catalogue-radius-xl: 16px;
+    --catalogue-radius-2xl: 20px;
+    --catalogue-radius-full: 9999px;
+
+    /* =============================================
+       TYPOGRAPHY TOKENS
+       Font sizes and line heights
+       ============================================= */
+    --catalogue-font-xs: 0.75rem;       /* 12px */
+    --catalogue-font-sm: 0.875rem;      /* 14px */
+    --catalogue-font-base: 1rem;        /* 16px */
+    --catalogue-font-lg: 1.125rem;      /* 18px */
+    --catalogue-font-xl: 1.25rem;       /* 20px */
+    --catalogue-font-2xl: 1.5rem;       /* 24px */
+    --catalogue-font-3xl: 1.875rem;     /* 30px */
+    --catalogue-font-4xl: 2.25rem;      /* 36px */
+
+    --catalogue-line-tight: 1.25;
+    --catalogue-line-snug: 1.375;
+    --catalogue-line-normal: 1.5;
+    --catalogue-line-relaxed: 1.625;
+
+    /* =============================================
+       TRANSITIONS
+       Subtle, clean animations
+       ============================================= */
+    --catalogue-transition-fast: 150ms ease;
+    --catalogue-transition-base: 200ms ease;
+    --catalogue-transition-slow: 300ms ease;
+
+    /* =============================================
+       CONTAINER WIDTHS
+       Responsive container max widths
+       ============================================= */
+    --catalogue-container-sm: 640px;
+    --catalogue-container-md: 768px;
+    --catalogue-container-lg: 1024px;
+    --catalogue-container-xl: 1280px;
+    --catalogue-container-2xl: 1400px;
+
+    /* =============================================
+       Z-INDEX SCALE
+       Layering for overlays, headers, etc.
+       ============================================= */
+    --catalogue-z-base: 0;
+    --catalogue-z-dropdown: 10;
+    --catalogue-z-sticky: 20;
+    --catalogue-z-fixed: 30;
+    --catalogue-z-modal-backdrop: 40;
+    --catalogue-z-modal: 50;
+    --catalogue-z-popover: 60;
+    --catalogue-z-tooltip: 70;
+  }
+
+  /* Dark mode overrides */
+  .dark {
+    --catalogue-bg: 222.2 84% 4.9%;
+    --catalogue-bg-elevated: 217.2 32.6% 12%;
+    --catalogue-bg-subtle: 217.2 32.6% 10%;
+    --catalogue-bg-muted: 217.2 32.6% 14%;
+
+    --catalogue-card-bg: 217.2 32.6% 12%;
+    --catalogue-card-border: 217.2 32.6% 20%;
+    --catalogue-card-hover-border: 217.2 32.6% 28%;
+
+    --catalogue-text-primary: 210 40% 98%;
+    --catalogue-text-secondary: 215 20.2% 75%;
+    --catalogue-text-muted: 215 20.2% 60%;
+    --catalogue-text-placeholder: 215 20.2% 50%;
+
+    --catalogue-border: 217.2 32.6% 20%;
+    --catalogue-border-subtle: 217.2 32.6% 16%;
+    --catalogue-border-strong: 217.2 32.6% 28%;
+
+    --catalogue-badge-bg: 217.2 32.6% 16%;
+    --catalogue-badge-text: 215 20.2% 75%;
+    --catalogue-badge-border: 217.2 32.6% 24%;
+
+    --catalogue-interactive-hover: 217.2 32.6% 14%;
+    --catalogue-interactive-active: 217.2 32.6% 18%;
+  }
+}
+
+@layer utilities {
+  /* =============================================
+     SPACING UTILITIES
+     Use these for consistent spacing
+     ============================================= */
+  .catalogue-p-0 { padding: var(--space-0); }
+  .catalogue-p-1 { padding: var(--space-1); }
+  .catalogue-p-2 { padding: var(--space-2); }
+  .catalogue-p-3 { padding: var(--space-3); }
+  .catalogue-p-4 { padding: var(--space-4); }
+  .catalogue-p-5 { padding: var(--space-5); }
+  .catalogue-p-6 { padding: var(--space-6); }
+  .catalogue-p-8 { padding: var(--space-8); }
+
+  .catalogue-px-4 { padding-left: var(--space-4); padding-right: var(--space-4); }
+  .catalogue-px-6 { padding-left: var(--space-6); padding-right: var(--space-6); }
+  .catalogue-px-8 { padding-left: var(--space-8); padding-right: var(--space-8); }
+
+  .catalogue-py-2 { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+  .catalogue-py-3 { padding-top: var(--space-3); padding-bottom: var(--space-3); }
+  .catalogue-py-4 { padding-top: var(--space-4); padding-bottom: var(--space-4); }
+  .catalogue-py-6 { padding-top: var(--space-6); padding-bottom: var(--space-6); }
+
+  .catalogue-gap-2 { gap: var(--space-2); }
+  .catalogue-gap-3 { gap: var(--space-3); }
+  .catalogue-gap-4 { gap: var(--space-4); }
+  .catalogue-gap-6 { gap: var(--space-6); }
+  .catalogue-gap-8 { gap: var(--space-8); }
+
+  /* =============================================
+     CATALOGUE SURFACE UTILITIES
+     Clean, flat backgrounds
+     ============================================= */
+  .catalogue-surface {
+    background-color: hsl(var(--catalogue-bg));
+  }
+
+  .catalogue-surface-elevated {
+    background-color: hsl(var(--catalogue-bg-elevated));
+  }
+
+  .catalogue-surface-subtle {
+    background-color: hsl(var(--catalogue-bg-subtle));
+  }
+
+  .catalogue-surface-muted {
+    background-color: hsl(var(--catalogue-bg-muted));
+  }
+
+  /* =============================================
+     CATALOGUE CARD STYLES
+     Clean cards without shadows
+     ============================================= */
+  .catalogue-card {
+    background-color: hsl(var(--catalogue-card-bg));
+    border: 1px solid hsl(var(--catalogue-card-border));
+    border-radius: var(--catalogue-radius-lg);
+    transition: border-color var(--catalogue-transition-fast);
+  }
+
+  .catalogue-card:hover {
+    border-color: hsl(var(--catalogue-card-hover-border));
+  }
+
+  .catalogue-card-interactive {
+    background-color: hsl(var(--catalogue-card-bg));
+    border: 1px solid hsl(var(--catalogue-card-border));
+    border-radius: var(--catalogue-radius-lg);
+    transition: border-color var(--catalogue-transition-fast),
+                transform var(--catalogue-transition-fast);
+    cursor: pointer;
+  }
+
+  .catalogue-card-interactive:hover {
+    border-color: hsl(var(--catalogue-card-hover-border));
+    transform: translateY(-2px);
+  }
+
+  .catalogue-card-interactive:active {
+    transform: translateY(0);
+  }
+
+  /* =============================================
+     CATALOGUE TEXT UTILITIES
+     Consistent text colors
+     ============================================= */
+  .catalogue-text-primary {
+    color: hsl(var(--catalogue-text-primary));
+  }
+
+  .catalogue-text-secondary {
+    color: hsl(var(--catalogue-text-secondary));
+  }
+
+  .catalogue-text-muted {
+    color: hsl(var(--catalogue-text-muted));
+  }
+
+  .catalogue-text-placeholder {
+    color: hsl(var(--catalogue-text-placeholder));
+  }
+
+  /* =============================================
+     CATALOGUE PRICE STYLES
+     ============================================= */
+  .catalogue-price {
+    color: hsl(var(--catalogue-price-primary));
+    font-weight: 600;
+  }
+
+  .catalogue-price-discounted {
+    color: hsl(var(--catalogue-price-discount));
+    font-weight: 600;
+  }
+
+  .catalogue-price-original {
+    color: hsl(var(--catalogue-price-original));
+    text-decoration: line-through;
+  }
+
+  /* =============================================
+     CATALOGUE BADGE STYLES
+     Clean, flat badges
+     ============================================= */
+  .catalogue-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--catalogue-font-xs);
+    font-weight: 500;
+    line-height: 1;
+    background-color: hsl(var(--catalogue-badge-bg));
+    color: hsl(var(--catalogue-badge-text));
+    border: 1px solid hsl(var(--catalogue-badge-border));
+    border-radius: var(--catalogue-radius-sm);
+  }
+
+  .catalogue-badge-primary {
+    background-color: hsl(var(--primary-50));
+    color: hsl(var(--primary-500));
+    border-color: hsl(var(--primary-200));
+  }
+
+  .catalogue-badge-success {
+    background-color: hsl(var(--success-50));
+    color: hsl(var(--success-600));
+    border-color: hsl(var(--success-200));
+  }
+
+  .catalogue-badge-warning {
+    background-color: hsl(var(--warning-50));
+    color: hsl(var(--warning-600));
+    border-color: hsl(var(--warning-200));
+  }
+
+  .catalogue-badge-danger {
+    background-color: hsl(var(--danger-50));
+    color: hsl(var(--danger-600));
+    border-color: hsl(var(--danger-200));
+  }
+
+  /* =============================================
+     CATALOGUE BUTTON STYLES
+     Clean, minimal buttons
+     ============================================= */
+  .catalogue-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--catalogue-font-sm);
+    font-weight: 500;
+    line-height: var(--catalogue-line-normal);
+    border-radius: var(--catalogue-radius-md);
+    transition: background-color var(--catalogue-transition-fast),
+                border-color var(--catalogue-transition-fast),
+                color var(--catalogue-transition-fast);
+    cursor: pointer;
+    outline: none;
+    border: 1px solid transparent;
+  }
+
+  .catalogue-btn:focus-visible {
+    outline: 2px solid hsl(var(--catalogue-interactive-focus-ring));
+    outline-offset: 2px;
+  }
+
+  .catalogue-btn-primary {
+    background-color: hsl(var(--primary-500));
+    color: hsl(var(--primary-foreground));
+  }
+
+  .catalogue-btn-primary:hover {
+    background-color: hsl(var(--primary-400));
+  }
+
+  .catalogue-btn-secondary {
+    background-color: transparent;
+    color: hsl(var(--catalogue-text-primary));
+    border-color: hsl(var(--catalogue-border-strong));
+  }
+
+  .catalogue-btn-secondary:hover {
+    background-color: hsl(var(--catalogue-interactive-hover));
+  }
+
+  .catalogue-btn-ghost {
+    background-color: transparent;
+    color: hsl(var(--catalogue-text-secondary));
+  }
+
+  .catalogue-btn-ghost:hover {
+    background-color: hsl(var(--catalogue-interactive-hover));
+    color: hsl(var(--catalogue-text-primary));
+  }
+
+  /* Button sizes */
+  .catalogue-btn-sm {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--catalogue-font-xs);
+  }
+
+  .catalogue-btn-lg {
+    padding: var(--space-3) var(--space-6);
+    font-size: var(--catalogue-font-base);
+  }
+
+  /* =============================================
+     CATALOGUE INPUT STYLES
+     Clean form inputs
+     ============================================= */
+  .catalogue-input {
+    display: block;
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--catalogue-font-sm);
+    line-height: var(--catalogue-line-normal);
+    color: hsl(var(--catalogue-text-primary));
+    background-color: hsl(var(--catalogue-card-bg));
+    border: 1px solid hsl(var(--catalogue-border));
+    border-radius: var(--catalogue-radius-md);
+    transition: border-color var(--catalogue-transition-fast);
+    outline: none;
+  }
+
+  .catalogue-input::placeholder {
+    color: hsl(var(--catalogue-text-placeholder));
+  }
+
+  .catalogue-input:focus {
+    border-color: hsl(var(--primary-400));
+  }
+
+  /* =============================================
+     CATALOGUE DIVIDER
+     Clean horizontal divider
+     ============================================= */
+  .catalogue-divider {
+    height: 1px;
+    background-color: hsl(var(--catalogue-border));
+    border: none;
+  }
+
+  .catalogue-divider-subtle {
+    height: 1px;
+    background-color: hsl(var(--catalogue-border-subtle));
+    border: none;
+  }
+
+  /* =============================================
+     CATALOGUE CONTAINER
+     Responsive container with consistent padding
+     ============================================= */
+  .catalogue-container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  @media (min-width: 640px) {
+    .catalogue-container {
+      max-width: var(--catalogue-container-sm);
+      padding-left: var(--space-6);
+      padding-right: var(--space-6);
+    }
+  }
+
+  @media (min-width: 768px) {
+    .catalogue-container {
+      max-width: var(--catalogue-container-md);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .catalogue-container {
+      max-width: var(--catalogue-container-lg);
+      padding-left: var(--space-8);
+      padding-right: var(--space-8);
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .catalogue-container {
+      max-width: var(--catalogue-container-xl);
+    }
+  }
+
+  @media (min-width: 1400px) {
+    .catalogue-container {
+      max-width: var(--catalogue-container-2xl);
+    }
+  }
+
+  /* Full-width variant */
+  .catalogue-container-fluid {
+    width: 100%;
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  @media (min-width: 640px) {
+    .catalogue-container-fluid {
+      padding-left: var(--space-6);
+      padding-right: var(--space-6);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .catalogue-container-fluid {
+      padding-left: var(--space-8);
+      padding-right: var(--space-8);
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .catalogue-container-fluid {
+      padding-left: var(--space-12);
+      padding-right: var(--space-12);
+    }
+  }
+
+  /* =============================================
+     CATALOGUE GRID SYSTEM
+     Responsive grid for card layouts
+     ============================================= */
+  .catalogue-grid {
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  /* 1 column on mobile */
+  .catalogue-grid-cards {
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 640px) {
+    .catalogue-grid-cards {
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-5);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .catalogue-grid-cards {
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-6);
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .catalogue-grid-cards {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  /* =============================================
+     CATALOGUE SKELETON / LOADING
+     Clean shimmer-free loading states
+     ============================================= */
+  .catalogue-skeleton {
+    background-color: hsl(var(--catalogue-bg-muted));
+    border-radius: var(--catalogue-radius-md);
+    animation: catalogue-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes catalogue-pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .catalogue-skeleton-text {
+    height: 1em;
+    width: 100%;
+  }
+
+  .catalogue-skeleton-title {
+    height: 1.5em;
+    width: 75%;
+  }
+
+  .catalogue-skeleton-image {
+    aspect-ratio: 16 / 10;
+    width: 100%;
+  }
+
+  /* =============================================
+     CATALOGUE FOCUS RING
+     Accessible focus states
+     ============================================= */
+  .catalogue-focus-ring:focus-visible {
+    outline: 2px solid hsl(var(--primary-500));
+    outline-offset: 2px;
+  }
+
+  /* =============================================
+     CATALOGUE ASPECT RATIOS
+     Common aspect ratios for images
+     ============================================= */
+  .catalogue-aspect-video {
+    aspect-ratio: 16 / 9;
+  }
+
+  .catalogue-aspect-card {
+    aspect-ratio: 16 / 10;
+  }
+
+  .catalogue-aspect-square {
+    aspect-ratio: 1 / 1;
+  }
+
+  .catalogue-aspect-portrait {
+    aspect-ratio: 3 / 4;
+  }
+
+  /* =============================================
+     CATALOGUE SCROLLBAR
+     Minimal, clean scrollbar
+     ============================================= */
+  .catalogue-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .catalogue-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .catalogue-scrollbar::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--catalogue-border-strong));
+    border-radius: var(--catalogue-radius-full);
+  }
+
+  .catalogue-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--catalogue-text-muted));
+  }
+
+  /* =============================================
+     CATALOGUE HEADER STYLES
+     Fixed/sticky header utilities
+     ============================================= */
+  .catalogue-header {
+    height: var(--catalogue-header-height-mobile);
+    background-color: hsl(var(--catalogue-bg));
+    border-bottom: 1px solid hsl(var(--catalogue-border-subtle));
+  }
+
+  @media (min-width: 768px) {
+    .catalogue-header {
+      height: var(--catalogue-header-height);
+    }
+  }
+
+  /* =============================================
+     CATALOGUE FOOTER STYLES
+     ============================================= */
+  .catalogue-footer {
+    min-height: var(--catalogue-footer-min-height);
+    background-color: hsl(var(--catalogue-bg-subtle));
+    border-top: 1px solid hsl(var(--catalogue-border-subtle));
+  }
+
+  /* =============================================
+     CATALOGUE HERO SECTION
+     ============================================= */
+  .catalogue-hero {
+    min-height: var(--catalogue-hero-min-height);
+    background-color: hsl(var(--primary-500));
+  }
+
+  @media (min-width: 1024px) {
+    .catalogue-hero {
+      min-height: var(--catalogue-hero-min-height-lg);
+    }
+  }
+
+  /* =============================================
+     STATUS INDICATORS
+     ============================================= */
+  .catalogue-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--catalogue-radius-full);
+  }
+
+  .catalogue-status-available {
+    background-color: hsl(var(--catalogue-status-available));
+  }
+
+  .catalogue-status-limited {
+    background-color: hsl(var(--catalogue-status-limited));
+  }
+
+  .catalogue-status-unavailable {
+    background-color: hsl(var(--catalogue-status-unavailable));
+  }
+
+  /* =============================================
+     LINK STYLES
+     Clean, minimal links
+     ============================================= */
+  .catalogue-link {
+    color: hsl(var(--primary-500));
+    text-decoration: none;
+    transition: color var(--catalogue-transition-fast);
+  }
+
+  .catalogue-link:hover {
+    color: hsl(var(--primary-400));
+    text-decoration: underline;
+  }
+
+  .catalogue-link-subtle {
+    color: hsl(var(--catalogue-text-secondary));
+    text-decoration: none;
+    transition: color var(--catalogue-transition-fast);
+  }
+
+  .catalogue-link-subtle:hover {
+    color: hsl(var(--catalogue-text-primary));
+  }
+
+  /* =============================================
+     RESET SHADOWS/GRADIENTS
+     Force clean UI on catalogue components
+     ============================================= */
+  .catalogue-clean-ui,
+  .catalogue-clean-ui * {
+    box-shadow: none !important;
+    background-image: none !important;
+  }
+}

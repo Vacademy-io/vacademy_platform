@@ -1,0 +1,67 @@
+.app-container {
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Card hover effects */
+.app-container .templateCard:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+.app-container .templateCard:hover .cardOverlay {
+    opacity: 1;
+}
+
+/* Button hover effects */
+.app-container button:hover {
+    opacity: 0.9;
+}
+
+/* Focus styles */
+.app-container input:focus {
+    border-color: #667eea !important;
+}
+
+.app-container input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.app-container select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%231e293b' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 32px;
+}
+
+.app-container select:focus {
+    border-color: #667eea !important;
+}
+
+.app-container select option {
+    color: #1e293b;
+    background-color: #fff;
+}
+
+/* Scrollbar styling */
+.app-container ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.app-container ::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+.app-container ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.app-container ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}

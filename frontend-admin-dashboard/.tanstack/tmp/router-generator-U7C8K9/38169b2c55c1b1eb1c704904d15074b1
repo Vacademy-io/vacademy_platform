@@ -1,0 +1,11 @@
+import { createLazyFileRoute } from "@tanstack/react-router"
+
+export const Route = createLazyFileRoute("/ai-center/ai-tools/vsmart-lecture/")(
+  {
+    component: RouteComponent,
+  },
+)
+
+function RouteComponent() {
+  return <div>Hello "/ai-center/ai-tools/vsmart-lecture/"!</div>
+}

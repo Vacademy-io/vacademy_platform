@@ -1,0 +1,14 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.vacademy.student.app",
+      "sha256_cert_fingerprints": [
+        "06:EF:34:51:3F:96:E2:82:89:5F:EF:93:A4:F8:8D:AF:13:E2:CE:4A:BC:BB:0B:09:80:77:8F:74:08:36:B9:E3",
+        "01:A5:2D:58:D1:6C:7A:19:8B:E3:CB:A7:DE:C2:89:7C:91:D8:98:44:E8:D9:CB:12:DD:97:DF:D8:7A:DD:EA:49",
+        "BC:BD:BC:52:DF:ED:F9:0E:91:05:3F:88:78:C9:3C:63:21:B8:68:77:DE:8E:93:90:8F:82:D7:EA:30:87:55:10"
+      ]
+    }
+  }
+]

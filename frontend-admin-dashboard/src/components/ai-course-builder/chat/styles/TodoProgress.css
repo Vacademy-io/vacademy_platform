@@ -1,0 +1,122 @@
+.todo-progress-card {
+  @apply border border-gray-200 rounded-lg shadow-sm bg-white;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.task-item {
+  @apply flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-all duration-200;
+  min-height: 36px;
+}
+
+.task-item:hover {
+  @apply shadow-sm transform translate-y-[-1px];
+}
+
+.task-item.current {
+  @apply border-blue-300 bg-blue-50 shadow-md;
+}
+
+.task-item.pending {
+  @apply border-gray-200 bg-gray-50;
+}
+
+.task-item.pending:hover {
+  @apply border-gray-300 bg-gray-100;
+}
+
+.task-item.completed {
+  @apply border-green-200 bg-green-50;
+}
+
+.task-icon {
+  @apply flex-shrink-0 flex items-center justify-center;
+  width: 16px;
+  height: 16px;
+}
+
+.task-content {
+  @apply flex-1 min-w-0;
+}
+
+.task-title {
+  @apply text-sm font-medium text-gray-900 truncate;
+  line-height: 1.2;
+}
+
+.task-description {
+  @apply text-xs text-gray-600 truncate mt-0.5;
+  line-height: 1.2;
+}
+
+.completed-text {
+  @apply line-through text-gray-500;
+}
+
+.completion-time {
+  @apply text-xs text-gray-500 flex-shrink-0;
+}
+
+.current-task {
+  @apply border-b border-gray-200 pb-2 mb-2;
+}
+
+.pending-tasks,
+.completed-tasks {
+  @apply border-t border-gray-100 pt-2;
+}
+
+/* Animation for spinning loader */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Progress bar customization */
+.todo-progress-card .h-1\.5 {
+  height: 6px;
+}
+
+/* Scrollbar styling */
+.todo-progress-card::-webkit-scrollbar {
+  width: 4px;
+}
+
+.todo-progress-card::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 2px;
+}
+
+.todo-progress-card::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 2px;
+}
+
+.todo-progress-card::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+  .task-item {
+    @apply px-2 py-2;
+    min-height: 40px;
+  }
+  
+  .task-title {
+    @apply text-xs;
+  }
+  
+  .task-description {
+    @apply text-xs;
+  }
+  
+  .todo-progress-card {
+    max-height: 300px;
+  }
+} 

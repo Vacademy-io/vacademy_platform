@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<color name="shikshanation_primary">
+		#1E3A5F
+	</color>
+	<color name="shikshanation_accent">
+		#FF6B35
+	</color>
+</resources>

@@ -59,6 +59,67 @@ const BASE_CATEGORIES: CategoryConfig[] = [
     { id: 'AI', label: 'AI', icon: Sparkle },
 ];
 
+/** Extracted component to reduce cognitive complexity of CategoryRail */
+const CategoryButton: React.FC<{
+    cat: CategoryConfig;
+    isActive: boolean;
+    isLocked: boolean | undefined;
+    onCategoryChange: (id: CategoryId) => void;
+    navigate: ReturnType<typeof useNavigate>;
+}> = ({ cat, isActive, isLocked, onCategoryChange, navigate }) => {
+    const colors =
+        cat.id !== 'RECENT' ? CATEGORY_COLORS[cat.id as 'CRM' | 'LMS' | 'AI'] : null;
+
+    return (
+        <button
+            className={cn(
+                'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
+                'hover:bg-white/10',
+                isLocked && 'cursor-not-allowed opacity-60'
+            )}
+            aria-label={`${cat.label} category${isActive ? ' (active)' : ''}${isLocked ? ' (locked)' : ''}`}
+            aria-current={isActive ? 'true' : undefined}
+            onClick={() => {
+                if (isLocked) {
+                    navigate({ to: '/locked-feature', search: { feature: `${cat.label} Category` } });
+                    return;
+                }
+                onCategoryChange(cat.id);
+            }}
+        >
+            {isActive && (
+                <motion.div
+                    layoutId="category-rail-active"
+                    className={cn('absolute inset-0 rounded-xl', colors?.railActiveBg || 'bg-white')}
+                    transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
+                />
+            )}
+            <span className="relative z-10">
+                {isLocked ? (
+                    <LockKey size={22} weight="duotone" className="text-neutral-400" />
+                ) : (
+                    React.createElement(cat.icon, {
+                        size: 22,
+                        weight: isActive ? 'fill' : 'regular',
+                        className: cn(
+                            'transition-colors duration-200',
+                            isActive ? colors?.railIconActive || 'text-primary-600' : 'text-white/70'
+                        ),
+                    })
+                )}
+            </span>
+            <span
+                className={cn(
+                    'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
+                    isActive ? colors?.text || 'text-white' : 'text-white/70'
+                )}
+            >
+                {cat.label}
+            </span>
+        </button>
+    );
+};
+
 export const CategoryRail: React.FC<CategoryRailProps> = ({
     activeCategory,
     onCategoryChange,
@@ -105,95 +166,24 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
 
     const renderCategoryButton = (cat: CategoryConfig) => {
         const isActive = activeCategory === cat.id && !isSettingsActive;
-        const colors =
-            cat.id !== 'RECENT'
-                ? CATEGORY_COLORS[cat.id as 'CRM' | 'LMS' | 'AI']
-                : null;
         const isLocked =
             cat.id !== 'RECENT' &&
             roleDisplay?.sidebarCategories?.find((c) => c.id === cat.id)?.locked;
 
         const buttonContent = (
-            <button
-                className={cn(
-                    'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
-                    'hover:bg-white/10',
-                    isLocked && 'cursor-not-allowed opacity-60'
-                )}
-                aria-label={`${cat.label} category${isActive ? ' (active)' : ''}${isLocked ? ' (locked)' : ''}`}
-                aria-current={isActive ? 'true' : undefined}
-                onClick={() => {
-                    if (isLocked) {
-                        navigate({
-                            to: '/locked-feature',
-                            search: { feature: `${cat.label} Category` },
-                        });
-                        return;
-                    }
-                    onCategoryChange(cat.id);
-                }}
-            >
-                {/* Animated pill background */}
-                {isActive && (
-                    <motion.div
-                        layoutId="category-rail-active"
-                        className={cn(
-                            'absolute inset-0 rounded-xl',
-                            colors?.railActiveBg || 'bg-white'
-                        )}
-                        transition={{
-                            type: 'spring',
-                            bounce: 0.15,
-                            duration: 0.5,
-                        }}
-                    />
-                )}
-
-                {/* Icon */}
-                <span className="relative z-10">
-                    {isLocked ? (
-                        <LockKey
-                            size={22}
-                            weight="duotone"
-                            className="text-neutral-400"
-                        />
-                    ) : (
-                        React.createElement(cat.icon, {
-                            size: 22,
-                            weight: isActive ? 'fill' : 'regular',
-                            className: cn(
-                                'transition-colors duration-200',
-                                isActive
-                                    ? colors?.railIconActive || 'text-primary-600'
-                                    : 'text-white/70'
-                            ),
-                        })
-                    )}
-                </span>
-
-                {/* Label */}
-                <span
-                    className={cn(
-                        'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
-                        isActive
-                            ? colors?.text || 'text-white'
-                            : 'text-white/70'
-                    )}
-                >
-                    {cat.label}
-                </span>
-            </button>
+            <CategoryButton
+                cat={cat}
+                isActive={isActive}
+                isLocked={isLocked}
+                onCategoryChange={onCategoryChange}
+                navigate={navigate}
+            />
         );
 
-        // When collapsed, wrap category buttons with flyout menus
         if (isPanelCollapsed && cat.id !== 'RECENT' && !isLocked) {
             const catItems = getItemsForCategory(cat.id as 'CRM' | 'LMS' | 'AI');
             return (
-                <CategoryFlyoutMenu
-                    key={cat.id}
-                    category={cat.id as 'CRM' | 'LMS' | 'AI'}
-                    items={catItems}
-                >
+                <CategoryFlyoutMenu key={cat.id} category={cat.id as 'CRM' | 'LMS' | 'AI'} items={catItems}>
                     {buttonContent}
                 </CategoryFlyoutMenu>
             );

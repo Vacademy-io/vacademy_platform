@@ -76,10 +76,11 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setHeader("Retry-After", String.valueOf(retryAfter));
             response.setContentType("application/json");
-            String safeRetryAfter = String.valueOf(retryAfter);
-            String body = String.format(
-                    "{\"error\":\"Too many requests. Please try again after %s seconds.\"}", safeRetryAfter);
-            response.getWriter().write(body);
+            response.setCharacterEncoding("UTF-8");
+            // Use static message; actual retry time is in the Retry-After header
+            byte[] body = "{\"error\":\"Too many requests. Please check the Retry-After header.\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            response.setContentLength(body.length);
+            response.getOutputStream().write(body);
             return;
         }
 

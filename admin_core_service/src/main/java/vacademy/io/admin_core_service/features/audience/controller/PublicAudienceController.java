@@ -4,6 +4,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.AudienceDTO;
+import vacademy.io.admin_core_service.features.audience.dto.BulkSubmitLeadWithEnquiryRequestDTO;
+import vacademy.io.admin_core_service.features.audience.dto.BulkSubmitLeadWithEnquiryResponseDTO;
 import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadRequestDTO;
 import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadWithEnquiryRequestDTO;
 import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadWithEnquiryResponseDTO;
@@ -51,6 +53,18 @@ public class PublicAudienceController {
     public ResponseEntity<SubmitLeadWithEnquiryResponseDTO> submitLeadWithEnquiry(
             @RequestBody SubmitLeadWithEnquiryRequestDTO requestDTO) {
         SubmitLeadWithEnquiryResponseDTO response = audienceService.submitLeadWithEnquiry(requestDTO);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Bulk submit leads with enquiry.
+     * POST /open/v1/audience/lead/bulk-submit-with-enquiry
+     */
+    @PostMapping("/lead/bulk-submit-with-enquiry")
+    public ResponseEntity<BulkSubmitLeadWithEnquiryResponseDTO> bulkSubmitLeadWithEnquiry(
+            @RequestBody BulkSubmitLeadWithEnquiryRequestDTO request) {
+        BulkSubmitLeadWithEnquiryResponseDTO response =
+                audienceService.bulkSubmitLeadWithEnquiry(request);
         return ResponseEntity.ok(response);
     }
 

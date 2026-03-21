@@ -220,6 +220,7 @@ public class LiveSessionProviderController {
     public ResponseEntity<Map<String, String>> joinBbbMeeting(
             @RequestParam String scheduleId,
             @RequestParam(defaultValue = "VIEWER") String role,
+            @RequestParam(defaultValue = "false") boolean recreate,
             @RequestAttribute("user") CustomUserDetails user) {
 
         SessionSchedule schedule = scheduleRepository.findById(scheduleId)
@@ -227,6 +228,17 @@ public class LiveSessionProviderController {
 
         String providerMeetingId = schedule.getProviderMeetingId();
         String instituteId = null;
+
+        // If moderator requested recreate, clear old meeting so a fresh one is created
+        if (recreate && "MODERATOR".equalsIgnoreCase(role)
+                && providerMeetingId != null && !providerMeetingId.isBlank()) {
+            log.info("[BBB] Moderator requested recreate for scheduleId={}, clearing old meetingId={}", scheduleId, providerMeetingId);
+            schedule.setProviderMeetingId(null);
+            schedule.setCustomMeetingLink(null);
+            schedule.setProviderHostUrl(null);
+            scheduleRepository.save(schedule);
+            providerMeetingId = null;
+        }
 
         // Auto-create BBB meeting if it doesn't exist yet
         if (providerMeetingId == null || providerMeetingId.isBlank()) {
@@ -284,8 +296,15 @@ public class LiveSessionProviderController {
 
         // Check if the meeting is still running (prevents joining ended meetings)
         boolean isRunning = bbbMeetingManager.isMeetingRunning(providerMeetingId, null);
-        if (!isRunning && !"MODERATOR".equalsIgnoreCase(role)) {
-            // For viewers, the meeting must be running; moderators can re-create it
+        if (!isRunning && "MODERATOR".equalsIgnoreCase(role)) {
+            // Meeting ended — tell the moderator so they can choose to recreate
+            return ResponseEntity.ok(Map.of(
+                    "status", "MEETING_ENDED",
+                    "message", "This meeting has ended. Would you like to start a new meeting for this session?",
+                    "meetingId", providerMeetingId));
+        }
+        if (!isRunning) {
+            // For viewers, the meeting must be running
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "Meeting has ended",
                     "meetingId", providerMeetingId));

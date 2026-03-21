@@ -163,12 +163,24 @@ function ViewLiveSession() {
     const isBbbSession = sessionData?.schedule?.link_type === StreamingPlatform.BBB
         || sessionData?.schedule?.link_type === 'BBB_MEETING';
 
-    const handleJoinAsHost = useCallback(async (scheduleId: string) => {
+    const handleJoinAsHost = useCallback(async (scheduleId: string, recreate = false) => {
         try {
             const response = await authenticatedAxiosInstance.get(
                 `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/join`,
-                { params: { scheduleId, role: 'MODERATOR' } }
+                { params: { scheduleId, role: 'MODERATOR', recreate } }
             );
+
+            // Meeting ended — ask moderator if they want to start a new one
+            if (response.data?.status === 'MEETING_ENDED') {
+                const confirmed = window.confirm(
+                    'This meeting has ended.\n\nDo you want to start a new meeting for this session?'
+                );
+                if (confirmed) {
+                    await handleJoinAsHost(scheduleId, true);
+                }
+                return;
+            }
+
             const joinUrl = response.data?.joinUrl;
             if (joinUrl) {
                 window.open(joinUrl, '_blank', 'noopener,noreferrer');

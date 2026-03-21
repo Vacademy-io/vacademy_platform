@@ -818,7 +818,7 @@ export const useChatbot = () => {
     await initializeSession();
   }, [sessionId, initializeSession]);
 
-  const enterVoiceMode = useCallback(async (mode: SessionMode, language: string = chatbotSettings.voice_settings?.default_language || "en-IN") => {
+  const enterVoiceMode = useCallback(async (mode: SessionMode, language: string = chatbotSettings.voice_settings?.default_language || "en-IN", topic?: string) => {
     // Close current text session if exists
     if (sessionId) {
       try { await chatbotAPI.closeSession(sessionId); } catch {}
@@ -832,6 +832,10 @@ export const useChatbot = () => {
     try {
       const contextType = getContextType();
       const contextMeta = await buildContextMeta();
+      // Add voice topic to context so backend knows what to interview/test on
+      if (topic) {
+        contextMeta.voice_topic = topic;
+      }
       const response = await chatbotAPI.initSession(undefined, contextType, contextMeta, mode);
       setSessionId(response.session_id);
     } catch (error) {

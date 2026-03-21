@@ -962,9 +962,9 @@ export const ChatbotSidePanel: React.FC = () => {
         <VoiceModeSelector
           open={showVoiceSelector}
           onClose={() => setShowVoiceSelector(false)}
-          onSelect={(mode, language) => {
+          onSelect={(mode, language, topic) => {
             setShowVoiceSelector(false);
-            enterVoiceMode(mode, language);
+            enterVoiceMode(mode, language, topic);
           }}
           enabledModes={chatbotSettings.enabled_modes}
         />

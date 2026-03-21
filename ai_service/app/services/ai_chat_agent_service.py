@@ -1027,7 +1027,32 @@ class AiChatAgentService:
             
             # Extract topic from message and context
             topic = self.intent_classifier.get_practice_topic(user_message, context)
-            
+
+            # If topic is too generic, ask user to specify
+            if topic in ("Current Topic", "current topic"):
+                ask_msg = self.message_repo.create_message(
+                    session_id=session_id,
+                    message_type="assistant",
+                    content=(
+                        "What topic would you like to practice? Please specify, for example:\n"
+                        "- \"Quiz me on quadratic equations\"\n"
+                        "- \"Practice photosynthesis\"\n"
+                        "- \"Test me on Newton's laws\""
+                    ),
+                )
+                yield {
+                    "event": "message",
+                    "data": {
+                        "id": ask_msg.id,
+                        "type": ask_msg.message_type,
+                        "content": ask_msg.content,
+                        "metadata": ask_msg.meta_data,
+                        "created_at": ask_msg.created_at.isoformat()
+                    }
+                }
+                yield {"event": "status", "data": {"ai_status": "idle"}}
+                return
+
             # Send engaging message
             prep_msg = self.message_repo.create_message(
                 session_id=session_id,

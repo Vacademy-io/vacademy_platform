@@ -15,15 +15,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from ..db import get_sessionmaker
 from ..repositories.chat_session_repository import ChatSessionRepository
 from ..services.sarvam_service import SarvamService
-from ..services.ai_chat_agent_service import AiChatAgentService
+from ..services.voice_session_service import VoiceSessionService
 from ..services.context_resolver_service import ContextResolverService
-from ..services.tool_manager_service import ToolManagerService
 from ..services.chat_llm_client import ChatLLMClient
 from ..services.api_key_resolver import ApiKeyResolver
 from ..services.institute_settings_service import InstituteSettingsService
-from ..services.embedding_service import EmbeddingService
-from ..services.rag_service import RAGService
-from ..services.learning_analytics_service import LearningAnalyticsService
 
 logger = logging.getLogger(__name__)
 
@@ -33,24 +29,18 @@ router = APIRouter(prefix="/chat-agent", tags=["voice-agent"])
 TTS_CHUNK_SIZE = 32 * 1024
 
 
-def _build_chat_agent_service(db_session) -> AiChatAgentService:
-    """Build an AiChatAgentService instance manually (no FastAPI Depends)."""
+def _build_voice_session_service(db_session) -> VoiceSessionService:
+    """Build a VoiceSessionService instance manually (no FastAPI Depends)."""
     context_resolver = ContextResolverService(db_session)
     institute_settings = InstituteSettingsService(db_session)
     api_key_resolver = ApiKeyResolver(db_session)
     llm_client = ChatLLMClient(api_key_resolver)
-    embedding_service = EmbeddingService(api_key_resolver)
-    rag_service = RAGService(db_session, embedding_service)
-    analytics_service = LearningAnalyticsService(db_session)
-    tool_manager = ToolManagerService(db_session, rag_service=rag_service, analytics_service=analytics_service)
 
-    return AiChatAgentService(
+    return VoiceSessionService(
         db_session=db_session,
-        context_resolver=context_resolver,
-        tool_manager=tool_manager,
         llm_client=llm_client,
         institute_settings=institute_settings,
-        rag_service=rag_service,
+        context_resolver=context_resolver,
     )
 
 
@@ -95,7 +85,7 @@ async def voice_session(websocket: WebSocket, session_id: str):
 
         # 2. Create services
         sarvam_service = SarvamService()
-        chat_agent_service = _build_chat_agent_service(db)
+        voice_service = _build_voice_session_service(db)
 
         # 3. Voice config defaults
         language: str = "en-IN"
@@ -156,29 +146,18 @@ async def voice_session(websocket: WebSocket, session_id: str):
                         audio_buffer.clear()
                         continue
 
-                    # c) Process through the chat agent (reuse send_message)
-                    message_id, ai_status = await chat_agent_service.send_message(
+                    # c) Process through VoiceSessionService (synchronous LLM call)
+                    result = await voice_service.process_voice_turn(
                         session_id=session_id,
-                        message=transcript,
+                        transcript=transcript,
+                        user_id=user_id,
+                        institute_id=institute_id,
                     )
 
-                    # d) Retrieve the AI response text
-                    # The agent service processes asynchronously and stores messages.
-                    # For voice, we need the response text directly. Poll for the
-                    # assistant message that was just created.
-                    updates = await chat_agent_service.get_updates(
-                        session_id=session_id,
-                        last_message_id=message_id,
-                    )
-                    ai_text = ""
-                    ai_msg_id: Optional[int] = None
-                    for m in updates.get("messages", []):
-                        if m.message_type == "assistant":
-                            ai_text = m.content
-                            ai_msg_id = m.id
-                            break
+                    ai_text = result.get("ai_text", "")
+                    ai_msg_id = result.get("message_id")
 
-                    # e) Send AI text to client
+                    # d) Send AI text to client
                     await websocket.send_json({
                         "type": "ai_text",
                         "text": ai_text,
@@ -214,15 +193,23 @@ async def voice_session(websocket: WebSocket, session_id: str):
 
             elif msg_type == "end_session":
                 try:
-                    # Close the session and return summary
-                    success, message_count = await chat_agent_service.close_session(session_id)
+                    # Generate session summary via VoiceSessionService
+                    session = session_repo.get_session_by_id(session_id)
+                    session_mode = getattr(session, "session_mode", "text") if session else "text"
+
+                    summary = await voice_service.generate_session_summary(
+                        session_id=session_id,
+                        mode=session_mode,
+                        institute_id=institute_id,
+                        user_id=user_id,
+                    )
+
+                    # Close the session
+                    session_repo.close_session(session_id)
+
                     await websocket.send_json({
                         "type": "summary",
-                        "data": {
-                            "session_id": session_id,
-                            "message_count": message_count,
-                            "status": "CLOSED",
-                        },
+                        "data": summary,
                     })
                 except Exception as e:
                     logger.exception(f"Error ending voice session {session_id}")

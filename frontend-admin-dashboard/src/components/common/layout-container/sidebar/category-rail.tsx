@@ -120,6 +120,8 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                     'hover:bg-white/10',
                     isLocked && 'cursor-not-allowed opacity-60'
                 )}
+                aria-label={`${cat.label} category${isActive ? ' (active)' : ''}${isLocked ? ' (locked)' : ''}`}
+                aria-current={isActive ? 'true' : undefined}
                 onClick={() => {
                     if (isLocked) {
                         navigate({
@@ -201,7 +203,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
     };
 
     return (
-        <div className="flex h-full w-16 flex-shrink-0 flex-col items-center border-r border-primary-600 bg-primary-500 py-3">
+        <nav className="flex h-full w-16 flex-shrink-0 flex-col items-center border-r border-primary-600 bg-primary-500 py-3" role="navigation" aria-label="Main category navigation">
             {/* Search Icon */}
             <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
@@ -211,6 +213,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                             'text-white/70 hover:bg-white/10 hover:text-white'
                         )}
                         onClick={() => setSearchOpen(true)}
+                        aria-label="Search (⌘K)"
                     >
                         <MagnifyingGlass size={20} weight="regular" />
                     </button>
@@ -229,7 +232,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
             <div className="mb-1 h-px w-8 bg-primary-400/50" />
 
             {/* Category Icons */}
-            <div className="flex flex-1 flex-col items-center gap-1">
+            <div className="flex flex-1 flex-col items-center gap-1" role="group" aria-label="Categories">
                 {visibleCategories.map((cat) => renderCategoryButton(cat))}
 
                 {/* Divider before Recent */}
@@ -241,6 +244,8 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                                 'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
                                 'hover:bg-white/10',
                             )}
+                            aria-label={`Recent items${activeCategory === 'RECENT' && !isSettingsActive ? ' (active)' : ''}`}
+                            aria-current={activeCategory === 'RECENT' && !isSettingsActive ? 'true' : undefined}
                             onClick={() => onCategoryChange('RECENT')}
                         >
                             {activeCategory === 'RECENT' && !isSettingsActive && (
@@ -288,6 +293,8 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                             'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
                             'hover:bg-white/10',
                         )}
+                        aria-label={`Settings${isSettingsActive ? ' (active)' : ''}`}
+                        aria-current={isSettingsActive ? 'page' : undefined}
                         onClick={() => {
                             navigate({ to: '/settings', search: { selectedTab: 'tab' } });
                             onCategoryChange('SETTINGS');
@@ -337,6 +344,6 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                 sidebarItems={sidebarItems}
                 instituteId={instituteId}
             />
-        </div>
+        </nav>
     );
 };

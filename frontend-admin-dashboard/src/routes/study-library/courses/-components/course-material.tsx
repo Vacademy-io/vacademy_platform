@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { useFacultyCreatorsList } from '@/routes/dashboard/-hooks/useTeacherList';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
+import { CourseExplorerSkeleton } from './course-skeleton';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getAllCoursesWithFilters } from '../-services/courses-services';
@@ -701,7 +702,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     }, [allCoursesData, authoredCoursesData, selectedTab]);
 
     if (isUsersLoading || loading.allCourses || loading.authoredCourses || !instituteDetails?.id) {
-        return <DashboardLoader />;
+        return <CourseExplorerSkeleton />;
     }
 
     const isFacultyUser = hasFacultyAssignedPermission(instituteDetails?.id);

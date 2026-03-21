@@ -56,6 +56,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const voiceStateRef = useRef(voiceState);
   voiceStateRef.current = voiceState;
+  const ttsChunksRef = useRef<Uint8Array[]>([]);
 
   // Session timer
   useEffect(() => {
@@ -93,21 +94,32 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   const onAudioChunk = useCallback(
     (base64Data: string) => {
       setVoiceState("speaking");
-      // Decode base64 to ArrayBuffer and queue for playback
+      // Accumulate chunks — can't decode partial WAV individually
       const binaryString = atob(base64Data);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
-      audioPlayer.queueChunk(bytes.buffer as ArrayBuffer);
+      ttsChunksRef.current.push(bytes);
     },
-    [audioPlayer],
+    [],
   );
 
   const onAudioEnd = useCallback(() => {
-    // After all audio chunks have been sent, go back to idle when playback finishes
-    // We'll monitor audioPlayer.isPlaying in an effect
-  }, []);
+    // Combine all chunks into one buffer and play the complete audio
+    const chunks = ttsChunksRef.current;
+    if (chunks.length > 0) {
+      const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+      const combined = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+      ttsChunksRef.current = [];
+      audioPlayer.playAudio(combined.buffer as ArrayBuffer);
+    }
+  }, [audioPlayer]);
 
   const onSummary = useCallback((data: unknown) => {
     setSummaryData(data);

@@ -1,4 +1,4 @@
-import { SUBMIT_ENQUIRY_WITH_LEAD } from '@/constants/urls';
+import { BULK_SUBMIT_ENQUIRY_WITH_LEAD, SUBMIT_ENQUIRY_WITH_LEAD } from '@/constants/urls';
 
 // User DTO interface (simplified - excluding id, username, password, profile_pic)
 interface UserDTO {
@@ -51,6 +51,57 @@ export interface SubmitEnquiryResponse {
     message: string;
 }
 
+export type EnquirySourceType =
+    | 'WEBSITE'
+    | 'GOOGLE_ADS'
+    | 'FACEBOOK'
+    | 'INSTAGRAM'
+    | 'REFERRAL'
+    | 'OTHER';
+
+export interface BulkSubmitEnquiryRow {
+    audience_id: string;
+    source_type?: EnquirySourceType;
+    destination_package_session_id?: string;
+    parent_name: string;
+    parent_email: string;
+    parent_mobile: string;
+    parent_user_dto: {
+        full_name: string;
+        email: string;
+        mobile_number: string;
+        is_parent: true;
+        root_user: true;
+    };
+    child_user_dto: {
+        full_name: string;
+        date_of_birth: string;
+        gender: 'MALE' | 'FEMALE' | 'OTHER';
+        is_parent: false;
+        root_user: false;
+    };
+    enquiry: {
+        enquiry_status: string;
+    };
+}
+
+export interface BulkSubmitEnquiryRequest {
+    audience_id: string;
+    rows: BulkSubmitEnquiryRow[];
+}
+
+export interface BulkSubmitEnquiryResponse {
+    summary?: {
+        successful?: number;
+        failed?: number;
+    };
+    results?: Array<{
+        status?: string;
+        success?: boolean;
+    }>;
+    [key: string]: unknown;
+}
+
 /**
  * Submit a lead with enquiry details
  * This is a public endpoint and does not require authentication
@@ -79,6 +130,27 @@ export const submitEnquiryWithLead = async (
         console.error('Error submitting enquiry:', error);
         throw error;
     }
+};
+
+export const submitEnquiryBulkWithLead = async (
+    payload: BulkSubmitEnquiryRequest
+): Promise<BulkSubmitEnquiryResponse> => {
+    const response = await fetch(BULK_SUBMIT_ENQUIRY_WITH_LEAD, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({
+            message: 'Failed to submit enquiry bulk import',
+        }));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+
+    return response.json().catch(() => ({}));
 };
 
 /**

@@ -59,6 +59,15 @@ const BASE_CATEGORIES: CategoryConfig[] = [
     { id: 'AI', label: 'AI', icon: Sparkle },
 ];
 
+/** Animated pill background used by category, recent, and settings buttons */
+const ActivePill: React.FC<{ className?: string }> = ({ className }) => (
+    <motion.div
+        layoutId="category-rail-active"
+        className={cn('absolute inset-0 rounded-xl', className || 'bg-white')}
+        transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
+    />
+);
+
 /** Extracted component to reduce cognitive complexity of CategoryRail */
 const CategoryButton: React.FC<{
     cat: CategoryConfig;
@@ -87,13 +96,7 @@ const CategoryButton: React.FC<{
                 onCategoryChange(cat.id);
             }}
         >
-            {isActive && (
-                <motion.div
-                    layoutId="category-rail-active"
-                    className={cn('absolute inset-0 rounded-xl', colors?.railActiveBg || 'bg-white')}
-                    transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
-                />
-            )}
+            {isActive && <ActivePill className={colors?.railActiveBg} />}
             <span className="relative z-10">
                 {isLocked ? (
                     <LockKey size={22} weight="duotone" className="text-neutral-400" />
@@ -229,49 +232,32 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                 <div className="my-1 h-px w-8 bg-primary-400/50" />
 
                 {/* Recent Tab */}
+                {(() => {
+                    const isRecentActive = activeCategory === 'RECENT' && !isSettingsActive;
+                    return (
                         <button
                             className={cn(
                                 'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
                                 'hover:bg-white/10',
                             )}
-                            aria-label={`Recent items${activeCategory === 'RECENT' && !isSettingsActive ? ' (active)' : ''}`}
-                            aria-current={activeCategory === 'RECENT' && !isSettingsActive ? 'true' : undefined}
+                            aria-label={`Recent items${isRecentActive ? ' (active)' : ''}`}
+                            aria-current={isRecentActive ? 'true' : undefined}
                             onClick={() => onCategoryChange('RECENT')}
                         >
-                            {activeCategory === 'RECENT' && !isSettingsActive && (
-                                <motion.div
-                                    layoutId="category-rail-active"
-                                    className="absolute inset-0 rounded-xl bg-white"
-                                    transition={{
-                                        type: 'spring',
-                                        bounce: 0.15,
-                                        duration: 0.5,
-                                    }}
-                                />
-                            )}
+                            {isRecentActive && <ActivePill />}
                             <span className="relative z-10">
                                 <ClockCounterClockwise
                                     size={22}
-                                    weight={activeCategory === 'RECENT' && !isSettingsActive ? 'fill' : 'regular'}
-                                    className={cn(
-                                        'transition-colors duration-200',
-                                        activeCategory === 'RECENT' && !isSettingsActive
-                                            ? 'text-neutral-900'
-                                            : 'text-white/70'
-                                    )}
+                                    weight={isRecentActive ? 'fill' : 'regular'}
+                                    className={cn('transition-colors duration-200', isRecentActive ? 'text-neutral-900' : 'text-white/70')}
                                 />
                             </span>
-                            <span
-                                className={cn(
-                                    'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
-                                    activeCategory === 'RECENT' && !isSettingsActive
-                                        ? 'text-neutral-900'
-                                        : 'text-white/70'
-                                )}
-                            >
+                            <span className={cn('relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200', isRecentActive ? 'text-neutral-900' : 'text-white/70')}>
                                 Recent
                             </span>
                         </button>
+                    );
+                })()}
             </div>
 
             {/* ─── Settings (admin-only, pinned to bottom) ──── */}
@@ -290,37 +276,15 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                             onCategoryChange('SETTINGS');
                         }}
                     >
-                        {isSettingsActive && (
-                            <motion.div
-                                layoutId="category-rail-active"
-                                className="absolute inset-0 rounded-xl bg-white"
-                                transition={{
-                                    type: 'spring',
-                                    bounce: 0.15,
-                                    duration: 0.5,
-                                }}
-                            />
-                        )}
+                        {isSettingsActive && <ActivePill />}
                         <span className="relative z-10">
                             <GearSix
                                 size={22}
                                 weight={isSettingsActive ? 'fill' : 'regular'}
-                                className={cn(
-                                    'transition-colors duration-200',
-                                    isSettingsActive
-                                        ? 'text-neutral-900'
-                                        : 'text-white/70'
-                                )}
+                                className={cn('transition-colors duration-200', isSettingsActive ? 'text-neutral-900' : 'text-white/70')}
                             />
                         </span>
-                        <span
-                            className={cn(
-                                'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
-                                isSettingsActive
-                                    ? 'text-neutral-900'
-                                    : 'text-white/70'
-                            )}
-                        >
+                        <span className={cn('relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200', isSettingsActive ? 'text-neutral-900' : 'text-white/70')}>
                             Settings
                         </span>
                     </button>

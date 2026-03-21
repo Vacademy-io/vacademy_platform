@@ -96,8 +96,8 @@ jobs:
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            MEDIA_SERVICE_DB_URL=jdbc:postgresql://${{ secrets.VET_DB_HOST }}:5432/media_service \
-            MEDIA_SERVICE_READ_DB_URL=jdbc:postgresql://${{ secrets.VET_DB_HOST }}:5432/media_service_read \
+            MEDIA_SERVICE_DB_URL=${{ secrets.MEDIA_SERVICE_DB_URL }} \
+            MEDIA_SERVICE_READ_DB_URL=${{ secrets.MEDIA_SERVICE_READ_DB_URL }} \
             S3_AWS_ACCESS_KEY=${{ secrets.S3_AWS_ACCESS_KEY }} \
             S3_AWS_ACCESS_SECRET=${{ secrets.S3_AWS_ACCESS_SECRET }} \
             S3_AWS_REGION=${{ secrets.S3_AWS_REGION }} \

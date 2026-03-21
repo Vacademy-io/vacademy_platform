@@ -89,8 +89,8 @@ jobs:
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            ASSESSMENT_SERVICE_DB_URL=jdbc:postgresql://${{ secrets.VET_DB_HOST }}:5432/assessment_service \
-            COMMUNITY_SERVICE_READ_DB_URL=jdbc:postgresql://${{ secrets.VET_DB_HOST }}:5432/assessment_service_read \
+            COMMUNITY_SERVICE_DB_URL=${{ secrets.COMMUNITY_SERVICE_DB_URL }} \
+            COMMUNITY_SERVICE_READ_DB_URL=${{ secrets.COMMUNITY_SERVICE_READ_DB_URL }} \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}

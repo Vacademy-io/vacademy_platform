@@ -84,6 +84,7 @@ jobs:
       - name: Set Environment Variables in Deployment
         run: |
           kubectl set env deployment/auth-service \
+            environment=stage \
             DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
             DB_USERNAME=${{ secrets.DB_USERNAME }} \
             APP_USERNAME=${{ secrets.APP_USERNAME }} \

@@ -59,6 +59,7 @@ jobs:
           if kubectl get deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" >/dev/null 2>&1; then
             kubectl set env deployment/"$DEPLOYMENT_NAME" \
               --namespace "$NAMESPACE" \
+              environment=stage \
               APP_ENV=stage \
               LLM_BASE_URL=https://openrouter.ai/api/v1/chat/completions \
               OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \

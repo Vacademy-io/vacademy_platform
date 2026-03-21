@@ -8,13 +8,17 @@ interface ThemeProviderProps {
     storageKey?: string;
 }
 
-const ThemeContext = createContext<{
+interface ThemeContextValue {
     theme: Theme;
-    setTheme: (_newTheme: Theme) => void;
-}>({
+    setTheme: (theme: Theme) => void;
+}
+
+const INITIAL_CONTEXT: ThemeContextValue = {
     theme: 'dark',
-    setTheme: () => null,
-});
+    setTheme: () => undefined,
+};
+
+const ThemeContext = createContext(INITIAL_CONTEXT);
 
 export function ThemeProvider({
     children,

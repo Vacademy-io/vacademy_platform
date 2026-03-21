@@ -10,7 +10,7 @@ interface ThemeProviderProps {
 
 interface ThemeContextValue {
     theme: Theme;
-    setTheme: (theme: Theme) => void;
+    setTheme: (value: Theme) => void;
 }
 
 const INITIAL_CONTEXT: ThemeContextValue = {
@@ -25,9 +25,13 @@ export function ThemeProvider({
     defaultTheme = 'dark',
     storageKey = 'vacademy-learner-theme',
 }: ThemeProviderProps) {
-    const [currentTheme, setCurrentTheme] = useState<Theme>(
-        () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
-    );
+    const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
+        const stored = localStorage.getItem(storageKey);
+        if (stored === 'dark' || stored === 'light' || stored === 'system') {
+            return stored;
+        }
+        return defaultTheme;
+    });
 
     useEffect(() => {
         const root = window.document.documentElement;
@@ -59,7 +63,5 @@ export function ThemeProvider({
 }
 
 export function useTheme() {
-    const context = useContext(ThemeContext);
-    if (!context) throw new Error('useTheme must be used within a ThemeProvider');
-    return context;
+    return useContext(ThemeContext);
 }

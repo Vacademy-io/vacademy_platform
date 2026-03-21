@@ -80,6 +80,12 @@ interface TutorConfiguration {
         level: 'strict' | 'moderate' | 'flexible';
         temperature: number;
     };
+    enabled_modes?: string[];
+    chatbot_pages?: string[];  // Array of enabled page category keys
+    voice_settings?: {
+        default_language: string;
+        default_voice: string;
+    };
 }
 
 interface ActivityLogRecord {
@@ -102,6 +108,7 @@ interface ActivityLogResponse {
 }
 
 import { useAIModelsList } from '@/hooks/useAiModels';
+import KnowledgeBase from './KnowledgeBase';
 
 // ─── Video Branding & Style types ─────────────────────────────────────────
 
@@ -193,7 +200,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const [tutorConfig, setTutorConfig] = useState<TutorConfiguration>({
         enable: false,
         role: 'Tutor',
-        assistant_name: 'Savir',
+        assistant_name: instituteDetails?.institute_name ? `${instituteDetails.institute_name} Chatbot` : 'Vacademy Chatbot',
         institute_name: instituteDetails?.institute_name || 'Vacademy',
         core_instruction: 'You are a helpful tutor assisting students with their doubts.',
         hard_rules: [
@@ -203,6 +210,12 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
         adherence_settings: {
             level: 'strict',
             temperature: 0.5,
+        },
+        enabled_modes: ['general', 'doubt', 'practice'],
+        chatbot_pages: ['dashboard', 'all_courses', 'course_details', 'study_material'],
+        voice_settings: {
+            default_language: 'en-IN',
+            default_voice: 'shubh',
         },
     });
     const [newHardRule, setNewHardRule] = useState('');
@@ -492,6 +505,10 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
             setTutorConfig((prev) => ({
                 ...prev,
                 institute_name: instituteDetails.institute_name || 'Vacademy',
+                // Only update assistant_name if it's still the default pattern
+                assistant_name: prev.assistant_name === 'Savir' || prev.assistant_name.endsWith(' Chatbot')
+                    ? `${instituteDetails.institute_name} Chatbot`
+                    : prev.assistant_name,
             }));
         }
     }, [instituteDetails]);
@@ -539,6 +556,9 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                             level: tutorConfig.adherence_settings.level,
                             temperature: tutorConfig.adherence_settings.temperature,
                         },
+                        enabled_modes: tutorConfig.enabled_modes,
+                        chatbot_pages: tutorConfig.chatbot_pages,
+                        voice_settings: tutorConfig.voice_settings,
                     },
                 },
                 {
@@ -1369,6 +1389,167 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                         </div>
                     </div>
 
+                    {/* Enabled Modes */}
+                    <div className="space-y-3 pt-4 border-t border-indigo-100">
+                        <Label className="text-sm font-medium">Enabled Chat Modes</Label>
+                        <p className="text-xs text-muted-foreground">Choose which interaction modes are available to students</p>
+                        <div className="grid grid-cols-2 gap-2">
+                            {[
+                                { key: 'general', label: 'General Chat', description: 'Free conversation' },
+                                { key: 'doubt', label: 'Ask Doubt', description: 'Question & answer' },
+                                { key: 'practice', label: 'Practice Quiz', description: 'MCQ practice' },
+                                { key: 'voice_interview', label: '🎤 Mock Interview', description: 'Voice interview practice' },
+                                { key: 'voice_doubt', label: '🎤 Voice Doubt', description: 'Discuss doubts via voice' },
+                                { key: 'voice_oral_test', label: '🎤 Oral Test', description: 'Voice-based testing' },
+                            ].map(mode => (
+                                <label key={mode.key} className="flex items-start gap-2 p-2 rounded-lg border border-indigo-100 hover:border-indigo-200 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={tutorConfig.enabled_modes?.includes(mode.key) ?? false}
+                                        onChange={(e) => {
+                                            const current = tutorConfig.enabled_modes || [];
+                                            setTutorConfig({
+                                                ...tutorConfig,
+                                                enabled_modes: e.target.checked
+                                                    ? [...current, mode.key]
+                                                    : current.filter(m => m !== mode.key),
+                                            });
+                                        }}
+                                        className="mt-0.5 rounded border-indigo-300"
+                                    />
+                                    <div>
+                                        <span className="text-sm font-medium">{mode.label}</span>
+                                        <p className="text-xs text-muted-foreground">{mode.description}</p>
+                                    </div>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Voice Settings */}
+                    {tutorConfig.enabled_modes?.some(m => m.startsWith('voice_')) && (
+                        <div className="space-y-3 pt-4 border-t border-indigo-100">
+                            <Label className="text-sm font-medium">Voice Settings</Label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <Label className="text-xs text-muted-foreground">Default Language</Label>
+                                    <select
+                                        value={tutorConfig.voice_settings?.default_language || 'en-IN'}
+                                        onChange={(e) => setTutorConfig({
+                                            ...tutorConfig,
+                                            voice_settings: { ...tutorConfig.voice_settings!, default_language: e.target.value, default_voice: tutorConfig.voice_settings?.default_voice || 'shubh' },
+                                        })}
+                                        className="w-full mt-1 rounded-md border border-indigo-100 px-2 py-1.5 text-sm"
+                                    >
+                                        <option value="en-IN">English (Indian)</option>
+                                        <option value="hi-IN">Hindi</option>
+                                        <option value="bn-IN">Bengali</option>
+                                        <option value="ta-IN">Tamil</option>
+                                        <option value="te-IN">Telugu</option>
+                                        <option value="kn-IN">Kannada</option>
+                                        <option value="ml-IN">Malayalam</option>
+                                        <option value="mr-IN">Marathi</option>
+                                        <option value="gu-IN">Gujarati</option>
+                                        <option value="pa-IN">Punjabi</option>
+                                        <option value="od-IN">Odia</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <Label className="text-xs text-muted-foreground">Default Voice</Label>
+                                    <select
+                                        value={tutorConfig.voice_settings?.default_voice || 'shubh'}
+                                        onChange={(e) => setTutorConfig({
+                                            ...tutorConfig,
+                                            voice_settings: { ...tutorConfig.voice_settings!, default_voice: e.target.value, default_language: tutorConfig.voice_settings?.default_language || 'en-IN' },
+                                        })}
+                                        className="w-full mt-1 rounded-md border border-indigo-100 px-2 py-1.5 text-sm"
+                                    >
+                                        <optgroup label="Male">
+                                            <option value="shubh">Shubh</option>
+                                            <option value="aditya">Aditya</option>
+                                            <option value="rahul">Rahul</option>
+                                            <option value="rohan">Rohan</option>
+                                            <option value="amit">Amit</option>
+                                            <option value="dev">Dev</option>
+                                        </optgroup>
+                                        <optgroup label="Female">
+                                            <option value="ritu">Ritu</option>
+                                            <option value="priya">Priya</option>
+                                            <option value="neha">Neha</option>
+                                            <option value="pooja">Pooja</option>
+                                            <option value="simran">Simran</option>
+                                            <option value="kavya">Kavya</option>
+                                        </optgroup>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Chatbot Page Visibility */}
+                    <div className="space-y-3 pt-4 border-t border-indigo-100">
+                        <Label className="text-sm font-medium">Chatbot Page Visibility</Label>
+                        <p className="text-xs text-muted-foreground">Choose which pages show the AI chatbot to students</p>
+                        <div className="space-y-2">
+                            {[
+                                {
+                                    key: 'dashboard',
+                                    label: 'Dashboard',
+                                    description: 'Student home dashboard',
+                                    routes: ['/dashboard']
+                                },
+                                {
+                                    key: 'all_courses',
+                                    label: 'All Courses',
+                                    description: 'Course listing & browse pages',
+                                    routes: ['/study-library']
+                                },
+                                {
+                                    key: 'course_details',
+                                    label: 'Course Details',
+                                    description: 'Individual course overview pages',
+                                    routes: ['/study-library/courses']
+                                },
+                                {
+                                    key: 'study_material',
+                                    label: 'Study Material',
+                                    description: 'Slides, videos, quizzes & assignments',
+                                    routes: ['/study-library/courses/course-details']
+                                },
+                                {
+                                    key: 'catalogue',
+                                    label: 'Catalogue Pages (Logged Out)',
+                                    description: 'Public course catalogue for visitors',
+                                    routes: ['/catalogue', '/$tagName']
+                                },
+                            ].map((category) => {
+                                const isEnabled = tutorConfig.chatbot_pages?.includes(category.key) ?? false;
+                                return (
+                                    <label key={category.key} className="flex items-start gap-3 p-2.5 rounded-lg border border-indigo-100 hover:border-indigo-200 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={isEnabled}
+                                            onChange={(e) => {
+                                                const current = tutorConfig.chatbot_pages || [];
+                                                setTutorConfig({
+                                                    ...tutorConfig,
+                                                    chatbot_pages: e.target.checked
+                                                        ? [...current, category.key]
+                                                        : current.filter(k => k !== category.key),
+                                                });
+                                            }}
+                                            className="mt-0.5 rounded border-indigo-300"
+                                        />
+                                        <div>
+                                            <span className="text-sm font-medium">{category.label}</span>
+                                            <p className="text-xs text-muted-foreground">{category.description}</p>
+                                        </div>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     <div className="flex justify-end pt-4">
                         <MyButton
                             disabled={isSavingTutor}
@@ -1390,6 +1571,9 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Knowledge Base */}
+            <KnowledgeBase />
 
             {/* Institute AI Settings Card */}
             <Card className="border-indigo-100 shadow-sm">

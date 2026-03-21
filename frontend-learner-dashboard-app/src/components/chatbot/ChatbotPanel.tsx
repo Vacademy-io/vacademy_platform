@@ -21,6 +21,7 @@ import {
   ImagePlus,
   Sigma,
   Loader2,
+  Mic,
 } from "lucide-react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -33,13 +34,7 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+// Select import removed — intent selector no longer shown
 import { useChatbotContext } from "./useChatbotContext";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -54,42 +49,12 @@ import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import { ToolIndicator } from "./ToolIndicator";
+import { MicButton } from "./MicButton";
+import { VoiceModeSelector } from "./VoiceModeSelector";
+import { VoiceModePanel } from "./VoiceModePanel";
 import { UploadFileInS3 } from "@/services/upload_file";
 import { getPublicUrl } from "@/services/upload_file";
 import { getUserId } from "@/constants/getUserId";
-
-// Sound notification for new messages
-const playNotificationSound = () => {
-  try {
-    const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.value = 800;
-    oscillator.type = "sine";
-    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-    
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.2);
-  } catch (e) {
-    console.warn("Could not play notification sound:", e);
-  }
-};
-
-// Haptic feedback for mobile (uses Vibration API)
-const triggerHapticFeedback = () => {
-  try {
-    if (navigator.vibrate) {
-      navigator.vibrate(50);
-    }
-  } catch {
-    // Haptic feedback not available
-  }
-};
 
 import { MessageIntent } from "@/services/chatbot-api";
 
@@ -167,6 +132,12 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     streamingContent,
     isStreaming,
     isOffline,
+    voiceMode,
+    showVoiceSelector,
+    setShowVoiceSelector,
+    enterVoiceMode,
+    exitVoiceMode,
+    voiceLanguage,
   } = useChatbotContext();
 
   // Check if the docked panel should be used - checking store AND route for immediate detection
@@ -186,19 +157,6 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const [isResizing, setIsResizing] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
-  const prevMessageCountRef = useRef(messages.length);
-
-  // Sound/Haptic feedback when new assistant message arrives
-  useEffect(() => {
-    if (messages.length > prevMessageCountRef.current) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage?.role === "assistant") {
-        playNotificationSound();
-        triggerHapticFeedback();
-      }
-    }
-    prevMessageCountRef.current = messages.length;
-  }, [messages]);
   const [hasInitializedPosition, setHasInitializedPosition] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   
@@ -206,7 +164,6 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const dragStartRef = useRef({ x: 0, y: 0, panelX: 0, panelY: 0 });
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, panelX: 0, panelY: 0 });
   
-  const [selectedIntent, setSelectedIntent] = useState<MessageIntent>("general");
   const [pendingAttachments, setPendingAttachments] = useState<Array<{type: string; url: string; name?: string; previewUrl?: string}>>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showLatexHelper, setShowLatexHelper] = useState(false);
@@ -421,7 +378,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(inputValue, selectedIntent, pendingAttachments.length > 0 ? pendingAttachments : undefined);
+      sendMessage(inputValue, "general", pendingAttachments.length > 0 ? pendingAttachments : undefined);
       setPendingAttachments([]);
     }
   };
@@ -728,18 +685,9 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                           >
                             {msg.role === "user" ? (
                               <div>
-                                {msg.attachments && msg.attachments.length > 0 && (
-                                  <div className="flex gap-1 mb-1.5">
-                                    {msg.attachments.map((att, i) => (
-                                      <img
-                                        key={i}
-                                        src={att.url}
-                                        alt={att.name || 'attachment'}
-                                        className="max-w-[120px] max-h-[80px] rounded object-cover"
-                                      />
-                                    ))}
-                                  </div>
-                                )}
+                                {msg.attachments?.filter((a: any) => a.type === 'image').map((att: any, i: number) => (
+                                  <img key={i} src={att.url} alt="attached" className="max-w-[200px] max-h-[150px] rounded-lg mb-1.5 border" />
+                                ))}
                                 <p className="whitespace-pre-wrap">
                                   {msg.content}
                                   {msg.status === "pending" && (
@@ -920,8 +868,22 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     )}
 
                     {hasError && !isCreditsExhausted && (
-                      <div className="w-full bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-2 text-center text-sm text-destructive">
-                        An error occurred, please start new
+                      <div className="w-full bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-2 text-center space-y-1.5">
+                        <p className="text-sm text-destructive">Something went wrong</p>
+                        <div className="flex gap-3 justify-center">
+                          <button
+                            onClick={() => {
+                              const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+                              if (lastUserMsg) sendMessage(lastUserMsg.content);
+                            }}
+                            className="text-xs text-primary underline hover:text-primary/80"
+                          >
+                            Retry
+                          </button>
+                          <button onClick={startNewChat} className="text-xs text-muted-foreground underline hover:text-muted-foreground/80">
+                            New chat
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -938,9 +900,9 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
               {/* Input Area */}
               <CardFooter className="border-t p-2 shrink-0 max-h-[45%] overflow-y-auto flex-col gap-0">
-                {/* Quick Action Chips - only show when no messages yet or input is empty */}
-                {messages.length === 0 && !inputValue.trim() && (
-                  <div className="w-full flex flex-wrap gap-1.5 pb-1">
+                {/* Quick Action Chips - show when input is empty */}
+                {!inputValue.trim() && (
+                  <div className={cn("w-full flex flex-wrap gap-1.5 pb-1", messages.length > 0 && "gap-1")}>
                     {quickActions.map((action, index) => (
                       <Button
                         key={index}
@@ -954,12 +916,27 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                            }
                         }}
                         disabled={isLoading || !sessionId}
-                        className="h-7 rounded-full text-xs px-3 bg-primary/5 text-primary hover:bg-primary/15 hover:text-primary transition-colors border border-primary/10"
+                        className={cn(
+                          "rounded-full text-xs bg-primary/5 text-primary hover:bg-primary/15 hover:text-primary transition-colors border border-primary/10",
+                          messages.length === 0 ? "h-7 px-3" : "h-6 px-2"
+                        )}
                       >
-                        <action.icon className="h-3 w-3 mr-1.5" />
+                        <action.icon className={cn("mr-1.5", messages.length === 0 ? "h-3 w-3" : "h-2.5 w-2.5")} />
                         {action.label}
                       </Button>
                     ))}
+                    {/* Voice mode chip */}
+                    {chatbotSettings.enabled_modes?.some(m => m.startsWith('voice_')) && (
+                      <button
+                        onClick={() => setShowVoiceSelector(true)}
+                        disabled={isLoading || !sessionId}
+                        title="Start a voice conversation"
+                        className="inline-flex items-center h-7 px-3 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
+                      >
+                        <Mic className="h-3 w-3 mr-1.5" />
+                        Voice Chat
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -1056,19 +1033,6 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                 {/* Input Row */}
                 <div className="w-full flex items-end gap-1.5">
-                  <Select
-                    value={selectedIntent}
-                    onValueChange={(value) => setSelectedIntent(value as MessageIntent)}
-                  >
-                    <SelectTrigger className="w-[90px] h-9 text-xs">
-                      <SelectValue placeholder="Intent" />
-                    </SelectTrigger>
-                    <SelectContent className="z-[10006]">
-                      <SelectItem value="general">General</SelectItem>
-                      <SelectItem value="doubt">Doubt</SelectItem>
-                      <SelectItem value="practice">Practice</SelectItem>
-                    </SelectContent>
-                  </Select>
                   <textarea
                     placeholder="Type message... (use $ for math)"
                     value={inputValue}
@@ -1076,7 +1040,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     onKeyDown={handleKeyDown}
                     disabled={!sessionId || isLoading}
                     rows={1}
-                    className="text-sm min-h-[36px] max-h-[120px] flex-1 font-mono px-3 py-2 bg-transparent border rounded-md border-input focus:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none disabled:opacity-50"
+                    className="text-sm min-h-[36px] max-h-[120px] flex-1 px-3 py-2 bg-transparent border rounded-md border-input focus:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none disabled:opacity-50"
                     style={{ height: 'auto', overflow: 'hidden' }}
                     onInput={(e) => {
                       const target = e.target as HTMLTextAreaElement;
@@ -1110,10 +1074,18 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                       <ImagePlus className="h-4 w-4" />
                     )}
                   </Button>
+                  <MicButton
+                    sessionId={sessionId || ""}
+                    disabled={!sessionId || isLoading}
+                    onTranscript={(text) => {
+                      setInputValue(text);
+                      // Don't auto-send — let user review and hit Enter
+                    }}
+                  />
                   <Button
                     onClick={() => {
                       const readyAttachments = pendingAttachments.filter(a => a.url);
-                      sendMessage(inputValue, selectedIntent, readyAttachments.length > 0 ? readyAttachments : undefined);
+                      sendMessage(inputValue, "general", readyAttachments.length > 0 ? readyAttachments : undefined);
                       // Clean up preview URLs
                       pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
                       setPendingAttachments([]);
@@ -1130,6 +1102,29 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
           </>
         )}
       </AnimatePresence>
+
+      {showVoiceSelector && (
+        <VoiceModeSelector
+          open={showVoiceSelector}
+          onClose={() => setShowVoiceSelector(false)}
+          onSelect={(mode, language) => {
+            setShowVoiceSelector(false);
+            enterVoiceMode(mode, language);
+          }}
+          enabledModes={chatbotSettings.enabled_modes}
+        />
+      )}
+
+      {voiceMode && sessionId && (
+        <VoiceModePanel
+          sessionId={sessionId}
+          mode={voiceMode as any}
+          language={voiceLanguage}
+          voice="shubh"
+          onClose={exitVoiceMode}
+          chatbotSettings={chatbotSettings}
+        />
+      )}
     </>
   );
 };

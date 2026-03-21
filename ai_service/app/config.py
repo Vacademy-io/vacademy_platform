@@ -110,6 +110,9 @@ class Settings(BaseSettings):
 
     # YouTube API Configuration
     youtube_api_key: Optional[str] = None
+
+    # Sarvam AI Configuration (for Indian-language STT/TTS)
+    sarvam_api_key: str = ""
     
     # Internal Auth Configuration
     client_name: str = os.getenv("CLIENT_NAME", "ai_service")

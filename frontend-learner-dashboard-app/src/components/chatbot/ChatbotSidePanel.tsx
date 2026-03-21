@@ -17,6 +17,7 @@ import {
   Sigma,
   ImagePlus,
   Loader2,
+  Mic,
 } from "lucide-react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -29,13 +30,7 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+// Select imports removed — intent selector UI removed (backend auto-classifies)
 import { useChatbotContext } from "./useChatbotContext";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -54,6 +49,9 @@ import { UploadFileInS3, getPublicUrl } from "@/services/upload_file";
 import { getUserId } from "@/constants/getUserId";
 import { AnimatePresence } from "framer-motion";
 import { ToolIndicator } from "./ToolIndicator";
+import { MicButton } from "./MicButton";
+import { VoiceModeSelector } from "./VoiceModeSelector";
+import { VoiceModePanel } from "./VoiceModePanel";
 
 // Context-aware quick action suggestions
 const getQuickActions = (
@@ -179,6 +177,12 @@ export const ChatbotSidePanel: React.FC = () => {
     activeToolCall,
     streamingContent,
     isStreaming,
+    voiceMode,
+    showVoiceSelector,
+    setShowVoiceSelector,
+    enterVoiceMode,
+    exitVoiceMode,
+    voiceLanguage,
   } = useChatbotContext();
 
   const {
@@ -524,7 +528,12 @@ export const ChatbotSidePanel: React.FC = () => {
                       )}
                     >
                       {msg.role === "user" ? (
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        <div>
+                          {msg.attachments?.filter(a => a.type === 'image').map((att, i) => (
+                            <img key={i} src={att.url} alt="attached" className="max-w-[200px] max-h-[150px] rounded-lg mb-1" />
+                          ))}
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                        </div>
                       ) : (
                         <div className="max-w-none group relative">
                           <button
@@ -709,10 +718,22 @@ export const ChatbotSidePanel: React.FC = () => {
             )}
 
             {hasError && !isCreditsExhausted && (
-              <div className="w-full bg-destructive/10 border border-destructive/30 rounded-lg px-2.5 py-1.5 text-center">
-                <p className="text-xs text-destructive">
-                  Something went wrong. Start a new chat.
-                </p>
+              <div className="w-full bg-destructive/10 border border-destructive/30 rounded-lg px-2.5 py-2 text-center space-y-1">
+                <p className="text-xs text-destructive">Something went wrong.</p>
+                <div className="flex gap-2 justify-center">
+                  <button
+                    onClick={() => {
+                      const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+                      if (lastUserMsg) sendMessage(lastUserMsg.content);
+                    }}
+                    className="text-xs text-primary underline"
+                  >
+                    Retry
+                  </button>
+                  <button onClick={startNewChat} className="text-xs text-muted-foreground underline">
+                    New chat
+                  </button>
+                </div>
               </div>
             )}
 
@@ -741,9 +762,9 @@ export const ChatbotSidePanel: React.FC = () => {
       )}
 
       <CardFooter className="border-t border-border/40 px-2.5 py-2 shrink-0 max-h-[45%] overflow-y-auto flex-col gap-2 bg-background">
-        {/* Quick Action Chips - only show when no messages yet or input is empty */}
-        {messages.length === 0 && !inputValue.trim() && (
-          <div className="w-full flex flex-wrap gap-1.5">
+        {/* Quick Action Chips - show when input is empty */}
+        {!inputValue.trim() && (
+          <div className={cn("w-full flex flex-wrap", messages.length === 0 ? "gap-1.5" : "gap-1")}>
             {quickActions.map((action, index) => (
               <button
                 key={index}
@@ -755,37 +776,33 @@ export const ChatbotSidePanel: React.FC = () => {
                   }
                 }}
                 disabled={isLoading || !sessionId}
-                className="inline-flex items-center h-6 px-2.5 text-[11px] font-medium text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary rounded-full border border-transparent hover:border-primary/20 transition-colors disabled:opacity-50"
+                className={cn(
+                  "inline-flex items-center font-medium text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary rounded-full border border-transparent hover:border-primary/20 transition-colors disabled:opacity-50",
+                  messages.length === 0
+                    ? "h-6 px-2.5 text-[11px]"
+                    : "h-5 px-2 text-[10px]"
+                )}
               >
-                <action.icon className="h-3 w-3 mr-1" />
+                <action.icon className={cn("mr-1", messages.length === 0 ? "h-3 w-3" : "h-2.5 w-2.5")} />
                 {action.label}
               </button>
             ))}
+            {/* Voice mode chip */}
+            {chatbotSettings.enabled_modes?.some(m => m.startsWith('voice_')) && (
+              <button
+                onClick={() => setShowVoiceSelector(true)}
+                disabled={isLoading || !sessionId}
+                title="Start a voice conversation"
+                className="inline-flex items-center h-6 px-2.5 text-[11px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
+              >
+                <Mic className="h-3 w-3 mr-1" />
+                Voice Chat
+              </button>
+            )}
           </div>
         )}
 
-        {/* Intent Selector Row */}
-        <div className="w-full flex items-center gap-1.5 mb-0.5">
-          <Select
-            value={selectedIntent}
-            onValueChange={(value) => setSelectedIntent(value as MessageIntent)}
-          >
-            <SelectTrigger className="w-auto h-6 text-[10px] px-2 rounded-md border-0 bg-muted/60 hover:bg-muted text-muted-foreground gap-1">
-              <SelectValue placeholder="Mode" />
-            </SelectTrigger>
-            <SelectContent className="z-[10006] min-w-[90px]">
-              <SelectItem value="general" className="text-xs">
-                General
-              </SelectItem>
-              <SelectItem value="doubt" className="text-xs">
-                Doubt
-              </SelectItem>
-              <SelectItem value="practice" className="text-xs">
-                Practice
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Intent selector removed — backend auto-classifies intent */}
 
         {/* Attachment previews */}
         {pendingAttachments.length > 0 && (
@@ -882,7 +899,7 @@ export const ChatbotSidePanel: React.FC = () => {
             onKeyDown={handleKeyDown}
             disabled={!sessionId || isLoading}
             rows={1}
-            className="flex-1 min-h-[32px] max-h-[120px] px-3 py-1.5 text-[13px] font-mono bg-transparent border-0 shadow-none focus:outline-none focus-visible:ring-0 placeholder:text-muted-foreground/50 resize-none"
+            className="flex-1 min-h-[32px] max-h-[120px] px-3 py-1.5 text-[13px] bg-transparent border-0 shadow-none focus:outline-none focus-visible:ring-0 placeholder:text-muted-foreground/50 resize-none"
             style={{ height: 'auto', overflow: 'hidden' }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement;
@@ -912,6 +929,14 @@ export const ChatbotSidePanel: React.FC = () => {
               <ImagePlus className="h-3.5 w-3.5" />
             )}
           </button>
+          <MicButton
+            sessionId={sessionId || ""}
+            disabled={!sessionId || isLoading}
+            onTranscript={(text) => {
+              setInputValue(text);
+              // Don't auto-send — let user review and hit Enter
+            }}
+          />
           <Button
             onClick={() => {
               const readyAttachments = pendingAttachments.filter(a => a.url);
@@ -932,6 +957,29 @@ export const ChatbotSidePanel: React.FC = () => {
           </Button>
         </div>
       </CardFooter>
+
+      {showVoiceSelector && (
+        <VoiceModeSelector
+          open={showVoiceSelector}
+          onClose={() => setShowVoiceSelector(false)}
+          onSelect={(mode, language) => {
+            setShowVoiceSelector(false);
+            enterVoiceMode(mode, language);
+          }}
+          enabledModes={chatbotSettings.enabled_modes}
+        />
+      )}
+
+      {voiceMode && sessionId && (
+        <VoiceModePanel
+          sessionId={sessionId}
+          mode={voiceMode as any}
+          language={voiceLanguage}
+          voice="shubh"
+          onClose={exitVoiceMode}
+          chatbotSettings={chatbotSettings}
+        />
+      )}
     </div>
   );
 };

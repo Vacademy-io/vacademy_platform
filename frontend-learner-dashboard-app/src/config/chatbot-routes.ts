@@ -1,66 +1,71 @@
 /**
- * Chatbot Route Configuration
- * 
- * This file acts as the central source of truth for where the chatbot should be displayed.
- * It allows for both "allowlist" (explicitly enable) and "blocklist" (explicitly disable) validation.
+ * Page categories mapped to route patterns.
+ * Each category has route prefixes that match learner app routes.
  */
+const PAGE_CATEGORY_ROUTES: Record<string, string[]> = {
+  dashboard: ['/dashboard'],
+  all_courses: ['/study-library'],
+  course_details: ['/study-library/courses'],
+  study_material: ['/study-library/courses/course-details'],
+  catalogue: ['/$tagName', '/catalogue'],
+};
 
-// Routes where the chatbot is explicitly DISABLED
-// These are exact match or startWith patterns
-export const CHATBOT_DISABLED_ROUTES = [
-  "/", // Home/Landing
-  "/login",
-  "/signup",
-  "/register",
-  "/privacy-policy",
-  "/terms-and-conditions",
-  "/referral",
-  "/live-class-guest",
-  "/institute-selection",
-  "/delete-user",
-  "/change-password",
-  "/logout",
-  "/dashboard",
-  "/learner-invitation-response",
-  "/payment-result",
-  "/audience-response",
-  // Add other routes here to hide the chatbot
-  // "/dashboard", // Example: uncomment to hide on dashboard
+// Always hide on these routes regardless of settings
+const ALWAYS_HIDDEN_ROUTES = [
+  '/login', '/signup', '/register', '/privacy-policy',
+  '/terms-and-conditions', '/referral', '/institute-selection',
+  '/delete-user', '/change-password', '/logout',
+  '/learner-invitation-response', '/payment-result', '/audience-response',
+  '/live-class-guest',
 ];
 
-// Routes where the chatbot is explicitly ENABLED
-// If this list is non-empty, ONLY routes matching these patterns will show the chatbot
-// If this list is empty, all routes NOT in DISABLED_ROUTES will show the chatbot
-export const CHATBOT_ENABLED_ROUTES: string[] = [
-  // Example: 
-  // "/slides",
-  // "/courses"
-];
+// Active enabled page categories (set from admin settings)
+let activePages: string[] = ['dashboard', 'all_courses', 'course_details', 'study_material'];
 
 /**
- * Checks if the chatbot should be visible on a given path
- * @param pathname The current route path
- * @returns boolean
+ * Update enabled page categories from admin settings.
  */
-export const isChatbotVisibleOnRoute = (pathname: string): boolean => {
-  // 1. First check if it's explicitly disabled (Blocklist)
-  // We check for exact matches for root ("/") or startsWith for sub-routes
-  const isDisabled = CHATBOT_DISABLED_ROUTES.some(route => {
-    if (route === "/") return pathname === "/";
-    return pathname.startsWith(route);
-  });
+export function setChatbotPages(pages: string[]): void {
+  activePages = pages.length > 0 ? pages : ['dashboard', 'all_courses', 'course_details', 'study_material'];
+}
 
-  if (isDisabled) return false;
-
-  // 2. If valid enabled routes are defined, check against them (Allowlist)
-  // If no specific enabled routes are defined, we default to ALLOW ALL (except disabled ones)
-  if (CHATBOT_ENABLED_ROUTES.length > 0) {
-    const isExplicitlyEnabled = CHATBOT_ENABLED_ROUTES.some(route => 
-      pathname.startsWith(route)
-    );
-    return isExplicitlyEnabled;
+/**
+ * Check if chatbot should be visible on the given route.
+ */
+export function isChatbotVisibleOnRoute(pathname: string): boolean {
+  // 1. Always hide on auth/system routes
+  if (ALWAYS_HIDDEN_ROUTES.some(route => pathname === route || pathname.startsWith(route + '/'))) {
+    return false;
   }
 
-  // 3. Default behavior: Visible on all logged-in routes not explicitly disabled
-  return true;
-};
+  // 2. Check if any enabled page category matches this route
+  for (const pageKey of activePages) {
+    const routes = PAGE_CATEGORY_ROUTES[pageKey];
+    if (!routes) continue;
+
+    for (const route of routes) {
+      // Handle dynamic route segments (e.g., /$tagName)
+      if (route.startsWith('/$')) {
+        // Catalogue pages: any top-level dynamic route that's not a known system route
+        // Match pattern: /something where 'something' is not a known route prefix
+        const firstSegment = '/' + pathname.split('/').filter(Boolean)[0];
+        if (firstSegment && !ALWAYS_HIDDEN_ROUTES.includes(firstSegment) &&
+            !Object.values(PAGE_CATEGORY_ROUTES).flat().some(r => !r.startsWith('/$') && firstSegment.startsWith(r))) {
+          return true;
+        }
+      } else if (pathname === route || pathname.startsWith(route + '/') || pathname.startsWith(route + '?')) {
+        return true;
+      }
+    }
+  }
+
+  // 3. Home page ("/") — hide by default
+  if (pathname === '/') return false;
+
+  // 4. Default: hide (only show on explicitly enabled categories)
+  return false;
+}
+
+// Keep old exports for backwards compatibility
+export const CHATBOT_DISABLED_ROUTES = ALWAYS_HIDDEN_ROUTES;
+export const CHATBOT_ENABLED_ROUTES: string[] = [];

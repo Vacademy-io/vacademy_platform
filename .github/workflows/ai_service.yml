@@ -14,6 +14,7 @@ jobs:
       APP_ENV: stage
       RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
       RUNPOD_ENDPOINT_ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}
+      SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

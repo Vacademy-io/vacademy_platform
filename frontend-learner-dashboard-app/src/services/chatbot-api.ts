@@ -6,6 +6,7 @@ import { QuizSubmission } from "@/components/chatbot/types";
 import { AI_SERVICE_URL } from "@/constants/urls";
 
 export type ContextType = "slide" | "course_details" | "general";
+export type SessionMode = "text" | "voice_interview" | "voice_doubt" | "voice_oral_test";
 export type MessageType =
   | "user"
   | "assistant"
@@ -52,6 +53,7 @@ export interface InitSessionRequest {
   context_type?: ContextType;
   context_meta?: ContextMeta;
   initial_message?: string;
+  session_mode?: SessionMode;
 }
 
 export interface InitSessionResponse {
@@ -146,6 +148,7 @@ class ChatbotAPIService {
     initialMessage?: string,
     contextType?: ContextType,
     contextMeta?: ContextMeta,
+    sessionMode?: SessionMode,
   ): Promise<InitSessionResponse> {
     const userId = await this.getUserId();
     const userDetails = await getUserBasicDetails([userId]);
@@ -159,6 +162,7 @@ class ChatbotAPIService {
       user_name: name || "Learner",
       context_type: contextType,
       context_meta: contextMeta,
+      session_mode: sessionMode || "text",
     };
 
     console.log("Initializing session with:", request);
@@ -221,6 +225,27 @@ class ChatbotAPIService {
     );
 
     return response.data;
+  }
+
+  async sendAudioMessage(
+    sessionId: string,
+    audioBlob: Blob,
+    language: string = "en-IN",
+  ): Promise<{ transcript: string; message_id: number }> {
+    const formData = new FormData();
+    formData.append("file", audioBlob, "audio.webm");
+    formData.append("language", language);
+    const response = await axios.post(
+      `${this.baseUrl}/chat-agent/session/${sessionId}/audio-message`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" }, timeout: 30000 }
+    );
+    return response.data;
+  }
+
+  getVoiceWebSocketUrl(sessionId: string): string {
+    const wsBase = this.baseUrl.replace("https://", "wss://").replace("http://", "ws://");
+    return `${wsBase}/chat-agent/session/${sessionId}/voice`;
   }
 
   async updateContext(

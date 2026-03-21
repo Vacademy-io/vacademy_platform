@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,7 @@ from ..schemas.chat_agent import (
     AIStatus,
 )
 from ..services.ai_chat_agent_service import AiChatAgentService
+from ..services.sarvam_service import SarvamService
 from ..dependencies import get_chat_agent_service
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ async def init_session(
             context_meta=request.context_meta,
             initial_message=request.initial_message,
             user_name=request.user_name,
+            session_mode=request.session_mode.value if request.session_mode else "text",
         )
         
         return InitSessionResponse(
@@ -318,6 +320,59 @@ async def debug_active_streams(
         "total_sessions": len(active_streams),
         "total_listeners": sum(active_streams.values())
     }
+
+
+@router.post(
+    "/session/{session_id}/audio-message",
+    summary="Send an audio message to a chat session",
+    description="Accept an audio file, transcribe via Sarvam STT, and process as a normal text message.",
+)
+async def send_audio_message(
+    session_id: str,
+    file: UploadFile = File(...),
+    language: str = Form("en-IN"),
+    service: AiChatAgentService = Depends(get_chat_agent_service),
+):
+    """
+    Accept audio file, transcribe via Sarvam STT, process as normal text message.
+    Returns { transcript, message_id, status }.
+    """
+    try:
+        # 1. Read audio file bytes
+        audio_bytes = await file.read()
+        if not audio_bytes:
+            raise HTTPException(status_code=400, detail="Empty audio file")
+
+        # 2. Transcribe via Sarvam STT
+        sarvam_service = SarvamService()
+        transcript = await sarvam_service.speech_to_text(
+            audio_bytes=audio_bytes,
+            language=language,
+        )
+
+        if not transcript.strip():
+            raise HTTPException(status_code=422, detail="Could not transcribe audio — no speech detected")
+
+        # 3. Process as a normal text message
+        message_id, ai_status = await service.send_message(
+            session_id=session_id,
+            message=transcript,
+        )
+
+        # 4. Return transcript and message id
+        return {
+            "transcript": transcript,
+            "message_id": message_id,
+            "status": ai_status,
+        }
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error processing audio message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 __all__ = ["router"]

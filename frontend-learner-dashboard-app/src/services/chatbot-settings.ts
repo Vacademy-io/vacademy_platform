@@ -3,12 +3,18 @@ import { BASE_URL } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { Preferences } from "@capacitor/preferences";
 
-export const DEFAULT_CHATBOT_SETTINGS = {
-  assistant_name: "Savir",
+export const DEFAULT_CHATBOT_SETTINGS: ChatbotSettingsData = {
+  assistant_name: "Vacademy Chatbot",
   institute_name: "Vacademy",
   avatarUrl:
     "https://res.cloudinary.com/dwtmtd0oz/image/upload/t_chatbot/chatbot-avatar_xsyf0n",
   enable: false,
+  enabled_modes: ['general', 'doubt', 'practice'],
+  chatbot_pages: ['dashboard', 'all_courses', 'course_details', 'study_material'],
+  voice_settings: {
+    default_language: 'en-IN',
+    default_voice: 'shubh',
+  },
 };
 export const CHATBOT_SETTINGS_KEY = "CHATBOT_SETTING";
 const LS_KEY = `${CHATBOT_SETTINGS_KEY}_cache_v1`;
@@ -21,6 +27,12 @@ export interface ChatbotSettingsData {
   assistant_name: string;
   institute_name: string;
   avatarUrl: string;
+  enabled_modes?: string[];
+  chatbot_pages?: string[];
+  voice_settings?: {
+    default_language: string;
+    default_voice: string;
+  };
 }
 
 // export async function getChatbotSettings(): Promise<ChatbotSettingsData> {

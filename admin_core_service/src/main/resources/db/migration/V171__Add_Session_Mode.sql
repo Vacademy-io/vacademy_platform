@@ -1,0 +1,1 @@
+ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS session_mode VARCHAR(30) DEFAULT 'text' NOT NULL;

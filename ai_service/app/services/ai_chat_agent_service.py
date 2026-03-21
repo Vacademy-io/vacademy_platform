@@ -120,6 +120,7 @@ class AiChatAgentService:
         context_meta: Optional[Dict[str, Any]] = None,
         initial_message: Optional[str] = None,
         user_name: Optional[str] = None,
+        session_mode: Optional[str] = "text",
     ) -> tuple[str, str]:
         """
         Create a new chat session and optionally process initial message.
@@ -139,6 +140,7 @@ class AiChatAgentService:
             institute_id=institute_id,
             context_type=context_type,
             context_meta=context_meta,
+            session_mode=session_mode or "text",
         )
         
         logger.info(f"Created chat session {session.id} for user {user_id}")

@@ -1,6 +1,6 @@
 import React, { createContext } from "react";
 import { ChatMessage, QuizSubmission } from "./types";
-import { AIStatus, MessageIntent } from "@/services/chatbot-api";
+import { AIStatus, MessageIntent, SessionMode } from "@/services/chatbot-api";
 import { ChatbotSettingsData } from "@/services/chatbot-settings";
 import { QueuedMessage } from "@/services/offline-queue";
 
@@ -33,6 +33,12 @@ export interface ChatbotContextType {
   isStreaming: boolean;
   isOffline: boolean;
   pendingMessages: QueuedMessage[];
+  voiceMode: SessionMode | null;
+  showVoiceSelector: boolean;
+  setShowVoiceSelector: (show: boolean) => void;
+  enterVoiceMode: (mode: SessionMode, language?: string) => Promise<void>;
+  exitVoiceMode: () => void;
+  voiceLanguage: string;
 }
 
 export const ChatbotContext = createContext<ChatbotContextType | undefined>(

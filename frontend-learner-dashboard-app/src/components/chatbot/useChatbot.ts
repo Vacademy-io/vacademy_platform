@@ -9,6 +9,7 @@ import {
   MessageEvent,
   AIStatus,
   MessageIntent,
+  SessionMode,
 } from "@/services/chatbot-api";
 import { enqueueMessage, peekQueue, dequeueMessage, QueuedMessage } from "@/services/offline-queue";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
@@ -25,7 +26,7 @@ import {
   DEFAULT_CHATBOT_SETTINGS,
   getChatbotSettings,
 } from "@/services/chatbot-settings";
-import { isChatbotVisibleOnRoute } from "@/config/chatbot-routes";
+import { isChatbotVisibleOnRoute, setChatbotPages } from "@/config/chatbot-routes";
 
 export const useChatbot = () => {
   // Check if parent portal is active
@@ -52,6 +53,11 @@ export const useChatbot = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [pendingMessages, setPendingMessages] = useState<QueuedMessage[]>([]);
+  const [voiceMode, setVoiceMode] = useState<SessionMode | null>(null);
+  const [showVoiceSelector, setShowVoiceSelector] = useState(false);
+  const [voiceLanguage, setVoiceLanguage] = useState(
+    chatbotSettings.voice_settings?.default_language || "en-IN"
+  );
 
   // Ref to scroll to bottom
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -143,6 +149,10 @@ export const useChatbot = () => {
         getChatbotSettings(true).then((settings) => {
           setChatbotSettings(settings);
           setInstituteName(settings.institute_name);
+          // Update chatbot page visibility from admin settings
+          if (settings.chatbot_pages) {
+            setChatbotPages(settings.chatbot_pages);
+          }
         });
       } catch (error) {
         console.error("Failed to fetch chatbot settings:", error);
@@ -808,6 +818,36 @@ export const useChatbot = () => {
     await initializeSession();
   }, [sessionId, initializeSession]);
 
+  const enterVoiceMode = useCallback(async (mode: SessionMode, language: string = chatbotSettings.voice_settings?.default_language || "en-IN") => {
+    // Close current text session if exists
+    if (sessionId) {
+      try { await chatbotAPI.closeSession(sessionId); } catch {}
+    }
+
+    setVoiceMode(mode);
+    setVoiceLanguage(language);
+    setMessages([]);
+    setIsInitializing(true);
+
+    try {
+      const contextType = getContextType();
+      const contextMeta = await buildContextMeta();
+      const response = await chatbotAPI.initSession(undefined, contextType, contextMeta, mode);
+      setSessionId(response.session_id);
+    } catch (error) {
+      console.error("Failed to start voice session:", error);
+      setVoiceMode(null);
+    } finally {
+      setIsInitializing(false);
+    }
+  }, [sessionId, getContextType, buildContextMeta]);
+
+  const exitVoiceMode = useCallback(() => {
+    setVoiceMode(null);
+    setShowVoiceSelector(false);
+    // Don't close the session — the VoiceModePanel handles that
+  }, []);
+
   const closeSession = useCallback(async () => {
     // Close existing session
     if (sessionId) {
@@ -869,5 +909,11 @@ export const useChatbot = () => {
     isStreaming,
     isOffline,
     pendingMessages,
+    voiceMode,
+    showVoiceSelector,
+    setShowVoiceSelector,
+    enterVoiceMode,
+    exitVoiceMode,
+    voiceLanguage,
   };
 };

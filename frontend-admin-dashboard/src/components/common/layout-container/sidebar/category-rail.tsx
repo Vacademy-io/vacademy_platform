@@ -69,16 +69,29 @@ const ActivePill: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 /** Extracted component to reduce cognitive complexity of CategoryRail */
-const CategoryButton: React.FC<{
-    cat: CategoryConfig;
+function CategoryButton({
+    label,
+    categoryId,
+    Icon,
+    isActive,
+    isLocked,
+    activeBg,
+    activeIconClass,
+    activeTextClass,
+    onCategoryChange,
+    onLockedClick,
+}: {
+    label: string;
+    categoryId: CategoryId;
+    Icon: React.FC<{ size: number; weight: string; className: string }>;
     isActive: boolean;
     isLocked: boolean | undefined;
-    onCategoryChange: (id: CategoryId) => void;
-    navigate: ReturnType<typeof useNavigate>;
-}> = ({ cat, isActive, isLocked, onCategoryChange, navigate }) => {
-    const colors =
-        cat.id !== 'RECENT' ? CATEGORY_COLORS[cat.id as 'CRM' | 'LMS' | 'AI'] : null;
-
+    activeBg?: string;
+    activeIconClass?: string;
+    activeTextClass?: string;
+    onCategoryChange: (categoryId: CategoryId) => void;
+    onLockedClick: () => void;
+}) {
     return (
         <button
             className={cn(
@@ -86,42 +99,42 @@ const CategoryButton: React.FC<{
                 'hover:bg-white/10',
                 isLocked && 'cursor-not-allowed opacity-60'
             )}
-            aria-label={`${cat.label} category${isActive ? ' (active)' : ''}${isLocked ? ' (locked)' : ''}`}
+            aria-label={`${label} category${isActive ? ' (active)' : ''}${isLocked ? ' (locked)' : ''}`}
             aria-current={isActive ? 'true' : undefined}
             onClick={() => {
                 if (isLocked) {
-                    navigate({ to: '/locked-feature', search: { feature: `${cat.label} Category` } });
+                    onLockedClick();
                     return;
                 }
-                onCategoryChange(cat.id);
+                onCategoryChange(categoryId);
             }}
         >
-            {isActive && <ActivePill className={colors?.railActiveBg} />}
+            {isActive && <ActivePill className={activeBg} />}
             <span className="relative z-10">
                 {isLocked ? (
                     <LockKey size={22} weight="duotone" className="text-neutral-400" />
                 ) : (
-                    React.createElement(cat.icon, {
-                        size: 22,
-                        weight: isActive ? 'fill' : 'regular',
-                        className: cn(
+                    <Icon
+                        size={22}
+                        weight={isActive ? 'fill' : 'regular'}
+                        className={cn(
                             'transition-colors duration-200',
-                            isActive ? colors?.railIconActive || 'text-primary-600' : 'text-white/70'
-                        ),
-                    })
+                            isActive ? activeIconClass || 'text-primary-600' : 'text-white/70'
+                        )}
+                    />
                 )}
             </span>
             <span
                 className={cn(
                     'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
-                    isActive ? colors?.text || 'text-white' : 'text-white/70'
+                    isActive ? activeTextClass || 'text-white' : 'text-white/70'
                 )}
             >
-                {cat.label}
+                {label}
             </span>
         </button>
     );
-};
+}
 
 export const CategoryRail: React.FC<CategoryRailProps> = ({
     activeCategory,
@@ -172,14 +185,21 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
         const isLocked =
             cat.id !== 'RECENT' &&
             roleDisplay?.sidebarCategories?.find((c) => c.id === cat.id)?.locked;
+        const colors =
+            cat.id !== 'RECENT' ? CATEGORY_COLORS[cat.id as 'CRM' | 'LMS' | 'AI'] : undefined;
 
         const buttonContent = (
             <CategoryButton
-                cat={cat}
+                label={cat.label}
+                categoryId={cat.id}
+                Icon={cat.icon}
                 isActive={isActive}
                 isLocked={isLocked}
+                activeBg={colors?.railActiveBg}
+                activeIconClass={colors?.railIconActive}
+                activeTextClass={colors?.text}
                 onCategoryChange={onCategoryChange}
-                navigate={navigate}
+                onLockedClick={() => navigate({ to: '/locked-feature', search: { feature: `${cat.label} Category` } })}
             />
         );
 

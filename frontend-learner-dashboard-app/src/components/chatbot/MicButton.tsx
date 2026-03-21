@@ -61,7 +61,8 @@ export const MicButton: React.FC<MicButtonProps> = ({
       setIsTranscribing(true);
       try {
         const formData = new FormData();
-        formData.append("audio", blob, "recording.webm");
+        formData.append("file", blob, "recording.webm");
+        formData.append("language", "auto");
 
         const response = await authenticatedAxiosInstance.post(
           `${AI_SERVICE_URL}/chat-agent/session/${sessionId}/audio-message`,

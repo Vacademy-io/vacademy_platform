@@ -330,7 +330,7 @@ async def debug_active_streams(
 async def send_audio_message(
     session_id: str,
     file: UploadFile = File(...),
-    language: str = Form("en-IN"),
+    language: str = Form("auto"),
     service: AiChatAgentService = Depends(get_chat_agent_service),
 ):
     """

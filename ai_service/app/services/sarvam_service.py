@@ -233,7 +233,7 @@ class SarvamService:
     async def speech_to_text(
         self,
         audio_bytes: bytes,
-        language: str = "en-IN",
+        language: str = "auto",
     ) -> str:
         """Transcribe audio bytes to text using Sarvam Saaras v3.
 
@@ -242,7 +242,7 @@ class SarvamService:
 
         Args:
             audio_bytes: Raw audio data (WAV format recommended).
-            language: BCP-47 language code (default ``en-IN``).
+            language: BCP-47 language code, or ``"auto"`` for auto-detection.
 
         Returns:
             Transcript string, or empty string on failure.
@@ -252,8 +252,12 @@ class SarvamService:
 
         headers = {
             "api-subscription-key": self.api_key,
-            # Content-Type is set automatically by httpx for multipart
         }
+
+        form_data: dict = {"model": "saaras:v3"}
+        # Only send language_code if explicitly specified (not auto-detect)
+        if language and language != "auto":
+            form_data["language_code"] = language
 
         try:
             async with httpx.AsyncClient(timeout=REST_TIMEOUT_SECONDS) as client:
@@ -261,10 +265,7 @@ class SarvamService:
                     STT_ENDPOINT,
                     headers=headers,
                     files={"file": ("audio.wav", audio_bytes, "audio/wav")},
-                    data={
-                        "model": "saaras:v3",
-                        "language_code": language,
-                    },
+                    data=form_data,
                 )
                 response.raise_for_status()
                 data = response.json()

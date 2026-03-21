@@ -84,6 +84,7 @@ jobs:
       - name: Deploy to Kubernetes
         run: |
           kubectl set env deployment/admin-core-service \
+            environment=stage \
             DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
             DB_USERNAME=${{ secrets.DB_USERNAME }} \
             APP_USERNAME=${{ secrets.APP_USERNAME }} \

@@ -1,0 +1,93 @@
+# 1. Tell Cert-Manager how to get the certificate (Let's Encrypt)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    email: YOUR_EMAIL@example.com
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+---
+# 2. Route the traffic and apply the SSL
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vet-services-ingress
+  namespace: default
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - api.letstalkvet.com
+    secretName: vet-tls-secret
+  rules:
+  - host: api.letstalkvet.com
+    http:
+      paths:
+      - path: /admin-core-service
+        pathType: Prefix
+        backend:
+          service:
+            name: admin-core-service
+            port:
+              number: 8072
+      - path: /auth-service
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-service
+            port:
+              number: 8071
+      - path: /login/oauth2
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-service
+            port:
+              number: 8071
+      - path: /ai-service
+        pathType: Prefix
+        backend:
+          service:
+            name: ai-service
+            port:
+              number: 8077
+      - path: /media-service
+        pathType: Prefix
+        backend:
+          service:
+            name: media-service
+            port:
+              number: 8075
+      - path: /notification-service
+        pathType: Prefix
+        backend:
+          service:
+            name: notification-service
+            port:
+              number: 8076
+      - path: /assessment-service
+        pathType: Prefix
+        backend:
+          service:
+            name: assessment-service
+            port:
+              number: 8074
+      - path: /community-service
+        pathType: Prefix
+        backend:
+          service:
+            name: community-service
+            port:
+              number: 8073

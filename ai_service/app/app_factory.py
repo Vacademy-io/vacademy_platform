@@ -25,6 +25,7 @@ from .routers.super_admin import router as super_admin_router
 from .routers.content_ingestion import router as content_ingestion_router
 from .routers.learning_analytics import router as learning_analytics_router
 from .routers.mathpix import router as mathpix_router
+from .routers.knowledge_base import router as knowledge_base_router
 
 
 
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
     app.include_router(content_ingestion_router, prefix=settings.api_base_path)
     app.include_router(learning_analytics_router, prefix=settings.api_base_path)
     app.include_router(mathpix_router, prefix=settings.api_base_path)
+    app.include_router(knowledge_base_router, prefix=settings.api_base_path)
 
     return app
 

@@ -163,6 +163,7 @@ def get_chat_agent_service(db: Session = Depends(db_dependency)) -> AiChatAgentS
         tool_manager=tool_manager,
         llm_client=llm_client,
         institute_settings=institute_settings,
+        rag_service=rag_service,
     )
 
 
@@ -184,7 +185,13 @@ def get_institute_from_api_key(
         )
     return institute_id
 
-__all__ = ["get_course_outline_service", "get_image_service", "get_ai_chat_service", "get_chat_agent_service", "get_institute_from_api_key"]
+def get_embedding_service(db: Session = Depends(db_dependency)) -> EmbeddingService:
+    """Create an EmbeddingService with a fresh DB session."""
+    api_key_resolver = ApiKeyResolver(db)
+    return EmbeddingService(api_key_resolver)
+
+
+__all__ = ["get_course_outline_service", "get_image_service", "get_ai_chat_service", "get_chat_agent_service", "get_institute_from_api_key", "get_embedding_service"]
 
 
 

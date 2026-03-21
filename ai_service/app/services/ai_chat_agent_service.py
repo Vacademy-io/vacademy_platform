@@ -49,6 +49,7 @@ class AiChatAgentService:
         tool_manager: ToolManagerService,
         llm_client: ChatLLMClient,
         institute_settings: InstituteSettingsService,
+        rag_service=None,
     ):
         self.db = db_session
         self.session_repo = ChatSessionRepository(db_session)
@@ -57,7 +58,8 @@ class AiChatAgentService:
         self.tool_manager = tool_manager
         self.llm_client = llm_client
         self.institute_settings = institute_settings
-        
+        self.rag_service = rag_service
+
         # Initialize quiz, intent, context window, and analytics services
         self.quiz_service = QuizService(llm_client)
         self.intent_classifier = IntentClassifierService()
@@ -692,6 +694,34 @@ class AiChatAgentService:
                 is_greeting=False,
                 is_doubt=(intent == MessageIntent.DOUBT)
             )
+
+            # Auto-search Knowledge Base for relevant institute knowledge
+            kb_context = ""
+            if self.rag_service:
+                try:
+                    kb_results = await self.rag_service.search(
+                        query=latest_msg.content,
+                        institute_id=institute_id,
+                        top_k=3,
+                        similarity_threshold=0.35,
+                    )
+                    # Filter to only knowledge_base items (not slide content etc.)
+                    kb_items = [r for r in kb_results if r.get("source_type") == "knowledge_base"]
+                    if kb_items:
+                        kb_snippets = []
+                        for item in kb_items:
+                            title = item.get("metadata", {}).get("title", "")
+                            category = item.get("metadata", {}).get("category", "")
+                            text = item.get("content_text", "")
+                            header = f"[{category.upper()}] {title}" if title else f"[{category.upper()}]"
+                            kb_snippets.append(f"- {header}: {text}")
+                        kb_context = "\n\nINSTITUTE KNOWLEDGE BASE (use this information when relevant to the student's question):\n" + "\n".join(kb_snippets)
+                        logger.info(f"KB search found {len(kb_items)} relevant items for session {session_id}")
+                except Exception as e:
+                    logger.warning(f"KB search failed (non-critical): {e}")
+
+            if kb_context:
+                system_prompt += kb_context
 
             # 6. Build messages for LLM
             messages = [{"role": "system", "content": system_prompt}]

@@ -1,15 +1,56 @@
-# Vacademy Platform
+<p align="center">
+  <img src="public/images/vacademy.svg" alt="Vacademy" width="200" />
+</p>
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Vacademy-io/vacademy_platform)
+<h3 align="center">AI-powered, open-source Learning Management System</h3>
+
+<p align="center">
+  <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3" /></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" /></a>
+  <a href="https://deepwiki.com/Vacademy-io/vacademy_platform"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
+</p>
+
+<p align="center">
+  <a href="https://vacademy.io"><strong>Website</strong></a> &middot;
+  <a href="https://dash.vacademy.io"><strong>Admin Portal</strong></a> &middot;
+  <a href="https://learner.vacademy.io"><strong>Learner Portal</strong></a> &middot;
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+</p>
+
+---
+
+## Screenshots
+
+### Admin Portal
+
+| Course Explorer | AI Features |
+|:-:|:-:|
+| ![Course Explorer](public/admin/course-explorer.png) | ![AI Features](public/admin/ai-features.png) |
+
+| Learner Management | Package Management |
+|:-:|:-:|
+| ![Learner Management](public/admin/learner-management.png) | ![Package Management](public/admin/package-management.png) |
+
+### Learner Portal
+
+| Dashboard | AI Chat Assistant |
+|:-:|:-:|
+| ![Learner Dashboard](public/learner/learner-dashboard.png) | ![AI Chat Assistant](public/learner/ai-chat-assistant.png) |
+
+| Course Viewer |
+|:-:|
+| ![Course Viewer](public/learner/course-viewer.png) |
+
+---
 
 ## 📚 Documentation Index
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| **[Local Development Guide](LOCAL_DEVELOPMENT.md)** | Complete setup for local development | Developers |
-| **[GitHub Secrets Configuration](GITHUB_SECRETS.md)** | Production secrets management | DevOps/Administrators |
-| **[Security Migration Summary](SECURITY_MIGRATION_SUMMARY.md)** | Security improvements overview | Technical Teams |
-| **[Stage Properties Migration](STAGE_PROPERTIES_MIGRATION_UPDATE.md)** | Environment variable migration details | DevOps/Developers |
+| **[Local Development Guide](docs/deployment/LOCAL_DEVELOPMENT.md)** | Complete setup for local development | Developers |
+| **[GitHub Secrets Configuration](docs/deployment/GITHUB_SECRETS.md)** | Production secrets management | DevOps/Administrators |
+| **[Security Migration Summary](docs/guides/SECURITY_MIGRATION_SUMMARY.md)** | Security improvements overview | Technical Teams |
+| **[Stage Properties Migration](docs/guides/STAGE_PROPERTIES_MIGRATION_UPDATE.md)** | Environment variable migration details | DevOps/Developers |
 
 ## 🚀 Quick Links
 
@@ -204,8 +245,8 @@ Before installing Vacademy, ensure you have:
 # Clone and setup (2 minutes total)
 git clone https://github.com/Vacademy-io/vacademy_platform.git
 cd vacademy_platform
-chmod +x local-dev-setup.sh
-./local-dev-setup.sh
+chmod +x scripts/local-dev-setup.sh
+./scripts/local-dev-setup.sh
 ```
 
 **What the script does automatically:**
@@ -274,10 +315,39 @@ All sensitive configuration is managed through environment variables:
 ### 📚 Documentation References
 
 For detailed setup and configuration, see:
-- **[Local Development Guide](LOCAL_DEVELOPMENT.md)** - Complete local setup instructions
-- **[GitHub Secrets Configuration](GITHUB_SECRETS.md)** - Production secrets management
-- **[Security Migration Summary](SECURITY_MIGRATION_SUMMARY.md)** - Security improvements overview
-- **[Stage Properties Migration](STAGE_PROPERTIES_MIGRATION_UPDATE.md)** - Environment variable migration details
+- **[Local Development Guide](docs/deployment/LOCAL_DEVELOPMENT.md)** - Complete local setup instructions
+- **[GitHub Secrets Configuration](docs/deployment/GITHUB_SECRETS.md)** - Production secrets management
+- **[Security Migration Summary](docs/guides/SECURITY_MIGRATION_SUMMARY.md)** - Security improvements overview
+- **[Stage Properties Migration](docs/guides/STAGE_PROPERTIES_MIGRATION_UPDATE.md)** - Environment variable migration details
+
+## 📁 Monorepo Structure
+
+```
+vacademy_platform/
+├── frontend-admin-dashboard/       # Admin dashboard (React + Vite + TanStack)
+├── frontend-learner-dashboard-app/ # Learner dashboard (React + Vite + Capacitor)
+├── admin_core_service/             # Course management, admin operations
+├── ai_service/                     # AI-powered features (Python)
+├── assessment_service/             # Testing, evaluation, reports
+├── auth_service/                   # Authentication, OAuth2
+├── common_service/                 # Shared utilities and models
+├── community_service/              # Community features
+├── media_service/                  # File storage, media processing
+├── notification_service/           # Email, WhatsApp, push notifications
+├── engage-client/                  # Engagement client
+├── docs/                           # Documentation
+│   ├── deployment/                 # Setup & deployment guides
+│   ├── guides/                     # Feature & integration guides
+│   ├── sentry/                     # Observability & logging docs
+│   └── jumpstart/                  # Jumpstart program docs
+├── scripts/                        # Dev & deployment scripts
+│   ├── db/                         # Database setup SQL
+│   └── k8s/                        # Kubernetes scripts
+├── vacademy_devops/                # Helm charts & DevOps config
+├── docker-compose.yml              # Local development orchestration
+├── pom.xml                         # Maven parent POM
+└── Dockerfile
+```
 
 ## 📋 Service Access Points
 
@@ -318,7 +388,7 @@ The platform includes two React applications with TypeScript:
 
 #### **Learner Dashboard** (Mobile-First)
 ```bash
-cd frontend-learner-dashboard
+cd frontend-learner-dashboard-app
 npm install && npm run dev
 ```
 - **Purpose**: Student interface for courses, assessments, progress tracking
@@ -448,7 +518,7 @@ A comprehensive administration interface for educational institutions and instru
 ## 🚀 Deployment & Operations
 
 ### **Local Development**
-- **One-command setup** with `./local-dev-setup.sh`
+- **One-command setup** with `./scripts/local-dev-setup.sh`
 - **Docker Compose** orchestration for all services
 - **Automatic database setup** with separate schemas per service
 - **Hot reload** and easy debugging capabilities
@@ -490,10 +560,10 @@ We welcome contributions! Here's how to get started:
 - **Documentation**: Comprehensive guides in the `/docs` folder
 
 ### **Key Resources**
-- **[Local Development Guide](LOCAL_DEVELOPMENT.md)** - Complete setup instructions
+- **[Local Development Guide](docs/deployment/LOCAL_DEVELOPMENT.md)** - Complete setup instructions
 - **[API Documentation](http://localhost/swagger-ui.html)** - Interactive API docs (when running locally)
-- **[Architecture Docs](SECURITY_MIGRATION_SUMMARY.md)** - System design and security
-- **[Deployment Guide](GITHUB_SECRETS.md)** - Production deployment instructions
+- **[Architecture Docs](docs/guides/SECURITY_MIGRATION_SUMMARY.md)** - System design and security
+- **[Deployment Guide](docs/deployment/GITHUB_SECRETS.md)** - Production deployment instructions
 
 ---
 
@@ -530,7 +600,7 @@ We welcome contributions! Here's how to get started:
 🌐 **Multi-Platform**: Web + mobile apps for learners and administrators  
 
 **🎉 Ready to transform education with AI-powered learning?**  
-**Start here: [Local Development Guide](LOCAL_DEVELOPMENT.md) → Get running in 2 minutes!**
+**Start here: [Local Development Guide](docs/deployment/LOCAL_DEVELOPMENT.md) → Get running in 2 minutes!**
 
 ---
 

@@ -4,12 +4,35 @@ Service for resolving context based on context_type and context_meta.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Dict, Any, Optional
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+
+def strip_html(html: str, max_length: int = 4000) -> str:
+    """Strip HTML tags, decode entities, normalize whitespace, and truncate."""
+    if not html:
+        return ""
+    # Remove script/style blocks
+    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    # Replace block-level tags with newlines
+    text = re.sub(r'<(br|p|div|li|h[1-6]|tr)[^>]*/?\s*>', '\n', text, flags=re.IGNORECASE)
+    # Strip remaining tags
+    text = re.sub(r'<[^>]+>', '', text)
+    # Decode common HTML entities
+    text = text.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"').replace('&#39;', "'")
+    # Normalize whitespace
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = text.strip()
+    # Truncate
+    if len(text) > max_length:
+        text = text[:max_length] + "..."
+    return text
 
 
 class ContextResolverService:
@@ -46,10 +69,25 @@ class ContextResolverService:
         # Get user performance data from admin_core_service
         user_performance = await self._fetch_user_performance(user_id, institute_id)
         
+        # Clean HTML from content fields before passing to LLM
+        cleaned_meta = dict(context_meta) if context_meta else {}
+        if "content" in cleaned_meta and cleaned_meta["content"]:
+            cleaned_meta["content"] = strip_html(cleaned_meta["content"])
+        if "about" in cleaned_meta and cleaned_meta["about"]:
+            cleaned_meta["about"] = strip_html(cleaned_meta["about"])
+        if "why_learn" in cleaned_meta and cleaned_meta["why_learn"]:
+            cleaned_meta["why_learn"] = strip_html(cleaned_meta["why_learn"])
+        if "who_should_learn" in cleaned_meta and cleaned_meta["who_should_learn"]:
+            cleaned_meta["who_should_learn"] = strip_html(cleaned_meta["who_should_learn"])
+
+        # Clean question/option text (can also contain HTML)
+        if "questions" in cleaned_meta and cleaned_meta["questions"]:
+            cleaned_meta["questions"] = [strip_html(q) if isinstance(q, str) else q for q in cleaned_meta["questions"]]
+
         # Return as dict with all context components
         return {
             "context_type": context_type,
-            "context_data": context_meta,
+            "context_data": cleaned_meta,
             "user_performance": user_performance,
             "user_details": user_details
         }

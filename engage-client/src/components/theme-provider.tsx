@@ -8,12 +8,10 @@ interface ThemeProviderProps {
     storageKey?: string;
 }
 
-interface ThemeContextType {
+const ThemeContext = createContext<{
     theme: Theme;
-    setTheme: (theme: Theme) => void;
-}
-
-const ThemeContext = createContext<ThemeContextType>({
+    setTheme: (t: Theme) => void;
+}>({
     theme: 'dark',
     setTheme: () => null,
 });
@@ -23,7 +21,7 @@ export function ThemeProvider({
     defaultTheme = 'dark',
     storageKey = 'vacademy-learner-theme',
 }: ThemeProviderProps) {
-    const [theme, setTheme] = useState<Theme>(
+    const [currentTheme, setCurrentTheme] = useState<Theme>(
         () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
     );
 
@@ -31,29 +29,33 @@ export function ThemeProvider({
         const root = window.document.documentElement;
         root.classList.remove('light', 'dark');
 
-        if (theme === 'system') {
-            const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (currentTheme === 'system') {
+            const resolved = window.matchMedia('(prefers-color-scheme: dark)').matches
                 ? 'dark'
                 : 'light';
-            root.classList.add(systemTheme);
+            root.classList.add(resolved);
         } else {
-            root.classList.add(theme);
+            root.classList.add(currentTheme);
         }
-    }, [theme]);
+    }, [currentTheme]);
 
-    const value = {
-        theme,
-        setTheme: (newTheme: Theme) => {
-            localStorage.setItem(storageKey, newTheme);
-            setTheme(newTheme);
-        },
-    };
-
-    return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+    return (
+        <ThemeContext.Provider
+            value={{
+                theme: currentTheme,
+                setTheme: (newTheme: Theme) => {
+                    localStorage.setItem(storageKey, newTheme);
+                    setCurrentTheme(newTheme);
+                },
+            }}
+        >
+            {children}
+        </ThemeContext.Provider>
+    );
 }
 
-export const useTheme = () => {
+export function useTheme() {
     const context = useContext(ThemeContext);
     if (!context) throw new Error('useTheme must be used within a ThemeProvider');
     return context;
-};
+}

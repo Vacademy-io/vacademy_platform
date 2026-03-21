@@ -1,4 +1,5 @@
 fastapi==0.115.0
+python-multipart>=0.0.9
 uvicorn[standard]==0.30.6
 SQLAlchemy==2.0.35
 psycopg[binary]==3.2.12
@@ -17,3 +18,4 @@ python-jose[cryptography]==3.3.0
 nltk
 rembg
 pgvector>=0.3.0
+websockets>=12.0

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-service
+  namespace: default
+spec:
+  selector:
+    app: ai-service
+  ports:
+    - name: http
+      port: 8077
+      targetPort: 8077
+  type: NodePort

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: default
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - name: http
+      port: 8071
+      targetPort: 8071
+  type: NodePort

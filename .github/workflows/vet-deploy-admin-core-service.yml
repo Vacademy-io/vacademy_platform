@@ -38,12 +38,12 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: mvn -s settings.xml clean install -DskipTests -Dsentry.authToken=$SENTRY_AUTH_TOKEN
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials for ECR Public
         uses: aws-actions/configure-aws-credentials@v3
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.VET_EKS_REGION }}
+          aws-region: "us-east-1"
 
       - name: Login to Amazon ECR Public
         id: login-ecr-public

@@ -20,7 +20,8 @@ COPY settings.xml ./
 COPY . .
 
 # Build the project (package only — skip sentry source bundle upload)
-RUN mvn -s settings.xml clean package -DskipTests -Dsentry.skipUploadSourceBundle=true
+RUN sed -i '/<groupId>io.sentry<\/groupId>/,/<\/plugin>/d' pom.xml && \
+    mvn -s settings.xml clean package -DskipTests
 
 # Stage 2: Package the application into the final image
 FROM amazoncorretto:17-alpine

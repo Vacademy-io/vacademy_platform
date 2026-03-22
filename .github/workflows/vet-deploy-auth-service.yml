@@ -30,11 +30,16 @@ jobs:
           mkdir -p ~/.m2
           echo "<settings><servers><server><id>github</id><username>${ACCESS_GITHUB_USERNAME}</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
 
+      - name: Remove sentry plugin from pom (no valid token for VET build)
+        working-directory: ./auth_service
+        run: |
+          sed -i '/<groupId>io.sentry<\/groupId>/,/<\/plugin>/d' pom.xml
+
       - name: Build Project
         working-directory: ./auth_service
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
-        run: mvn -s settings.xml clean package -DskipTests -Dsentry.skipUploadSourceBundle=true
+        run: mvn -s settings.xml clean package -DskipTests
 
       - name: Configure AWS credentials for ECR Public
         uses: aws-actions/configure-aws-credentials@v3

@@ -35,7 +35,7 @@ jobs:
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: mvn -s settings.xml clean install -DskipTests -Dsentry.authToken=$SENTRY_AUTH_TOKEN
+        run: mvn -s settings.xml clean install -DskipTests -Dsentry.skip=true
 
       - name: Configure AWS credentials for ECR Public
         uses: aws-actions/configure-aws-credentials@v3

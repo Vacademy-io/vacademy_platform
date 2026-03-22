@@ -90,8 +90,6 @@ export const ChatbotSidePanel: React.FC = () => {
 
   const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
   const [isResizing, setIsResizing] = useState(false);
-  const [selectedIntent, setSelectedIntent] =
-    useState<MessageIntent>("general");
   const [pendingAttachments, setPendingAttachments] = useState<Array<{type: string; url: string; name?: string; previewUrl?: string}>>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showLatexHelper, setShowLatexHelper] = useState(false);
@@ -186,7 +184,8 @@ export const ChatbotSidePanel: React.FC = () => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const readyAttachments = pendingAttachments.filter(a => a.url);
-      sendMessage(inputValue, selectedIntent, readyAttachments.length > 0 ? readyAttachments : undefined);
+      // Don't send explicit intent — let backend auto-classify from message text
+      sendMessage(inputValue, undefined, readyAttachments.length > 0 ? readyAttachments : undefined);
       pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
       setPendingAttachments([]);
     }
@@ -824,7 +823,7 @@ export const ChatbotSidePanel: React.FC = () => {
           <Button
             onClick={() => {
               const readyAttachments = pendingAttachments.filter(a => a.url);
-              sendMessage(inputValue, selectedIntent, readyAttachments.length > 0 ? readyAttachments : undefined);
+              sendMessage(inputValue, undefined, readyAttachments.length > 0 ? readyAttachments : undefined);
               pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
               setPendingAttachments([]);
             }}

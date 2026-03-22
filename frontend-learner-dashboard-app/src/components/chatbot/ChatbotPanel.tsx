@@ -331,7 +331,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(inputValue, "general", pendingAttachments.length > 0 ? pendingAttachments : undefined);
+      // Don't send explicit intent — let backend auto-classify from message text
+      sendMessage(inputValue, undefined, pendingAttachments.length > 0 ? pendingAttachments : undefined);
       setPendingAttachments([]);
     }
   };
@@ -1028,7 +1029,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                   <Button
                     onClick={() => {
                       const readyAttachments = pendingAttachments.filter(a => a.url);
-                      sendMessage(inputValue, "general", readyAttachments.length > 0 ? readyAttachments : undefined);
+                      sendMessage(inputValue, undefined, readyAttachments.length > 0 ? readyAttachments : undefined);
                       // Clean up preview URLs
                       pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
                       setPendingAttachments([]);

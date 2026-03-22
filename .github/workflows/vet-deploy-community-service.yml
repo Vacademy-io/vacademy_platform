@@ -33,7 +33,7 @@ jobs:
       - name: Remove sentry plugin from pom (no valid token for VET build)
         working-directory: ./community_service
         run: |
-          sed -i '/<groupId>io.sentry<\/groupId>/,/<\/plugin>/d' pom.xml
+          sed -i '/<artifactId>sentry-maven-plugin<\/artifactId>/,/<\/plugin>/d' pom.xml
 
       - name: Build Project
         working-directory: ./community_service

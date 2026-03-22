@@ -117,7 +117,17 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
         offset += chunk.length;
       }
       ttsChunksRef.current = [];
-      audioPlayer.playAudio(combined.buffer as ArrayBuffer);
+      // Play audio, then transition to idle when done (or on error)
+      audioPlayer.playAudio(combined.buffer as ArrayBuffer)
+        .then(() => {
+          setVoiceState("idle");
+        })
+        .catch(() => {
+          setVoiceState("idle");
+        });
+    } else {
+      // No audio received — go back to idle immediately
+      setVoiceState("idle");
     }
   }, [audioPlayer]);
 
@@ -162,13 +172,6 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // Monitor audio player to transition from speaking -> idle
-  useEffect(() => {
-    if (voiceState === "speaking" && !audioPlayer.isPlaying) {
-      setVoiceState("idle");
-    }
-  }, [voiceState, audioPlayer.isPlaying]);
-
   // Voice recorder
   const recorder = useVoiceRecorder({
     silenceTimeout: 5000, // 5 seconds instead of default 3
@@ -185,21 +188,22 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
         ? audioPlayer.audioLevel
         : 0;
 
-  // Toggle mic
+  // Toggle mic — handles all states including edge cases
   const toggleMic = useCallback(async () => {
     if (voiceState === "listening") {
       // Stop recording, send audio_end
       recorder.stopRecording();
       ws.sendAudioEnd();
       setVoiceState("processing");
-    } else if (voiceState === "idle") {
-      // Stop any playing audio first
+    } else if (voiceState === "idle" || voiceState === "processing") {
+      // Start recording (from idle or if processing got stuck)
       audioPlayer.stop();
       await recorder.startRecording();
       setVoiceState("listening");
     } else if (voiceState === "speaking") {
-      // Interrupt AI speech
+      // Interrupt AI speech and start recording
       audioPlayer.stop();
+      ttsChunksRef.current = []; // Clear any pending TTS chunks
       await recorder.startRecording();
       setVoiceState("listening");
     }

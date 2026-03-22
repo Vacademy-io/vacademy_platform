@@ -8,6 +8,7 @@ import {
     STUDENT_ATTENDANCE_REPORT,
     BATCH_SESSION_ATTENDANCE_REPORT,
     SEARCH_SESSIONS,
+    ADMIN_MARK_ATTENDANCE,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 
@@ -184,6 +185,9 @@ export interface LiveSessionReport {
     gender: string;
     studentId: string;
     instituteEnrollmentNumber: string;
+    statusType: string | null;
+    engagementData: string | null;
+    providerTotalDurationMinutes: number | null;
 }
 
 export interface SessionBySessionIdResponse {
@@ -268,6 +272,20 @@ export const getLiveSessionReport = async (
             accessType,
         },
     });
+    return response.data;
+};
+
+export const adminMarkAttendance = async (data: {
+    sessionId: string;
+    scheduleId: string;
+    entries: Array<{
+        userSourceId: string;
+        userSourceType: string;
+        status: string;
+        details?: string;
+    }>;
+}): Promise<{ updated: number; created: number }> => {
+    const response = await authenticatedAxiosInstance.post(ADMIN_MARK_ATTENDANCE, data);
     return response.data;
 };
 

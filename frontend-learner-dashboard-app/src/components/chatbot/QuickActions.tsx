@@ -33,7 +33,7 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
       {
         label: "Quiz me",
         icon: FileQuestion,
-        prompt: "Create a quick quiz based on this content",
+        prompt: "Quiz me on ",
         intent: "practice",
       },
       {

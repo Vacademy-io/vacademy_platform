@@ -109,6 +109,7 @@ public class GuestController {
                     .userSourceId(guestId)
                     .logType(SessionLog.ATTENDANCE_RECORDED.name())
                     .status("PRESENT")
+                    .statusType("ONLINE")
                     .details(guestName + " | role=VIEWER | guest=true")
                     .providerJoinTime(java.time.Instant.now().toString())
                     .createdAt(new Timestamp(System.currentTimeMillis()))

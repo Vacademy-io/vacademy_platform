@@ -216,7 +216,16 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
                     + "/admin-core-service/live-sessions/provider/meeting/bbb-callback?scheduleId="
                     + request.getScheduleId();
             params.put("meta_endCallbackUrl", callbackUrl);
+
+            // Analytics callback — BBB POSTs per-attendee duration & engagement data after meeting ends
+            String analyticsCallbackUrl = backendBaseUrl
+                    + "/admin-core-service/live-sessions/provider/meeting/bbb-analytics-callback?scheduleId="
+                    + request.getScheduleId();
+            params.put("meta_analytics-callback-url", analyticsCallbackUrl);
         }
+
+        // Retain event data so BBB can send analytics callback after meeting ends
+        params.put("keepEvents", "true");
 
         String queryString = buildQueryString(params);
         String checksum = sha256("create" + queryString + secret);

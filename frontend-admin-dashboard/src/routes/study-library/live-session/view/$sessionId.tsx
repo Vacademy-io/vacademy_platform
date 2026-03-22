@@ -4,6 +4,7 @@ import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
 import { getSessionBySessionId, getLiveSessionReport } from '../-services/utils';
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording } from '../-services/utils';
+import { AttendanceMarkingTable } from '../-components/AttendanceMarkingTable';
 import {
     CalendarRange,
     Timer,
@@ -745,52 +746,23 @@ function ViewLiveSession() {
                                     </div>
                                 )}
                                 {attendanceData && !attendanceLoading && (
-                                    <div className="mt-4 space-y-3">
-                                        <div className="flex items-center gap-4 text-sm">
-                                            <div className="flex items-center gap-2">
-                                                <div className="size-3 rounded-full bg-green-500" />
-                                                <span>Present: {attendanceData.filter(r => r.attendanceStatus === 'PRESENT').length}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="size-3 rounded-full bg-red-400" />
-                                                <span>Absent: {attendanceData.filter(r => r.attendanceStatus !== 'PRESENT').length}</span>
-                                            </div>
-                                            <div className="text-muted-foreground">
-                                                Total: {attendanceData.length}
-                                            </div>
-                                        </div>
-                                        <div className="max-h-[300px] overflow-auto rounded-md border">
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow className="bg-muted/50">
-                                                        <TableHead className="pl-4">#</TableHead>
-                                                        <TableHead>Name</TableHead>
-                                                        <TableHead>Email</TableHead>
-                                                        <TableHead className="text-center">Status</TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {attendanceData.map((report, idx) => (
-                                                        <TableRow key={report.studentId}>
-                                                            <TableCell className="pl-4 text-muted-foreground">{idx + 1}</TableCell>
-                                                            <TableCell className="font-medium">{report.fullName}</TableCell>
-                                                            <TableCell className="text-muted-foreground">{report.email}</TableCell>
-                                                            <TableCell className="text-center">
-                                                                <Badge
-                                                                    variant={report.attendanceStatus === 'PRESENT' ? 'default' : 'destructive'}
-                                                                    className={cn(
-                                                                        "text-xs",
-                                                                        report.attendanceStatus === 'PRESENT' && "bg-green-500"
-                                                                    )}
-                                                                >
-                                                                    {report.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent'}
-                                                                </Badge>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    ))}
-                                                </TableBody>
-                                            </Table>
-                                        </div>
+                                    <div className="mt-4">
+                                        <AttendanceMarkingTable
+                                            data={attendanceData}
+                                            sessionId={sessionId}
+                                            scheduleId={selectedScheduleForAttendance!}
+                                            accessType={sessionData?.schedule?.access_type || 'private'}
+                                            onSaved={async () => {
+                                                if (selectedScheduleForAttendance) {
+                                                    const data = await getLiveSessionReport(
+                                                        sessionId,
+                                                        selectedScheduleForAttendance,
+                                                        sessionData?.schedule?.access_type || 'private'
+                                                    );
+                                                    setAttendanceData(data);
+                                                }
+                                            }}
+                                        />
                                     </div>
                                 )}
                             </CardContent>

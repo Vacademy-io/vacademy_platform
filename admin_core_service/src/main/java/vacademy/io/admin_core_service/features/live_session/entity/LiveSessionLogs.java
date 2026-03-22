@@ -41,6 +41,29 @@ public class LiveSessionLogs {
     private String details;
 
     /**
+     * ONLINE = user joined via app/BBB (auto-tracked).
+     * OFFLINE = admin manually marked attendance.
+     */
+    @Column(name = "status_type", length = 10)
+    @Builder.Default
+    private String statusType = "ONLINE";
+
+    /**
+     * JSON string with provider engagement metrics.
+     * E.g. {"chats":5,"talks":3,"talkTime":120,"raisehand":2,"emojis":1,"pollVotes":4}
+     */
+    @Column(name = "engagement_data", columnDefinition = "TEXT")
+    private String engagementData;
+
+    /**
+     * The specific provider meeting instance ID this log belongs to.
+     * Important for schedule retry/recreate — scheduleId stays the same
+     * but providerMeetingId changes with each new meeting.
+     */
+    @Column(name = "provider_meeting_id")
+    private String providerMeetingId;
+
+    /**
      * ISO-8601 join time from the meeting provider (e.g. Zoho).
      * Includes provider-specific timezone offsets dynamically if returned.
      * Populated by the hourly sync scheduler.

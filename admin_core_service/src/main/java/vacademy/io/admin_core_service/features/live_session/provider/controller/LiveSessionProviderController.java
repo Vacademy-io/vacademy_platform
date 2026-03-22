@@ -22,6 +22,8 @@ import vacademy.io.common.meeting.dto.ParticipantJoinLinkDTO;
 import vacademy.io.common.meeting.dto.UserScheduleAvailabilityDTO;
 import vacademy.io.common.meeting.enums.MeetingProvider;
 
+import vacademy.io.admin_core_service.features.live_session.dto.BbbAnalyticsCallbackDTO;
+
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
@@ -241,6 +243,7 @@ public class LiveSessionProviderController {
         }
 
         // Auto-create BBB meeting if it doesn't exist yet
+        boolean justCreated = false;
         if (providerMeetingId == null || providerMeetingId.isBlank()) {
             String sessionTitle = "Live Class";
             java.util.Map<String, Object> bbbConfig = null;
@@ -281,6 +284,7 @@ public class LiveSessionProviderController {
 
             CreateMeetingResponseDTO created = providerService.createMeeting(createRequest);
             providerMeetingId = created.getProviderMeetingId();
+            justCreated = true;
 
             // Re-fetch schedule to get updated fields
             schedule = scheduleRepository.findById(scheduleId).orElse(schedule);
@@ -294,20 +298,24 @@ public class LiveSessionProviderController {
             }
         }
 
-        // Check if the meeting is still running (prevents joining ended meetings)
-        boolean isRunning = bbbMeetingManager.isMeetingRunning(providerMeetingId, null);
-        if (!isRunning && "MODERATOR".equalsIgnoreCase(role)) {
-            // Meeting ended — tell the moderator so they can choose to recreate
-            return ResponseEntity.ok(Map.of(
-                    "status", "MEETING_ENDED",
-                    "message", "This meeting has ended. Would you like to start a new meeting for this session?",
-                    "meetingId", providerMeetingId));
-        }
-        if (!isRunning) {
-            // For viewers, the meeting must be running
-            return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Meeting has ended",
-                    "meetingId", providerMeetingId));
+        // Check if the meeting is still running (prevents joining ended meetings).
+        // Skip this check if we just created the meeting — BBB reports it as "not running"
+        // until the first participant joins, which would cause an infinite recreate loop.
+        if (!justCreated) {
+            boolean isRunning = bbbMeetingManager.isMeetingRunning(providerMeetingId, null);
+            if (!isRunning && "MODERATOR".equalsIgnoreCase(role)) {
+                // Meeting ended — tell the moderator so they can choose to recreate
+                return ResponseEntity.ok(Map.of(
+                        "status", "MEETING_ENDED",
+                        "message", "This meeting has ended. Would you like to start a new meeting for this session?",
+                        "meetingId", providerMeetingId));
+            }
+            if (!isRunning) {
+                // For viewers, the meeting must be running
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "Meeting has ended",
+                        "meetingId", providerMeetingId));
+            }
         }
 
         // Generate personalized join URL — resolve real name from DB if JWT doesn't have it
@@ -329,7 +337,7 @@ public class LiveSessionProviderController {
                 providerMeetingId, fullName, user.getUserId(), role, instituteId);
 
         // Mark attendance with join timestamp
-        markBbbAttendance(schedule.getSessionId(), scheduleId, user.getUserId(), fullName, role);
+        markBbbAttendance(schedule.getSessionId(), scheduleId, user.getUserId(), fullName, role, providerMeetingId);
 
         return ResponseEntity.ok(Map.of(
                 "joinUrl", joinUrl,
@@ -370,6 +378,159 @@ public class LiveSessionProviderController {
         }
 
         return ResponseEntity.ok("OK");
+    }
+
+    // -----------------------------------------------------------------------
+    // BBB Analytics callback — called by BBB after meeting ends
+    // -----------------------------------------------------------------------
+
+    /**
+     * POST /admin-core-service/live-sessions/provider/meeting/bbb-analytics-callback
+     * ?scheduleId=xxx
+     *
+     * Called by BBB after meeting ends (via meta_analytics-callback-url).
+     * No auth required — server-to-server from BBB.
+     * Receives per-attendee duration and engagement data.
+     * For schedule retry: merges (sums) data with existing attendance logs.
+     */
+    @PostMapping("/meeting/bbb-analytics-callback")
+    public ResponseEntity<String> bbbAnalyticsCallback(
+            @RequestParam String scheduleId,
+            @RequestBody BbbAnalyticsCallbackDTO callback) {
+        log.info("[BBB Analytics] Received callback for scheduleId={}, meetingId={}, attendees={}",
+                scheduleId, callback.getMeetingId(),
+                callback.getAttendees() != null ? callback.getAttendees().size() : 0);
+
+        try {
+            SessionSchedule schedule = scheduleRepository.findById(scheduleId).orElse(null);
+            if (schedule == null) {
+                log.warn("[BBB Analytics] Schedule not found: {}", scheduleId);
+                return ResponseEntity.ok("OK");
+            }
+
+            String sessionId = schedule.getSessionId();
+
+            if (callback.getAttendees() != null) {
+                for (BbbAnalyticsCallbackDTO.Attendee attendee : callback.getAttendees()) {
+                    if (attendee.getExtUserId() == null || attendee.getExtUserId().isBlank()) {
+                        continue;
+                    }
+
+                    try {
+                        processAnalyticsAttendee(sessionId, scheduleId, callback.getMeetingId(), attendee);
+                    } catch (Exception e) {
+                        log.warn("[BBB Analytics] Failed to process attendee {}: {}",
+                                attendee.getExtUserId(), e.getMessage());
+                    }
+                }
+            }
+
+            schedule.setLastAttendanceSyncAt(new java.util.Date());
+            scheduleRepository.save(schedule);
+            log.info("[BBB Analytics] Processed callback for scheduleId={}", scheduleId);
+
+        } catch (Exception e) {
+            log.error("[BBB Analytics] Failed for scheduleId={}: {}", scheduleId, e.getMessage());
+        }
+
+        return ResponseEntity.ok("OK");
+    }
+
+    /**
+     * Process a single attendee from the BBB analytics callback.
+     * Merges duration/engagement with any existing log (sums values for retry scenario).
+     */
+    private void processAnalyticsAttendee(String sessionId, String scheduleId,
+                                           String providerMeetingId,
+                                           BbbAnalyticsCallbackDTO.Attendee attendee) {
+        Optional<LiveSessionLogs> existing = liveSessionLogsRepository
+                .findExistingAttendanceRecord(scheduleId, attendee.getExtUserId());
+
+        int durationMinutes = attendee.getDuration() != null
+                ? (int) (attendee.getDuration() / 60) : 0;
+
+        String engagementJson = buildEngagementJson(attendee.getEngagement());
+
+        if (existing.isPresent()) {
+            LiveSessionLogs log = existing.get();
+
+            // Sum duration with existing (for retry/recreate scenario)
+            int existingDuration = log.getProviderTotalDurationMinutes() != null
+                    ? log.getProviderTotalDurationMinutes() : 0;
+            log.setProviderTotalDurationMinutes(existingDuration + durationMinutes);
+
+            // Merge engagement data (sum counts)
+            log.setEngagementData(mergeEngagementJson(log.getEngagementData(), engagementJson));
+
+            // Update provider meeting ID to latest
+            log.setProviderMeetingId(providerMeetingId);
+
+            // If user was absent (e.g. admin marked offline) but BBB says present, mark present
+            if (!"PRESENT".equals(log.getStatus())) {
+                log.setStatus("PRESENT");
+                log.setStatusType("ONLINE");
+            }
+
+            log.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+            liveSessionLogsRepository.save(log);
+        } else {
+            // User joined BBB directly without going through Vacademy join endpoint
+            LiveSessionLogs logEntry = LiveSessionLogs.builder()
+                    .sessionId(sessionId)
+                    .scheduleId(scheduleId)
+                    .userSourceType("USER")
+                    .userSourceId(attendee.getExtUserId())
+                    .logType(SessionLog.ATTENDANCE_RECORDED.name())
+                    .status("PRESENT")
+                    .statusType("ONLINE")
+                    .details(attendee.getName() + " | role=" + (Boolean.TRUE.equals(attendee.getModerator()) ? "MODERATOR" : "VIEWER"))
+                    .providerMeetingId(providerMeetingId)
+                    .providerTotalDurationMinutes(durationMinutes)
+                    .engagementData(engagementJson)
+                    .createdAt(new Timestamp(System.currentTimeMillis()))
+                    .updatedAt(new Timestamp(System.currentTimeMillis()))
+                    .build();
+            liveSessionLogsRepository.save(logEntry);
+        }
+    }
+
+    private String buildEngagementJson(BbbAnalyticsCallbackDTO.Engagement engagement) {
+        if (engagement == null) return null;
+        try {
+            Map<String, Integer> data = new java.util.LinkedHashMap<>();
+            data.put("chats", engagement.getChats() != null ? engagement.getChats() : 0);
+            data.put("talks", engagement.getTalks() != null ? engagement.getTalks() : 0);
+            data.put("talkTime", engagement.getTalkTime() != null ? engagement.getTalkTime() : 0);
+            data.put("raisehand", engagement.getRaisehand() != null ? engagement.getRaisehand() : 0);
+            data.put("emojis", engagement.getEmojis() != null ? engagement.getEmojis() : 0);
+            data.put("pollVotes", engagement.getPollVotes() != null ? engagement.getPollVotes() : 0);
+            return objectMapper.writeValueAsString(data);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Merge two engagement JSON strings by summing each field.
+     * Used when a meeting is recreated on the same schedule (retry scenario).
+     */
+    private String mergeEngagementJson(String existingJson, String newJson) {
+        if (existingJson == null || existingJson.isBlank()) return newJson;
+        if (newJson == null || newJson.isBlank()) return existingJson;
+        try {
+            Map<String, Integer> existingMap = objectMapper.readValue(existingJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Integer>>() {});
+            Map<String, Integer> newMap = objectMapper.readValue(newJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Integer>>() {});
+
+            Map<String, Integer> merged = new java.util.LinkedHashMap<>(existingMap);
+            for (Map.Entry<String, Integer> entry : newMap.entrySet()) {
+                merged.merge(entry.getKey(), entry.getValue(), Integer::sum);
+            }
+            return objectMapper.writeValueAsString(merged);
+        } catch (Exception e) {
+            return newJson; // fallback: use latest
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -477,13 +638,23 @@ public class LiveSessionProviderController {
     }
 
     private void markBbbAttendance(String sessionId, String scheduleId, String userId,
-                                    String fullName, String role) {
+                                    String fullName, String role, String providerMeetingId) {
         Optional<LiveSessionLogs> existing = liveSessionLogsRepository
                 .findExistingAttendanceRecord(scheduleId, userId);
 
         String joinTimeIso = java.time.Instant.now().toString();
 
-        if (existing.isEmpty()) {
+        if (existing.isPresent()) {
+            // User already has an attendance record for this schedule.
+            // Update join time and provider meeting ID (handles retry/recreate scenario).
+            LiveSessionLogs log = existing.get();
+            log.setProviderJoinTime(joinTimeIso);
+            log.setProviderMeetingId(providerMeetingId);
+            log.setStatus("PRESENT");
+            log.setStatusType("ONLINE");
+            log.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+            liveSessionLogsRepository.save(log);
+        } else {
             LiveSessionLogs logEntry = LiveSessionLogs.builder()
                     .sessionId(sessionId)
                     .scheduleId(scheduleId)
@@ -491,8 +662,10 @@ public class LiveSessionProviderController {
                     .userSourceId(userId)
                     .logType(SessionLog.ATTENDANCE_RECORDED.name())
                     .status("PRESENT")
+                    .statusType("ONLINE")
                     .details(fullName + " | role=" + role)
                     .providerJoinTime(joinTimeIso)
+                    .providerMeetingId(providerMeetingId)
                     .createdAt(new Timestamp(System.currentTimeMillis()))
                     .updatedAt(new Timestamp(System.currentTimeMillis()))
                     .build();

@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -24,5 +25,6 @@ public class WhatsAppProviderStatusResponse {
         private String name;
         private boolean isConfigured;
         private boolean isActive;
+        private Map<String, String> credentials;
     }
 }

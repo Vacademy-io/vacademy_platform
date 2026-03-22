@@ -15,8 +15,7 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -51,16 +50,19 @@ public class WhatsAppSettingService {
                                 .name("COMBOT")
                                 .isConfigured(hasCombot)
                                 .isActive("COMBOT".equals(activeProvider))
+                                .credentials(extractCredentials(utilityWhatsapp, "combot"))
                                 .build(),
                         WhatsAppProviderStatusResponse.ProviderDetails.builder()
                                 .name("WATI")
                                 .isConfigured(hasWati)
                                 .isActive("WATI".equals(activeProvider))
+                                .credentials(extractCredentials(utilityWhatsapp, "wati"))
                                 .build(),
                         WhatsAppProviderStatusResponse.ProviderDetails.builder()
                                 .name("META")
                                 .isConfigured(hasMeta)
                                 .isActive("META".equals(activeProvider))
+                                .credentials(extractCredentials(utilityWhatsapp, "meta"))
                                 .build()))
                 .build();
     }
@@ -228,6 +230,21 @@ public class WhatsAppSettingService {
         } else {
             return dataNode.putObject("UTILITY_WHATSAPP");
         }
+    }
+
+    /**
+     * Extracts credentials for a provider, masking sensitive fields (apiKey, access_token).
+     */
+    private Map<String, String> extractCredentials(JsonNode utilityWhatsapp, String providerKey) {
+        if (!utilityWhatsapp.has(providerKey)) {
+            return Collections.emptyMap();
+        }
+        JsonNode providerNode = utilityWhatsapp.get(providerKey);
+        Map<String, String> creds = new LinkedHashMap<>();
+        providerNode.fields().forEachRemaining(entry -> {
+            creds.put(entry.getKey(), entry.getValue().asText(""));
+        });
+        return creds;
     }
 
     private boolean isConfigured(JsonNode utilityWhatsapp, String providerKey, String mandatoryField) {

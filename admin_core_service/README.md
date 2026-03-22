@@ -1,1 +1,1 @@
-# backend-media-service
+# backend-admin-core-service

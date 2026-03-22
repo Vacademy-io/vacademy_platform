@@ -33,6 +33,9 @@ spec:
         - name: admin-core-service
           image: "public.ecr.aws/h3e7x6t4/admin-core-service/admin-core-service-repo:latest"
           imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: myconfigmapv1.0
           resources:
             requests:
               cpu: "250m"

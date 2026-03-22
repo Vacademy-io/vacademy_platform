@@ -35,7 +35,7 @@ jobs:
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: mvn -s settings.xml clean install -DskipTests -Dsentry.authToken=$SENTRY_AUTH_TOKEN
+        run: mvn -s settings.xml clean install -DskipTests -Dsentry.skip=true
 
       - name: Configure AWS credentials for ECR Public
         uses: aws-actions/configure-aws-credentials@v3
@@ -90,8 +90,8 @@ jobs:
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            AUTH_SERVICE_DB_URL=jdbc:postgresql://${{ secrets.VET_DB_HOST }}:5432/auth_service \
-            AUTH_SERVICE_READ_DB_URL=jdbc:postgresql://${{ secrets.VET_DB_HOST }}:5432/auth_service_read \
+            AUTH_SERVICE_DB_URL=${{ secrets.AUTH_SERVICE_DB_URL }} \
+            AUTH_SERVICE_READ_DB_URL=${{ secrets.AUTH_SERVICE_READ_DB_URL }} \
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
             TEACHER_PORTAL_CLIENT_URL=${{ secrets.TEACHER_PORTAL_CLIENT_URL }} \
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \

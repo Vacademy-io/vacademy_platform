@@ -75,9 +75,9 @@ jobs:
               LLM_DEFAULT_MODEL=google/gemini-2.5-flash \
               DB_USERNAME=${{ secrets.DB_USERNAME }} \
               DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              ADMIN_CORE_SERVICE_DB_URL=jdbc:postgresql://${{ secrets.VET_DB_HOST }}:5432/admin_core_service \
-              DB_HOST=${{ secrets.VET_DB_HOST }} \
-              DB_PORT=5432 \
+              ADMIN_CORE_SERVICE_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_DB_URL }} \
+              DB_HOST=${{ secrets.DB_HOST }} \
+              DB_PORT=${{ secrets.DB_PORT }} \
               GOOGLE_APPLICATION_CREDENTIALS_JSON='${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' \
               MATHPIX_APP_ID=${{ secrets.MATHPIX_APP_ID }} \
               MATHPIX_APP_KEY=${{ secrets.MATHPIX_APP_KEY }}

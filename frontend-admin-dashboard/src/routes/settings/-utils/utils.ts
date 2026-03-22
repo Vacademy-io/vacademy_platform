@@ -13,6 +13,7 @@ import { TemplateSettings } from '@/components/templates';
 import AiSettings from '../-components/AiSettings';
 import SchoolSettings from '../-components/School/SchoolSettings';
 import WhiteLabelSettings from '../-components/WhiteLabelSettings';
+import WhatsAppSettings from '../-components/WhatsAppSettings/WhatsAppSettings';
 
 export const getAvailableSettingsTabs = () => {
     return [
@@ -85,6 +86,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.WhiteLabel,
             value: 'White-Label Setup',
             component: WhiteLabelSettings,
+        },
+        {
+            tab: SettingsTabs.WhatsApp,
+            value: 'WhatsApp Settings',
+            component: WhatsAppSettings,
         },
     ];
 };

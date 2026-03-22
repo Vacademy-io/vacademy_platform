@@ -97,31 +97,31 @@ jobs:
         run: |
           kubectl set env deployment/notification-service \
             environment=stage \
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-            DB_USERNAME=${{ secrets.DB_USERNAME }} \
-            APP_USERNAME=${{ secrets.APP_USERNAME }} \
-            APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
-            CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            NOTIFICATION_SERVICE_DB_URL=${{ secrets.NOTIFICATION_SERVICE_DB_URL }} \
-            NOTIFICATION_SERVICE_READ_DB_URL=${{ secrets.NOTIFICATION_SERVICE_READ_DB_URL }} \
-            MAIL_HOST=${{ secrets.MAIL_HOST }} \
-            MAIL_PORT=${{ secrets.MAIL_PORT }} \
-            AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }} \
-            AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }} \
-            SES_SENDER_EMAIL=${{ secrets.SES_SENDER_EMAIL }} \
-            WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }} \
-            WHATSAPP_ACCESS_TOKEN_VIDYAYATAN=${{ secrets.WHATSAPP_ACCESS_TOKEN_VIDYAYATAN }} \
-            WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN=${{ secrets.WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN }} \
-            SES_CONFIGURATION_SET=${{ secrets.SES_CONFIGURATION_SET }} \
-            SES_EVENTS_SQS_URL=${{ secrets.SES_EVENTS_SQS_URL }} \
-            SQS_AWS_ACCESS_KEY=${{ secrets.SQS_AWS_ACCESS_KEY }} \
-            SQS_AWS_SECRET_KEY=${{ secrets.SQS_AWS_SECRET_KEY }} \
-            SQS_AWS_REGION=${{ secrets.SQS_AWS_REGION }} \
-            SQS_ENDPOINT=${{ secrets.SQS_ENDPOINT }} \
-            SQS_REGION=${{ secrets.SQS_REGION }} \
-            AWS_SQS_ENABLED=${{ secrets.AWS_SQS_ENABLED }} \
-            SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
+            "DB_USERNAME=${{ secrets.DB_USERNAME }}" \
+            "APP_USERNAME=${{ secrets.APP_USERNAME }}" \
+            "APP_PASSWORD=${{ secrets.APP_PASSWORD }}" \
+            "CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }}" \
+            "NOTIFICATION_SERVICE_DB_URL=${{ secrets.NOTIFICATION_SERVICE_DB_URL }}" \
+            "NOTIFICATION_SERVICE_READ_DB_URL=${{ secrets.NOTIFICATION_SERVICE_READ_DB_URL }}" \
+            "MAIL_HOST=${{ secrets.MAIL_HOST }}" \
+            "MAIL_PORT=${{ secrets.MAIL_PORT }}" \
+            "AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }}" \
+            "AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }}" \
+            "SES_SENDER_EMAIL=${{ secrets.SES_SENDER_EMAIL }}" \
+            "WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}" \
+            "WHATSAPP_ACCESS_TOKEN_VIDYAYATAN=${{ secrets.WHATSAPP_ACCESS_TOKEN_VIDYAYATAN }}" \
+            "WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN=${{ secrets.WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN }}" \
+            "SES_CONFIGURATION_SET=${{ secrets.SES_CONFIGURATION_SET }}" \
+            "SES_EVENTS_SQS_URL=${{ secrets.SES_EVENTS_SQS_URL }}" \
+            "SQS_AWS_ACCESS_KEY=${{ secrets.SQS_AWS_ACCESS_KEY }}" \
+            "SQS_AWS_SECRET_KEY=${{ secrets.SQS_AWS_SECRET_KEY }}" \
+            "SQS_AWS_REGION=${{ secrets.SQS_AWS_REGION }}" \
+            "SQS_ENDPOINT=${{ secrets.SQS_ENDPOINT }}" \
+            "SQS_REGION=${{ secrets.SQS_REGION }}" \
+            "AWS_SQS_ENABLED=${{ secrets.AWS_SQS_ENABLED }}" \
+            "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" \
+            "SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}"
 
       - name: Restart deployment
         env:

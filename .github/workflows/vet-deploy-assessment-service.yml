@@ -33,12 +33,7 @@ jobs:
       - name: Remove sentry plugin from pom (no valid token for VET build)
         working-directory: ./assessment_service
         run: |
-          python3 -c "
-          import re
-          with open('pom.xml','r') as f: content = f.read()
-          content = re.sub(r'<plugin>\s*<groupId>io\.sentry</groupId>\s*<artifactId>sentry-maven-plugin</artifactId>.*?</plugin>', '', content, flags=re.DOTALL)
-          with open('pom.xml','w') as f: f.write(content)
-          "
+          sed -i '/<plugin>/{N;N;/sentry-maven-plugin/{:a;N;/<\/plugin>/!ba;d}}' pom.xml
 
       - name: Build Project
         working-directory: ./assessment_service

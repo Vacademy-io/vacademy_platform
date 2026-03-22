@@ -19,7 +19,7 @@ COPY settings.xml ./
 COPY . .
 
 # Build the project (package only — skip sentry source bundle upload)
-RUN python3 -c "import re; f=open('pom.xml','r'); c=f.read(); f.close(); c=re.sub(r'<plugin>\s*<groupId>io\.sentry</groupId>\s*<artifactId>sentry-maven-plugin</artifactId>.*?</plugin>', '', c, flags=re.DOTALL); f=open('pom.xml','w'); f.write(c); f.close()" && \
+RUN sed -i '/<plugin>/{N;N;/sentry-maven-plugin/{:a;N;/<\/plugin>/!ba;d}}' pom.xml && \
     mvn -s settings.xml clean package -DskipTests
 
 # Stage 2: Package the application into the final image

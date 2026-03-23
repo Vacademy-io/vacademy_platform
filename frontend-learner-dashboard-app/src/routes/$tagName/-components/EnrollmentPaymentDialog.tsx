@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { BASE_URL } from "@/constants/urls";
 import {
   RazorpayCheckoutForm,
   RazorpayCheckoutFormRef,
@@ -1329,10 +1330,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
         enrollmentData?.id ||
         courseData.enrollInviteId;
 
-      const baseUrl =
-        import.meta.env.VITE_BACKEND_URL ||
-        import.meta.env.VITE_API_BASE_URL ||
-        "https://backend-stage.vacademy.io";
+      const baseUrl = BASE_URL;
 
       // Call Register API with payment verification data
       const registerPayload = {
@@ -1981,10 +1979,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 // API function to process enrollment payment
 const processEnrollmentPayment = async (paymentData: any) => {
   try {
-    const baseUrl =
-      import.meta.env.VITE_BACKEND_URL ||
-      import.meta.env.VITE_API_BASE_URL ||
-      "https://backend-stage.vacademy.io";
+    const baseUrl = BASE_URL;
 
     console.log("Register API Payload (Stripe/Free):", JSON.stringify(paymentData, null, 2));
 

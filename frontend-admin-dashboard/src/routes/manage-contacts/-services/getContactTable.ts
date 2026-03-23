@@ -2,8 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { ContactListRequest, ContactListResponse } from '../-types/contact-types';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { BASE_URL } from '@/constants/urls';
 
-const FETCH_CONTACTS_URL = `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/admin-core-service/v1/audience/distinct-institute-users-and-audience`;
+const FETCH_CONTACTS_URL = `${BASE_URL}/admin-core-service/v1/audience/distinct-institute-users-and-audience`;
 
 export const fetchContacts = async (
     request: Omit<ContactListRequest, 'institute_id'>

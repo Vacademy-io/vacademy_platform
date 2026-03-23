@@ -18,6 +18,7 @@ import { QuickQuestionFAB, type InsertionBehavior } from './components/QuickQues
 import { ResponseOverlay } from './components/ResponseOverlay';
 import { SlideTypeEnum } from './utils/types';
 import { SessionExcalidrawOverlay } from './components/SessionExcalidrawOverlay';
+import { BASE_URL } from '@/constants/urls';
 
 // Define Participant interface (copied from ParticipantsSidePanel)
 interface Participant {
@@ -36,7 +37,7 @@ interface MinimalSessionDetails {
     // other fields from SlideEditorComponent's sessionDetails state if needed
 }
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io';
+const BACKEND_URL = BASE_URL;
 const MOVE_SLIDE_API_URL = `${BACKEND_URL}/community-service/engage/admin/move`;
 // Define ADMIN_SSE_URL_BASE (copied from ParticipantsSidePanel)
 const ADMIN_SSE_URL_BASE = `${BACKEND_URL}/community-service/engage/admin/`;

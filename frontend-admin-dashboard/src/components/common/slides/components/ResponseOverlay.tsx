@@ -7,8 +7,9 @@ import { LeaderboardModal } from './LeaderboardModal';
 import { ResponseDistributionModal } from './ResponseDistributionModal';
 import type { QuizSlideData } from '../utils/types';
 import { WordCloudModal } from './WordCloudModal';
+import { BASE_URL } from '@/constants/urls';
 
-const RESPONSES_API_URL_BASE = `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/community-service/engage/admin/`;
+const RESPONSES_API_URL_BASE = `${BASE_URL}/community-service/engage/admin/`;
 
 interface ResponseData {
     username: string;

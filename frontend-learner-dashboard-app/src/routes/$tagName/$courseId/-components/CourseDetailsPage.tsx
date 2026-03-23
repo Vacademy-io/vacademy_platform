@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { BASE_URL } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -225,7 +226,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         console.log("[CourseDetailsPage] Fetching course details for:", { courseId, tagName, instituteId });
 
         // Fetch course details from /course-init API (scalable single course endpoint)
-        const initApiResponse = await axios.get(`${import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io"}/admin-core-service/open/v1/learner-study-library/course-init`, {
+        const initApiResponse = await axios.get(`${BASE_URL}/admin-core-service/open/v1/learner-study-library/course-init`, {
           params: {
             instituteId: instituteId,
             courseId: courseId,
@@ -300,7 +301,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           try {
             console.log("[CourseDetailsPage] Fetching enroll-invite data for price...");
             const enrollInviteResponse = await axios.get(
-              `${import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io"}/admin-core-service/open/learner/enroll-invite/${instituteId}/${enrollInviteId}`,
+              `${BASE_URL}/admin-core-service/open/learner/enroll-invite/${instituteId}/${enrollInviteId}`,
               {
                 headers: {
                   "Content-Type": "application/json",

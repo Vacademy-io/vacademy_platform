@@ -1,5 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getInstituteId } from '@/constants/helper';
+import { BASE_URL } from '@/constants/urls';
 import {
     CourseSettingsData,
     CourseSettingsRequest,
@@ -153,7 +154,7 @@ const fetchCourseSettingsFromAPI = async (): Promise<CourseSettingsData> => {
         }
 
         const response = await authenticatedAxiosInstance.get<CourseSettingsResponse>(
-            `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/admin-core-service/institute/setting/v1/get`,
+            `${BASE_URL}/admin-core-service/institute/setting/v1/get`,
             {
                 params: {
                     instituteId,
@@ -242,7 +243,7 @@ export const saveCourseSettings = async (
         };
 
         const response = await authenticatedAxiosInstance.post<CourseSettingsResponse>(
-            `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/admin-core-service/institute/setting/v1/save-setting`,
+            `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`,
             requestData,
             {
                 params: {

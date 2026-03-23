@@ -12,18 +12,18 @@ import {
 import { MyButton } from '@/components/design-system/button';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import {
-    submitEnquiryBulkWithLead,
-    type BulkSubmitEnquiryRequest,
-    type BulkSubmitEnquiryRow,
-    type BulkSubmitEnquiryResponse,
-} from '../-services/submit-enquiry';
+import type { BatchForSessionType } from '@/schemas/student/student-list/institute-schema';
 import {
     normalizeGender,
     parseOptionalEnquiryStatus,
     parseOptionalSourceType,
-} from './enquiry-bulk-import-utils';
-import type { BatchForSessionType } from '@/schemas/student/student-list/institute-schema';
+} from '@/routes/admissions/enquiries/-components/enquiry-bulk-import-utils';
+import {
+    submitAdmissionBulkWithLead,
+    type BulkSubmitAdmissionRequest,
+    type BulkSubmitAdmissionRow,
+    type BulkSubmitAdmissionResponse,
+} from '@/routes/admissions/-services/submit-admission-bulk';
 
 type Step = 1 | 2 | 4;
 
@@ -38,10 +38,10 @@ type ParsedCsvRow = {
     source_type?: 'WEBSITE' | 'GOOGLE_ADS' | 'FACEBOOK' | 'INSTAGRAM' | 'REFERRAL' | 'OTHER';
 };
 
-interface EnquiryBulkImportDialogProps {
+interface AdmissionBulkImportDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    audienceId: string;
+    sessionId: string;
     onSuccess?: () => void;
 }
 
@@ -96,7 +96,8 @@ const REQUIRED_CANONICAL_FIELDS: Array<keyof ParsedCsvRow> = [
     'parent_mobile',
 ];
 
-const toAliasKey = (raw: string): string => raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+const toAliasKey = (raw: string): string =>
+    raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
 
 const normalizeDobToISO = (value: unknown): string | null => {
     if (!value) return null;
@@ -123,52 +124,38 @@ const normalizeDobToISO = (value: unknown): string | null => {
     }
 
     const dt = new Date(year, month - 1, day);
-    if (
-        Number.isNaN(dt.getTime()) ||
-        dt.getFullYear() !== year ||
-        dt.getMonth() + 1 !== month ||
-        dt.getDate() !== day
-    ) {
+    if (Number.isNaN(dt.getTime()) || dt.getFullYear() !== year || dt.getMonth() + 1 !== month || dt.getDate() !== day) {
         return null;
     }
 
     return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
-const parseBooleanSuccess = (result: unknown): boolean =>
-    typeof result === 'object' &&
-    result !== null &&
-    (((result as { status?: string }).status || '').toUpperCase() === 'SUCCESS' ||
-        (result as { success?: boolean }).success === true);
-
 const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const isValidMobile = (value: string): boolean => /^\+?[0-9]{7,15}$/.test(value.replace(/\s+/g, ''));
 
-export const EnquiryBulkImportDialog = ({
-    open,
-    onOpenChange,
-    audienceId,
-    onSuccess,
-}: EnquiryBulkImportDialogProps) => {
+export const AdmissionBulkImportDialog = ({ open, onOpenChange, sessionId, onSuccess }: AdmissionBulkImportDialogProps) => {
     const [step, setStep] = useState<Step>(1);
     const [parseError, setParseError] = useState<string | null>(null);
     const [validRows, setValidRows] = useState<ParsedCsvRow[]>([]);
     const [skippedRowsCount, setSkippedRowsCount] = useState(0);
     const [selectedPackageSessionId, setSelectedPackageSessionId] = useState<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const { instituteDetails } = useInstituteDetailsStore();
 
+    const { instituteDetails } = useInstituteDetailsStore();
     useQuery({ ...useInstituteQuery(), enabled: open });
 
     const classOptions = useMemo<{ id: string; label: string }[]>(
         () => {
             const batches = (instituteDetails?.batches_for_sessions ?? []) as BatchForSessionType[];
-            return batches.map((batch) => ({
-                id: batch.id,
-                label: `${batch.package_dto.package_name} - ${batch.level.level_name} - ${batch.session.session_name}`,
-            }));
+            return batches
+                .filter((batch) => !sessionId || batch.session?.id === sessionId)
+                .map((batch) => ({
+                    id: batch.id,
+                    label: `${batch.package_dto.package_name} - ${batch.level.level_name} - ${batch.session.session_name}`,
+                }));
         },
-        [instituteDetails?.batches_for_sessions]
+        [instituteDetails?.batches_for_sessions, sessionId]
     );
 
     const resetState = () => {
@@ -181,38 +168,18 @@ export const EnquiryBulkImportDialog = ({
 
     const closeDialog = (nextOpen: boolean) => {
         onOpenChange(nextOpen);
-        if (!nextOpen) {
-            resetState();
-        }
+        if (!nextOpen) resetState();
     };
 
     const handleDownloadTemplate = () => {
-        const headers = [
-            'Student Name',
-            'Gender',
-            'Date of Birth',
-            'Parent Name',
-            'Parent Email',
-            'Parent Mobile',
-            'Status',
-            'Source',
-        ];
-        const sample = [
-            'John Student',
-            'MALE',
-            '2015-06-01',
-            'Jane Parent',
-            'parent@example.com',
-            '+919876543210',
-            'NEW',
-            'WEBSITE',
-        ];
+        const headers = ['Student Name', 'Gender', 'Date of Birth', 'Parent Name', 'Parent Email', 'Parent Mobile', 'Status', 'Source'];
+        const sample = ['John Student', 'MALE', '2015-06-01', 'Jane Parent', 'parent@example.com', '+919876543210', 'NEW', 'WEBSITE'];
         const csv = [headers.join(','), sample.join(',')].join('\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
-        anchor.download = 'enquiry_bulk_import_template.csv';
+        anchor.download = 'admission_bulk_import_template.csv';
         anchor.click();
         URL.revokeObjectURL(url);
     };
@@ -234,16 +201,11 @@ export const EnquiryBulkImportDialog = ({
                 const mappedColumns = new Map<string, keyof ParsedCsvRow>();
 
                 for (const header of incomingHeaders) {
-                    const mapped = HEADER_ALIASES[toAliasKey(header)] || null;
-                    if (mapped) {
-                        mappedColumns.set(header, mapped);
-                    }
+                    const mapped = HEADER_ALIASES[toAliasKey(header)];
+                    if (mapped) mappedColumns.set(header, mapped);
                 }
 
-                const missingRequired = REQUIRED_CANONICAL_FIELDS.filter(
-                    (field) => !Array.from(mappedColumns.values()).includes(field)
-                );
-
+                const missingRequired = REQUIRED_CANONICAL_FIELDS.filter((field) => !Array.from(mappedColumns.values()).includes(field));
                 if (missingRequired.length > 0) {
                     const missing = missingRequired
                         .map((field) => REQUIRED_COLUMN_LABELS[REQUIRED_CANONICAL_FIELDS.indexOf(field)])
@@ -270,16 +232,7 @@ export const EnquiryBulkImportDialog = ({
                     const gender = normalizeGender(canonicalRow.gender);
                     const dobIso = normalizeDobToISO(canonicalRow.date_of_birth);
 
-                    if (
-                        !studentName ||
-                        !parentName ||
-                        !parentEmail ||
-                        !parentMobile ||
-                        !isValidEmail(parentEmail) ||
-                        !isValidMobile(parentMobile) ||
-                        !gender ||
-                        !dobIso
-                    ) {
+                    if (!studentName || !parentName || !parentEmail || !parentMobile || !gender || !dobIso || !isValidEmail(parentEmail) || !isValidMobile(parentMobile)) {
                         skipped += 1;
                         continue;
                     }
@@ -309,75 +262,63 @@ export const EnquiryBulkImportDialog = ({
     };
 
     const submitMutation = useMutation({
-        mutationFn: (payload: BulkSubmitEnquiryRequest) => submitEnquiryBulkWithLead(payload),
-        onSuccess: (response: BulkSubmitEnquiryResponse) => {
-            let successCount = 0;
-            let failedCount = 0;
+        mutationFn: (payload: BulkSubmitAdmissionRequest) => submitAdmissionBulkWithLead(payload),
+        onSuccess: (response: BulkSubmitAdmissionResponse) => {
+            const successCount = Number(response?.summary?.successful || 0);
+            const failedCount = Number(response?.summary?.failed || 0);
 
-            if (response.summary && typeof response.summary === 'object') {
-                successCount = Number(response.summary.successful || 0);
-                failedCount = Number(response.summary.failed || 0);
-            } else if (Array.isArray(response.results)) {
-                successCount = response.results.filter(parseBooleanSuccess).length;
-                failedCount = response.results.length - successCount;
-            } else {
-                successCount = validRows.length;
-                failedCount = 0;
-            }
-
-            toast.success(`Imported ${successCount} enquiry response(s) (${failedCount} failed)`);
+            toast.success(`Imported ${successCount} admission(s) (${failedCount} failed)`);
             onSuccess?.();
             closeDialog(false);
         },
         onError: (error: Error) => {
-            toast.error(error.message || 'Failed to import enquiries');
+            toast.error(error.message || 'Failed to import admissions');
         },
     });
 
     const handleConfirmSubmit = () => {
-        if (validRows.length === 0) return;
-        const rows: BulkSubmitEnquiryRow[] = validRows.map((row) => ({
-            audience_id: audienceId,
-            ...(row.source_type ? { source_type: row.source_type } : {}),
-            ...(selectedPackageSessionId
-                ? { destination_package_session_id: selectedPackageSessionId }
-                : {}),
+        if (!instituteDetails?.id) {
+            toast.error('Institute details not loaded');
+            return;
+        }
+        if (!sessionId) {
+            toast.error('Session is required');
+            return;
+        }
+
+        const destinationId = selectedPackageSessionId || classOptions[0]?.id || '';
+        if (!destinationId) {
+            toast.error('Please select a class/batch');
+            return;
+        }
+
+        const rows: BulkSubmitAdmissionRow[] = validRows.map((row) => ({
+            session_id: sessionId,
+            destination_package_session_id: destinationId,
             parent_name: row.parent_name,
             parent_email: row.parent_email,
             parent_mobile: row.parent_mobile,
-            parent_user_dto: {
-                full_name: row.parent_name,
-                email: row.parent_email,
-                mobile_number: row.parent_mobile,
-                is_parent: true,
-                root_user: true,
-            },
-            child_user_dto: {
-                full_name: row.student_name,
-                date_of_birth: row.date_of_birth,
-                gender: row.gender,
-                is_parent: false,
-                root_user: false,
-            },
-            enquiry: {
-                enquiry_status: row.status || 'NEW',
-            },
+            child_name: row.student_name,
+            child_dob: row.date_of_birth,
+            child_gender: row.gender,
+            ...(row.status ? { status: row.status } : {}),
+            ...(row.source_type ? { source_type: row.source_type } : {}),
         }));
 
-        submitMutation.mutate({
-            audience_id: audienceId,
+        const payload: BulkSubmitAdmissionRequest = {
+            institute_id: instituteDetails.id,
             rows,
-        });
+        };
+
+        submitMutation.mutate(payload);
     };
 
     return (
         <Dialog open={open} onOpenChange={closeDialog}>
             <DialogContent className="max-h-[90vh] w-[95vw] overflow-y-auto sm:max-w-[1100px]">
                 <DialogHeader>
-                    <DialogTitle>Bulk Import Enquiry Responses</DialogTitle>
-                    <DialogDescription>
-                        Upload CSV, optionally choose class, preview and confirm import
-                    </DialogDescription>
+                    <DialogTitle>Bulk Import Admissions</DialogTitle>
+                    <DialogDescription>Upload CSV, optionally choose class, preview and confirm import</DialogDescription>
                 </DialogHeader>
 
                 <div className="mb-2 flex items-center gap-2 text-xs">
@@ -394,9 +335,7 @@ export const EnquiryBulkImportDialog = ({
                 {step === 1 && (
                     <div className="space-y-4">
                         <div className="flex items-center justify-between rounded-md border p-3">
-                            <div className="text-sm text-neutral-600">
-                                Download CSV template and upload filled learner responses
-                            </div>
+                            <div className="text-sm text-neutral-600">Download CSV template and upload filled learner responses</div>
                             <MyButton buttonType="secondary" onClick={handleDownloadTemplate}>
                                 Download Template
                             </MyButton>
@@ -417,11 +356,7 @@ export const EnquiryBulkImportDialog = ({
                                 }}
                             />
                         </div>
-                        {parseError && (
-                            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                                {parseError}
-                            </div>
-                        )}
+                        {parseError && <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{parseError}</div>}
                         {!parseError && validRows.length > 0 && (
                             <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">
                                 Valid rows: {validRows.length} | Skipped rows: {skippedRowsCount}
@@ -433,7 +368,7 @@ export const EnquiryBulkImportDialog = ({
                 {step === 2 && (
                     <div className="space-y-4">
                         <p className="text-sm text-neutral-600">
-                            Select class (optional). If not selected, class is not sent in payload.
+                            Select class/batch required for submitting admissions. If you skip, the first available option will be used.
                         </p>
                         <select
                             value={selectedPackageSessionId}
@@ -452,9 +387,7 @@ export const EnquiryBulkImportDialog = ({
 
                 {step === 4 && (
                     <div className="space-y-4">
-                        <div className="text-sm text-neutral-600">
-                            Previewing {validRows.length} valid row(s)
-                        </div>
+                        <div className="text-sm text-neutral-600">Previewing {validRows.length} valid row(s)</div>
                         <div className="max-h-80 overflow-x-auto overflow-y-auto rounded-md border">
                             <table className="w-full min-w-[920px] text-left text-sm">
                                 <thead className="bg-neutral-50">
@@ -497,28 +430,18 @@ export const EnquiryBulkImportDialog = ({
                         Back
                     </MyButton>
                     <div className="flex items-center gap-2">
-                        <MyButton
-                            buttonType="secondary"
-                            disabled={submitMutation.isPending}
-                            onClick={() => closeDialog(false)}
-                        >
+                        <MyButton buttonType="secondary" disabled={submitMutation.isPending} onClick={() => closeDialog(false)}>
                             Cancel
                         </MyButton>
                         {step < 4 ? (
                             <MyButton
-                                disabled={
-                                    submitMutation.isPending ||
-                                    (step === 1 && (!!parseError || validRows.length === 0))
-                                }
+                                disabled={submitMutation.isPending || (step === 1 && (!!parseError || validRows.length === 0))}
                                 onClick={() => setStep(step === 1 ? 2 : 4)}
                             >
                                 Next
                             </MyButton>
                         ) : (
-                            <MyButton
-                                disabled={submitMutation.isPending || validRows.length === 0}
-                                onClick={handleConfirmSubmit}
-                            >
+                            <MyButton disabled={submitMutation.isPending || validRows.length === 0} onClick={handleConfirmSubmit}>
                                 {submitMutation.isPending ? 'Importing...' : 'Confirm Import'}
                             </MyButton>
                         )}
@@ -528,3 +451,4 @@ export const EnquiryBulkImportDialog = ({
         </Dialog>
     );
 };
+

@@ -6,6 +6,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplicantStageDTO;
+import vacademy.io.admin_core_service.features.applicant.dto.BulkApplyRequestDTO;
+import vacademy.io.admin_core_service.features.applicant.dto.BulkApplyResponseDTO;
+import vacademy.io.admin_core_service.features.applicant.dto.BulkApplyRowDTO;
+import vacademy.io.admin_core_service.features.applicant.dto.BulkRowResultDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplyRequestDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplyResponseDTO;
 import vacademy.io.admin_core_service.features.applicant.service.ApplicantService;
@@ -44,6 +48,92 @@ public class ApplicantPublicController {
                 request.getInstituteId(), request.getSource(), request.getSourceId(), request.getEnquiryId());
         request.setWorkflowType("APPLICATION");
         ApplyResponseDTO response = applicantService.submitApplication(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Bulk submit applications.
+     *
+     * Request shape is intentionally similar to the enquiry bulk import style:
+     * - top-level institute_id
+     * - rows[] where each row maps to one manual/direct application
+     *
+     * This endpoint returns:
+     * - summary.successful / summary.failed
+     * - results[] with per-row SUCCESS/FAILED
+     */
+    @PostMapping("/bulk-apply")
+    public ResponseEntity<BulkApplyResponseDTO> bulkSubmitApplication(
+            @RequestBody BulkApplyRequestDTO request) {
+
+        int successful = 0;
+        int failed = 0;
+
+        List<BulkRowResultDTO> results = new java.util.ArrayList<>();
+
+        if (request == null || request.getRows() == null) {
+            return ResponseEntity.ok(
+                    BulkApplyResponseDTO.builder()
+                            .summary(BulkApplyResponseDTO.BulkSummaryDTO.builder().successful(0).failed(0).build())
+                            .results(new java.util.ArrayList<>())
+                            .build());
+        }
+
+        for (int i = 0; i < request.getRows().size(); i++) {
+            BulkApplyRowDTO row = request.getRows().get(i);
+            try {
+                if (row == null) throw new IllegalArgumentException("Row is null");
+
+                // Build ApplyRequestDTO expected by ApplicantService
+                ApplyRequestDTO applyRequest = new ApplyRequestDTO();
+                applyRequest.setEnquiryId(null);
+                applyRequest.setInstituteId(request.getInstituteId());
+                applyRequest.setSessionId(row.getSessionId());
+                applyRequest.setSource("INSTITUTE");
+                applyRequest.setSourceId(request.getInstituteId());
+                applyRequest.setDestinationPackageSessionId(row.getDestinationPackageSessionId());
+                applyRequest.setWorkflowType("APPLICATION");
+
+                java.util.Map<String, Object> formData = new java.util.HashMap<>();
+                formData.put("parent_name", row.getParentName());
+                formData.put("parent_phone", row.getParentPhone());
+                formData.put("parent_email", row.getParentEmail());
+                formData.put("child_name", row.getChildName());
+                formData.put("child_dob", row.getChildDob());
+                formData.put("child_gender", row.getChildGender());
+                formData.put("address_line", row.getAddressLine() != null ? row.getAddressLine() : "");
+
+                applyRequest.setFormData(formData);
+                applyRequest.setCustomFieldValues(new java.util.HashMap<>());
+
+                applicantService.submitApplication(applyRequest);
+
+                successful++;
+                results.add(BulkRowResultDTO.builder()
+                        .rowIndex(i)
+                        .status("SUCCESS")
+                        .success(true)
+                        .message(null)
+                        .build());
+            } catch (Exception e) {
+                failed++;
+                results.add(BulkRowResultDTO.builder()
+                        .rowIndex(i)
+                        .status("FAILED")
+                        .success(false)
+                        .message(e.getMessage())
+                        .build());
+            }
+        }
+
+        BulkApplyResponseDTO response = BulkApplyResponseDTO.builder()
+                .summary(BulkApplyResponseDTO.BulkSummaryDTO.builder()
+                        .successful(successful)
+                        .failed(failed)
+                        .build())
+                .results(results)
+                .build();
+
         return ResponseEntity.ok(response);
     }
 

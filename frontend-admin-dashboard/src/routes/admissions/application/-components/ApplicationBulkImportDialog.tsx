@@ -13,19 +13,22 @@ import { MyButton } from '@/components/design-system/button';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import {
-    submitEnquiryBulkWithLead,
-    type BulkSubmitEnquiryRequest,
-    type BulkSubmitEnquiryRow,
-    type BulkSubmitEnquiryResponse,
-} from '../-services/submit-enquiry';
-import {
-    normalizeGender,
-    parseOptionalEnquiryStatus,
-    parseOptionalSourceType,
-} from './enquiry-bulk-import-utils';
-import type { BatchForSessionType } from '@/schemas/student/student-list/institute-schema';
+    submitApplicationBulkWithLead,
+    type BulkSubmitApplicationRequest,
+    type BulkSubmitApplicationRow,
+    type BulkSubmitApplicationResponse,
+} from '../../-services/submit-application-bulk';
+import { normalizeGender, parseOptionalEnquiryStatus, parseOptionalSourceType } from '../../enquiries/-components/enquiry-bulk-import-utils';
 
 type Step = 1 | 2 | 4;
+
+type EnquirySourceType =
+    | 'WEBSITE'
+    | 'GOOGLE_ADS'
+    | 'FACEBOOK'
+    | 'INSTAGRAM'
+    | 'REFERRAL'
+    | 'OTHER';
 
 type ParsedCsvRow = {
     student_name: string;
@@ -35,13 +38,12 @@ type ParsedCsvRow = {
     parent_email: string;
     parent_mobile: string;
     status: string;
-    source_type?: 'WEBSITE' | 'GOOGLE_ADS' | 'FACEBOOK' | 'INSTAGRAM' | 'REFERRAL' | 'OTHER';
+    source_type?: EnquirySourceType;
 };
 
-interface EnquiryBulkImportDialogProps {
+interface ApplicationBulkImportDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    audienceId: string;
     onSuccess?: () => void;
 }
 
@@ -135,39 +137,32 @@ const normalizeDobToISO = (value: unknown): string | null => {
     return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
-const parseBooleanSuccess = (result: unknown): boolean =>
-    typeof result === 'object' &&
-    result !== null &&
-    (((result as { status?: string }).status || '').toUpperCase() === 'SUCCESS' ||
-        (result as { success?: boolean }).success === true);
-
 const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const isValidMobile = (value: string): boolean => /^\+?[0-9]{7,15}$/.test(value.replace(/\s+/g, ''));
 
-export const EnquiryBulkImportDialog = ({
+export const ApplicationBulkImportDialog = ({
     open,
     onOpenChange,
-    audienceId,
     onSuccess,
-}: EnquiryBulkImportDialogProps) => {
+}: ApplicationBulkImportDialogProps) => {
     const [step, setStep] = useState<Step>(1);
     const [parseError, setParseError] = useState<string | null>(null);
     const [validRows, setValidRows] = useState<ParsedCsvRow[]>([]);
     const [skippedRowsCount, setSkippedRowsCount] = useState(0);
     const [selectedPackageSessionId, setSelectedPackageSessionId] = useState<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
+
     const { instituteDetails } = useInstituteDetailsStore();
 
+    // Trigger institute fetch (and batches_for_sessions population) when the dialog opens.
     useQuery({ ...useInstituteQuery(), enabled: open });
 
     const classOptions = useMemo<{ id: string; label: string }[]>(
-        () => {
-            const batches = (instituteDetails?.batches_for_sessions ?? []) as BatchForSessionType[];
-            return batches.map((batch) => ({
+        () =>
+            (instituteDetails?.batches_for_sessions ?? []).map((batch) => ({
                 id: batch.id,
                 label: `${batch.package_dto.package_name} - ${batch.level.level_name} - ${batch.session.session_name}`,
-            }));
-        },
+            })),
         [instituteDetails?.batches_for_sessions]
     );
 
@@ -181,9 +176,7 @@ export const EnquiryBulkImportDialog = ({
 
     const closeDialog = (nextOpen: boolean) => {
         onOpenChange(nextOpen);
-        if (!nextOpen) {
-            resetState();
-        }
+        if (!nextOpen) resetState();
     };
 
     const handleDownloadTemplate = () => {
@@ -212,7 +205,7 @@ export const EnquiryBulkImportDialog = ({
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
-        anchor.download = 'enquiry_bulk_import_template.csv';
+        anchor.download = 'application_bulk_import_template.csv';
         anchor.click();
         URL.revokeObjectURL(url);
     };
@@ -235,9 +228,7 @@ export const EnquiryBulkImportDialog = ({
 
                 for (const header of incomingHeaders) {
                     const mapped = HEADER_ALIASES[toAliasKey(header)] || null;
-                    if (mapped) {
-                        mappedColumns.set(header, mapped);
-                    }
+                    if (mapped) mappedColumns.set(header, mapped);
                 }
 
                 const missingRequired = REQUIRED_CANONICAL_FIELDS.filter(
@@ -309,74 +300,66 @@ export const EnquiryBulkImportDialog = ({
     };
 
     const submitMutation = useMutation({
-        mutationFn: (payload: BulkSubmitEnquiryRequest) => submitEnquiryBulkWithLead(payload),
-        onSuccess: (response: BulkSubmitEnquiryResponse) => {
-            let successCount = 0;
-            let failedCount = 0;
-
-            if (response.summary && typeof response.summary === 'object') {
-                successCount = Number(response.summary.successful || 0);
-                failedCount = Number(response.summary.failed || 0);
-            } else if (Array.isArray(response.results)) {
-                successCount = response.results.filter(parseBooleanSuccess).length;
-                failedCount = response.results.length - successCount;
-            } else {
-                successCount = validRows.length;
-                failedCount = 0;
-            }
-
-            toast.success(`Imported ${successCount} enquiry response(s) (${failedCount} failed)`);
+        mutationFn: (payload: BulkSubmitApplicationRequest) => submitApplicationBulkWithLead(payload),
+        onSuccess: (response: BulkSubmitApplicationResponse) => {
+            const successCount = Number(response?.summary?.successful || 0);
+            const failedCount = Number(response?.summary?.failed || 0);
+            toast.success(`Imported ${successCount} application(s) (${failedCount} failed)`);
             onSuccess?.();
             closeDialog(false);
         },
         onError: (error: Error) => {
-            toast.error(error.message || 'Failed to import enquiries');
+            toast.error(error.message || 'Failed to import applications');
         },
     });
 
     const handleConfirmSubmit = () => {
         if (validRows.length === 0) return;
-        const rows: BulkSubmitEnquiryRow[] = validRows.map((row) => ({
-            audience_id: audienceId,
-            ...(row.source_type ? { source_type: row.source_type } : {}),
-            ...(selectedPackageSessionId
-                ? { destination_package_session_id: selectedPackageSessionId }
-                : {}),
+
+        if (!instituteDetails?.id) {
+            toast.error('Institute details not available');
+            return;
+        }
+        if (!selectedPackageSessionId) {
+            toast.error('Please select a class/batch');
+            return;
+        }
+
+        const instituteId = instituteDetails.id;
+        const selectedBatch = (instituteDetails.batches_for_sessions ?? []).find((b) => b.id === selectedPackageSessionId);
+        const sessionId = selectedBatch?.session?.id || '';
+        if (!sessionId) {
+            toast.error('Invalid class/batch selection');
+            return;
+        }
+
+        const rows: BulkSubmitApplicationRow[] = validRows.map((row) => ({
+            session_id: sessionId,
+            destination_package_session_id: selectedPackageSessionId,
             parent_name: row.parent_name,
+            parent_phone: row.parent_mobile,
             parent_email: row.parent_email,
-            parent_mobile: row.parent_mobile,
-            parent_user_dto: {
-                full_name: row.parent_name,
-                email: row.parent_email,
-                mobile_number: row.parent_mobile,
-                is_parent: true,
-                root_user: true,
-            },
-            child_user_dto: {
-                full_name: row.student_name,
-                date_of_birth: row.date_of_birth,
-                gender: row.gender,
-                is_parent: false,
-                root_user: false,
-            },
-            enquiry: {
-                enquiry_status: row.status || 'NEW',
-            },
+            child_name: row.student_name,
+            child_dob: row.date_of_birth,
+            child_gender: row.gender,
+            address_line: '',
         }));
 
-        submitMutation.mutate({
-            audience_id: audienceId,
+        const payload: BulkSubmitApplicationRequest = {
+            institute_id: instituteId,
             rows,
-        });
+        };
+
+        submitMutation.mutate(payload);
     };
 
     return (
         <Dialog open={open} onOpenChange={closeDialog}>
-            <DialogContent className="max-h-[90vh] w-[95vw] overflow-y-auto sm:max-w-[1100px]">
+            <DialogContent className="max-h-[90vh] w-[95vw] sm:max-w-[1100px] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Bulk Import Enquiry Responses</DialogTitle>
+                    <DialogTitle>Bulk Import Applications</DialogTitle>
                     <DialogDescription>
-                        Upload CSV, optionally choose class, preview and confirm import
+                        Upload CSV, select class/batch, preview and confirm import
                     </DialogDescription>
                 </DialogHeader>
 
@@ -384,7 +367,11 @@ export const EnquiryBulkImportDialog = ({
                     {[1, 2, 4].map((s) => (
                         <div
                             key={s}
-                            className={`rounded-full px-3 py-1 ${step === s ? 'bg-primary-100 text-primary-700' : 'bg-neutral-100 text-neutral-600'}`}
+                            className={`rounded-full px-3 py-1 ${
+                                step === s
+                                    ? 'bg-primary-100 text-primary-700'
+                                    : 'bg-neutral-100 text-neutral-600'
+                            }`}
                         >
                             Step {s}
                         </div>
@@ -395,12 +382,13 @@ export const EnquiryBulkImportDialog = ({
                     <div className="space-y-4">
                         <div className="flex items-center justify-between rounded-md border p-3">
                             <div className="text-sm text-neutral-600">
-                                Download CSV template and upload filled learner responses
+                                Download CSV template and upload filled applicant responses
                             </div>
                             <MyButton buttonType="secondary" onClick={handleDownloadTemplate}>
                                 Download Template
                             </MyButton>
                         </div>
+
                         <div
                             onClick={() => fileInputRef.current?.click()}
                             className="cursor-pointer rounded-md border-2 border-dashed border-neutral-300 p-8 text-center hover:border-primary-300"
@@ -417,11 +405,13 @@ export const EnquiryBulkImportDialog = ({
                                 }}
                             />
                         </div>
+
                         {parseError && (
                             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                                 {parseError}
                             </div>
                         )}
+
                         {!parseError && validRows.length > 0 && (
                             <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">
                                 Valid rows: {validRows.length} | Skipped rows: {skippedRowsCount}
@@ -433,14 +423,14 @@ export const EnquiryBulkImportDialog = ({
                 {step === 2 && (
                     <div className="space-y-4">
                         <p className="text-sm text-neutral-600">
-                            Select class (optional). If not selected, class is not sent in payload.
+                            Select class/batch required for submitting applications.
                         </p>
                         <select
                             value={selectedPackageSessionId}
                             onChange={(e) => setSelectedPackageSessionId(e.target.value)}
                             className="w-full rounded-md border p-2 text-sm"
                         >
-                            <option value="">No class selected</option>
+                            <option value="">Select a class/batch</option>
                             {classOptions.map((option) => (
                                 <option key={option.id} value={option.id}>
                                     {option.label}
@@ -510,7 +500,13 @@ export const EnquiryBulkImportDialog = ({
                                     submitMutation.isPending ||
                                     (step === 1 && (!!parseError || validRows.length === 0))
                                 }
-                                onClick={() => setStep(step === 1 ? 2 : 4)}
+                                onClick={() => {
+                                    if (step === 2 && !selectedPackageSessionId) {
+                                        toast.warning('Please select a class/batch');
+                                        return;
+                                    }
+                                    setStep(step === 1 ? 2 : 4);
+                                }}
                             >
                                 Next
                             </MyButton>
@@ -528,3 +524,4 @@ export const EnquiryBulkImportDialog = ({
         </Dialog>
     );
 };
+

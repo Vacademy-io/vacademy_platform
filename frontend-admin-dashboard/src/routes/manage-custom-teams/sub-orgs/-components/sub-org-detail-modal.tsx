@@ -90,6 +90,7 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                         <DashboardLoader />
                     </div>
                 ) : (
+                    <>
                     <ScrollArea className="max-h-[60vh]">
                         <div className="space-y-6 pr-4">
                             {/* Invite Link Section */}
@@ -259,12 +260,13 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                         </div>
                     </ScrollArea>
 
-                    {/* Add User Section — outside ScrollArea so it's always visible */}
+                    {/* Add User Section - outside ScrollArea so it is always visible */}
                     <AddUserToSubOrgSection
                         subOrgId={subOrgId}
                         instituteId={instituteId || ''}
                         scopedInvites={scopedInvites}
                     />
+                    </>
                 )}
             </DialogContent>
         </Dialog>

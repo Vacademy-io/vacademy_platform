@@ -26,7 +26,7 @@ function getBaseUrl(): string {
     }
 
     // Default fallback
-    return 'https://backend-stage.vacademy.io';
+    return envUrl || 'https://backend-stage.vacademy.io';
 }
 
 export const BACKEND_BASE_URL = getBaseUrl();

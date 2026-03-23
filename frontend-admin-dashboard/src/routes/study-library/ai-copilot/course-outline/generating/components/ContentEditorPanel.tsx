@@ -21,6 +21,96 @@ import { Label } from '@/components/ui/label';
 
 import { isYouTubeUrl, getYouTubeEmbedUrl } from '../../../shared/utils/youtube';
 
+/**
+ * Strips YouTube URLs/iframes from HTML content, returning only the description/script text.
+ */
+function extractDescriptionFromContent(content: string): string {
+    if (!content) return '';
+    let text = content
+        .replace(/<a[^>]*href="[^"]*(?:youtube\.com|youtu\.be)[^"]*"[^>]*>.*?<\/a>/gi, '')
+        .replace(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/[^\s<"']*/gi, '')
+        .replace(/<iframe[^>]*(?:youtube\.com|youtu\.be)[^>]*>.*?<\/iframe>/gi, '');
+    text = text.replace(/<p[^>]*>\s*<\/p>/gi, '');
+    return text.trim();
+}
+
+/**
+ * Strips HTML tags from a string, returning plain text.
+ */
+function stripHtml(html: string): string {
+    if (!html) return '';
+    return html.replace(/<[^>]+>/g, '').trim();
+}
+
+/**
+ * Parses quiz/assessment content from slide.content into a normalized QuizQuestion array.
+ * Handles both the simple format { questions: [...] } and the assessment format with nested objects.
+ */
+function parseQuizContent(content: string): { questions: QuizQuestion[]; answers: Record<number, string> } {
+    if (!content) return { questions: [], answers: {} };
+
+    try {
+        const parsed = JSON.parse(content);
+        let rawQuestions: any[] = [];
+        let answers: Record<number, string> = {};
+
+        if (Array.isArray(parsed.questions)) {
+            rawQuestions = parsed.questions;
+            answers = parsed.answers || {};
+        } else if (Array.isArray(parsed)) {
+            rawQuestions = parsed;
+        } else {
+            return { questions: [], answers: {} };
+        }
+
+        const questions: QuizQuestion[] = rawQuestions.map((q: any) => {
+            // Normalize question text - strip HTML if it contains tags
+            let questionText = '';
+            if (typeof q.question === 'object' && q.question?.content) {
+                questionText = stripHtml(q.question.content);
+            } else {
+                questionText = stripHtml(String(q.question || ''));
+            }
+
+            // Normalize options - strip HTML from each option
+            let options: string[] = [];
+            if (Array.isArray(q.options)) {
+                options = q.options.map((opt: any) => {
+                    if (typeof opt === 'object' && opt?.content) {
+                        return stripHtml(opt.content);
+                    }
+                    return stripHtml(String(opt || ''));
+                });
+            }
+
+            // Resolve correct answer index
+            let correctAnswerIndex = q.correctAnswerIndex ?? 0;
+            if (Array.isArray(q.correct_options) && q.correct_options.length > 0 && Array.isArray(q.options)) {
+                const correctId = q.correct_options[0];
+                const foundIdx = q.options.findIndex((opt: any) =>
+                    typeof opt === 'object' ? (opt.preview_id === correctId || opt.id === correctId) : opt === correctId
+                );
+                if (foundIdx !== -1) correctAnswerIndex = foundIdx;
+            }
+
+            // Normalize explanation
+            let explanation = '';
+            const expSource = q.explanation || q.exp;
+            if (typeof expSource === 'object' && expSource?.content) {
+                explanation = stripHtml(expSource.content);
+            } else {
+                explanation = stripHtml(String(expSource || ''));
+            }
+
+            return { question: questionText, options, correctAnswerIndex, explanation };
+        });
+
+        return { questions, answers };
+    } catch {
+        return { questions: [], answers: {} };
+    }
+}
+
 interface ContentEditorPanelProps {
     slide: SlideGeneration | null;
     onContentChange: (slideId: string, content: string) => void;
@@ -60,9 +150,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
             setDocumentContent(slide.content || '');
         } else if (
             slide.slideType === 'code-editor' ||
-            slide.slideType === 'solution' ||
-            slide.slideType === 'video-code' ||
-            slide.slideType === 'ai-video-code'
+            slide.slideType === 'solution'
         ) {
             setCodeContent(slide.content || '// Your code here\n');
         } else if (
@@ -70,24 +158,9 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
             slide.slideType === 'assessment' ||
             slide.slideType === 'ASSESSMENT'
         ) {
-            if (slide.content) {
-                try {
-                    const parsed = JSON.parse(slide.content);
-                    if (Array.isArray(parsed.questions)) {
-                        setQuizQuestions(parsed.questions);
-                        setSelectedAnswers(parsed.answers || {});
-                    } else if (Array.isArray(parsed)) {
-                        setQuizQuestions(parsed);
-                        setSelectedAnswers({});
-                    } else {
-                        setQuizQuestions(DEFAULT_QUIZ_QUESTIONS);
-                    }
-                } catch {
-                    setQuizQuestions(DEFAULT_QUIZ_QUESTIONS);
-                }
-            } else {
-                setQuizQuestions(DEFAULT_QUIZ_QUESTIONS);
-            }
+            const { questions, answers } = parseQuizContent(slide.content || '');
+            setQuizQuestions(questions.length > 0 ? questions : DEFAULT_QUIZ_QUESTIONS);
+            setSelectedAnswers(answers);
             setCurrentQuizIndex(0);
         }
         setIsEditing(true);
@@ -105,11 +178,16 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
             content = documentContent;
         } else if (
             slide.slideType === 'code-editor' ||
-            slide.slideType === 'solution' ||
+            slide.slideType === 'solution'
+        ) {
+            content = codeContent;
+        } else if (
+            slide.slideType === 'video' ||
+            slide.slideType === 'ai-video' ||
             slide.slideType === 'video-code' ||
             slide.slideType === 'ai-video-code'
         ) {
-            content = codeContent;
+            content = slide.content || '';
         } else if (
             slide.slideType === 'quiz' ||
             slide.slideType === 'assessment' ||
@@ -231,7 +309,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-hidden">
+            <div key={slide.id} className="flex-1 overflow-hidden">
                 {/* Document Content */}
                 {(slide.slideType === 'doc' ||
                     slide.slideType === 'objectives' ||
@@ -256,38 +334,32 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                         </div>
                     )}
 
-                {/* Video Content */}
-                {(slide.slideType === 'video' || slide.slideType === 'ai-video') && (
-                    <div className="flex h-full items-center justify-center bg-neutral-900 p-3 sm:p-6">
-                        {slide.content && isYouTubeUrl(slide.content) ? (
-                            <iframe
-                                src={getYouTubeEmbedUrl(slide.content) || undefined}
-                                className="aspect-video w-full max-w-3xl rounded-lg"
-                                allowFullScreen
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                {/* Video / AI-Video / Video-Code / AI-Video-Code Content - show description or script */}
+                {(slide.slideType === 'video' ||
+                    slide.slideType === 'ai-video' ||
+                    slide.slideType === 'video-code' ||
+                    slide.slideType === 'ai-video-code') && (
+                    <div className="h-full overflow-y-auto p-6 sm:p-8">
+                        <div className="prose prose-lg max-w-none">
+                            <h4 className="mb-4 text-sm font-medium uppercase tracking-wide text-neutral-500">
+                                {slide.slideType === 'ai-video' || slide.slideType === 'ai-video-code'
+                                    ? 'Script'
+                                    : 'Description'}
+                            </h4>
+                            <div
+                                dangerouslySetInnerHTML={{
+                                    __html:
+                                        extractDescriptionFromContent(slide.content || '') ||
+                                        '<p>No content available</p>',
+                                }}
                             />
-                        ) : slide.aiVideoData?.timelineUrl ? (
-                            <div className="text-center text-white">
-                                <Video className="mx-auto mb-4 size-12 opacity-50" />
-                                <p className="text-sm">AI Content Generated</p>
-                                <p className="mt-2 text-xs text-neutral-400">
-                                    Video ID: {slide.aiVideoData.videoId}
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="text-center text-white">
-                                <Video className="mx-auto mb-4 size-12 opacity-50" />
-                                <p className="text-sm">Video content will appear here</p>
-                            </div>
-                        )}
+                        </div>
                     </div>
                 )}
 
-                {/* Code Content */}
+                {/* Code Content - only for pure code/solution slides */}
                 {(slide.slideType === 'code-editor' ||
-                    slide.slideType === 'solution' ||
-                    slide.slideType === 'video-code' ||
-                    slide.slideType === 'ai-video-code') && (
+                    slide.slideType === 'solution') && (
                         <div className="h-full">
                             <Editor
                                 height="100%"
@@ -298,10 +370,11 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                                 options={{
                                     readOnly: !isEditing,
                                     minimap: { enabled: false },
-                                    fontSize: 13,
+                                    fontSize: 15,
                                     lineNumbers: 'on',
                                     scrollBeyondLastLine: false,
                                     wordWrap: 'on',
+                                    padding: { top: 16, bottom: 16 },
                                 }}
                             />
                         </div>

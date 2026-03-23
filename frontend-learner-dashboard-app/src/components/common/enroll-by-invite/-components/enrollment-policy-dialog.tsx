@@ -311,7 +311,7 @@ const EnrollmentPolicyDialog = ({
                             <Sparkles className="w-6 h-6 text-primary-600" />
                             <h4 className="font-semibold text-gray-900">Upgrade to Continue Learning</h4>
                             <p className="text-sm text-gray-600">
-                                Get unlimited access to all course content with our premium plan.
+                                Click below to join membership.
                             </p>
                             <MyButton
                                 type="button"
@@ -345,7 +345,7 @@ const EnrollmentPolicyDialog = ({
                     </DialogTitle>
                     <DialogDescription className="text-gray-600 text-sm sm:text-base leading-relaxed">
                         {onEnrollment?.blockMessage ||
-                            "You already have an active membership plan. Demo access is not available for existing paid subscribers."}
+                            "You are in our active membership plan. Please check whatsapp message and use link from text or email to join session everyday. "}
                     </DialogDescription>
                 </div>
             </DialogHeader>
@@ -357,7 +357,7 @@ const EnrollmentPolicyDialog = ({
                             <Sparkles className="w-6 h-6 text-primary-600" />
                             <h4 className="font-semibold text-gray-900">Upgrade to Continue Learning</h4>
                             <p className="text-sm text-gray-600">
-                                Get unlimited access to all course content with our premium plan.
+                               Click below to join membership.
                             </p>
                             <MyButton
                                 type="button"

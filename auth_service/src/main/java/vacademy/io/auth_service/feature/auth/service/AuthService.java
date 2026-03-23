@@ -30,6 +30,8 @@ import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -37,6 +39,7 @@ import java.util.Set;
 
 @Service
 public class AuthService {
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
     @Autowired
     UserRepository userRepository;
     @Autowired
@@ -484,18 +487,25 @@ public class AuthService {
         }
         String instituteName = "Vacademy";
         String theme = "#E67E22";
-        String loginUrl = "https://dash.vacademy.io";
+        String loginUrl = defaultLearnerPortalUrl;
         if (StringUtils.hasText(instituteId)) {
-            instituteInfoDTO = instituteInternalService.getInstituteByInstituteId(instituteId);
-            if (instituteInfoDTO.getInstituteName() != null)
-                instituteName = instituteInfoDTO.getInstituteName();
-            if (instituteInfoDTO.getInstituteThemeCode() != null)
-                theme = instituteInfoDTO.getInstituteThemeCode();
-            if (isLearner) {
-                if (instituteInfoDTO.getLearnerPortalUrl() != null)
-                    loginUrl = instituteInfoDTO.getLearnerPortalUrl();
-                else
-                    loginUrl = defaultLearnerPortalUrl;
+            try {
+                instituteInfoDTO = instituteInternalService.getInstituteByInstituteId(instituteId);
+                if (instituteInfoDTO != null) {
+                    if (instituteInfoDTO.getInstituteName() != null)
+                        instituteName = instituteInfoDTO.getInstituteName();
+                    if (instituteInfoDTO.getInstituteThemeCode() != null)
+                        theme = instituteInfoDTO.getInstituteThemeCode();
+                    if (isLearner) {
+                        if (instituteInfoDTO.getLearnerPortalUrl() != null)
+                            loginUrl = instituteInfoDTO.getLearnerPortalUrl();
+                        else
+                            loginUrl = defaultLearnerPortalUrl;
+                    }
+                }
+            } catch (Exception e) {
+                // Fallback to defaults if institute fetch fails (e.g. HMAC auth in local dev)
+                logger.warn("Could not fetch institute info for id: {}. Using defaults. Error: {}", instituteId, e.getMessage());
             }
         }
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();

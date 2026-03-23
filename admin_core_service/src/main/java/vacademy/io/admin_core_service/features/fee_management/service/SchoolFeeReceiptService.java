@@ -20,7 +20,9 @@ import vacademy.io.admin_core_service.features.fee_management.repository.Assigne
 import vacademy.io.admin_core_service.features.fee_management.repository.FeeTypeRepository;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.fee_management.entity.AssignedFeeValue;
 import vacademy.io.admin_core_service.features.fee_management.entity.FeeType;
@@ -105,6 +107,9 @@ public class SchoolFeeReceiptService {
 
     @Autowired
     private AudienceResponseRepository audienceResponseRepository;
+
+    @Autowired
+    private InstituteStudentRepository instituteStudentRepository;
 
     /**
      * Generate a school fee receipt PDF and send it via email.
@@ -577,39 +582,73 @@ public class SchoolFeeReceiptService {
             BigDecimal balanceDue, String currency) {
 
         String currencySymbol = getCurrencySymbol(currency);
+        String receiptDate = LocalDateTime.now().format(DISPLAY_DATE_FORMATTER);
         String studentName = user.getFullName() != null ? user.getFullName() : user.getEmail();
         String instituteName = institute.getInstituteName() != null ? institute.getInstituteName() : "";
         String instituteAddress = buildInstituteAddress(institute);
         String logoHtml = buildInstituteLogoHtml(institute);
+        String logoUrl = buildInstituteLogoUrl(institute);
         String feeTableHtml = buildFeeTableHtml(feePayments, currency);
         ReceiptEnrichment enrichment = enrichReceiptFromEnrollment(user.getId(), institute.getId());
+        String safeTransactionId = transactionId != null ? transactionId : "N/A";
+        String safePaymentMode = paymentMode != null ? paymentMode : "OFFLINE";
 
-        return template
+        String replaced = template
+                // Existing (lowercase) placeholders
                 .replace("{{institute_logo}}", logoHtml)
                 .replace("{{institute_name}}", instituteName)
                 .replace("{{institute_address}}", instituteAddress)
                 .replace("{{receipt_number}}", receiptNumber)
-                .replace("{{receipt_date}}", LocalDateTime.now().format(DISPLAY_DATE_FORMATTER))
+                .replace("{{receipt_date}}", receiptDate)
                 .replace("{{student_name}}", studentName)
                 .replace("{{student_email}}", user.getEmail() != null ? user.getEmail() : "")
                 .replace("{{package_name}}", enrichment.packageName())
                 .replace("{{session_name}}", enrichment.sectionName())
                 .replace("{{session}}", enrichment.academicSessionLabel())
                 .replace("{{parent_name}}", enrichment.parentName())
+                .replace("{{admission_no}}", enrichment.admissionNo())
+                .replace("{{enrollment_code}}", enrichment.enrollmentCode())
                 .replace("{{fee_table}}", feeTableHtml)
                 .replace("{{total_expected}}", totalExpected.toPlainString())
                 .replace("{{total_paid}}", totalPaid.toPlainString())
                 .replace("{{total_discount}}", totalDiscount.toPlainString())
                 .replace("{{balance_due}}", balanceDue.toPlainString())
                 .replace("{{amount_paid_now}}", amountPaid.toPlainString())
-                .replace("{{transaction_id}}", transactionId != null ? transactionId : "N/A")
-                .replace("{{payment_mode}}", paymentMode != null ? paymentMode : "OFFLINE")
+                .replace("{{transaction_id}}", safeTransactionId)
+                .replace("{{payment_mode}}", safePaymentMode)
                 .replace("{{currency}}", currency)
-                .replace("{{currency_symbol}}", currencySymbol);
+                .replace("{{currency_symbol}}", currencySymbol)
+                // New DB template (uppercase) placeholders
+                .replace("{{SCHOOL_LOGO_URL}}", logoUrl)
+                .replace("{{SCHOOL_NAME}}", instituteName)
+                .replace("{{SCHOOL_ADDRESS}}", instituteAddress)
+                .replace("{{RECEIPT_NO}}", receiptNumber)
+                .replace("{{TRANSACTION_ID}}", safeTransactionId)
+                .replace("{{TRANSACTION_DATE}}", receiptDate)
+                .replace("{{STUDENT_NAME}}", studentName)
+                .replace("{{ADMISSION_NO}}", enrichment.admissionNo())
+                .replace("{{PARENT_NAME}}", enrichment.parentName())
+                .replace("{{CLASS}}", enrichment.packageName())
+                .replace("{{ENROLLMENT_CODE}}", enrichment.enrollmentCode())
+                .replace("{{SECTION}}", enrichment.sectionName())
+                .replace("{{ACADEMIC_YEAR}}", enrichment.academicSessionLabel())
+                .replace("{{PAYMENT_MODE}}", safePaymentMode)
+                .replace("{{PAYMENT_METHOD}}", safePaymentMode)
+                .replace("{{TRANSACTION_REFERENCE}}", safeTransactionId)
+                .replace("{{RECEIVED_BY}}", "Cash")
+                .replace("{{REMARKS}}", "Paid")
+                .replace("{{FEE_TABLE}}", feeTableHtml)
+                .replace("{{TOTAL_EXPECTED_FEE}}", currencySymbol + " " + totalExpected.toPlainString())
+                .replace("{{TOTAL_DISCOUNT}}", currencySymbol + " " + totalDiscount.toPlainString())
+                .replace("{{TOTAL_PAID_ALL_TIME}}", currencySymbol + " " + totalPaid.toPlainString())
+                .replace("{{CURRENT_BALANCE_DUE}}", currencySymbol + " " + balanceDue.toPlainString())
+                .replace("{{AMOUNT_PAID_NOW}}", currencySymbol + " " + amountPaid.toPlainString());
+
+        return applyIndexedFeeRowPlaceholders(replaced, feePayments, currencySymbol);
     }
 
     private record ReceiptEnrichment(String packageName, String sectionName, String academicSessionLabel,
-            String parentName) {
+            String parentName, String enrollmentCode, String admissionNo) {
     }
 
     /**
@@ -621,13 +660,19 @@ public class SchoolFeeReceiptService {
         String sectionName = "";
         String academicSessionLabel = "";
         String parentName = "";
+        String enrollmentCode = "";
+        String admissionNo = "";
 
         if (StringUtils.hasText(userId) && StringUtils.hasText(instituteId)) {
             try {
                 List<StudentSessionInstituteGroupMapping> mappings = studentSessionInstituteGroupMappingRepository
                         .findActiveMappingsWithFetchedPackageSession(userId, instituteId);
                 if (!mappings.isEmpty()) {
-                    PackageSession ps = mappings.get(0).getPackageSession();
+                    StudentSessionInstituteGroupMapping mapping = mappings.get(0);
+                    if (StringUtils.hasText(mapping.getInstituteEnrolledNumber())) {
+                        enrollmentCode = mapping.getInstituteEnrolledNumber();
+                    }
+                    PackageSession ps = mapping.getPackageSession();
                     if (ps != null) {
                         if (ps.getName() != null) {
                             sectionName = ps.getName();
@@ -649,9 +694,15 @@ public class SchoolFeeReceiptService {
             } catch (Exception e) {
                 log.debug("Could not load parent name for fee receipt (user={}): {}", userId, e.getMessage());
             }
+            try {
+                admissionNo = resolveAdmissionNo(userId);
+            } catch (Exception e) {
+                log.debug("Could not load admission number for fee receipt (user={}): {}", userId, e.getMessage());
+            }
         }
 
-        return new ReceiptEnrichment(packageName, sectionName, academicSessionLabel, parentName);
+        return new ReceiptEnrichment(packageName, sectionName, academicSessionLabel, parentName, enrollmentCode,
+                admissionNo);
     }
 
     private String resolveParentName(String userId) {
@@ -664,6 +715,34 @@ public class SchoolFeeReceiptService {
                 .max(Comparator.comparing(AudienceResponse::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(AudienceResponse::getParentName)
                 .orElse("");
+    }
+
+    private String resolveAdmissionNo(String userId) {
+        List<Student> students = instituteStudentRepository.findByUserId(userId);
+        if (students == null || students.isEmpty()) {
+            return "";
+        }
+        return students.stream()
+                .filter(s -> StringUtils.hasText(s.getAdmissionNo()))
+                .max(Comparator.comparing(Student::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(this::buildAdmissionNoWithYear)
+                .orElse("");
+    }
+
+    private String buildAdmissionNoWithYear(Student student) {
+        String admissionNo = student.getAdmissionNo();
+        if (!StringUtils.hasText(admissionNo)) {
+            return "";
+        }
+        if (student.getDateOfAdmission() == null) {
+            return admissionNo;
+        }
+        int year = student.getDateOfAdmission()
+                .toInstant()
+                .atZone(java.time.ZoneId.systemDefault())
+                .toLocalDate()
+                .getYear();
+        return admissionNo + " / " + year;
     }
 
     private String buildInstituteAddress(Institute institute) {
@@ -689,17 +768,84 @@ public class SchoolFeeReceiptService {
     }
 
     private String buildInstituteLogoHtml(Institute institute) {
+        String logoUrl = buildInstituteLogoUrl(institute);
+        if (StringUtils.hasText(logoUrl)) {
+            return "<img src=\"" + logoUrl + "\" alt=\"Logo\" style=\"max-height: 60px; max-width: 200px;\" />";
+        }
+        return "";
+    }
+
+    private String buildInstituteLogoUrl(Institute institute) {
         if (StringUtils.hasText(institute.getLogoFileId())) {
             try {
-                String logoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
+                String logoUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(institute.getLogoFileId());
                 if (StringUtils.hasText(logoUrl)) {
-                    return "<img src=\"" + logoUrl + "\" alt=\"Logo\" style=\"max-height: 60px; max-width: 200px;\" />";
+                    return logoUrl;
+                }
+                // Fallback for older setups where public URL endpoint is unavailable.
+                logoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
+                if (StringUtils.hasText(logoUrl)) {
+                    return logoUrl;
                 }
             } catch (Exception e) {
                 log.debug("Could not load institute logo: {}", e.getMessage());
             }
         }
         return "";
+    }
+
+    private String applyIndexedFeeRowPlaceholders(String template, List<StudentFeePayment> feePayments,
+            String currencySymbol) {
+        String result = template;
+        int index = 1;
+        for (StudentFeePayment fp : feePayments) {
+            BigDecimal expected = fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO;
+            BigDecimal paid = fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO;
+            BigDecimal discount = fp.getDiscountAmount() != null ? fp.getDiscountAmount() : BigDecimal.ZERO;
+            BigDecimal balance = expected.subtract(paid).subtract(discount);
+            String status = fp.getStatus() != null ? fp.getStatus() : "PENDING";
+            String statusLabel = status.replace("_", " ");
+            String statusClass = switch (status) {
+                case "PAID" -> "badge-paid";
+                case "PARTIAL_PAID" -> "badge-partial";
+                default -> "badge-unpaid";
+            };
+            String dueDate = fp.getDueDate() != null
+                    ? new java.text.SimpleDateFormat("dd MMM yyyy").format(fp.getDueDate())
+                    : "N/A";
+            String feeType = resolveFeeTypeName(fp);
+
+            result = result
+                    .replace("{{FEE_SR_NO_" + index + "}}", String.valueOf(index))
+                    .replace("{{FEE_TYPE_" + index + "}}", feeType)
+                    .replace("{{FEE_DUE_DATE_" + index + "}}", dueDate)
+                    .replace("{{FEE_AMOUNT_EXPECTED_" + index + "}}", currencySymbol + " " + expected.toPlainString())
+                    .replace("{{FEE_DISCOUNT_" + index + "}}", currencySymbol + " " + discount.toPlainString())
+                    .replace("{{FEE_AMOUNT_PAID_" + index + "}}", currencySymbol + " " + paid.toPlainString())
+                    .replace("{{FEE_BALANCE_" + index + "}}", currencySymbol + " " + balance.toPlainString())
+                    .replace("{{FEE_STATUS_CLASS_" + index + "}}", statusClass)
+                    .replace("{{FEE_STATUS_LABEL_" + index + "}}", statusLabel);
+            index++;
+        }
+        return result;
+    }
+
+    private String resolveFeeTypeName(StudentFeePayment fp) {
+        String feeTypeName = "Facility Fee";
+        if (StringUtils.hasText(fp.getAsvId())) {
+            try {
+                AssignedFeeValue afv = assignedFeeValueRepository.findById(fp.getAsvId()).orElse(null);
+                if (afv != null) {
+                    FeeType feeType = feeTypeRepository.findById(afv.getFeeTypeId()).orElse(null);
+                    if (feeType != null) {
+                        feeTypeName = feeType.getName();
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Could not fetch fee type name for ASV ID: {}", fp.getAsvId(), e);
+            }
+        }
+        return feeTypeName;
     }
 
     // ─── Fee Table HTML ──────────────────────────────────────────────────────

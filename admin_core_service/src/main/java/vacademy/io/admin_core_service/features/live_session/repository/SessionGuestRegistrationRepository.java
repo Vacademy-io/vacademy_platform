@@ -45,7 +45,10 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
                     ORDER BY cf.form_order ASC
                     LIMIT 1
                 ) AS mobileNumber,
-                'EXTERNAL_USER' AS sourceType
+                'EXTERNAL_USER' AS sourceType,
+                lsl.status_type AS statusType,
+                lsl.engagement_data AS engagementData,
+                lsl.provider_total_duration_minutes AS providerTotalDurationMinutes
             FROM session_guest_registrations sgr
             LEFT JOIN live_session_logs lsl
                 ON lsl.session_id = sgr.session_id

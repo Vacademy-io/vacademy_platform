@@ -56,6 +56,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const voiceStateRef = useRef(voiceState);
   voiceStateRef.current = voiceState;
+  const ttsChunksRef = useRef<Uint8Array[]>([]);
 
   // Session timer
   useEffect(() => {
@@ -93,21 +94,42 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   const onAudioChunk = useCallback(
     (base64Data: string) => {
       setVoiceState("speaking");
-      // Decode base64 to ArrayBuffer and queue for playback
+      // Accumulate chunks — can't decode partial WAV individually
       const binaryString = atob(base64Data);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
-      audioPlayer.queueChunk(bytes.buffer as ArrayBuffer);
+      ttsChunksRef.current.push(bytes);
     },
-    [audioPlayer],
+    [],
   );
 
   const onAudioEnd = useCallback(() => {
-    // After all audio chunks have been sent, go back to idle when playback finishes
-    // We'll monitor audioPlayer.isPlaying in an effect
-  }, []);
+    // Combine all chunks into one buffer and play the complete audio
+    const chunks = ttsChunksRef.current;
+    if (chunks.length > 0) {
+      const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+      const combined = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+      ttsChunksRef.current = [];
+      // Play audio, then transition to idle when done (or on error)
+      audioPlayer.playAudio(combined.buffer as ArrayBuffer)
+        .then(() => {
+          setVoiceState("idle");
+        })
+        .catch(() => {
+          setVoiceState("idle");
+        });
+    } else {
+      // No audio received — go back to idle immediately
+      setVoiceState("idle");
+    }
+  }, [audioPlayer]);
 
   const onSummary = useCallback((data: unknown) => {
     setSummaryData(data);
@@ -150,13 +172,6 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // Monitor audio player to transition from speaking -> idle
-  useEffect(() => {
-    if (voiceState === "speaking" && !audioPlayer.isPlaying) {
-      setVoiceState("idle");
-    }
-  }, [voiceState, audioPlayer.isPlaying]);
-
   // Voice recorder
   const recorder = useVoiceRecorder({
     silenceTimeout: 5000, // 5 seconds instead of default 3
@@ -173,21 +188,22 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
         ? audioPlayer.audioLevel
         : 0;
 
-  // Toggle mic
+  // Toggle mic — handles all states including edge cases
   const toggleMic = useCallback(async () => {
     if (voiceState === "listening") {
       // Stop recording, send audio_end
       recorder.stopRecording();
       ws.sendAudioEnd();
       setVoiceState("processing");
-    } else if (voiceState === "idle") {
-      // Stop any playing audio first
+    } else if (voiceState === "idle" || voiceState === "processing") {
+      // Start recording (from idle or if processing got stuck)
       audioPlayer.stop();
       await recorder.startRecording();
       setVoiceState("listening");
     } else if (voiceState === "speaking") {
-      // Interrupt AI speech
+      // Interrupt AI speech and start recording
       audioPlayer.stop();
+      ttsChunksRef.current = []; // Clear any pending TTS chunks
       await recorder.startRecording();
       setVoiceState("listening");
     }

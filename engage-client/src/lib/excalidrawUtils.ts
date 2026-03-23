@@ -1,6 +1,7 @@
 // src/lib/excalidrawUtils.ts
 import { type ExcalidrawSceneData } from "@/types";
 import axios from 'axios';
+import { BASE_URL } from '@/config/baseUrl';
 
 // This is a placeholder. In a real app, you'd fetch this from a URL (e.g., S3)
 // using the fileId (source_id or content field from the slide object).
@@ -24,7 +25,7 @@ const MOCKED_EXCALIDRAW_DATA: Record<string, ExcalidrawSceneData> = {
     }
 };
 
-export const GET_PUBLIC_URL_PUBLIC = `https://backend-stage.vacademy.io/media-service/public/get-public-url`;
+export const GET_PUBLIC_URL_PUBLIC = `${BASE_URL}/media-service/public/get-public-url`;
 
 
 export const getPublicUrl = async (fileId: string | undefined | null): Promise<string> => {

@@ -11,12 +11,6 @@ import {
   Check,
   Settings,
   GripVertical,
-  Lightbulb,
-  FileQuestion,
-  BookOpen,
-  MessageSquareQuote,
-  Repeat,
-  HelpCircle,
   WifiOff,
   ImagePlus,
   Sigma,
@@ -49,52 +43,14 @@ import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import { ToolIndicator } from "./ToolIndicator";
+import { QuickActions } from "./QuickActions";
 import { MicButton } from "./MicButton";
 import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
 import { UploadFileInS3 } from "@/services/upload_file";
 import { getPublicUrl } from "@/services/upload_file";
 import { getUserId } from "@/constants/getUserId";
-
 import { MessageIntent } from "@/services/chatbot-api";
-
-// ... existing imports
-
-// Context-aware quick action suggestions
-const getQuickActions = (pathname: string): { label: string; icon: React.ElementType; prompt: string; intent?: MessageIntent }[] => {
-  // Slide/content pages
-  if (pathname.includes("/slides") || pathname.includes("/content")) {
-    return [
-      { label: "Explain this", icon: Lightbulb, prompt: "Explain what's on this slide in simple terms", intent: "doubt" },
-      { label: "Quiz me", icon: FileQuestion, prompt: "Create a quick quiz based on this content", intent: "practice" },
-      { label: "Summarize", icon: BookOpen, prompt: "Give me a brief summary of this slide", intent: "general" },
-    ];
-  }
-  
-  // Course details page
-  if (pathname.includes("/courses/") || pathname.includes("/course-details")) {
-    return [
-      { label: "Course overview", icon: BookOpen, prompt: "Give me an overview of this course", intent: "general" },
-      { label: "Learning path", icon: Repeat, prompt: "What's the recommended learning path for this course?", intent: "general" },
-      { label: "Prerequisites", icon: HelpCircle, prompt: "What are the prerequisites for this course?", intent: "doubt" },
-    ];
-  }
-  
-  // Assessment/quiz pages
-  if (pathname.includes("/assessment") || pathname.includes("/quiz")) {
-    return [
-      { label: "Hint", icon: Lightbulb, prompt: "Give me a hint for this question without revealing the answer", intent: "doubt" },
-      { label: "Explain concept", icon: MessageSquareQuote, prompt: "Explain the concept being tested in this question", intent: "doubt" },
-    ];
-  }
-  
-  // Default/general suggestions
-  return [
-    { label: "Help me learn", icon: Lightbulb, prompt: "What should I learn today?", intent: "general" },
-    { label: "Ask a doubt", icon: HelpCircle, prompt: "I have a question about ", intent: "doubt" },
-    { label: "Practice", icon: FileQuestion, prompt: "I want to practice", intent: "practice" },
-  ];
-};
 
 interface ChatbotPanelProps {
   onOpenChange?: (isOpen: boolean) => void;
@@ -145,9 +101,6 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   // Always use docked mode on desktop - the floating panel is no longer needed
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
   const shouldUseDockedMode = isDockedMode || isDesktop;
-
-  // Get context-aware quick actions
-  const quickActions = getQuickActions(location.pathname);
 
   // Panel dimensions and position
   const [panelSize, setPanelSize] = useState({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
@@ -378,7 +331,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(inputValue, "general", pendingAttachments.length > 0 ? pendingAttachments : undefined);
+      // Don't send explicit intent — let backend auto-classify from message text
+      sendMessage(inputValue, undefined, pendingAttachments.length > 0 ? pendingAttachments : undefined);
       setPendingAttachments([]);
     }
   };
@@ -903,28 +857,18 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 {/* Quick Action Chips - show when input is empty */}
                 {!inputValue.trim() && (
                   <div className={cn("w-full flex flex-wrap gap-1.5 pb-1", messages.length > 0 && "gap-1")}>
-                    {quickActions.map((action, index) => (
-                      <Button
-                        key={index}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                           if (action.prompt.endsWith(" ")) {
-                             setInputValue(action.prompt);
-                           } else {
-                             sendMessage(action.prompt, action.intent);
-                           }
-                        }}
-                        disabled={isLoading || !sessionId}
-                        className={cn(
-                          "rounded-full text-xs bg-primary/5 text-primary hover:bg-primary/15 hover:text-primary transition-colors border border-primary/10",
-                          messages.length === 0 ? "h-7 px-3" : "h-6 px-2"
-                        )}
-                      >
-                        <action.icon className={cn("mr-1.5", messages.length === 0 ? "h-3 w-3" : "h-2.5 w-2.5")} />
-                        {action.label}
-                      </Button>
-                    ))}
+                    <QuickActions
+                      pathname={location.pathname}
+                      onAction={(prompt: string, intent?: MessageIntent) => {
+                        if (prompt.endsWith(" ")) {
+                          setInputValue(prompt);
+                        } else {
+                          sendMessage(prompt, intent);
+                        }
+                      }}
+                      disabled={isLoading || !sessionId}
+                      compact={messages.length > 0}
+                    />
                     {/* Voice mode chip */}
                     {chatbotSettings.enabled_modes?.some(m => m.startsWith('voice_')) && (
                       <button
@@ -1085,7 +1029,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                   <Button
                     onClick={() => {
                       const readyAttachments = pendingAttachments.filter(a => a.url);
-                      sendMessage(inputValue, "general", readyAttachments.length > 0 ? readyAttachments : undefined);
+                      sendMessage(inputValue, undefined, readyAttachments.length > 0 ? readyAttachments : undefined);
                       // Clean up preview URLs
                       pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
                       setPendingAttachments([]);
@@ -1107,9 +1051,9 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
         <VoiceModeSelector
           open={showVoiceSelector}
           onClose={() => setShowVoiceSelector(false)}
-          onSelect={(mode, language) => {
+          onSelect={(mode, language, topic) => {
             setShowVoiceSelector(false);
-            enterVoiceMode(mode, language);
+            enterVoiceMode(mode, language, topic);
           }}
           enabledModes={chatbotSettings.enabled_modes}
         />

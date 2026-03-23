@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, X, Trophy, Download, Medal, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { toast } from 'sonner';
+import { BASE_URL } from '@/constants/urls';
 
 interface LeaderboardEntry {
     rank: number;
@@ -38,7 +39,7 @@ interface SessionLeaderboardModalProps {
     slides?: any[]; // slides from the store (have .type and .id)
 }
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io';
+const BACKEND_URL = BASE_URL;
 
 const formatTime = (millis: number): string => {
     if (millis < 1000) return `${millis}ms`;

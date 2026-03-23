@@ -2577,6 +2577,176 @@ public class AudienceService {
         }
     }
 
+    /**
+     * Bulk submit leads with enquiry (CSV import-friendly).
+     * <p>
+     * This endpoint loops through rows and delegates the actual persistence to the existing
+     * single-row {@link #submitLeadWithEnquiry(SubmitLeadWithEnquiryRequestDTO)} method.
+     * It returns per-row results so that one failing row does not block the others.
+     */
+    public BulkSubmitLeadWithEnquiryResponseDTO bulkSubmitLeadWithEnquiry(
+            BulkSubmitLeadWithEnquiryRequestDTO request) {
+
+        if (request == null || CollectionUtils.isEmpty(request.getRows())) {
+            throw new VacademyException("rows cannot be empty");
+        }
+
+        String rootAudienceId = request.getAudienceId();
+
+        List<BulkSubmitLeadWithEnquiryResultItemDTO> results = new ArrayList<>(
+                request.getRows().size());
+        Set<String> dedupeKeys = new HashSet<>();
+
+        int success = 0;
+        int failed = 0;
+        int skipped = 0;
+
+        for (int i = 0; i < request.getRows().size(); i++) {
+            SubmitLeadWithEnquiryRequestDTO row = request.getRows().get(i);
+
+            if (row == null) {
+                failed++;
+                results.add(BulkSubmitLeadWithEnquiryResultItemDTO.builder()
+                        .index(i)
+                        .status("FAILED")
+                        .message("Row is null")
+                        .build());
+                continue;
+            }
+
+            // Support payloads where audience_id exists at the root only.
+            if (!StringUtils.hasText(row.getAudienceId())
+                    && StringUtils.hasText(rootAudienceId)) {
+                row.setAudienceId(rootAudienceId);
+            }
+
+            if (!StringUtils.hasText(row.getAudienceId())) {
+                failed++;
+                results.add(BulkSubmitLeadWithEnquiryResultItemDTO.builder()
+                        .index(i)
+                        .status("FAILED")
+                        .message("audience_id is required (root or row)")
+                        .build());
+                continue;
+            }
+
+            // Map optional CSV-friendly aliases:
+            // - `status` -> enquiry.enquiry_status
+            // - `source` -> source_type
+            if (row.getEnquiry() == null && StringUtils.hasText(row.getStatus())) {
+                row.setEnquiry(EnquiryDTO.builder()
+                        .enquiryStatus(row.getStatus().trim())
+                        .build());
+            } else if (row.getEnquiry() != null
+                    && !StringUtils.hasText(row.getEnquiry().getEnquiryStatus())
+                    && StringUtils.hasText(row.getStatus())) {
+                row.getEnquiry().setEnquiryStatus(row.getStatus().trim());
+            }
+
+            if (!StringUtils.hasText(row.getSourceType())
+                    && StringUtils.hasText(row.getSource())) {
+                row.setSourceType(row.getSource().trim());
+            }
+
+            // Lightweight normalization only (no extra required-field checks).
+            // Mandatory fields (ensured by frontend team):
+            // - child_user_dto.full_name, child_user_dto.gender, child_user_dto.date_of_birth
+            // - parent_name, parent_email, parent_mobile
+            row.setParentName(row.getParentName().trim());
+            row.setParentEmail(row.getParentEmail().trim().toLowerCase());
+            row.setParentMobile(row.getParentMobile().trim());
+
+            // Normalization for student name + optional email.
+            row.getChildUserDTO().setFullName(row.getChildUserDTO()
+                    .getFullName().trim());
+            if (StringUtils.hasText(row.getChildUserDTO().getEmail())) {
+                row.getChildUserDTO().setEmail(
+                        row.getChildUserDTO().getEmail().trim().toLowerCase());
+            }
+            // gender is mandatory; normalize without validating its allowed values
+            row.getChildUserDTO().setGender(
+                    row.getChildUserDTO().getGender().trim());
+
+            // Best-effort dedupe inside the upload payload.
+            String parentEmailKey = row.getParentEmail().trim().toLowerCase();
+            String childNameKey = row.getChildUserDTO().getFullName().trim().toLowerCase();
+            String destinationKey = StringUtils.hasText(row.getDestinationPackageSessionId())
+                    ? row.getDestinationPackageSessionId().trim()
+                    : "";
+
+            String dedupeKey = row.getAudienceId().trim()
+                    + "|" + parentEmailKey
+                    + "|" + childNameKey
+                    + "|" + destinationKey;
+
+            if (dedupeKeys.contains(dedupeKey)) {
+                skipped++;
+                results.add(BulkSubmitLeadWithEnquiryResultItemDTO.builder()
+                        .index(i)
+                        .status("SKIPPED")
+                        .message("Duplicate in upload payload")
+                        .build());
+                continue;
+            }
+            dedupeKeys.add(dedupeKey);
+
+            try {
+                SubmitLeadWithEnquiryResponseDTO response = submitLeadWithEnquiry(row);
+
+                success++;
+                results.add(BulkSubmitLeadWithEnquiryResultItemDTO.builder()
+                        .index(i)
+                        .status("SUCCESS")
+                        .message(response.getMessage())
+                        .enquiryId(response.getEnquiryId())
+                        .audienceResponseId(response.getAudienceResponseId())
+                        .parentUserId(response.getParentUserId())
+                        .counsellorId(response.getCounsellorId())
+                        .build());
+            } catch (VacademyException ve) {
+                String msg = ve.getMessage();
+                String normalizedMsg = msg != null ? msg.toLowerCase() : "";
+                boolean alreadySubmitted = normalizedMsg.contains("already submitted");
+
+                if (alreadySubmitted) {
+                    skipped++;
+                    results.add(BulkSubmitLeadWithEnquiryResultItemDTO.builder()
+                            .index(i)
+                            .status("SKIPPED")
+                            .message(msg)
+                            .build());
+                } else {
+                    failed++;
+                    results.add(BulkSubmitLeadWithEnquiryResultItemDTO.builder()
+                            .index(i)
+                            .status("FAILED")
+                            .message(msg)
+                            .build());
+                }
+            } catch (Exception e) {
+                failed++;
+                results.add(BulkSubmitLeadWithEnquiryResultItemDTO.builder()
+                        .index(i)
+                        .status("FAILED")
+                        .message(e.getMessage())
+                        .build());
+            }
+        }
+
+        BulkSubmitLeadWithEnquiryResponseDTO.SummaryDTO summary =
+                BulkSubmitLeadWithEnquiryResponseDTO.SummaryDTO.builder()
+                        .totalRequested(results.size())
+                        .successful(success)
+                        .failed(failed)
+                        .skipped(skipped)
+                        .build();
+
+        return BulkSubmitLeadWithEnquiryResponseDTO.builder()
+                .summary(summary)
+                .results(results)
+                .build();
+    }
+
     private String buildDefaultEnquiryEmailBody(String parentName, String studentName, String sessionName,
             String trackingId, String submissionTime, String username, String password, String portalUrl,
             String campaignName) {

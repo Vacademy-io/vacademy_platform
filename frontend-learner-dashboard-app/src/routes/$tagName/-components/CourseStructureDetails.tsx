@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { BASE_URL } from "@/constants/urls";
 import {
   TreeStructure,
   CaretDown,
@@ -146,10 +147,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   // Step 1: Fetch subjects from init-details API
   const fetchSubjectsFromInitDetails = async () => {
     try {
-      const baseUrl =
-        import.meta.env.VITE_BACKEND_URL ||
-        import.meta.env.VITE_API_BASE_URL ||
-        "https://backend-stage.vacademy.io";
+      const baseUrl = BASE_URL;
       const url = `${baseUrl}/admin-core-service/open/v1/learner-study-library/init-details?packageSessionId=${packageSessionId}`;
 
       const response = await fetch(url, {
@@ -177,10 +175,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   // Step 2: Fetch modules for subjectId and packageSessionId
   const fetchModules = async (subjectId: string) => {
     try {
-      const baseUrl =
-        import.meta.env.VITE_BACKEND_URL ||
-        import.meta.env.VITE_API_BASE_URL ||
-        "https://backend-stage.vacademy.io";
+      const baseUrl = BASE_URL;
       const url = `${baseUrl}/admin-core-service/open/v1/learner-study-library/modules-with-chapters?subjectId=${subjectId}&packageSessionId=${packageSessionId}`;
 
       const response = await fetch(url, {
@@ -219,10 +214,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     }
 
     try {
-      const baseUrl =
-        import.meta.env.VITE_BACKEND_URL ||
-        import.meta.env.VITE_API_BASE_URL ||
-        "https://backend-stage.vacademy.io";
+      const baseUrl = BASE_URL;
       const url = `${baseUrl}/admin-core-service/open/v1/learner-study-library/slides?chapterId=${chapterId}`;
 
       const response = await fetch(url, {
@@ -256,10 +248,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     if (slidesMap[chapterId]) return;
 
     try {
-      const baseUrl =
-        import.meta.env.VITE_BACKEND_URL ||
-        import.meta.env.VITE_API_BASE_URL ||
-        "https://backend-stage.vacademy.io";
+      const baseUrl = BASE_URL;
       const slidesUrl = `${baseUrl}/admin-core-service/open/v1/learner-study-library/slides?chapterId=${chapterId}`;
       const response = await fetch(slidesUrl, {
         method: "GET",

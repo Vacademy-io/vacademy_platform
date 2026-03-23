@@ -4,6 +4,7 @@
 
 import { motion } from "framer-motion";
 import type { ChildProfile } from "@/types/parent-portal";
+import { BASE_URL } from "@/constants/urls";
 
 // ── Avatar Color Palette ────────────────────────────────────────
 
@@ -135,7 +136,7 @@ function ChildProfileCard({
         >
           {child.avatar_file_id ? (
             <img
-              src={`${import.meta.env.VITE_BACKEND_URL}/files/${child.avatar_file_id}`}
+              src={`${BASE_URL}/files/${child.avatar_file_id}`}
               alt={child.full_name}
               className="w-full h-full object-cover"
             />

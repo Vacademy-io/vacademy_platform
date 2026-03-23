@@ -11,6 +11,7 @@ import { fetchSessionDetails, SessionDetailsResponse } from '../-hooks/useSessio
 import { MyButton } from '@/components/design-system/button';
 import { MyTable } from '@/components/design-system/table';
 import { useLiveSessionReport } from '../-hooks/useLiveSessionReport';
+import { AttendanceMarkingTable } from './AttendanceMarkingTable';
 import {
     attendanceReportColumnsWithCheckbox,
     AttendanceReportTableData,
@@ -521,21 +522,25 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                             </div>
                         </div>
 
-                        <MyTable
-                            data={tableData}
-                            columns={attendanceReportColumnsWithCheckbox(
-                                selectedStudentIds,
-                                handleSelectStudent,
-                                handleSelectAll,
-                                handleClearAll,
-                                isAllSelected,
-                                isIndeterminate
-                            )}
-                            isLoading={isPending}
-                            error={error as Error | null}
-                            columnWidths={ATTENDANCE_REPORT_WIDTH}
-                            currentPage={0}
-                        />
+                        {reportResponse && reportResponse.length > 0 ? (
+                            <AttendanceMarkingTable
+                                data={reportResponse}
+                                sessionId={session.session_id}
+                                scheduleId={session.schedule_id}
+                                accessType={session.access_level}
+                                onSaved={() => {
+                                    fetchReport({
+                                        sessionId: session.session_id,
+                                        scheduleId: session.schedule_id,
+                                        accessType: session.access_level,
+                                    });
+                                }}
+                            />
+                        ) : isPending ? (
+                            <div className="flex items-center justify-center py-8">
+                                <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             </MyDialog>

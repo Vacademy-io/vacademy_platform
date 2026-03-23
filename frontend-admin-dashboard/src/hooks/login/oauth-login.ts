@@ -1,4 +1,5 @@
 import { toast } from 'sonner';
+import { BASE_URL } from '@/constants/urls';
 
 export type OAuthProvider = 'google' | 'github';
 
@@ -20,7 +21,7 @@ export const handleOAuthLogin = (provider: OAuthProvider, options: OAuthLoginOpt
 
         const base64State = btoa(JSON.stringify(stateObj));
 
-        const loginUrl = `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/auth-service/oauth2/authorization/${provider}?state=${encodeURIComponent(
+        const loginUrl = `${BASE_URL}/auth-service/oauth2/authorization/${provider}?state=${encodeURIComponent(
             base64State
         )}`;
 

@@ -13,5 +13,8 @@ public interface GuestAttendanceDTO {
     String getGuestName();
     String getMobileNumber();
     String getSourceType();
+    String getStatusType();
+    String getEngagementData();
+    Integer getProviderTotalDurationMinutes();
 }
 

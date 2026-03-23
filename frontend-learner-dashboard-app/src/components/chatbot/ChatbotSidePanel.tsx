@@ -7,12 +7,6 @@ import {
   Copy,
   Check,
   Settings,
-  Lightbulb,
-  FileQuestion,
-  BookOpen,
-  MessageSquareQuote,
-  Repeat,
-  HelpCircle,
   GripVertical,
   Sigma,
   ImagePlus,
@@ -49,107 +43,10 @@ import { UploadFileInS3, getPublicUrl } from "@/services/upload_file";
 import { getUserId } from "@/constants/getUserId";
 import { AnimatePresence } from "framer-motion";
 import { ToolIndicator } from "./ToolIndicator";
+import { QuickActions } from "./QuickActions";
 import { MicButton } from "./MicButton";
 import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
-
-// Context-aware quick action suggestions
-const getQuickActions = (
-  pathname: string,
-): {
-  label: string;
-  icon: React.ElementType;
-  prompt: string;
-  intent?: MessageIntent;
-}[] => {
-  // Slide/content pages
-  if (pathname.includes("/slides") || pathname.includes("/content")) {
-    return [
-      {
-        label: "Explain this",
-        icon: Lightbulb,
-        prompt: "Explain what's on this slide in simple terms",
-        intent: "doubt",
-      },
-      {
-        label: "Quiz me",
-        icon: FileQuestion,
-        prompt: "Create a quick quiz based on this content",
-        intent: "practice",
-      },
-      {
-        label: "Summarize",
-        icon: BookOpen,
-        prompt: "Give me a brief summary of this slide",
-        intent: "general",
-      },
-    ];
-  }
-
-  // Course details page
-  if (pathname.includes("/courses/") || pathname.includes("/course-details")) {
-    return [
-      {
-        label: "Course overview",
-        icon: BookOpen,
-        prompt: "Give me an overview of this course",
-        intent: "general",
-      },
-      {
-        label: "Learning path",
-        icon: Repeat,
-        prompt: "What's the recommended learning path for this course?",
-        intent: "general",
-      },
-      {
-        label: "Prerequisites",
-        icon: HelpCircle,
-        prompt: "What are the prerequisites for this course?",
-        intent: "doubt",
-      },
-    ];
-  }
-
-  // Assessment/quiz pages
-  if (pathname.includes("/assessment") || pathname.includes("/quiz")) {
-    return [
-      {
-        label: "Hint",
-        icon: Lightbulb,
-        prompt: "Give me a hint for this question without revealing the answer",
-        intent: "doubt",
-      },
-      {
-        label: "Explain concept",
-        icon: MessageSquareQuote,
-        prompt: "Explain the concept being tested in this question",
-        intent: "doubt",
-      },
-    ];
-  }
-
-  // Default/general suggestions
-  return [
-    {
-      label: "Help me learn",
-      icon: Lightbulb,
-      prompt: "What should I learn today?",
-      intent: "general",
-    },
-    {
-      label: "Ask a doubt",
-      icon: HelpCircle,
-      prompt: "I have a question about ",
-      intent: "doubt",
-    },
-    {
-      label: "Practice",
-      icon: FileQuestion,
-      prompt: "I want to practice",
-      intent: "practice",
-    },
-  ];
-};
 
 export const ChatbotSidePanel: React.FC = () => {
   const location = useLocation();
@@ -191,13 +88,8 @@ export const ChatbotSidePanel: React.FC = () => {
     setIsOpen: setStorePanelOpen,
   } = useChatbotPanelStore();
 
-  // Get context-aware quick actions
-  const quickActions = getQuickActions(location.pathname);
-
   const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
   const [isResizing, setIsResizing] = useState(false);
-  const [selectedIntent, setSelectedIntent] =
-    useState<MessageIntent>("general");
   const [pendingAttachments, setPendingAttachments] = useState<Array<{type: string; url: string; name?: string; previewUrl?: string}>>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showLatexHelper, setShowLatexHelper] = useState(false);
@@ -292,7 +184,8 @@ export const ChatbotSidePanel: React.FC = () => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const readyAttachments = pendingAttachments.filter(a => a.url);
-      sendMessage(inputValue, selectedIntent, readyAttachments.length > 0 ? readyAttachments : undefined);
+      // Don't send explicit intent — let backend auto-classify from message text
+      sendMessage(inputValue, undefined, readyAttachments.length > 0 ? readyAttachments : undefined);
       pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
       setPendingAttachments([]);
     }
@@ -765,28 +658,18 @@ export const ChatbotSidePanel: React.FC = () => {
         {/* Quick Action Chips - show when input is empty */}
         {!inputValue.trim() && (
           <div className={cn("w-full flex flex-wrap", messages.length === 0 ? "gap-1.5" : "gap-1")}>
-            {quickActions.map((action, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  if (action.prompt.endsWith(" ")) {
-                    setInputValue(action.prompt);
-                  } else {
-                    sendMessage(action.prompt, action.intent);
-                  }
-                }}
-                disabled={isLoading || !sessionId}
-                className={cn(
-                  "inline-flex items-center font-medium text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary rounded-full border border-transparent hover:border-primary/20 transition-colors disabled:opacity-50",
-                  messages.length === 0
-                    ? "h-6 px-2.5 text-[11px]"
-                    : "h-5 px-2 text-[10px]"
-                )}
-              >
-                <action.icon className={cn("mr-1", messages.length === 0 ? "h-3 w-3" : "h-2.5 w-2.5")} />
-                {action.label}
-              </button>
-            ))}
+            <QuickActions
+              pathname={location.pathname}
+              onAction={(prompt: string, intent?: MessageIntent) => {
+                if (prompt.endsWith(" ")) {
+                  setInputValue(prompt);
+                } else {
+                  sendMessage(prompt, intent);
+                }
+              }}
+              disabled={isLoading || !sessionId}
+              compact={messages.length > 0}
+            />
             {/* Voice mode chip */}
             {chatbotSettings.enabled_modes?.some(m => m.startsWith('voice_')) && (
               <button
@@ -940,7 +823,7 @@ export const ChatbotSidePanel: React.FC = () => {
           <Button
             onClick={() => {
               const readyAttachments = pendingAttachments.filter(a => a.url);
-              sendMessage(inputValue, selectedIntent, readyAttachments.length > 0 ? readyAttachments : undefined);
+              sendMessage(inputValue, undefined, readyAttachments.length > 0 ? readyAttachments : undefined);
               pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
               setPendingAttachments([]);
             }}
@@ -962,9 +845,9 @@ export const ChatbotSidePanel: React.FC = () => {
         <VoiceModeSelector
           open={showVoiceSelector}
           onClose={() => setShowVoiceSelector(false)}
-          onSelect={(mode, language) => {
+          onSelect={(mode, language, topic) => {
             setShowVoiceSelector(false);
-            enterVoiceMode(mode, language);
+            enterVoiceMode(mode, language, topic);
           }}
           enabledModes={chatbotSettings.enabled_modes}
         />

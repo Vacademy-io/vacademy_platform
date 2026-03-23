@@ -1,7 +1,8 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { BASE_URL } from '@/constants/urls';
 
-const BASE = `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/admin-core-service/tag-management`;
+const BASE = `${BASE_URL}/admin-core-service/tag-management`;
 
 export interface TagItem {
     id: string;

@@ -9,7 +9,7 @@ type VoiceMode = "voice_interview" | "voice_doubt" | "voice_oral_test";
 interface VoiceModeSelectorProps {
   open: boolean;
   onClose: () => void;
-  onSelect: (mode: VoiceMode, language: string) => void;
+  onSelect: (mode: VoiceMode, language: string, topic?: string) => void;
   enabledModes?: string[];
 }
 
@@ -61,6 +61,7 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
 }) => {
   const [selectedMode, setSelectedMode] = useState<VoiceMode | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState("en-IN");
+  const [topic, setTopic] = useState("");
 
   const visibleModes = enabledModes
     ? MODES.filter((m) => enabledModes.includes(m.key))
@@ -68,9 +69,15 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
 
   const handleStart = () => {
     if (selectedMode) {
-      onSelect(selectedMode, selectedLanguage);
+      onSelect(selectedMode, selectedLanguage, topic.trim() || undefined);
     }
   };
+
+  const topicPlaceholder = selectedMode === "voice_interview"
+    ? "e.g., Data Structures, React, Machine Learning"
+    : selectedMode === "voice_oral_test"
+    ? "e.g., Photosynthesis, Newton's Laws, Algebra"
+    : "e.g., I'm confused about recursion";
 
   return (
     <AnimatePresence>
@@ -134,6 +141,27 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
                 );
               })}
             </div>
+
+            {/* Topic input — shown for interview and oral test */}
+            {selectedMode && (
+              <div className="mb-4">
+                <label className="text-xs text-white/50 font-medium mb-1.5 block">
+                  {selectedMode === "voice_interview" ? "Interview Topic" : selectedMode === "voice_oral_test" ? "Test Topic" : "What's your doubt about?"}
+                </label>
+                <input
+                  type="text"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder={topicPlaceholder}
+                  className="w-full rounded-lg bg-white/5 border border-white/10 text-white text-sm px-3 py-2 outline-none focus:border-primary/50 placeholder:text-white/25"
+                />
+                {!topic.trim() && (
+                  <p className="text-[10px] text-white/30 mt-1">
+                    {selectedMode === "voice_doubt" ? "Optional — or just start talking" : "Recommended — helps generate better questions"}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Language picker */}
             <div className="mb-5">

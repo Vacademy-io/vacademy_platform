@@ -5,9 +5,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs, String> {
+
+    @Query("SELECT l FROM LiveSessionLogs l WHERE l.scheduleId = :scheduleId AND l.logType = 'ATTENDANCE_RECORDED'")
+    List<LiveSessionLogs> findAllAttendanceByScheduleId(@Param("scheduleId") String scheduleId);
 
     @Query("SELECT l FROM LiveSessionLogs l WHERE l.scheduleId = :scheduleId AND l.userSourceId = :userSourceId AND l.logType = 'ATTENDANCE_RECORDED'")
     Optional<LiveSessionLogs> findExistingAttendanceRecord(@Param("scheduleId") String scheduleId,

@@ -1,10 +1,12 @@
-export const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io';
+import { BACKEND_BASE_URL } from '../config/baseUrl';
+
+export const BASE_URL = BACKEND_BASE_URL;
 export const BASE_URL_LEARNER_DASHBOARD =
     import.meta.env.VITE_LEARNER_DASHBOARD_URL || 'https://learner.vacademy.io';
 
 // For testing, use localhost:8077
 export const AI_SERVICE_BASE_URL =
-    import.meta.env.VITE_AI_SERVICE_BASE_URL || 'https://backend-stage.vacademy.io/ai-service';
+    import.meta.env.VITE_AI_SERVICE_BASE_URL || `${BACKEND_BASE_URL}/ai-service`;
 
 // AI Video URLs API
 export const GET_VIDEO_URLS = (videoId: string) => `${AI_SERVICE_BASE_URL}/video/urls/${videoId}`;
@@ -377,6 +379,7 @@ export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-s
 // export const GET_SESSION_BY_SESSION_ID = `http://localhost:8072/admin-core-service/get-sessions/by-session-id`;
 export const GET_SESSION_BY_SESSION_ID = `${BASE_URL}/admin-core-service/get-sessions/by-session-id`;
 export const LIVE_SESSION_REPORT_BY_SESSION_ID = `${BASE_URL}/admin-core-service/live-session-report/by-session-id`;
+export const ADMIN_MARK_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session/admin-mark-attendance`;
 export const CREATE_PROVIDER_MEETING = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create`;
 
 // export const GET_ALL_FACULTY = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
@@ -503,7 +506,7 @@ export const CANCEL_USER_PLAN = (user_plan_id: string) =>
     `${BASE_URL}/admin-core-service/v1/user-plan/${user_plan_id}/cancel`;
 
 // Planning Logs
-export const PLANNING_LOGS_BASE = `https://backend-stage.vacademy.io/admin-core-service/planning-logs/v1`;
+export const PLANNING_LOGS_BASE = `${BASE_URL}/admin-core-service/planning-logs/v1`;
 export const CREATE_PLANNING_LOGS = `${PLANNING_LOGS_BASE}/create`;
 export const LIST_PLANNING_LOGS = `${PLANNING_LOGS_BASE}/list`;
 export const UPDATE_PLANNING_LOG = (logId: string) => `${PLANNING_LOGS_BASE}/${logId}`;

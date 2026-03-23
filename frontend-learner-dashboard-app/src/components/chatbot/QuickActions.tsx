@@ -33,7 +33,7 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
       {
         label: "Quiz me",
         icon: FileQuestion,
-        prompt: "Create a quick quiz based on this content",
+        prompt: "Quiz me on ",
         intent: "practice",
       },
       {
@@ -91,12 +91,12 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
     ];
   }
 
-  // Default/general suggestions
+  // Default/general suggestions — all end with space so user can type before sending
   return [
     {
       label: "Help me learn",
       icon: Lightbulb,
-      prompt: "What should I learn today?",
+      prompt: "Help me learn about ",
       intent: "general",
     },
     {
@@ -108,7 +108,7 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
     {
       label: "Practice",
       icon: FileQuestion,
-      prompt: "I want to practice",
+      prompt: "Quiz me on ",
       intent: "practice",
     },
   ];

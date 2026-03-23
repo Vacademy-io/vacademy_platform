@@ -138,23 +138,30 @@ public class LearnerEnrollRequestService {
             // B2B: Override auth roles from invite settingJson if it's a SUB_ORG invite
             if (StringUtils.hasText(enrollDTO.getEnrollInviteId())) {
                 EnrollInvite preCheckInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
-                if (EnrollInviteTag.SUB_ORG.name().equals(preCheckInvite.getTag())
-                        && StringUtils.hasText(preCheckInvite.getSettingJson())) {
-                    try {
-                        ObjectMapper mapper = new ObjectMapper();
-                        EnrollInviteSettingDTO settingDTO = mapper.readValue(
-                                preCheckInvite.getSettingJson(), EnrollInviteSettingDTO.class);
-                        if (settingDTO.getSetting() != null
-                                && settingDTO.getSetting().getSubOrgSetting() != null
-                                && settingDTO.getSetting().getSubOrgSetting().getAuthRoles() != null
-                                && !settingDTO.getSetting().getSubOrgSetting().getAuthRoles().isEmpty()) {
-                            learnerEnrollRequestDTO.getUser().setRoles(
-                                    settingDTO.getSetting().getSubOrgSetting().getAuthRoles());
-                            log.info("Overrode user roles from SUB_ORG invite settingJson: {}",
-                                    settingDTO.getSetting().getSubOrgSetting().getAuthRoles());
+                if (EnrollInviteTag.SUB_ORG.name().equals(preCheckInvite.getTag())) {
+                    boolean rolesResolved = false;
+                    if (StringUtils.hasText(preCheckInvite.getSettingJson())) {
+                        try {
+                            ObjectMapper mapper = new ObjectMapper();
+                            EnrollInviteSettingDTO settingDTO = mapper.readValue(
+                                    preCheckInvite.getSettingJson(), EnrollInviteSettingDTO.class);
+                            if (settingDTO.getSetting() != null
+                                    && settingDTO.getSetting().getSubOrgSetting() != null
+                                    && settingDTO.getSetting().getSubOrgSetting().getAuthRoles() != null
+                                    && !settingDTO.getSetting().getSubOrgSetting().getAuthRoles().isEmpty()) {
+                                learnerEnrollRequestDTO.getUser().setRoles(
+                                        settingDTO.getSetting().getSubOrgSetting().getAuthRoles());
+                                rolesResolved = true;
+                                log.info("Overrode user roles from SUB_ORG invite settingJson: {}",
+                                        settingDTO.getSetting().getSubOrgSetting().getAuthRoles());
+                            }
+                        } catch (Exception e) {
+                            log.warn("Failed to parse settingJson for role override: {}", e.getMessage());
                         }
-                    } catch (Exception e) {
-                        log.warn("Failed to parse settingJson for role override: {}", e.getMessage());
+                    }
+                    if (!rolesResolved) {
+                        throw new VacademyException(
+                                "Sub-org invite does not have admin roles configured. Please contact the organization admin.");
                     }
                 }
             }

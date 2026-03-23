@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import TipTapEditor from '@/components/tiptap/TipTapEditor';
+import { BASE_URL } from '@/constants/urls';
 
 type Placeholder = { label: string; value: string };
 
@@ -103,8 +104,7 @@ export default function EmailComposer({
         try {
             const form = new FormData();
             form.append('file', file);
-            const backendBase =
-                import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io';
+            const backendBase = BASE_URL;
             const res = await fetch(`${backendBase}/media-service/public/upload-file`, {
                 method: 'PUT',
                 body: form,

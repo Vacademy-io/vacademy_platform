@@ -6,7 +6,7 @@ import {
 } from '@capacitor-community/electron';
 import chokidar from 'chokidar';
 import type { MenuItemConstructorOptions } from 'electron';
-import { app, BrowserWindow, Menu, MenuItem, nativeImage, Tray, session, globalShortcut, Notification, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, MenuItem, nativeImage, Tray, session, globalShortcut, Notification, ipcMain, shell } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import electronServe from 'electron-serve';
 import windowStateKeeper from 'electron-window-state';
@@ -307,9 +307,11 @@ export class ElectronCapacitorApp {
       this.loadMainWindow(this);
     }
 
-    // Security
+    // Security - open external URLs in system browser, allow internal navigation
     this.MainWindow.webContents.setWindowOpenHandler((details) => {
       if (!details.url.includes(this.customScheme)) {
+        // Open external URLs (BBB, Zoom, YouTube, etc.) in the default system browser
+        shell.openExternal(details.url);
         return { action: 'deny' };
       } else {
         return { action: 'allow' };

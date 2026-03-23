@@ -136,35 +136,13 @@ def get_ai_chat_service() -> AiChatService:
     return AiChatService(llm_client=llm_client)
 
 
-def get_chat_agent_service(db: Session = Depends(db_dependency)) -> AiChatAgentService:
+def get_chat_agent_service() -> AiChatAgentService:
     """
-    Chat Agent Service with all dependencies.
-    Creates new instance per request to use fresh DB session.
+    Chat Agent Service — manages its own short-lived DB sessions
+    to avoid holding connections during long LLM calls / SSE streams.
     """
-    # Create services with DB session
-    context_resolver = ContextResolverService(db)
-    institute_settings = InstituteSettingsService(db)
-
-    # Create API key resolver and LLM client
-    api_key_resolver = ApiKeyResolver(db)
-    llm_client = ChatLLMClient(api_key_resolver)
-
-    # Create embedding and RAG services
-    embedding_service = EmbeddingService(api_key_resolver)
-    rag_service = RAGService(db, embedding_service)
-
-    analytics_service = LearningAnalyticsService(db)
-    tool_manager = ToolManagerService(db, rag_service=rag_service, analytics_service=analytics_service)
-    
-    # Create and return chat agent service
-    return AiChatAgentService(
-        db_session=db,
-        context_resolver=context_resolver,
-        tool_manager=tool_manager,
-        llm_client=llm_client,
-        institute_settings=institute_settings,
-        rag_service=rag_service,
-    )
+    from .db import db_session
+    return AiChatAgentService(db_session_factory=db_session)
 
 
 

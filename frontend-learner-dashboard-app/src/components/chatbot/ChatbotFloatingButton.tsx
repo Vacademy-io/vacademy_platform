@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { MessageCircle, Sparkles, HelpCircle, BookOpen } from "lucide-react";
+import { useLocation } from "@tanstack/react-router";
 import { useChatbotContext } from "./useChatbotContext";
 import { cn } from "@/lib/utils";
 import { avatarUrl } from "@/services/chatbot-settings";
@@ -16,7 +17,11 @@ const LONG_PROMPT = "How can I help you in your learning journey today?";
 export const ChatbotFloatingButton = () => {
   const { isOpen, setIsOpen, shouldShowChatbot, chatbotSettings } =
     useChatbotContext();
-  
+  const location = useLocation();
+
+  // Move button higher on video/slide pages to avoid overlapping player controls
+  const isOnVideoPage = location.pathname.includes("/slides") || location.pathname.includes("/content");
+
   const [isHovered, setIsHovered] = useState(false);
   const [activeMessageIndex, setActiveMessageIndex] = useState(0);
   const [showPill, setShowPill] = useState(false);
@@ -89,7 +94,10 @@ export const ChatbotFloatingButton = () => {
   const CurrentIcon = ROTATING_MESSAGES[activeMessageIndex].icon;
 
   return (
-    <div className="fixed bottom-6 right-6 z-[990] flex flex-col items-end gap-3 pointer-events-none">
+    <div className={cn(
+      "fixed right-6 z-[990] flex flex-col items-end gap-3 pointer-events-none",
+      isOnVideoPage ? "bottom-20" : "bottom-6"
+    )}>
       
       {/* Long Prompt Bubble (appears above) */}
       <AnimatePresence>

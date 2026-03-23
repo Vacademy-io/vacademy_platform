@@ -150,7 +150,7 @@ class VoiceSessionService:
         context_data = context.get("context_data", {})
         user_details = context.get("user_details", {})
         user_name = user_details.get("name", "Student")
-        topic = context_data.get("name") or context_data.get("topic") or "the given subject"
+        topic = context_data.get("voice_topic") or context_data.get("chapter") or context_data.get("name") or context_data.get("topic") or "the given subject"
 
         # Performance context snippet
         user_perf = context.get("user_performance", {})

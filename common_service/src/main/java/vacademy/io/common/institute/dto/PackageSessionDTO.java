@@ -29,6 +29,7 @@ public class PackageSessionDTO {
     private Boolean isOrgAssociated;
     private Boolean isParent;
     private String parentId;
+    private String name;
 
     // Constructor from PackageSession entity
     public PackageSessionDTO(PackageSession packageSession,Double readTimeInMinutes) {
@@ -56,6 +57,7 @@ public class PackageSessionDTO {
         }
         this.isParent = packageSession.getIsParent();
         this.parentId = packageSession.getParentId();
+        this.name = packageSession.getName();
         this.readTimeInMinutes = readTimeInMinutes;
     }
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { BASE_URL } from "@/constants/urls";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useStudyLibraryQuery } from "@/services/study-library/getStudyLibraryDetails";
 import {
@@ -264,7 +265,7 @@ export function ParentApplicationForm({
         try {
           // Fetch payment options for institute
           const paymentOptionsResp = await fetch(
-            `${import.meta.env.VITE_BACKEND_URL}/admin-core-service/payment/v1/get-payment-options`,
+            `${BASE_URL}/admin-core-service/payment/v1/get-payment-options`,
             {
               method: "POST",
               headers: {
@@ -287,7 +288,7 @@ export function ParentApplicationForm({
 
             if (option && plan) {
               const orderResp = await fetch(
-                `${import.meta.env.VITE_BACKEND_URL}/admin-core-service/payment/v1/create-order`,
+                `${BASE_URL}/admin-core-service/payment/v1/create-order`,
                 {
                   method: "POST",
                   headers: {

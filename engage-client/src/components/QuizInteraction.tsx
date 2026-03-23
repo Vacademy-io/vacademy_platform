@@ -10,9 +10,7 @@ import { toast } from 'sonner';
 import { Loader2, Send, Hourglass, Clock, AlertTriangle } from 'lucide-react';
 import { GlassmorphismInput } from '@/components/ui/input'; // Added Input
 import { Textarea } from '@/components/ui/textarea'; // Added Textarea
-
-// Define BASE_URL - move to a config file or env variable later
-const BASE_URL = 'https://backend-stage.vacademy.io';
+import { BASE_URL } from '@/config/baseUrl';
 
 interface QuizInteractionProps {
   questionData: AddedQuestion;

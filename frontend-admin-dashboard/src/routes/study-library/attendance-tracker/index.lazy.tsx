@@ -16,6 +16,7 @@ import {
     Shield,
     MapPin,
     Users,
+    DownloadSimple,
 } from '@phosphor-icons/react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -24,7 +25,7 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { Calendar } from '@/components/ui/calendar';
 import { format, subDays, subMonths, subYears, startOfDay } from 'date-fns';
 import { getStudentAttendanceReport, StudentSchedule } from '../live-session/-services/utils';
-import { useGetAttendance, ContentType } from './-services/attendance';
+import { useGetAttendance } from './-services/attendance';
 import { MyPagination } from '@/components/design-system/pagination';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarIcon } from 'lucide-react';
@@ -41,6 +42,11 @@ import {
 import { DateRange } from 'react-day-picker';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import Papa from 'papaparse';
+import { toast } from 'sonner';
+import { LIVE_SESSION_ALL_ATTENDANCE } from '@/constants/urls';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import type { AttendanceResponseType, ContentType } from './-services/attendance';
 
 export const Route = createLazyFileRoute('/study-library/attendance-tracker/')({
     component: RouteComponent,
@@ -911,17 +917,108 @@ function RouteComponent() {
     const allRowsSelected =
         studentsData.length > 0 && studentsData.every((s) => rowSelections[s.id]);
 
-    // Placeholder export functions
-    const exportAccountDetails = (sel: AttendanceStudent[]) => {
-        // TODO: implement actual export
-        console.log('Exporting account details for', sel.length, 'students');
+    // Fetch all pages of attendance data for export
+    const fetchAllAttendancePages = async (): Promise<ContentType[]> => {
+        const allContent: ContentType[] = [];
+        let currentPage = 0;
+        let hasMore = true;
+        const pageSize = 50;
+
+        while (hasMore) {
+            const response = await authenticatedAxiosInstance.post<AttendanceResponseType>(
+                `${LIVE_SESSION_ALL_ATTENDANCE}?page=${currentPage}&size=${pageSize}`,
+                filterRequest
+            );
+            const data = response.data;
+            if (data?.content) {
+                allContent.push(...data.content);
+            }
+            hasMore = !data?.last;
+            currentPage++;
+        }
+        return allContent;
     };
 
-    const exportFullData = (sel: AttendanceStudent[]) => {
-        console.log('Exporting full data for', sel.length, 'students');
+    const downloadCsv = (csvString: string, filename: string) => {
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
 
-    console.log('student data  -> ', studentsData);
+    const [isExporting, setIsExporting] = useState(false);
+
+    const exportAccountDetails = async (_sel: AttendanceStudent[]) => {
+        setIsExporting(true);
+        try {
+            const allStudents = await fetchAllAttendancePages();
+            const csvData = allStudents.map((student) => ({
+                'Name': student.fullName || '',
+                'Email': student.email || '',
+                'Mobile Number': student.mobileNumber || '',
+                'Enrollment Number': student.instituteEnrollmentNumber || '',
+                'Gender': student.gender || '',
+                'Enrollment Status': student.enrollmentStatus || '',
+            }));
+            const csv = Papa.unparse(csvData);
+            downloadCsv(csv, `attendance_account_details_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+            toast.success('Account details exported successfully');
+        } catch (error) {
+            console.error('Export failed:', error);
+            toast.error('Failed to export account details');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const exportFullData = async (_sel: AttendanceStudent[]) => {
+        setIsExporting(true);
+        try {
+            const allStudents = await fetchAllAttendancePages();
+
+            const csvData = allStudents.map((student) => {
+                const total = student.sessions.length;
+                const attended = student.sessions.filter(
+                    (s) => s.attendanceStatus === 'PRESENT'
+                ).length;
+
+                const presentSessions = student.sessions
+                    .filter((s) => s.attendanceStatus === 'PRESENT')
+                    .map((s) => `${s.title} (${s.meetingDate})`)
+                    .join(', ');
+
+                const absentSessions = student.sessions
+                    .filter((s) => s.attendanceStatus !== 'PRESENT')
+                    .map((s) => `${s.title} (${s.meetingDate})`)
+                    .join(', ');
+
+                return {
+                    'Name': student.fullName || '',
+                    'Email': student.email || '',
+                    'Mobile Number': student.mobileNumber || '',
+                    'Enrollment Number': student.instituteEnrollmentNumber || '',
+                    'Attendance %': `${student.attendancePercentage}%`,
+                    'Classes Attended': `${attended}/${total}`,
+                    'Present': presentSessions,
+                    'Absent': absentSessions,
+                };
+            });
+
+            const csv = Papa.unparse(csvData);
+            downloadCsv(csv, `attendance_full_report_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+            toast.success('Attendance data exported successfully');
+        } catch (error) {
+            console.error('Export failed:', error);
+            toast.error('Failed to export attendance data');
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     return (
         <StudentSidebarContext.Provider value={{ selectedStudent, setSelectedStudent }}>
@@ -934,12 +1031,35 @@ function RouteComponent() {
                     />
                 </Helmet>
                 <div className="flex flex-col gap-4">
-                    <h1 className="text-2xl font-semibold text-neutral-800">
-                        Live Class Attendance
-                    </h1>
-                    <p className="text-neutral-600">
-                        Track and manage student attendance for live classes
-                    </p>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h1 className="text-2xl font-semibold text-neutral-800">
+                                Live Class Attendance
+                            </h1>
+                            <p className="text-neutral-600">
+                                Track and manage student attendance for live classes
+                            </p>
+                        </div>
+                        <MyButton
+                            buttonType="secondary"
+                            scale="medium"
+                            className="flex items-center gap-2"
+                            disabled={isExporting || studentsData.length === 0}
+                            onClick={() => exportFullData([])}
+                        >
+                            {isExporting ? (
+                                <>
+                                    <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                    Exporting...
+                                </>
+                            ) : (
+                                <>
+                                    <DownloadSimple size={18} />
+                                    Export CSV
+                                </>
+                            )}
+                        </MyButton>
+                    </div>
 
                     <div className="rounded-lg border border-neutral-200 bg-white p-4">
                         <div className="mb-4 flex flex-wrap items-center gap-3">

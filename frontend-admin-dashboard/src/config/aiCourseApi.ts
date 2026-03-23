@@ -1,3 +1,5 @@
+import { BASE_URL } from '../constants/urls';
+
 export const AI_COURSE_API_CONFIG = {
     timeout: 60_000,
     defaultHeaders: {
@@ -6,7 +8,7 @@ export const AI_COURSE_API_CONFIG = {
 };
 
 export function buildApiUrl(endpoint: string, params: Record<string, string | number>) {
-    const backendBase = import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io';
+    const backendBase = BASE_URL;
     const base = `${backendBase}/media-service/course/ai/v1/${endpoint}`;
     const url = new URL(base);
     Object.entries(params).forEach(([key, value]) => {

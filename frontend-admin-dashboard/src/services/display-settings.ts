@@ -1,5 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getInstituteId } from '@/constants/helper';
+import { BASE_URL } from '@/constants/urls';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
     TEACHER_DISPLAY_SETTINGS_KEY,
@@ -549,7 +550,7 @@ export async function getDisplaySettings(
         const apiSettingKey = isCustomRole ? 'ROLE_DISPLAY_SETTINGS' : role;
 
         const res = await authenticatedAxiosInstance.get<{ data: any | null }>(
-            `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/admin-core-service/institute/setting/v1/get`,
+            `${BASE_URL}/admin-core-service/institute/setting/v1/get`,
             {
                 params: {
                     instituteId,
@@ -639,7 +640,7 @@ export async function saveDisplaySettings(
 
         try {
             const res = await authenticatedAxiosInstance.get<{ data: any | null }>(
-                `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/admin-core-service/institute/setting/v1/get`,
+                `${BASE_URL}/admin-core-service/institute/setting/v1/get`,
                 { params: { instituteId, settingKey: apiSettingKey } }
             );
             let tempExisting = null;
@@ -682,7 +683,7 @@ export async function saveDisplaySettings(
     };
 
     await authenticatedAxiosInstance.post(
-        `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/admin-core-service/institute/setting/v1/save-setting`,
+        `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`,
         requestData,
         {
             params: { instituteId, settingKey: apiSettingKey },

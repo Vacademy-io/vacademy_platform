@@ -14,6 +14,7 @@ import { PaperPlaneTilt, Spinner, Eye } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 import { useEnrollRequestsDialogStore } from '../bulk-actions-store';
+import { BASE_URL } from '@/constants/urls';
 
 // Define email templates
 const EMAIL_TEMPLATES = [
@@ -229,7 +230,7 @@ export const SendEmailDialog = () => {
 
         try {
             const response = await fetch(
-                `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/notification-service/v1/send-email-to-users-public`,
+                `${BASE_URL}/notification-service/v1/send-email-to-users-public`,
                 {
                     method: 'POST',
                     headers: {

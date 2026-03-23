@@ -1,5 +1,6 @@
 import { verifyEmailWithOtp } from '@/components/common/LoginPages/VerifyEmailWithOtp';
 import { toast } from 'sonner';
+import { BASE_URL } from '@/constants/urls';
 
 export type OAuthProvider = 'google' | 'github';
 interface OAuthLoginOptions {
@@ -21,7 +22,7 @@ export const handleOAuthSignUp = (provider: OAuthProvider, options: OAuthLoginOp
         };
 
         const base64State = btoa(JSON.stringify(stateObj));
-        const loginUrl = `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/auth-service/oauth2/authorization/${provider}?state=${encodeURIComponent(
+        const loginUrl = `${BASE_URL}/auth-service/oauth2/authorization/${provider}?state=${encodeURIComponent(
             base64State
         )}`;
 

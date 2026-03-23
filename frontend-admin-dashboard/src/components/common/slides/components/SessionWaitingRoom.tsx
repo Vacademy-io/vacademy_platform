@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { BASE_URL } from '@/constants/urls';
 
 interface Participant {
     username: string;
@@ -54,7 +55,7 @@ const qrCodeInstance = new QRCodeStyling({
 });
 
 const ADMIN_SSE_URL_BASE_WAITING =
-            `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/community-service/engage/admin/`;
+            `${BASE_URL}/community-service/engage/admin/`;
 
 export const WaitingRoom: React.FC<WaitingRoomProps> = ({
     sessionDetails,

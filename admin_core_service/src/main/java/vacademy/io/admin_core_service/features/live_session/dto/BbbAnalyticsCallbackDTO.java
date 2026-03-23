@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * Maps the JSON body that BBB POSTs to meta_analytics-callback-url after a meeting ends.
- * See: https://docs.bigbluebutton.org/development/api/#analytics-callback
+ * BBB sends: { version, meeting_id, internal_meeting_id, data: { duration, attendees, ... } }
  */
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -20,12 +20,25 @@ public class BbbAnalyticsCallbackDTO {
     @JsonProperty("internal_meeting_id")
     private String internalMeetingId;
 
-    @JsonProperty("meeting_name")
-    private String meetingName;
+    private String version;
 
-    private Long duration; // meeting duration in seconds
+    private AnalyticsData data;
 
-    private List<Attendee> attendees;
+    // Convenience accessors so the service layer doesn't change
+    public List<Attendee> getAttendees() {
+        return data != null ? data.getAttendees() : null;
+    }
+
+    public Long getDuration() {
+        return data != null ? data.getDuration() : null;
+    }
+
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class AnalyticsData {
+        private Long duration; // meeting duration in seconds
+        private List<Attendee> attendees;
+    }
 
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)

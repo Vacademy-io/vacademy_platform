@@ -105,8 +105,8 @@ public class CustomRoleService {
     }
 
     public List<CustomRoleDTO> getRolesForInstitute(String instituteId) {
-        // System roles have institute_id IS NULL — must use explicit IS NULL query
-        List<Role> systemRoles = roleRepository.findSystemRoles();
+        // System roles have institute_id IS NULL
+        List<Role> systemRoles = roleRepository.findAllByInstituteIdIsNull();
         List<Role> customRoles = roleRepository.findAllByInstituteId(instituteId);
 
         List<Role> allRoles = new java.util.ArrayList<>(systemRoles);

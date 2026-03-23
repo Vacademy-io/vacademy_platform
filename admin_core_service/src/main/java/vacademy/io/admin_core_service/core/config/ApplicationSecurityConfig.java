@@ -83,8 +83,9 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/v1/applicant/**",
             "/admin-core-service/enrollment-policy/**",
             "/admin-core-service/v1/admission/submit",
-            // BBB server-to-server callback (no JWT — called by BigBlueButton when meeting ends)
+            // BBB server-to-server callbacks (no JWT — called by BigBlueButton when meeting ends)
             "/admin-core-service/live-sessions/provider/meeting/bbb-callback",
+            "/admin-core-service/live-sessions/provider/meeting/bbb-analytics-callback",
             // BBB recording upload (server-to-server from BBB post-publish script, auth via X-BBB-Secret header)
             "/admin-core-service/live-sessions/provider/meeting/recording/init-upload",
             "/admin-core-service/live-sessions/provider/meeting/recording/complete"

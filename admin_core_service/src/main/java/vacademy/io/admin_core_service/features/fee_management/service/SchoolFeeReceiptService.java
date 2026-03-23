@@ -18,6 +18,10 @@ import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeP
 import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
 import vacademy.io.admin_core_service.features.fee_management.repository.AssignedFeeValueRepository;
 import vacademy.io.admin_core_service.features.fee_management.repository.FeeTypeRepository;
+import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.fee_management.entity.AssignedFeeValue;
 import vacademy.io.admin_core_service.features.fee_management.entity.FeeType;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
@@ -32,6 +36,7 @@ import vacademy.io.admin_core_service.features.notification_service.service.Noti
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.common.media.dto.InMemoryMultipartFile;
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
@@ -94,6 +99,12 @@ public class SchoolFeeReceiptService {
     @Autowired
     @Lazy
     private NotificationService notificationService;
+
+    @Autowired
+    private StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
+
+    @Autowired
+    private AudienceResponseRepository audienceResponseRepository;
 
     /**
      * Generate a school fee receipt PDF and send it via email.
@@ -162,30 +173,27 @@ public class SchoolFeeReceiptService {
             // 6. Load school fee receipt template
             String templateHtml = loadSchoolFeeReceiptTemplate(instituteId);
 
-            // 7. Build fee table HTML
-            String feeTableHtml = buildFeeTableHtml(feePayments, currency);
-
-            // 8. Replace placeholders
+            // 7. Replace placeholders (includes fee table HTML)
             String filledTemplate = replacePlaceholders(templateHtml, user, institute, feePayments,
                     receiptNumber, amountPaid, transactionId, paymentMode,
                     totalExpected, totalPaid, totalDiscount, balanceDue, currency);
 
-            // 9. Generate PDF
+            // 8. Generate PDF
             byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
 
-            // 10. Upload to S3
+            // 9. Upload to S3
             String pdfFileId = uploadReceiptToS3(pdfBytes, receiptNumber, instituteId);
 
-            // 11. Save to invoice table
+            // 10. Save to invoice table
             Invoice invoice = saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
                     amountPaid, totalExpected, totalPaid, totalDiscount, balanceDue, currency);
 
-            // 12. Save line items (one per installment)
+            // 11. Save line items (one per installment)
             saveLineItems(invoice, feePayments, currency);
 
             log.info("School fee receipt generated successfully: {}", receiptNumber);
 
-            // 13. Send email if enabled
+            // 12. Send email if enabled
             if (sendEmail) {
                 try {
                     sendReceiptEmail(invoice, user, institute, instituteId, pdfBytes, receiptNumber);
@@ -276,31 +284,28 @@ public class SchoolFeeReceiptService {
             // 6. Load school fee receipt template
             String templateHtml = loadSchoolFeeReceiptTemplate(instituteId);
 
-            // 7. Build fee table HTML (only paid installments)
-            String feeTableHtml = buildFeeTableHtml(feePayments, currency);
-
-            // 8. Replace placeholders
+            // 7. Replace placeholders (includes fee table HTML)
             String filledTemplate = replacePlaceholders(templateHtml, user, institute, feePayments,
                     receiptNumber, amountPaid, transactionId, paymentMode,
                     totalExpected, totalPaid, totalDiscount, balanceDue, currency);
 
-            // 9. Generate PDF
+            // 8. Generate PDF
             byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
 
-            // 10. Upload to S3
+            // 9. Upload to S3
             String pdfFileId = uploadReceiptToS3(pdfBytes, receiptNumber, instituteId);
 
-            // 11. Save to invoice table
+            // 10. Save to invoice table
             Invoice invoice = saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
                     amountPaid, totalExpected, totalPaid, totalDiscount, balanceDue, currency);
 
-            // 12. Save line items (only for paid installments)
+            // 11. Save line items (only for paid installments)
             saveLineItems(invoice, feePayments, currency);
 
             log.info("School fee receipt generated successfully: {} for {} installments", 
                     receiptNumber, feePayments.size());
 
-            // 13. Send email if enabled
+            // 12. Send email if enabled
             if (sendEmail) {
                 try {
                     sendReceiptEmail(invoice, user, institute, instituteId, pdfBytes, receiptNumber);
@@ -484,21 +489,43 @@ public class SchoolFeeReceiptService {
                         <h2>Fee Receipt</h2>
                     </div>
 
-                    <table style="width:100%; border:none; margin-bottom: 15px;">
+                    <table style="width:100%; border:none; margin-bottom: 15px; background-color: #f7fafc; padding: 12px;">
                         <tr style="background:none;">
-                            <td style="border:none; padding:4px;">
+                            <td style="border:none; padding:8px; width:50%; vertical-align:top;">
                                 <span class="label">Receipt No</span><br/>
                                 <span class="value">{{receipt_number}}</span>
                             </td>
-                            <td style="border:none; padding:4px;">
+                            <td style="border:none; padding:8px; width:50%; vertical-align:top;">
                                 <span class="label">Date</span><br/>
                                 <span class="value">{{receipt_date}}</span>
                             </td>
-                            <td style="border:none; padding:4px;">
+                        </tr>
+                        <tr style="background:none;">
+                            <td style="border:none; padding:8px;">
                                 <span class="label">Student Name</span><br/>
                                 <span class="value">{{student_name}}</span>
                             </td>
-                            <td style="border:none; padding:4px; text-align:right;">
+                            <td style="border:none; padding:8px;">
+                                <span class="label">Class</span><br/>
+                                <span class="value">{{package_name}}</span>
+                            </td>
+                        </tr>
+                        <tr style="background:none;">
+                            <td style="border:none; padding:8px;">
+                                <span class="label">Parent Name</span><br/>
+                                <span class="value">{{parent_name}}</span>
+                            </td>
+                            <td style="border:none; padding:8px;">
+                                <span class="label">Section</span><br/>
+                                <span class="value">{{session_name}}</span>
+                            </td>
+                        </tr>
+                        <tr style="background:none;">
+                            <td style="border:none; padding:8px;">
+                                <span class="label">Academic Year</span><br/>
+                                <span class="value">{{session}}</span>
+                            </td>
+                            <td style="border:none; padding:8px;">
                                 <span class="label">Payment Mode</span><br/>
                                 <span class="value">{{payment_mode}}</span>
                             </td>
@@ -555,6 +582,7 @@ public class SchoolFeeReceiptService {
         String instituteAddress = buildInstituteAddress(institute);
         String logoHtml = buildInstituteLogoHtml(institute);
         String feeTableHtml = buildFeeTableHtml(feePayments, currency);
+        ReceiptEnrichment enrichment = enrichReceiptFromEnrollment(user.getId(), institute.getId());
 
         return template
                 .replace("{{institute_logo}}", logoHtml)
@@ -564,6 +592,10 @@ public class SchoolFeeReceiptService {
                 .replace("{{receipt_date}}", LocalDateTime.now().format(DISPLAY_DATE_FORMATTER))
                 .replace("{{student_name}}", studentName)
                 .replace("{{student_email}}", user.getEmail() != null ? user.getEmail() : "")
+                .replace("{{package_name}}", enrichment.packageName())
+                .replace("{{session_name}}", enrichment.sectionName())
+                .replace("{{session}}", enrichment.academicSessionLabel())
+                .replace("{{parent_name}}", enrichment.parentName())
                 .replace("{{fee_table}}", feeTableHtml)
                 .replace("{{total_expected}}", totalExpected.toPlainString())
                 .replace("{{total_paid}}", totalPaid.toPlainString())
@@ -574,6 +606,64 @@ public class SchoolFeeReceiptService {
                 .replace("{{payment_mode}}", paymentMode != null ? paymentMode : "OFFLINE")
                 .replace("{{currency}}", currency)
                 .replace("{{currency_symbol}}", currencySymbol);
+    }
+
+    private record ReceiptEnrichment(String packageName, String sectionName, String academicSessionLabel,
+            String parentName) {
+    }
+
+    /**
+     * Class / section / academic year from student_session_institute_group_mapping → package_session;
+     * parent name from audience_response (student or parent user id).
+     */
+    private ReceiptEnrichment enrichReceiptFromEnrollment(String userId, String instituteId) {
+        String packageName = "";
+        String sectionName = "";
+        String academicSessionLabel = "";
+        String parentName = "";
+
+        if (StringUtils.hasText(userId) && StringUtils.hasText(instituteId)) {
+            try {
+                List<StudentSessionInstituteGroupMapping> mappings = studentSessionInstituteGroupMappingRepository
+                        .findActiveMappingsWithFetchedPackageSession(userId, instituteId);
+                if (!mappings.isEmpty()) {
+                    PackageSession ps = mappings.get(0).getPackageSession();
+                    if (ps != null) {
+                        if (ps.getName() != null) {
+                            sectionName = ps.getName();
+                        }
+                        if (ps.getPackageEntity() != null && ps.getPackageEntity().getPackageName() != null) {
+                            packageName = ps.getPackageEntity().getPackageName();
+                        }
+                        if (ps.getSession() != null && ps.getSession().getSessionName() != null) {
+                            academicSessionLabel = ps.getSession().getSessionName();
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("Could not load package/session for fee receipt (user={}, institute={}): {}",
+                        userId, instituteId, e.getMessage());
+            }
+            try {
+                parentName = resolveParentName(userId);
+            } catch (Exception e) {
+                log.debug("Could not load parent name for fee receipt (user={}): {}", userId, e.getMessage());
+            }
+        }
+
+        return new ReceiptEnrichment(packageName, sectionName, academicSessionLabel, parentName);
+    }
+
+    private String resolveParentName(String userId) {
+        List<AudienceResponse> responses = audienceResponseRepository.findByUserIdOrStudentUserId(userId, userId);
+        if (responses == null || responses.isEmpty()) {
+            return "";
+        }
+        return responses.stream()
+                .filter(ar -> StringUtils.hasText(ar.getParentName()))
+                .max(Comparator.comparing(AudienceResponse::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(AudienceResponse::getParentName)
+                .orElse("");
     }
 
     private String buildInstituteAddress(Institute institute) {

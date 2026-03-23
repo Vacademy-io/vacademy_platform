@@ -284,7 +284,7 @@ public class FeeLedgerAllocationService {
                     instituteId,
                     allocatedAmount,
                     paymentLog.getId(),
-                    "OFFLINE",
+                    "Cash",
                     paidInstallmentIds);
         }
     }
@@ -402,7 +402,7 @@ public class FeeLedgerAllocationService {
                         instituteId,
                         allocatedAmount,
                         paymentLog.getId(),
-                        "OFFLINE",
+                        "Cash",
                         paidInstallmentIds);
             }
         }

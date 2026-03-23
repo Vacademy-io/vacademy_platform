@@ -55,6 +55,10 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
     @Value("${tool.executor.base-url:http://localhost}")
     private String backendBaseUrl;
 
+    /** Public URL reachable from the BBB server (for callbacks). */
+    @Value("${bbb.callback.base-url:${tool.executor.base-url:http://localhost}}")
+    private String bbbCallbackBaseUrl;
+
     private static final List<String> ACTIVE = List.of("ACTIVE");
 
     @Override
@@ -210,15 +214,16 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
             params.put("duration", String.valueOf(request.getDurationMinutes()));
         }
 
-        // Set end callback URL so BBB notifies us when the meeting ends
+        // Set end callback URL so BBB notifies us when the meeting ends.
+        // Uses bbbCallbackBaseUrl (public URL) since BBB server is external.
         if (request.getScheduleId() != null) {
-            String callbackUrl = backendBaseUrl
+            String callbackUrl = bbbCallbackBaseUrl
                     + "/admin-core-service/live-sessions/provider/meeting/bbb-callback?scheduleId="
                     + request.getScheduleId();
             params.put("meta_endCallbackUrl", callbackUrl);
 
             // Analytics callback — BBB POSTs per-attendee duration & engagement data after meeting ends
-            String analyticsCallbackUrl = backendBaseUrl
+            String analyticsCallbackUrl = bbbCallbackBaseUrl
                     + "/admin-core-service/live-sessions/provider/meeting/bbb-analytics-callback?scheduleId="
                     + request.getScheduleId();
             params.put("meta_analytics-callback-url", analyticsCallbackUrl);

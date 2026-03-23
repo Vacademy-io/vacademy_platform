@@ -21,4 +21,10 @@ public class InternalUserOperationController {
         @RequestBody List<String> userIds) {
         return ResponseEntity.ok(userOperationService.sendUserPasswords(userIds));
     }
+
+    @PostMapping("/send-enrollment-emails")
+    public ResponseEntity<String> sendEnrollmentEmails(
+        @RequestBody List<String> userIds) {
+        return ResponseEntity.ok(userOperationService.sendEnrollmentEmails(userIds));
+    }
 }

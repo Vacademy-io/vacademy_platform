@@ -190,7 +190,23 @@ public class AuthService {
 
             return response.getBody();
         } catch (Exception e) {
-            throw new VacademyException("Failed to generate JWT tokens: " + e.getMessage());
+            throw new VacademyException("Failed to send credentials to users: " + e.getMessage());
+        }
+    }
+
+    public String sendEnrollmentEmails(List<String> userIds) {
+        try {
+            String endpoint = AuthServiceRoutes.SEND_ENROLLMENT_EMAILS;
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    userIds);
+
+            return response.getBody();
+        } catch (Exception e) {
+            throw new VacademyException("Failed to send enrollment emails: " + e.getMessage());
         }
     }
 

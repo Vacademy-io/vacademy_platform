@@ -44,6 +44,19 @@ public class SubmitLeadWithEnquiryRequestDTO {
     // Counsellor assignment (optional)
     private String counsellorId;
     
+    /**
+     * Optional CSV-friendly alias.
+     * If provided and {@link #enquiry} is null (or enquiry_status is missing),
+     * bulk/single-row handlers can map this into {@code enquiry.enquiry_status}.
+     */
+    private String status;
+
+    /**
+     * Optional CSV-friendly alias.
+     * If provided and {@link #sourceType} is null/blank, handler can map this into {@code source_type}.
+     */
+    private String source;
+
     // Enquiry Data
     private EnquiryDTO enquiry;
 }

@@ -5,14 +5,29 @@
 const CRAWLER_UA_REGEX =
   /WhatsApp|facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|TelegramBot|Googlebot|bingbot|Applebot|Pinterest|Viber|Skype/i;
 
-const BACKEND_BASE =
-  "https://backend-stage.vacademy.io";
+// Domain-specific backend mappings (same as src/config/baseUrl.ts)
+const DOMAIN_BACKEND_MAP: Record<string, string> = {
+  "letstalkvet.com": "https://api.letstalkvet.com",
+};
 
-const MEDIA_PUBLIC_URL =
-  `${BACKEND_BASE}/media-service/public/get-public-url`;
+const DEFAULT_BACKEND_BASE = "https://backend-stage.vacademy.io";
 
-const DOMAIN_ROUTING_URL =
-  `${BACKEND_BASE}/admin-core-service/public/domain-routing/v1/resolve`;
+function getBackendBase(hostname: string): string {
+  for (const [domain, backendUrl] of Object.entries(DOMAIN_BACKEND_MAP)) {
+    if (hostname === domain || hostname.endsWith(`.${domain}`)) {
+      return backendUrl;
+    }
+  }
+  return DEFAULT_BACKEND_BASE;
+}
+
+function getMediaPublicUrl(backendBase: string): string {
+  return `${backendBase}/media-service/public/get-public-url`;
+}
+
+function getDomainRoutingUrl(backendBase: string): string {
+  return `${backendBase}/admin-core-service/public/domain-routing/v1/resolve`;
+}
 
 interface DomainRoutingResponse {
   instituteId: string;
@@ -23,9 +38,9 @@ interface DomainRoutingResponse {
   tabIconFileId?: string | null;
 }
 
-async function resolveLogoUrl(fileId: string): Promise<string> {
+async function resolveLogoUrl(fileId: string, backendBase: string): Promise<string> {
   try {
-    const url = `${MEDIA_PUBLIC_URL}?fileId=${encodeURIComponent(fileId)}&expiryDays=7`;
+    const url = `${getMediaPublicUrl(backendBase)}?fileId=${encodeURIComponent(fileId)}&expiryDays=7`;
     const res = await fetch(url);
     if (res.ok) {
       const text = await res.text();
@@ -41,10 +56,11 @@ async function resolveLogoUrl(fileId: string): Promise<string> {
 
 async function fetchBranding(
   domain: string,
-  subdomain: string
+  subdomain: string,
+  backendBase: string
 ): Promise<DomainRoutingResponse | null> {
   try {
-    const url = `${DOMAIN_ROUTING_URL}?domain=${encodeURIComponent(domain)}&subdomain=${encodeURIComponent(subdomain)}`;
+    const url = `${getDomainRoutingUrl(backendBase)}?domain=${encodeURIComponent(domain)}&subdomain=${encodeURIComponent(subdomain)}`;
     const res = await fetch(url, {
       headers: { accept: "application/json" },
     });
@@ -108,10 +124,11 @@ export const onRequest: PagesFunction = async (context) => {
   }
 
   const hostname = url.hostname;
+  const backendBase = getBackendBase(hostname);
   const { domain, subdomain } = parseDomainParts(hostname);
 
   // Fetch branding from domain-routing API
-  const branding = await fetchBranding(domain, subdomain);
+  const branding = await fetchBranding(domain, subdomain, backendBase);
   if (!branding) {
     return response;
   }
@@ -126,7 +143,7 @@ export const onRequest: PagesFunction = async (context) => {
     branding.tabIconFileId || branding.instituteLogoFileId || "";
   let ogImage = "";
   if (logoFileId) {
-    ogImage = await resolveLogoUrl(logoFileId);
+    ogImage = await resolveLogoUrl(logoFileId, backendBase);
   }
 
   // Build OG meta tags

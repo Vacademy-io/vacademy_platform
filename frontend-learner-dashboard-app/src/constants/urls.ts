@@ -1,14 +1,12 @@
-export const BASE_URL =
-  import.meta.env.VITE_BACKEND_URL ||
-  // Backward compatibility with older env var name used in Docker/docs
-  import.meta.env.VITE_API_BASE_URL ||
-  "https://backend-stage.vacademy.io";
+import { BACKEND_BASE_URL } from "../config/baseUrl";
+
+export const BASE_URL = BACKEND_BASE_URL;
 export const BASE_URL_LEARNER_DASHBOARD =
   import.meta.env.VITE_LEARNER_DASHBOARD_URL || "https://learner.vacademy.io";
 export const BASE_URL_TEACHER_DASHBOARD =
   import.meta.env.VITE_TEACHER_DASHBOARD_URL || "https://dash.vacademy.io";
 export const AI_SERVICE_BASE_URL =
-  "https://backend-stage.vacademy.io/ai-service";
+  `${BACKEND_BASE_URL}/ai-service`;
 //urls
 export const INSTITUTE_ID =
   import.meta.env.VITE_INSTITUTE_ID || "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";

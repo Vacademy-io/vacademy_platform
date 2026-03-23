@@ -1,5 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
+    BASE_URL,
     CREATE_INSTRUCTOR_COPILOT_LOG,
     DELETE_INSTRUCTOR_COPILOT_LOG,
     LIST_INSTRUCTOR_COPILOT_LOGS,
@@ -144,7 +145,7 @@ export const generateQuiz = async (
     instituteId: string
 ): Promise<{ taskId: string }> => {
     const response = await authenticatedAxiosInstance.post(
-        `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/media-service/ai/get-question-pdf/from-text?instituteId=${instituteId}`,
+        `${BASE_URL}/media-service/ai/get-question-pdf/from-text?instituteId=${instituteId}`,
         data
     );
     // API returns taskId as a string directly, wrap it in an object
@@ -154,7 +155,7 @@ export const generateQuiz = async (
 
 export const getQuizTaskStatus = async (taskId: string): Promise<QuizGenerationResponse> => {
     const response = await authenticatedAxiosInstance.get(
-        `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/media-service/task-status/get-result?taskId=${taskId}`
+        `${BASE_URL}/media-service/task-status/get-result?taskId=${taskId}`
     );
     return response.data;
 };

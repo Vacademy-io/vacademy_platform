@@ -2,8 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Loader2, Trophy, Medal, Crown } from 'lucide-react';
-
-const BASE_URL = 'https://backend-stage.vacademy.io';
+import { BASE_URL } from '@/config/baseUrl';
 
 interface LeaderboardEntry {
   rank: number;

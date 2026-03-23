@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { BASE_URL } from '@/config/baseUrl';
 import { useParams } from 'react-router-dom';
 import Reveal from 'reveal.js';
 import 'reveal.js/dist/reveal.css';
@@ -48,7 +49,7 @@ interface Presentation {
   // other presentation fields if necessary
 }
 
-const API_BASE_URL = 'https://backend-stage.vacademy.io'; // Using the domain from your curl
+const API_BASE_URL = BASE_URL;
 
 export const PublicPresentationViewerPage: React.FC = () => {
   const { presentationId } = useParams<{ presentationId: string }>();

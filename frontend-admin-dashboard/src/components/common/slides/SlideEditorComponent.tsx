@@ -23,7 +23,7 @@ import { ActualPresentationDisplay } from './ActualPresentationDisplay'; // Impo
 import { SessionOptionsModal, type SessionOptions } from './components/SessionOptionModel'; // Assumed path
 import { SessionLeaderboardModal } from './components/SessionLeaderboardModal';
 import { WaitingRoom } from './components/SessionWaitingRoom'; // Assumed path
-import { ADD_PRESENTATION, EDIT_PRESENTATION, CREATE_SESSION_API_URL, FINISH_SESSION_API_URL } from '@/constants/urls';
+import { ADD_PRESENTATION, BASE_URL, EDIT_PRESENTATION, CREATE_SESSION_API_URL, FINISH_SESSION_API_URL } from '@/constants/urls';
 import { SlideRenderer } from './SlideRenderer'; // Import the extracted SlideRenderer
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
@@ -68,7 +68,7 @@ import { SlideRegenerateModal } from './components/SlideRegenerateModal';
 import { RecommendationOverlay, RecommendationToast } from './components/RecommendationUI';
 import { PRODUCT_NAME } from '@/config/branding';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io';
+const BACKEND_URL = BASE_URL;
 const START_SESSION_API_URL = `${BACKEND_URL}/community-service/engage/admin/start`;
 const ADD_SLIDE_IN_SESSION_API_URL = `${BACKEND_URL}/community-service/engage/admin/add-slide-in-session`;
 const IMPORT_PPT_API_URL = `${BACKEND_URL}/media-service/convert-presentations/import-ppt`;

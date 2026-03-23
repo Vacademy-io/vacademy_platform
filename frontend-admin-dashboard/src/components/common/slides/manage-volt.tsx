@@ -41,7 +41,7 @@ import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtili
 import { TokenKey } from '@/constants/auth/tokens';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { toast } from 'sonner';
-import { EDIT_PRESENTATION } from '@/constants/urls';
+import { BASE_URL, EDIT_PRESENTATION } from '@/constants/urls';
 import { useQueryClient } from '@tanstack/react-query';
 import { MyButton } from '@/components/design-system/button';
 import {
@@ -70,7 +70,7 @@ import { GET_AVAILABLE_AI_MODELS } from '@/constants/urls';
 import type { PresentationData } from './types';
 import { SessionLeaderboardModal } from './components/SessionLeaderboardModal';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io';
+const BACKEND_URL = BASE_URL;
 const IMPORT_PPT_API_URL = `${BACKEND_URL}/media-service/convert-presentations/import-ppt`;
 const VOLT_FIRST_VISIT_KEY = 'volt-has-visited';
 
@@ -491,7 +491,7 @@ export default function ManageVolt() {
         });
     };
 
-    const BACKEND_URL_HIST = import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io';
+    const BACKEND_URL_HIST = BASE_URL;
 
     const openSessionHistory = async (presentation: PresentationData) => {
         setHistoryPresentationTitle(presentation.title || 'Untitled');

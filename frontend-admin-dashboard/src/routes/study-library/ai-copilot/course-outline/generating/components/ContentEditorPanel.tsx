@@ -22,16 +22,43 @@ import { Label } from '@/components/ui/label';
 import { isYouTubeUrl, getYouTubeEmbedUrl } from '../../../shared/utils/youtube';
 
 /**
- * Strips YouTube URLs/iframes from HTML content, returning only the description/script text.
+ * Extracts the user-facing text from video/ai-video slide content.
+ * Content may be JSON like {"video":{...},"code":{"content":"..."}} or plain HTML.
+ *
+ * For 'video' (YouTube): returns video.description
+ * For 'ai-video': returns the script from code.content
+ * For 'video-code'/'ai-video-code': same logic based on slideType
  */
-function extractDescriptionFromContent(content: string): string {
-    if (!content) return '';
-    let text = content
-        .replace(/<a[^>]*href="[^"]*(?:youtube\.com|youtu\.be)[^"]*"[^>]*>.*?<\/a>/gi, '')
-        .replace(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/[^\s<"']*/gi, '')
-        .replace(/<iframe[^>]*(?:youtube\.com|youtu\.be)[^>]*>.*?<\/iframe>/gi, '');
-    text = text.replace(/<p[^>]*>\s*<\/p>/gi, '');
-    return text.trim();
+function extractVideoDisplayContent(
+    content: string,
+    slideType: string
+): { label: string; text: string } {
+    if (!content) return { label: '', text: '' };
+
+    const isAiVideo = slideType === 'ai-video' || slideType === 'ai-video-code';
+
+    // Try parsing as JSON first (the common format)
+    try {
+        const parsed = JSON.parse(content);
+
+        if (isAiVideo) {
+            // For AI video: show the script from code.content (markdown)
+            const script = parsed?.code?.content || parsed?.video?.message || '';
+            return { label: 'Script', text: script };
+        } else {
+            // For YouTube video: show the description
+            const description = parsed?.video?.description || parsed?.video?.title || '';
+            return { label: 'Description', text: description };
+        }
+    } catch {
+        // Not JSON — treat as HTML, strip YouTube URLs
+        let text = content
+            .replace(/<a[^>]*href="[^"]*(?:youtube\.com|youtu\.be)[^"]*"[^>]*>.*?<\/a>/gi, '')
+            .replace(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/[^\s<"']*/gi, '')
+            .replace(/<iframe[^>]*(?:youtube\.com|youtu\.be)[^>]*>.*?<\/iframe>/gi, '')
+            .replace(/<p[^>]*>\s*<\/p>/gi, '');
+        return { label: isAiVideo ? 'Script' : 'Description', text: text.trim() };
+    }
 }
 
 /**
@@ -316,7 +343,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                     slide.slideType === 'topic') && (
                         <div className="h-full overflow-y-auto">
                             {isEditing ? (
-                                <div className="h-full">
+                                <div className="h-full px-6 py-4 sm:px-8 sm:py-6">
                                     <YooptaEditorWrapper
                                         value={documentContent}
                                         onChange={(content) => setDocumentContent(content)}
@@ -325,7 +352,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                                 </div>
                             ) : (
                                 <div
-                                    className="prose prose-sm max-w-none p-3 sm:p-6"
+                                    className="prose prose-base max-w-none px-6 py-4 sm:px-8 sm:py-6 prose-headings:text-neutral-900 prose-h1:text-2xl prose-h1:font-bold prose-h2:text-xl prose-h2:font-semibold prose-h3:text-lg prose-h3:font-semibold prose-p:text-neutral-700 prose-p:leading-relaxed"
                                     dangerouslySetInnerHTML={{
                                         __html: documentContent || '<p>No content available</p>',
                                     }}
@@ -338,24 +365,19 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                 {(slide.slideType === 'video' ||
                     slide.slideType === 'ai-video' ||
                     slide.slideType === 'video-code' ||
-                    slide.slideType === 'ai-video-code') && (
-                    <div className="h-full overflow-y-auto p-6 sm:p-8">
-                        <div className="prose prose-lg max-w-none">
+                    slide.slideType === 'ai-video-code') && (() => {
+                    const { label, text } = extractVideoDisplayContent(slide.content || '', slide.slideType);
+                    return (
+                        <div className="h-full overflow-y-auto p-6 sm:p-8">
                             <h4 className="mb-4 text-sm font-medium uppercase tracking-wide text-neutral-500">
-                                {slide.slideType === 'ai-video' || slide.slideType === 'ai-video-code'
-                                    ? 'Script'
-                                    : 'Description'}
+                                {label}
                             </h4>
-                            <div
-                                dangerouslySetInnerHTML={{
-                                    __html:
-                                        extractDescriptionFromContent(slide.content || '') ||
-                                        '<p>No content available</p>',
-                                }}
-                            />
+                            <div className="prose prose-lg max-w-none whitespace-pre-wrap text-neutral-800">
+                                {text || 'No content available'}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
 
                 {/* Code Content - only for pure code/solution slides */}
                 {(slide.slideType === 'code-editor' ||
@@ -476,20 +498,13 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
 
                 {/* Homework/Assignment Content */}
                 {(slide.slideType === 'homework' || slide.slideType === 'assignment') && (
-                    <div className="h-full overflow-y-auto p-3 sm:p-6">
-                        <div className="mx-auto max-w-2xl">
-                            <div className="rounded-lg bg-neutral-50 p-6">
-                                <h4 className="mb-4 text-lg font-medium text-neutral-900">
-                                    Assignment
-                                </h4>
-                                <div
-                                    className="prose prose-sm max-w-none"
-                                    dangerouslySetInnerHTML={{
-                                        __html: slide.content || '<p>No assignment content</p>',
-                                    }}
-                                />
-                            </div>
-                        </div>
+                    <div className="h-full overflow-y-auto px-6 py-4 sm:px-8 sm:py-6">
+                        <div
+                            className="prose prose-base max-w-none prose-headings:text-neutral-900 prose-h1:text-2xl prose-h1:font-bold prose-h2:text-xl prose-h2:font-semibold prose-h3:text-lg prose-h3:font-semibold prose-p:text-neutral-700 prose-p:leading-relaxed"
+                            dangerouslySetInnerHTML={{
+                                __html: slide.content || '<p>No assignment content</p>',
+                            }}
+                        />
                     </div>
                 )}
             </div>

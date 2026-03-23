@@ -169,9 +169,8 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                                 className="h-5 w-5 p-0"
                                                 onClick={() =>
                                                     copyToClipboard(
-                                                        subscriptionStatus.short_url ||
-                                                            createInviteLink(subscriptionStatus.invite_code),
-                                                        'Invite link'
+                                                        subscriptionStatus.invite_code,
+                                                        'Invite code'
                                                     )
                                                 }
                                             >
@@ -257,15 +256,15 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
 
                             {/* Admins Section */}
                             <SubOrgAdminsSection subOrgId={subOrgId} />
-
-                            {/* Add User Section */}
-                            <AddUserToSubOrgSection
-                                subOrgId={subOrgId}
-                                instituteId={instituteId || ''}
-                                scopedInvites={scopedInvites}
-                            />
                         </div>
                     </ScrollArea>
+
+                    {/* Add User Section — outside ScrollArea so it's always visible */}
+                    <AddUserToSubOrgSection
+                        subOrgId={subOrgId}
+                        instituteId={instituteId || ''}
+                        scopedInvites={scopedInvites}
+                    />
                 )}
             </DialogContent>
         </Dialog>

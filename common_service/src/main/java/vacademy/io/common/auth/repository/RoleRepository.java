@@ -1,5 +1,6 @@
 package vacademy.io.common.auth.repository;
 
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Repository;
 import vacademy.io.common.auth.entity.Role;
@@ -16,5 +17,8 @@ public interface RoleRepository extends CrudRepository<Role, String> {
     List<Role> findAllByInstituteId(String instituteId);
 
     Optional<Role> findByNameAndInstituteId(String name, String instituteId);
+
+    @Query("SELECT r FROM Role r WHERE r.instituteId IS NULL")
+    List<Role> findSystemRoles();
 
 }

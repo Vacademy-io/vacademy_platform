@@ -2,7 +2,10 @@ package vacademy.io.admin_core_service.features.learner.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
@@ -45,11 +48,10 @@ public class SubOrgAutoLinkService {
      * for that packageSession. If so, stamp the SSIGM with the sub-org and create
      * a StudentSubOrg junction entry.
      *
-     * @param learnerUserId    the enrolled learner's user ID
-     * @param packageSessionId the package session the learner was enrolled in
-     * @param mappingId        the SSIGM ID that was just created
-     * @param adminUserId      the admin who performed the enrollment (from @AuthenticationPrincipal)
+     * Uses REQUIRES_NEW propagation so this runs in its own transaction —
+     * failures here never roll back the parent enrollment transaction.
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void linkIfSubOrgAdmin(String learnerUserId, String packageSessionId,
                                    String mappingId, String adminUserId) {
         try {
@@ -66,6 +68,11 @@ public class SubOrgAutoLinkService {
                 return; // Admin is not a sub-org admin for this packageSession — no-op
             }
 
+            if (subOrgIds.size() > 1) {
+                log.warn("Admin {} has {} sub-org mappings for packageSession {}. Using first: {}",
+                        adminUserId, subOrgIds.size(), packageSessionId, subOrgIds.get(0));
+            }
+
             String subOrgId = subOrgIds.get(0);
             log.info("Auto-linking learner={} to sub-org={} (admin={}, packageSession={})",
                     learnerUserId, subOrgId, adminUserId, packageSessionId);
@@ -73,7 +80,7 @@ public class SubOrgAutoLinkService {
             // 1. Stamp the SSIGM with sub-org and LEARNER role
             stampMappingWithSubOrg(mappingId, subOrgId);
 
-            // 2. Create StudentSubOrg junction entry
+            // 2. Create StudentSubOrg junction entry (handles duplicates gracefully)
             createStudentSubOrgEntry(learnerUserId, subOrgId);
 
         } catch (Exception e) {
@@ -132,9 +139,15 @@ public class SubOrgAutoLinkService {
         Optional<Institute> subOrgOpt = instituteRepository.findById(subOrgId);
         if (subOrgOpt.isEmpty()) return;
 
-        StudentSubOrg entry = new StudentSubOrg(
-                studentId, learnerUserId, subOrgOpt.get(), StudentSubOrgLinkType.DIRECT.name());
-        studentSubOrgRepository.save(entry);
-        log.info("Created StudentSubOrg: user={}, sub-org={}", learnerUserId, subOrgId);
+        try {
+            StudentSubOrg entry = new StudentSubOrg(
+                    studentId, learnerUserId, subOrgOpt.get(), StudentSubOrgLinkType.DIRECT.name());
+            studentSubOrgRepository.save(entry);
+            log.info("Created StudentSubOrg: user={}, sub-org={}", learnerUserId, subOrgId);
+        } catch (DataIntegrityViolationException e) {
+            // UNIQUE constraint (user_id, sub_org_id) — entry was created by a concurrent request
+            log.debug("StudentSubOrg already exists (concurrent insert) for user={}, sub-org={}",
+                    learnerUserId, subOrgId);
+        }
     }
 }

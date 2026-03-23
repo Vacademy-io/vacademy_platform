@@ -30,13 +30,17 @@ jobs:
           mkdir -p ~/.m2
           echo "<settings><servers><server><id>github</id><username>${ACCESS_GITHUB_USERNAME}</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
 
+      - name: Remove sentry plugin from pom (no valid token for VET build)
+        working-directory: ./notification_service
+        run: |
+          sed -i '/<plugin>/{N;N;/sentry-maven-plugin/{:a;N;/<\/plugin>/!ba;d}}' pom.xml
+
       - name: Build Project
         working-directory: ./notification_service
         env:
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: mvn -s settings.xml clean install -DskipTests -Dsentry.authToken=$SENTRY_AUTH_TOKEN
+        run: mvn -s settings.xml clean package -DskipTests
 
       - name: Configure AWS credentials for ECR Public
         uses: aws-actions/configure-aws-credentials@v3
@@ -72,10 +76,9 @@ jobs:
           SQS_ENDPOINT: ${{ secrets.SQS_ENDPOINT }}
           SQS_REGION: ${{ secrets.SQS_REGION }}
           AWS_SQS_ENABLED: ${{ secrets.AWS_SQS_ENABLED }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
-          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN} --build-arg SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG -f ${GITHUB_WORKSPACE}/vet-eks-resources/dockerfiles/Dockerfile.notification-service . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 
@@ -94,31 +97,31 @@ jobs:
         run: |
           kubectl set env deployment/notification-service \
             environment=stage \
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-            DB_USERNAME=${{ secrets.DB_USERNAME }} \
-            APP_USERNAME=${{ secrets.APP_USERNAME }} \
-            APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
-            CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            NOTIFICATION_SERVICE_DB_URL=jdbc:postgresql://${{ secrets.VET_DB_HOST }}:5432/notification_service \
-            NOTIFICATION_SERVICE_READ_DB_URL=jdbc:postgresql://${{ secrets.VET_DB_HOST }}:5432/notification_service_read \
-            MAIL_HOST=${{ secrets.MAIL_HOST }} \
-            MAIL_PORT=${{ secrets.MAIL_PORT }} \
-            AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }} \
-            AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }} \
-            SES_SENDER_EMAIL=${{ secrets.SES_SENDER_EMAIL }} \
-            WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }} \
-            WHATSAPP_ACCESS_TOKEN_VIDYAYATAN=${{ secrets.WHATSAPP_ACCESS_TOKEN_VIDYAYATAN }} \
-            WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN=${{ secrets.WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN }} \
-            SES_CONFIGURATION_SET=${{ secrets.SES_CONFIGURATION_SET }} \
-            SES_EVENTS_SQS_URL=${{ secrets.SES_EVENTS_SQS_URL }} \
-            SQS_AWS_ACCESS_KEY=${{ secrets.SQS_AWS_ACCESS_KEY }} \
-            SQS_AWS_SECRET_KEY=${{ secrets.SQS_AWS_SECRET_KEY }} \
-            SQS_AWS_REGION=${{ secrets.SQS_AWS_REGION }} \
-            SQS_ENDPOINT=${{ secrets.SQS_ENDPOINT }} \
-            SQS_REGION=${{ secrets.SQS_REGION }} \
-            AWS_SQS_ENABLED=${{ secrets.AWS_SQS_ENABLED }} \
-            SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
+            "DB_USERNAME=${{ secrets.DB_USERNAME }}" \
+            "APP_USERNAME=${{ secrets.APP_USERNAME }}" \
+            "APP_PASSWORD=${{ secrets.APP_PASSWORD }}" \
+            "CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }}" \
+            "NOTIFICATION_SERVICE_DB_URL=${{ secrets.NOTIFICATION_SERVICE_DB_URL }}" \
+            "NOTIFICATION_SERVICE_READ_DB_URL=${{ secrets.NOTIFICATION_SERVICE_READ_DB_URL }}" \
+            "MAIL_HOST=${{ secrets.MAIL_HOST }}" \
+            "MAIL_PORT=${{ secrets.MAIL_PORT }}" \
+            "AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }}" \
+            "AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }}" \
+            "SES_SENDER_EMAIL=${{ secrets.SES_SENDER_EMAIL }}" \
+            "WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }}" \
+            "WHATSAPP_ACCESS_TOKEN_VIDYAYATAN=${{ secrets.WHATSAPP_ACCESS_TOKEN_VIDYAYATAN }}" \
+            "WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN=${{ secrets.WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN }}" \
+            "SES_CONFIGURATION_SET=${{ secrets.SES_CONFIGURATION_SET }}" \
+            "SES_EVENTS_SQS_URL=${{ secrets.SES_EVENTS_SQS_URL }}" \
+            "SQS_AWS_ACCESS_KEY=${{ secrets.SQS_AWS_ACCESS_KEY }}" \
+            "SQS_AWS_SECRET_KEY=${{ secrets.SQS_AWS_SECRET_KEY }}" \
+            "SQS_AWS_REGION=${{ secrets.SQS_AWS_REGION }}" \
+            "SQS_ENDPOINT=${{ secrets.SQS_ENDPOINT }}" \
+            "SQS_REGION=${{ secrets.SQS_REGION }}" \
+            "AWS_SQS_ENABLED=${{ secrets.AWS_SQS_ENABLED }}" \
+            "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" \
+            "SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}"
 
       - name: Restart deployment
         env:

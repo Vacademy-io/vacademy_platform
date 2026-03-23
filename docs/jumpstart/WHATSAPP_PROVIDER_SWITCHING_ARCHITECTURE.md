@@ -48,7 +48,20 @@ If an admin wants to configure WATI and make it their active provider, these are
    VALUES ('+919876543210', '<YOUR_INST_ID>', 'WHATSAPP_WATI');
    ```
 
-## 4. Safety Constraints & "Idiot-Proofing"
+## 4. Provider-Agnostic Filter Endpoints
+The workflow HTTP nodes (e.g., `nt_js_day_01_http`) previously used Combot-specific URLs like `/notification-service/v1/combot/filter-adjacent-sequence`. These filter endpoints query the `notification_log` table which stores messages from **all providers**, so they are inherently provider-agnostic.
+
+To avoid confusion and coupling, generic endpoints have been added under the existing `WhatsappController`:
+
+| Old (Combot-specific) URL | New (Generic) URL |
+|---------------------------|-------------------|
+| `/notification-service/v1/combot/filter-adjacent-sequence` | `/notification-service/whatsapp/v1/filter-adjacent-sequence` |
+| `/notification-service/v1/combot/filter-inactive-users` | `/notification-service/whatsapp/v1/filter-inactive-users` |
+| `/notification-service/v1/combot/filter-users-by-messages` | `/notification-service/whatsapp/v1/filter-users-by-messages` |
+
+**Migration:** Update the `url` field in the `config_json` of workflow `node_template` rows to use the new generic URLs. The old Combot endpoints continue to work unchanged.
+
+## 5. Safety Constraints & "Idiot-Proofing"
 - **Empty Switching Guard:** The Backend APIs automatically throw `HTTP 400` errors if the Admin uses the UI to switch the active provider to `META`, but they haven't actually entered META API credentials beforehand.
 - **Fail-Safe Fallback Deletion:** If the Admin suddenly deletes their `WATI` credentials from the dashboard, but `WATI` was actively running the institute—the system catches this! The backend immediately drops the credentials and natively falls back to making `COMBOT` the active provider instantly so the workflow doesn't permanently brick.
 - **Mandatory Template Maps:** The admin **Must** create the exact same message templates on WATI (e.g., `little_win_day_1_l1`) as they exist on Combot. If they rename templates on the new platform, WhatsApp will reject the dynamic routing.

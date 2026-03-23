@@ -229,9 +229,12 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
                             Class / Grade Applying For <span className="text-red-500">*</span>
                         </Label>
                         <Select
-                            value={formData.selectedPackageSessionId || ''}
+                            value={formData.selectedPackageSessionId || formData.applyingForClass || ''}
                             onValueChange={(value) => {
-                                updateFormData({ applyingForClass: value });
+                                updateFormData({
+                                    applyingForClass: value,
+                                    selectedPackageSessionId: value,
+                                });
                             }}
                         >
                             <SelectTrigger>

@@ -59,8 +59,15 @@ export const flavorConfig: FlavorConfigs = {
 
   //SSDC Android App
    "io.vacademy.student.app": {
-    appName: "Vacademy Learner",
+    appName: "SSDC Horizon",
     domain: "vacademy.io",
     subdomain: "ssdc",
   },
+
+   // Enark Uplift Teacher Training Android app
+  "com.enarkuplift.app": {
+    appName: "Uplift Teacher Training",
+    domain: "enarkuplift.in",
+    subdomain: "training",
+  }
 };

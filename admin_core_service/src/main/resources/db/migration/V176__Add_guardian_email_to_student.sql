@@ -1,0 +1,2 @@
+ALTER TABLE student
+ADD COLUMN IF NOT EXISTS guardian_email VARCHAR(255);

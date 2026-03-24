@@ -45,12 +45,12 @@ public interface ApplicantRepository extends JpaRepository<Applicant, UUID> {
                         "(COALESCE(:packageSessionIds, NULL) IS NULL OR a.id IN (SELECT CAST(ar.applicantId AS uuid) FROM AudienceResponse ar WHERE ar.destinationPackageSessionId IN :packageSessionIds)) AND "
                         +
                         "(:search IS NULL OR " +
-                        "LOWER(a.trackingId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                        "LOWER(CAST(a.id AS string)) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                        "LOWER(a.applicationStageId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                        "a.id IN (SELECT CAST(ar.applicantId AS uuid) FROM AudienceResponse ar WHERE ar.studentUserId IN (SELECT s.userId FROM Student s WHERE LOWER(s.fullName) LIKE LOWER(CONCAT('%', :search, '%')))) OR "
+                        "LOWER(CAST(a.trackingId AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR " +
+                        "LOWER(CAST(a.id AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR " +
+                        "LOWER(CAST(a.applicationStageId AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR " +
+                        "a.id IN (SELECT CAST(ar.applicantId AS uuid) FROM AudienceResponse ar WHERE ar.studentUserId IN (SELECT s.userId FROM Student s WHERE LOWER(CAST(s.fullName AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))) OR "
                         +
-                        "a.id IN (SELECT CAST(ar.applicantId AS uuid) FROM AudienceResponse ar WHERE LOWER(ar.parentMobile) LIKE LOWER(CONCAT('%', :search, '%'))))")
+                        "a.id IN (SELECT CAST(ar.applicantId AS uuid) FROM AudienceResponse ar WHERE LOWER(CAST(ar.parentMobile AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))))")
         Page<Applicant> findApplicantsWithEnhancedFilters(
                         @Param("instituteId") String instituteId,
                         @Param("source") String source,

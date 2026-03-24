@@ -29,4 +29,5 @@ public class EnquiryDTO {
     private String enquiryTrackingId;
     private Integer interestScore;
     private String notes;
+    private String parentRelationWithChild;
 }

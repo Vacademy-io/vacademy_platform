@@ -750,6 +750,7 @@ public class AudienceService {
                     .enquiryTrackingId(retrievalTrackingId)
                     .interestScore(enquiryDTO.getInterestScore())
                     .notes(enquiryDTO.getNotes())
+                    .parentRelationWithChild(enquiryDTO.getParentRelationWithChild())
                     .build();
 
             Enquiry savedEnquiry = enquiryRepository.save(enquiry);
@@ -2039,6 +2040,7 @@ public class AudienceService {
                             .feeRangeExpectation(enquiry.getFeeRangeExpectation())
                             .transportRequirement(enquiry.getTransportRequirement())
                             .mode(enquiry.getMode())
+                            .parentRelationWithChild(enquiry.getParentRelationWithChild())
                             .enquiryTrackingId(enquiry.getEnquiryTrackingId())
                             .interestScore(enquiry.getInterestScore())
                             .notes(enquiry.getNotes())
@@ -2081,6 +2083,7 @@ public class AudienceService {
                 .feeRangeExpectation(enquiry.getFeeRangeExpectation())
                 .transportRequirement(enquiry.getTransportRequirement())
                 .mode(enquiry.getMode())
+                .parentRelationWithChild(enquiry.getParentRelationWithChild())
                 .enquiryTrackingId(enquiry.getEnquiryTrackingId())
                 .interestScore(enquiry.getInterestScore())
                 .notes(enquiry.getNotes())

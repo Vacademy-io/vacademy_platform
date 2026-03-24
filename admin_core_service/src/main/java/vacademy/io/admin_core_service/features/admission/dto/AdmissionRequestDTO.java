@@ -90,6 +90,7 @@ public class AdmissionRequestDTO {
     // Guardian
     private String guardianName;
     private String guardianMobile;
+    private String guardianEmail;
 
     // === Screen 4: Address Details ===
     private String currentAddress; // maps to address_line

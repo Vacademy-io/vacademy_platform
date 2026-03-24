@@ -87,20 +87,20 @@ export function TipTapEditor({
       const rect = menuEl.getBoundingClientRect();
       let top = mediaMenuPos.top;
       let left = mediaMenuPos.left;
-      const viewportBottom = window.scrollY + window.innerHeight;
-      const viewportRight = window.scrollX + window.innerWidth;
+      const viewportBottom = window.innerHeight;
+      const viewportRight = window.innerWidth;
       // Flip up if overflowing bottom
       if (top + rect.height > viewportBottom - 8) {
         const buttonRect = mediaButtonRef.current?.getBoundingClientRect();
         if (buttonRect) {
-          top = buttonRect.top + window.scrollY - rect.height - 6;
+          top = buttonRect.top - rect.height - 6;
         } else {
-          top = Math.max(window.scrollY + 8, viewportBottom - rect.height - 8);
+          top = Math.max(8, viewportBottom - rect.height - 8);
         }
       }
       // Clamp horizontally if overflowing right
       if (left + rect.width > viewportRight - 8) {
-        left = Math.max(window.scrollX + 8, viewportRight - rect.width - 8);
+        left = Math.max(8, viewportRight - rect.width - 8);
       }
       // Apply only if changed
       if (top !== mediaMenuPos.top || left !== mediaMenuPos.left) {
@@ -1031,7 +1031,7 @@ export function TipTapEditor({
                   const btn = mediaButtonRef.current;
                   if (btn) {
                     const rect = btn.getBoundingClientRect();
-                    setMediaMenuPos({ top: rect.bottom + window.scrollY + 6, left: rect.left + window.scrollX });
+                    setMediaMenuPos({ top: rect.bottom + 6, left: rect.left });
                   }
                   setShowMediaMenu((p) => !p);
                 }}
@@ -1042,7 +1042,7 @@ export function TipTapEditor({
                 <div
                   ref={mediaMenuRef}
                   className="w-56 rounded border bg-white p-2 shadow"
-                  style={{ position: 'fixed', top: mediaMenuPos.top, left: mediaMenuPos.left, zIndex: 2147483647 }}
+                  style={{ position: 'fixed', top: mediaMenuPos.top, left: mediaMenuPos.left, zIndex: 2147483647, pointerEvents: 'auto' }}
                   onMouseDown={(e) => { e.stopPropagation(); }}
                 >
                   <div className="mb-1 text-xs font-medium text-neutral-600">Insert</div>
@@ -1071,7 +1071,7 @@ export function TipTapEditor({
                     </div>
                   </div>
                 </div>,
-                wrapperRef.current || document.body
+                document.body
               )}
             </div>
             {isRecording && (

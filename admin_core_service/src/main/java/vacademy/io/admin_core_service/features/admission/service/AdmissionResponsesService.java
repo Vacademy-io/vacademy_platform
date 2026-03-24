@@ -18,6 +18,8 @@ import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
+import vacademy.io.admin_core_service.features.enquiry.repository.EnquiryRepository;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
@@ -52,6 +54,9 @@ public class AdmissionResponsesService {
 
     @Autowired
     private StudentFeePaymentRepository studentFeePaymentRepository;
+
+    @Autowired
+    private EnquiryRepository enquiryRepository;
 
     public Page<AdmissionResponsesListItemDTO> list(AdmissionResponsesListRequestDTO filter, int pageNo, int pageSize) {
         if (!StringUtils.hasText(filter.getSessionId())) {
@@ -93,13 +98,35 @@ public class AdmissionResponsesService {
                 .stream()
                 .collect(Collectors.toMap(a -> a.getId().toString(), a -> a, (a, b) -> a));
 
+        Set<UUID> enquiryIds = rows.stream()
+                .map(AudienceResponse::getEnquiryId)
+                .filter(StringUtils::hasText)
+                .map(id -> {
+                    try {
+                        return UUID.fromString(id);
+                    } catch (Exception e) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<String, Enquiry> enquiryById = enquiryIds.isEmpty()
+                ? Collections.emptyMap()
+                : enquiryRepository.findAllById(enquiryIds)
+                .stream()
+                .collect(Collectors.toMap(e -> e.getId().toString(), e -> e, (a, b) -> a));
+
         List<AdmissionResponsesListItemDTO> dtos = rows.stream().map(ar -> {
             Student st = StringUtils.hasText(ar.getStudentUserId()) ? studentByUserId.get(ar.getStudentUserId()) : null;
             Applicant app = StringUtils.hasText(ar.getApplicantId()) ? applicantById.get(ar.getApplicantId()) : null;
+            Enquiry enquiry = StringUtils.hasText(ar.getEnquiryId()) ? enquiryById.get(ar.getEnquiryId()) : null;
 
             return AdmissionResponsesListItemDTO.builder()
                     .admissionId(ar.getId())
                     .destinationPackageSessionId(ar.getDestinationPackageSessionId())
+                    .enquiryId(resolveEnquiryId(ar))
+                    .applicantId(resolveApplicantId(ar))
                     .applyingForClass(st != null ? st.getApplyingForClass() : null)
                     .studentName(st != null ? st.getFullName() : null)
                     .gender(st != null ? st.getGender() : null)
@@ -107,6 +134,16 @@ public class AdmissionResponsesService {
                     .parentName(ar.getParentName())
                     .parentEmail(ar.getParentEmail())
                     .parentMobile(ar.getParentMobile())
+                    .parentRelationWithChild(enquiry != null ? enquiry.getParentRelationWithChild() : null)
+                    .fatherName(st != null ? st.getFatherName() : null)
+                    .fatherMobile(st != null ? st.getParentsMobileNumber() : null)
+                    .fatherEmail(st != null ? st.getParentsEmail() : null)
+                    .motherName(st != null ? st.getMotherName() : null)
+                    .motherMobile(st != null ? st.getParentToMotherMobileNumber() : null)
+                    .motherEmail(st != null ? st.getParentsToMotherEmail() : null)
+                    .guardianName(st != null ? st.getGuardianName() : null)
+                    .guardianMobile(st != null ? st.getGuardianMobile() : null)
+                    .guardianEmail(st != null ? st.getGuardianEmail() : null)
                     .trackingId(app != null ? app.getTrackingId() : null)
                     .status(ar.getOverallStatus())
                     .source(ar.getSourceType())
@@ -115,6 +152,26 @@ public class AdmissionResponsesService {
         }).toList();
 
         return new PageImpl<>(dtos, pageable, page.getTotalElements());
+    }
+
+    private String resolveEnquiryId(AudienceResponse ar) {
+        if (StringUtils.hasText(ar.getEnquiryId())) {
+            return ar.getEnquiryId();
+        }
+        if (StringUtils.hasText(ar.getSourceType()) && ar.getSourceType().toUpperCase(Locale.ROOT).contains("ENQUIRY")) {
+            return ar.getSourceId();
+        }
+        return null;
+    }
+
+    private String resolveApplicantId(AudienceResponse ar) {
+        if (StringUtils.hasText(ar.getApplicantId())) {
+            return ar.getApplicantId();
+        }
+        if (StringUtils.hasText(ar.getSourceType()) && ar.getSourceType().toUpperCase(Locale.ROOT).contains("APPLICATION")) {
+            return ar.getSourceId();
+        }
+        return null;
     }
 
     public AdmissionResponseDetailDTO detail(String admissionId) {
@@ -190,6 +247,7 @@ public class AdmissionResponsesService {
                         .motherName(student.getMotherName())
                         .guardianName(student.getGuardianName())
                         .guardianMobile(student.getGuardianMobile())
+                        .guardianEmail(student.getGuardianEmail())
                         .addressLine(student.getAddressLine())
                         .city(student.getCity())
                         .pinCode(student.getPinCode())

@@ -89,6 +89,7 @@ public class AdmissionResponseDetailDTO {
         private String motherName;
         private String guardianName;
         private String guardianMobile;
+        private String guardianEmail;
         private String addressLine;
         private String city;
         private String pinCode;

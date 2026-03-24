@@ -100,6 +100,8 @@ public class AdmissionResponsesService {
             return AdmissionResponsesListItemDTO.builder()
                     .admissionId(ar.getId())
                     .destinationPackageSessionId(ar.getDestinationPackageSessionId())
+                    .enquiryId(resolveEnquiryId(ar))
+                    .applicantId(resolveApplicantId(ar))
                     .applyingForClass(st != null ? st.getApplyingForClass() : null)
                     .studentName(st != null ? st.getFullName() : null)
                     .gender(st != null ? st.getGender() : null)
@@ -115,6 +117,26 @@ public class AdmissionResponsesService {
         }).toList();
 
         return new PageImpl<>(dtos, pageable, page.getTotalElements());
+    }
+
+    private String resolveEnquiryId(AudienceResponse ar) {
+        if (StringUtils.hasText(ar.getEnquiryId())) {
+            return ar.getEnquiryId();
+        }
+        if (StringUtils.hasText(ar.getSourceType()) && ar.getSourceType().toUpperCase(Locale.ROOT).contains("ENQUIRY")) {
+            return ar.getSourceId();
+        }
+        return null;
+    }
+
+    private String resolveApplicantId(AudienceResponse ar) {
+        if (StringUtils.hasText(ar.getApplicantId())) {
+            return ar.getApplicantId();
+        }
+        if (StringUtils.hasText(ar.getSourceType()) && ar.getSourceType().toUpperCase(Locale.ROOT).contains("APPLICATION")) {
+            return ar.getSourceId();
+        }
+        return null;
     }
 
     public AdmissionResponseDetailDTO detail(String admissionId) {

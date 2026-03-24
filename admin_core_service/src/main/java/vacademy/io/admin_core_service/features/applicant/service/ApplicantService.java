@@ -377,6 +377,13 @@ public class ApplicantService {
                                                         data.put("dob", student.getDateOfBirth());
                                                         data.put("father_name", student.getFatherName());
                                                         data.put("mother_name", student.getMotherName());
+                                                        data.put("father_mobile", student.getParentsMobileNumber());
+                                                        data.put("father_email", student.getParentsEmail());
+                                                        data.put("mother_mobile", student.getParentToMotherMobileNumber());
+                                                        data.put("mother_email", student.getParentsToMotherEmail());
+                                                        data.put("guardian_name", student.getGuardianName());
+                                                        data.put("guardian_mobile", student.getGuardianMobile());
+                                                        data.put("guardian_email", student.getGuardianEmail());
                                                         data.put("current_school", student.getPreviousSchoolName());
                                                         data.put("city", student.getCity());
                                                         data.put("address", student.getAddressLine());
@@ -572,6 +579,16 @@ public class ApplicantService {
                                                                 studentData.setDateOfBirth(student.getDateOfBirth());
                                                                 studentData.setFatherName(student.getFatherName());
                                                                 studentData.setMotherName(student.getMotherName());
+                                                                studentData.setParentsMobileNumber(
+                                                                                student.getParentsMobileNumber());
+                                                                studentData.setParentsEmail(student.getParentsEmail());
+                                                                studentData.setParentToMotherMobileNumber(
+                                                                                student.getParentToMotherMobileNumber());
+                                                                studentData.setParentsToMotherEmail(
+                                                                                student.getParentsToMotherEmail());
+                                                                studentData.setGuardianName(student.getGuardianName());
+                                                                studentData.setGuardianMobile(student.getGuardianMobile());
+                                                                studentData.setGuardianEmail(student.getGuardianEmail());
                                                                 studentData.setAddressLine(student.getAddressLine());
                                                                 studentData.setCity(student.getCity());
                                                                 studentData.setPinCode(student.getPinCode());
@@ -738,11 +755,13 @@ public class ApplicantService {
 
                 // Get tracking ID from enquiry if available
                 String trackingId = null;
+                String parentRelationWithChild = null;
                 if (audienceResponse.getEnquiryId() != null) {
                         Optional<Enquiry> enquiry = enquiryRepository.findById(
                                         UUID.fromString(audienceResponse.getEnquiryId()));
                         if (enquiry.isPresent()) {
                                 trackingId = enquiry.get().getEnquiryTrackingId();
+                                parentRelationWithChild = enquiry.get().getParentRelationWithChild();
                         }
                 }
 
@@ -751,6 +770,7 @@ public class ApplicantService {
                                 .trackingId(trackingId)
                                 .alreadyApplied(audienceResponse.getApplicantId() != null)
                                 .applicantId(audienceResponse.getApplicantId())
+                                .parentRelationWithChild(parentRelationWithChild)
                                 .parent(parentDetails)
                                 .child(childDetails)
                                 .build();
@@ -1131,6 +1151,7 @@ public class ApplicantService {
                         // Guardian details
                         student.setGuardianName(getFormDataString(formData, "guardian_name"));
                         student.setGuardianMobile(getFormDataString(formData, "guardian_mobile"));
+                        student.setGuardianEmail(getFormDataString(formData, "guardian_email"));
                         // Address
                         // student.setPermanentAddress(getFormDataString(formData,
                         // "permanent_address"));

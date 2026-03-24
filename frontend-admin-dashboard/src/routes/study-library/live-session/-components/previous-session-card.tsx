@@ -102,11 +102,47 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
     const handleExportPastAttendance = () => {
         setIsAttendanceExporting(true);
-        const csvData = tableData.content.map((item) => ({
-            index: item.index,
-            username: item.username,
-            attendanceStatus: item.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent',
-        }));
+        const csvData = (reportResponse || []).map((item, idx) => {
+            const engagement = item.engagementData ? (() => { try { return JSON.parse(item.engagementData); } catch { return null; } })() : null;
+            const duration = item.providerTotalDurationMinutes ?? '';
+            const talkTimeMin = engagement?.talkTime ? Math.round(engagement.talkTime / 60) : '';
+            const talks = engagement?.talks ?? '';
+            const raiseHands = engagement?.raisehand ?? '';
+            const emojis = engagement?.emojis ?? '';
+            const chats = engagement?.chats ?? '';
+            const pollVotes = engagement?.pollVotes ?? '';
+
+            let activePoints: number | string = '';
+            if (duration !== '' || engagement) {
+                let score = 0;
+                if (typeof duration === 'number') score += duration;
+                if (engagement) {
+                    score += ((engagement.talkTime ?? 0) / 60) * 2;
+                    score += (engagement.talks ?? 0) * 0.5;
+                    score += (engagement.raisehand ?? 0) * 3;
+                    score += (engagement.emojis ?? 0) * 1;
+                    score += (engagement.chats ?? 0) * 1.5;
+                    score += (engagement.pollVotes ?? 0) * 2;
+                }
+                activePoints = Math.round(score);
+            }
+
+            return {
+                '#': idx + 1,
+                'Name': item.fullName,
+                'Email': item.email || '',
+                'Status': item.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent',
+                'Mode': item.statusType || '',
+                'Duration (min)': duration,
+                'Active Points': activePoints,
+                'Talk Time (min)': talkTimeMin,
+                'Talk Segments': talks,
+                'Raise Hands': raiseHands,
+                'Emojis': emojis,
+                'Chats': chats,
+                'Poll Votes': pollVotes,
+            };
+        });
         const csv = Papa.unparse(csvData);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -304,7 +340,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                 </div>
             </div>
 
-            <div className="flex w-full items-center justify-start gap-8 text-sm text-neutral-500">
+            <div className="flex w-full flex-wrap items-center justify-start gap-x-6 gap-y-1 text-sm text-neutral-500 sm:gap-x-8">
                 <div className="flex items-center gap-2">
                     <span className="text-black">
                         {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:
@@ -331,44 +367,44 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                         </span>
                     </div>
                 )}
-                <div
-                    className="flex items-center gap-4 text-primary-500"
-                    onClick={(e) => e.stopPropagation()}
+            </div>
+            <div
+                className="flex flex-wrap items-center gap-2 text-sm text-primary-500 sm:gap-4"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <button
+                    type="button"
+                    className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                    onClick={() => {
+                        navigate({
+                            to: '/study-library/live-session/view/$sessionId',
+                            params: { sessionId: session?.session_id || '' },
+                        });
+                    }}
                 >
-                    <button
-                        type="button"
-                        className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                        onClick={() => {
-                            navigate({
-                                to: '/study-library/live-session/view/$sessionId',
-                                params: { sessionId: session?.session_id || '' },
-                            });
-                        }}
-                    >
-                        <span>View Session Details</span>
-                    </button>
-                    <span className="text-gray-300">|</span>
-                    <button
-                        type="button"
-                        className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                        onClick={handleOpenDialog}
-                    >
-                        <span>View Attendance Report</span>
-                    </button>
-                    <span className="text-gray-300">|</span>
-                    <button
-                        type="button"
-                        className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                        onClick={() => {
-                            navigate({
-                                to: '/study-library/live-session/view/$sessionId',
-                                params: { sessionId: session?.session_id || '' },
-                            });
-                        }}
-                    >
-                        <span>View Recordings</span>
-                    </button>
-                </div>
+                    <span>View Session Details</span>
+                </button>
+                <span className="hidden text-gray-300 sm:inline">|</span>
+                <button
+                    type="button"
+                    className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                    onClick={handleOpenDialog}
+                >
+                    <span>View Attendance Report</span>
+                </button>
+                <span className="hidden text-gray-300 sm:inline">|</span>
+                <button
+                    type="button"
+                    className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                    onClick={() => {
+                        navigate({
+                            to: '/study-library/live-session/view/$sessionId',
+                            params: { sessionId: session?.session_id || '' },
+                        });
+                    }}
+                >
+                    <span>View Recordings</span>
+                </button>
             </div>
 
             {/* Attendance Report Dialog */}
@@ -376,7 +412,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                 heading="Attendance Report"
                 open={openDialog}
                 onOpenChange={handleOpenDialog}
-                className="w-[80vw] max-w-4xl"
+                className="w-[95vw] max-w-4xl sm:w-[80vw]"
             >
                 <div className="flex flex-col gap-3 p-4 text-sm">
                     {/* Header */}
@@ -436,14 +472,14 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                     {/* Insights & Attendance */}
                     <div className="rounded-lg">
                         <h3 className="mb-2 text-lg font-semibold">Participants Insights</h3>
-                        <div className="flex items-center justify-center rounded-md bg-neutral-100 p-4">
-                            <div className="flex w-1/2 flex-col items-center justify-center gap-3">
+                        <div className="flex flex-col items-center justify-center gap-4 rounded-md bg-neutral-100 p-4 sm:flex-row">
+                            <div className="flex w-full flex-col items-center justify-center gap-3 sm:w-1/2">
                                 <MyPieChart data={pieChartData} />
                                 <div className="text-lg font-semibold">
                                     Total Participants: {attendanceSummary.total}
                                 </div>
                             </div>
-                            <div className="flex w-1/2 flex-col gap-4">
+                            <div className="flex w-full flex-col gap-4 sm:w-1/2">
                                 <div className="flex flex-col gap-3">
                                     <div className="flex items-center gap-2">
                                         <div className="size-4 rounded-full bg-success-400"></div>

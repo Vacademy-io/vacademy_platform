@@ -26,6 +26,7 @@ public class EnquiryDetailsResponseDTO {
     private String trackingId;
     private Boolean alreadyApplied;
     private String applicantId;
+    private String parentRelationWithChild;
 
     private ParentDetails parent;
     private ChildDetails child;

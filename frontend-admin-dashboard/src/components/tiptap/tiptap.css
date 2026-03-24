@@ -72,6 +72,13 @@
   display: list-item;
 }
 
+/* Highlight selected image */
+.tiptap-content .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #2563eb; /* blue-600 */
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* Blockquote visual styling */
 .tiptap-content .ProseMirror blockquote {
   border-left: 4px solid #e5e7eb; /* neutral-200 */

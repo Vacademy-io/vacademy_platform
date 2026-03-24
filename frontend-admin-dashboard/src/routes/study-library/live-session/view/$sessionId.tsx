@@ -752,6 +752,7 @@ function ViewLiveSession() {
                                             sessionId={sessionId}
                                             scheduleId={selectedScheduleForAttendance!}
                                             accessType={sessionData?.schedule?.access_type || 'private'}
+                                            sessionTitle={sessionData?.schedule?.title}
                                             onSaved={async () => {
                                                 if (selectedScheduleForAttendance) {
                                                     const data = await getLiveSessionReport(

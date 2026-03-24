@@ -120,15 +120,18 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         }
     }, [sessions, selectedSessionId]);
 
+    const allBatches = instituteDetails?.batches_for_sessions ?? [];
+
     const packageSessionOptions = useMemo(() => {
-        if (!instituteDetails?.batches_for_sessions) return [];
-        return instituteDetails.batches_for_sessions
+        if (!allBatches.length) return [];
+        return allBatches
+            .filter((batch) => batch.is_parent === true || !batch.parent_id)
             .filter((batch) => !selectedSessionId || batch.session.id === selectedSessionId)
             .map((batch) => ({
                 id: batch.id,
-                label: `${batch.package_dto.package_name} - ${batch.level.level_name}`,
+                label: `${batch.package_dto.package_name} - ${batch.level.level_name}${batch.name ? ` - ${batch.name}` : ''}`,
             }));
-    }, [instituteDetails, selectedSessionId]);
+    }, [allBatches, selectedSessionId]);
 
     const [fromSource, setFromSource] = useState('From Enquiry');
     const [searchBy, setSearchBy] = useState('Student Name');
@@ -141,6 +144,19 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
     const [sourceFilters, setSourceFilters] = useState<{ id: string; label: string }[]>([]);
     const [dateRangeFilters, setDateRangeFilters] = useState<{ id: string; label: string }[]>([]);
     const [packageSessionFilters, setPackageSessionFilters] = useState<{ id: string; label: string }[]>([]);
+    const [sectionFilters, setSectionFilters] = useState<{ id: string; label: string }[]>([]);
+
+    const sectionFilterOptions = useMemo(() => {
+        if (packageSessionFilters.length === 0) return [];
+        const parentId = packageSessionFilters[0]?.id;
+        if (!parentId) return [];
+        return allBatches
+            .filter((b) => b.parent_id === parentId)
+            .map((b) => ({
+                id: b.id,
+                label: b.name || b.level.level_name,
+            }));
+    }, [allBatches, packageSessionFilters]);
 
     const [showAdmissionTypeModal, setShowAdmissionTypeModal] = useState(false);
     const [showEnquiryModal, setShowEnquiryModal] = useState(false);
@@ -153,13 +169,14 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
     const [applicationPhone, setApplicationPhone] = useState('');
     const [isLoadingLookup, setIsLoadingLookup] = useState(false);
 
-    const hasActiveFilters = statusFilters.length > 0 || sourceFilters.length > 0 || dateRangeFilters.length > 0 || packageSessionFilters.length > 0;
+    const hasActiveFilters = statusFilters.length > 0 || sourceFilters.length > 0 || dateRangeFilters.length > 0 || packageSessionFilters.length > 0 || sectionFilters.length > 0;
 
     const clearAllFilters = () => {
         setStatusFilters([]);
         setSourceFilters([]);
         setDateRangeFilters([]);
         setPackageSessionFilters([]);
+        setSectionFilters([]);
     };
 
     const handleNewAdmission = () => {
@@ -316,7 +333,11 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
             if (statusFilters.length > 0) body.statuses = statusFilters.map(f => f.id);
             if (sourceFilters.length > 0) body.sources = sourceFilters.map(f => f.id);
-            if (packageSessionFilters.length > 0) body.destination_package_session_id = packageSessionFilters[0]?.id;
+            if (sectionFilters.length > 0) {
+                body.destination_package_session_id = sectionFilters[0]?.id;
+            } else if (packageSessionFilters.length > 0) {
+                body.destination_package_session_id = packageSessionFilters[0]?.id;
+            }
 
             const dateRange = dateRangeFilters.length > 0 ? getDateRange(dateRangeFilters[0]?.id || '') : undefined;
             if (dateRange) {
@@ -461,14 +482,32 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 />
                 {packageSessionOptions.length > 0 && (
                     <FilterChips
-                        label="Package Session"
+                        label="Class"
                         filterList={packageSessionOptions}
                         selectedFilters={packageSessionFilters}
                         handleSelect={(option) => {
                             const exists = packageSessionFilters.some((f) => f.id === option.id);
-                            setPackageSessionFilters(exists ? packageSessionFilters.filter((f) => f.id !== option.id) : [option]);
+                            if (exists) {
+                                setPackageSessionFilters([]);
+                            } else {
+                                setPackageSessionFilters([option]);
+                            }
+                            setSectionFilters([]);
                         }}
-                        handleClearFilters={() => setPackageSessionFilters([])}
+                        handleClearFilters={() => { setPackageSessionFilters([]); setSectionFilters([]); }}
+                        clearFilters={false}
+                    />
+                )}
+                {sectionFilterOptions.length > 0 && (
+                    <FilterChips
+                        label="Section"
+                        filterList={sectionFilterOptions}
+                        selectedFilters={sectionFilters}
+                        handleSelect={(option) => {
+                            const exists = sectionFilters.some((f) => f.id === option.id);
+                            setSectionFilters(exists ? [] : [option]);
+                        }}
+                        handleClearFilters={() => setSectionFilters([])}
                         clearFilters={false}
                     />
                 )}

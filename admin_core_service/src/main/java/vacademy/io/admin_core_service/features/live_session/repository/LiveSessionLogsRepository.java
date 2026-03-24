@@ -13,9 +13,14 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
     @Query("SELECT l FROM LiveSessionLogs l WHERE l.scheduleId = :scheduleId AND l.logType = 'ATTENDANCE_RECORDED'")
     List<LiveSessionLogs> findAllAttendanceByScheduleId(@Param("scheduleId") String scheduleId);
 
-    @Query("SELECT l FROM LiveSessionLogs l WHERE l.scheduleId = :scheduleId AND l.userSourceId = :userSourceId AND l.logType = 'ATTENDANCE_RECORDED'")
-    Optional<LiveSessionLogs> findExistingAttendanceRecord(@Param("scheduleId") String scheduleId,
+    @Query("SELECT l FROM LiveSessionLogs l WHERE l.scheduleId = :scheduleId AND l.userSourceId = :userSourceId AND l.logType = 'ATTENDANCE_RECORDED' ORDER BY l.createdAt ASC")
+    List<LiveSessionLogs> findAllAttendanceRecords(@Param("scheduleId") String scheduleId,
             @Param("userSourceId") String userSourceId);
+
+    default Optional<LiveSessionLogs> findExistingAttendanceRecord(String scheduleId, String userSourceId) {
+        List<LiveSessionLogs> records = findAllAttendanceRecords(scheduleId, userSourceId);
+        return records.isEmpty() ? Optional.empty() : Optional.of(records.get(0));
+    }
 
     /**
      * Used by the provider sync scheduler to upsert provider-sourced attendance.
@@ -28,9 +33,15 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
                   AND l.userSourceId = :email
                   AND l.userSourceType = 'PROVIDER_EMAIL'
                   AND l.logType = 'ATTENDANCE_RECORDED'
+                ORDER BY l.createdAt ASC
             """)
-    Optional<LiveSessionLogs> findExistingProviderAttendanceRecord(
+    List<LiveSessionLogs> findAllProviderAttendanceRecords(
             @Param("scheduleId") String scheduleId,
             @Param("email") String email);
+
+    default Optional<LiveSessionLogs> findExistingProviderAttendanceRecord(String scheduleId, String email) {
+        List<LiveSessionLogs> records = findAllProviderAttendanceRecords(scheduleId, email);
+        return records.isEmpty() ? Optional.empty() : Optional.of(records.get(0));
+    }
 
 }

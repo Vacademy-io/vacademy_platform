@@ -11,15 +11,9 @@ import { clearChatbotSettingsCache } from "@/services/chatbot-settings";
 
 // Set token in cookie with domain support for cross-subdomain access
 export const setAuthorizationCookie = (key: string, token: string): void => {
-  const hostname = window.location.hostname;
-
-  // If we are on a .vacademy.io subdomain, set cookie for the entire domain
-  if (hostname.endsWith(".vacademy.io")) {
-    Cookies.set(key, token, { domain: ".vacademy.io", expires: 7 });
-  } else {
-    // Fallback for localhost or other domains
-    Cookies.set(key, token, { expires: 7 });
-  }
+  // Do NOT set domain — let cookies scope to the exact hostname
+  // so learner.vacademy.io and admin.vacademy.io stay independent
+  Cookies.set(key, token, { expires: 7 });
 };
 
 // Get token from cookie
@@ -78,11 +72,8 @@ const removeTokenFromStorage = async (key: string): Promise<void> => {
   // Remove from cookies
   try {
     Cookies.remove(key);
-    // Also try with domain for cross-subdomain cookies
-    const hostname = window.location.hostname;
-    if (hostname.endsWith(".vacademy.io")) {
-      Cookies.remove(key, { domain: ".vacademy.io" });
-    }
+    // Also remove any legacy cookies that were set on the shared parent domain
+    Cookies.remove(key, { domain: ".vacademy.io" });
   } catch (error) {
     console.warn(`[SessionUtility] Failed to remove cookie:`, error);
   }
@@ -133,13 +124,8 @@ const setInstituteIdInStorage = async (
     value: id,
   });
 
-  // Also store in cookies for cross-subdomain recovery
-  const hostname = window.location.hostname;
-  if (hostname.endsWith(".vacademy.io")) {
-    Cookies.set(key, id, { domain: ".vacademy.io", expires: 7 });
-  } else {
-    Cookies.set(key, id, { expires: 7 });
-  }
+  // Also store in cookies (scoped to exact hostname, not shared domain)
+  Cookies.set(key, id, { expires: 7 });
 
   // Also store in localStorage for synchronous access
   try {

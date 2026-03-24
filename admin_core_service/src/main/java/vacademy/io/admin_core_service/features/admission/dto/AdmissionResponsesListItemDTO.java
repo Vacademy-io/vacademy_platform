@@ -21,6 +21,8 @@ public class AdmissionResponsesListItemDTO {
     private String admissionId; // audience_response.id
 
     private String destinationPackageSessionId; // audience_response.destination_package_session_id
+    private String enquiryId; // audience_response.enquiry_id
+    private String applicantId; // audience_response.applicant_id
 
     // Table columns (admission-focused)
     private String applyingForClass; // "Class" column
@@ -31,6 +33,16 @@ public class AdmissionResponsesListItemDTO {
     private String parentName;
     private String parentEmail;
     private String parentMobile;
+    private String parentRelationWithChild;
+    private String fatherName;
+    private String fatherMobile;
+    private String fatherEmail;
+    private String motherName;
+    private String motherMobile;
+    private String motherEmail;
+    private String guardianName;
+    private String guardianMobile;
+    private String guardianEmail;
 
     private String trackingId; // applicant.tracking_id (if applicant exists)
     private String status; // audience_response.overall_status

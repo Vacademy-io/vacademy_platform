@@ -100,14 +100,15 @@ public class DynamicNotificationService {
                         e.getMessage());
             }
 
+            // Update WATI contact attributes BEFORE sending template messages,
+            // so that WATI automation flows triggered by the template have the
+            // correct {{short_referral_link}} contact attribute already set.
+            updateWatiContactAttributes(getInstituteFromId(instituteId), user, templateVars.getShortReferralLink());
+
             // 6. Process each configuration
             for (NotificationEventConfig config : configs) {
                 sendNotificationByType(config, instituteId, user, templateVars, enrollInvite);
             }
-
-            // Update WATI contact attributes so that WATI flows triggered by user reply
-            // have the correct {{short_referral_link}} attribute mapping.
-            updateWatiContactAttributes(getInstituteFromId(instituteId), user, templateVars.getShortReferralLink());
 
         } catch (Exception e) {
             log.error("Error sending dynamic notification for event: {} and package session: {}",

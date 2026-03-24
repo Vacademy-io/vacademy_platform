@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { getCourseSettings } from '@/services/course-settings';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { AI_SERVICE_BASE_URL } from '@/constants/urls';
+import { AI_SERVICE_BASE_URL, GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -63,6 +63,7 @@ import { scrapeUrlContent } from '@/services/aiCourseApi';
 import { Loader2 } from 'lucide-react';
 import { useAIModelsList } from '@/hooks/useAiModels';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { getAiProductName } from '@/config/branding';
 
 export const Route = createLazyFileRoute('/study-library/ai-copilot/')({
     component: RouteComponent,
@@ -141,6 +142,40 @@ function RouteComponent() {
         setOpen(false);
     }, [setOpen]);
 
+    // Check for saved draft
+    const [savedDraft, setSavedDraft] = useState<{ draftTitle?: string; timestamp: string } | null>(null);
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem('aiCourseDraft');
+            if (raw) {
+                const draft = JSON.parse(raw);
+                if (draft?.slides?.length > 0) {
+                    setSavedDraft({
+                        draftTitle: draft.draftTitle || draft.courseMetadata?.courseTitle,
+                        timestamp: draft.timestamp,
+                    });
+                }
+            }
+        } catch { /* ignore */ }
+    }, []);
+
+    const handleResumeDraft = () => {
+        const raw = localStorage.getItem('aiCourseDraft');
+        if (!raw) return;
+        // Move draft to sessionStorage so the generating view can pick it up
+        sessionStorage.setItem('resumeAiCourseDraft', raw);
+        // Also set a dummy courseConfig so the route doesn't redirect
+        if (!sessionStorage.getItem('courseConfig')) {
+            sessionStorage.setItem('courseConfig', JSON.stringify({ resumed: true }));
+        }
+        navigate({ to: '/study-library/ai-copilot/course-outline/generating' });
+    };
+
+    const handleDiscardDraft = () => {
+        localStorage.removeItem('aiCourseDraft');
+        setSavedDraft(null);
+    };
+
     // Form state - keeping all existing state
     const [ageRange, setAgeRange] = useState('');
     const [skillLevel, setSkillLevel] = useState(''); // Now stores levelId
@@ -150,20 +185,22 @@ function RouteComponent() {
     const [newPrerequisiteUrl, setNewPrerequisiteUrl] = useState('');
     const [courseGoal, setCourseGoal] = useState('');
     const [learningOutcome, setLearningOutcome] = useState('');
-    const [includeDiagrams, setIncludeDiagrams] = useState(true);
+    const [includeDiagrams, setIncludeDiagrams] = useState(false);
     const [includeCodeSnippets, setIncludeCodeSnippets] = useState(false);
-    const [includePracticeProblems, setIncludePracticeProblems] = useState(true);
-    const [includeYouTubeVideo, setIncludeYouTubeVideo] = useState(true);
-    const [includeAIGeneratedVideo, setIncludeAIGeneratedVideo] = useState(true);
+    const [includePracticeProblems, setIncludePracticeProblems] = useState(false);
+    const [includeYouTubeVideo, setIncludeYouTubeVideo] = useState(false);
+    const [includeAIGeneratedVideo, setIncludeAIGeneratedVideo] = useState(false);
     const [includeAISlides, setIncludeAISlides] = useState(false);
     const [includeAIStorybook, setIncludeAIStorybook] = useState(false);
     const [programmingLanguage, setProgrammingLanguage] = useState('');
     const [numberOfChapters, setNumberOfChapters] = useState('5');
     const [chapterLength, setChapterLength] = useState('60');
     const [customChapterLength, setCustomChapterLength] = useState('');
-    const [includeQuizzes, setIncludeQuizzes] = useState(true);
+    const [customChapterCount, setCustomChapterCount] = useState('');
+    const [customSlidesPerChapter, setCustomSlidesPerChapter] = useState('');
+    const [includeQuizzes, setIncludeQuizzes] = useState(false);
     const [includeHomework, setIncludeHomework] = useState(false);
-    const [includeSolutions, setIncludeSolutions] = useState(true);
+    const [includeSolutions, setIncludeSolutions] = useState(false);
     const [slidesPerChapter, setSlidesPerChapter] = useState('5');
     const [numberOfSubjects, setNumberOfSubjects] = useState('');
     const [numberOfModules, setNumberOfModules] = useState('');
@@ -316,9 +353,30 @@ function RouteComponent() {
         }
     };
 
+    const [aiName, setAiName] = useState(getAiProductName());
+
+    // Fetch AI copilot setting from API and cache in localStorage
     useEffect(() => {
-        setNavHeading('Create with AI');
-    }, [setNavHeading]);
+        const instituteId = getInstituteId();
+        if (!instituteId) return;
+        authenticatedAxiosInstance
+            .get(GET_INSITITUTE_SETTINGS, {
+                params: { instituteId, settingKey: 'AI_COPILOT_SETTING' },
+            })
+            .then((res) => {
+                if (res.data?.data) {
+                    localStorage.setItem('ai_copilot_setting', JSON.stringify(res.data.data));
+                    if (res.data.data.course_creator_name) {
+                        setAiName(res.data.data.course_creator_name);
+                    }
+                }
+            })
+            .catch(() => { /* no settings yet */ });
+    }, []);
+
+    useEffect(() => {
+        setNavHeading(aiName);
+    }, [setNavHeading, aiName]);
 
     // Fetch course settings to get default course depth
     useEffect(() => {
@@ -569,6 +627,8 @@ function RouteComponent() {
 
     const handleConfirmGenerate = () => {
         const finalCourseLength = chapterLength === 'custom' ? customChapterLength : chapterLength;
+        const finalChapterCount = numberOfChapters === 'custom' ? customChapterCount : numberOfChapters;
+        const finalSlidesPerChapter = slidesPerChapter === 'custom' ? customSlidesPerChapter : slidesPerChapter;
 
         // Prepare context from references
         let contextData = '';
@@ -606,12 +666,12 @@ function RouteComponent() {
                 programmingLanguage: includeCodeSnippets ? programmingLanguage : undefined,
             },
             durationFormatStructure: {
-                numberOfSessions: numberOfChapters ? parseInt(numberOfChapters) : undefined,
+                numberOfSessions: finalChapterCount ? parseInt(finalChapterCount) : undefined,
                 sessionLength: finalCourseLength || undefined,
                 includeQuizzes,
                 includeHomework,
                 includeSolutions,
-                topicsPerSession: slidesPerChapter ? parseInt(slidesPerChapter) : undefined,
+                topicsPerSession: finalSlidesPerChapter ? parseInt(finalSlidesPerChapter) : undefined,
                 numberOfSubjects: numberOfSubjects ? parseInt(numberOfSubjects) : undefined,
                 numberOfModules: numberOfModules ? parseInt(numberOfModules) : undefined,
             },
@@ -632,6 +692,8 @@ function RouteComponent() {
 
         console.log('Generating course with config:', courseConfig);
         sessionStorage.setItem('courseConfig', JSON.stringify(courseConfig));
+        // Clear any previous draft since we're starting fresh
+        localStorage.removeItem('aiCourseDraft');
         setShowConfirmDialog(false);
         navigate({
             to: '/study-library/ai-copilot/course-outline/generating',
@@ -658,10 +720,10 @@ function RouteComponent() {
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Create Course with AI</title>
+                <title>{`Create with ${aiName}`}</title>
                 <meta
                     name="description"
-                    content="Create courses with AI assistance using natural language prompts."
+                    content={`Create courses with ${aiName} using natural language prompts.`}
                 />
             </Helmet>
             <div className="flex h-[calc(100vh-4rem)] items-center justify-center bg-gradient-to-b from-indigo-50 via-white to-purple-50 px-4">
@@ -676,14 +738,58 @@ function RouteComponent() {
                         <div className="mb-2 flex items-center justify-center gap-2">
                             <Sparkles className="size-6 text-indigo-500" />
                             <h1 className="text-2xl font-semibold text-neutral-900">
-                                Create Course with AI
+                                Create with {aiName}
                             </h1>
                         </div>
                         <p className="text-sm text-gray-600">
-                            Describe your course idea and let AI generate a complete learning
+                            Describe your course idea and let {aiName} generate a complete learning
                             experience
                         </p>
                     </motion.div>
+
+                    {/* Resume Draft Banner */}
+                    {savedDraft && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50 p-3"
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-indigo-100">
+                                        <BookOpen className="size-4 text-indigo-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-medium text-neutral-900 line-clamp-1">
+                                            {savedDraft.draftTitle || 'Untitled Course'}
+                                        </p>
+                                        <p className="text-xs text-neutral-500">
+                                            Draft saved {new Date(savedDraft.timestamp).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleDiscardDraft}
+                                        className="h-8 text-xs text-neutral-500 hover:text-red-600"
+                                    >
+                                        <Trash2 className="mr-1 size-3" />
+                                        Discard
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        onClick={handleResumeDraft}
+                                        className="h-8 bg-indigo-600 text-xs text-white hover:bg-indigo-700"
+                                    >
+                                        Resume
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
 
                     {/* Example Prompts - Compact */}
                     <motion.div
@@ -755,28 +861,6 @@ function RouteComponent() {
                                 </SelectContent>
                             </Select>
 
-                            {/* Language Dropdown */}
-                            <Select value={language} onValueChange={setLanguage}>
-                                <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
-                                    <div className="flex items-center gap-1.5">
-                                        <BookOpen className="size-3.5 text-neutral-500" />
-                                        <SelectValue placeholder="Language" />
-                                    </div>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="English">English</SelectItem>
-                                    <SelectItem value="Hindi">Hindi</SelectItem>
-                                    <SelectItem value="Spanish">Spanish</SelectItem>
-                                    <SelectItem value="French">French</SelectItem>
-                                    <SelectItem value="Arabic">Arabic</SelectItem>
-                                    <SelectItem value="Portuguese">Portuguese</SelectItem>
-                                    <SelectItem value="German">German</SelectItem>
-                                    <SelectItem value="Chinese">Chinese</SelectItem>
-                                    <SelectItem value="Japanese">Japanese</SelectItem>
-                                    <SelectItem value="Korean">Korean</SelectItem>
-                                </SelectContent>
-                            </Select>
-
                             {/* AI Model Dropdown */}
                             <Select value={selectedModel} onValueChange={setSelectedModel}>
                                 <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
@@ -815,11 +899,14 @@ function RouteComponent() {
                             </Select>
 
                             {/* Number of Chapters Dropdown */}
-                            <Select value={numberOfChapters} onValueChange={setNumberOfChapters}>
+                            <Select value={numberOfChapters} onValueChange={(v) => { setNumberOfChapters(v); if (v !== 'custom') setCustomChapterCount(''); }}>
                                 <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
                                     <div className="flex items-center gap-1.5">
                                         <BookOpen className="size-3.5 text-neutral-500" />
-                                        <SelectValue placeholder={getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)} />
+                                        {numberOfChapters === 'custom' && customChapterCount
+                                            ? <span>{customChapterCount} {getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)}</span>
+                                            : <SelectValue placeholder={getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)} />
+                                        }
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent>
@@ -833,11 +920,14 @@ function RouteComponent() {
                             </Select>
 
                             {/* Course Length Dropdown */}
-                            <Select value={chapterLength} onValueChange={setChapterLength}>
+                            <Select value={chapterLength} onValueChange={(v) => { setChapterLength(v); if (v !== 'custom') setCustomChapterLength(''); }}>
                                 <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
                                     <div className="flex items-center gap-1.5">
                                         <Clock className="size-3.5 text-neutral-500" />
-                                        <SelectValue placeholder="Duration" />
+                                        {chapterLength === 'custom' && customChapterLength
+                                            ? <span>{customChapterLength} min</span>
+                                            : <SelectValue placeholder="Duration" />
+                                        }
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent>
@@ -851,11 +941,14 @@ function RouteComponent() {
                             </Select>
 
                             {/* Slides per Chapter Dropdown */}
-                            <Select value={slidesPerChapter} onValueChange={setSlidesPerChapter}>
+                            <Select value={slidesPerChapter} onValueChange={(v) => { setSlidesPerChapter(v); if (v !== 'custom') setCustomSlidesPerChapter(''); }}>
                                 <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
                                     <div className="flex items-center gap-1.5">
                                         <FileText className="size-3.5 text-neutral-500" />
-                                        <SelectValue placeholder={`${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}/${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`} />
+                                        {slidesPerChapter === 'custom' && customSlidesPerChapter
+                                            ? <span>{customSlidesPerChapter} {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}/{getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}</span>
+                                            : <SelectValue placeholder={`${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}/${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}`} />
+                                        }
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent>
@@ -864,31 +957,42 @@ function RouteComponent() {
                                             {num} {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}/{getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
                                         </SelectItem>
                                     ))}
+                                    <SelectItem value="custom">Custom...</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
 
-                        {/* Custom inputs for chapters/duration if needed */}
-                        {(numberOfChapters === 'custom' || chapterLength === 'custom') && (
+                        {/* Custom inputs for chapters/duration/slides if needed */}
+                        {(numberOfChapters === 'custom' || chapterLength === 'custom' || slidesPerChapter === 'custom') && (
                             <div className="mb-3 flex gap-2">
                                 {numberOfChapters === 'custom' && (
                                     <Input
                                         type="number"
-                                        value={
-                                            numberOfChapters === 'custom' ? '' : numberOfChapters
-                                        }
-                                        onChange={(e) => setNumberOfChapters(e.target.value)}
-                                        placeholder={`Enter number of ${getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()}`}
+                                        min={1}
+                                        value={customChapterCount}
+                                        onChange={(e) => setCustomChapterCount(e.target.value)}
+                                        placeholder={`Number of ${getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()}`}
                                         className="h-8 w-40 text-xs"
                                     />
                                 )}
                                 {chapterLength === 'custom' && (
                                     <Input
                                         type="number"
+                                        min={1}
                                         value={customChapterLength}
                                         onChange={(e) => setCustomChapterLength(e.target.value)}
-                                        placeholder="Minutes"
-                                        className="h-8 w-32 text-xs"
+                                        placeholder="Duration (minutes)"
+                                        className="h-8 w-36 text-xs"
+                                    />
+                                )}
+                                {slidesPerChapter === 'custom' && (
+                                    <Input
+                                        type="number"
+                                        min={1}
+                                        value={customSlidesPerChapter}
+                                        onChange={(e) => setCustomSlidesPerChapter(e.target.value)}
+                                        placeholder={`${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)} per ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()}`}
+                                        className="h-8 w-40 text-xs"
                                     />
                                 )}
                             </div>

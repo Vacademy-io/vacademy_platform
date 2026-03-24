@@ -23,41 +23,77 @@ import { isYouTubeUrl, getYouTubeEmbedUrl } from '../../../shared/utils/youtube'
 
 /**
  * Extracts the user-facing text from video/ai-video slide content.
- * Content may be JSON like {"video":{...},"code":{"content":"..."}} or plain HTML.
  *
- * For 'video' (YouTube): returns video.description
- * For 'ai-video': returns the script from code.content
- * For 'video-code'/'ai-video-code': same logic based on slideType
+ * Data formats by slide type:
+ * - VIDEO: HTML string with <p>title</p><p>description</p><p>YouTube URL</p>
+ * - AI_VIDEO: JSON string with { videoId, status, scriptUrl, message, ... } (no script text)
+ * - VIDEO_CODE: JSON { video: {...}, code: { content: "markdown" }, layout }
+ * - AI_VIDEO_CODE: JSON { video: { videoId, scriptUrl, message, ... }, code: { content }, layout }
+ *
+ * Returns { label, html } where html is safe to render via dangerouslySetInnerHTML.
  */
 function extractVideoDisplayContent(
     content: string,
     slideType: string
-): { label: string; text: string } {
-    if (!content) return { label: '', text: '' };
+): { label: string; html: string } {
+    if (!content) return { label: '', html: '' };
 
     const isAiVideo = slideType === 'ai-video' || slideType === 'ai-video-code';
 
-    // Try parsing as JSON first (the common format)
+    // Try parsing as JSON first (VIDEO_CODE, AI_VIDEO_CODE, AI_VIDEO)
     try {
         const parsed = JSON.parse(content);
 
         if (isAiVideo) {
-            // For AI video: show the script from code.content (markdown)
-            const script = parsed?.code?.content || parsed?.video?.message || '';
-            return { label: 'Script', text: script };
+            // AI video types: script is in code.content (markdown) or video.message
+            const script =
+                parsed?.code?.content ||
+                parsed?.video?.message ||
+                parsed?.message ||
+                '';
+
+            if (script) {
+                // Convert markdown-style newlines to HTML
+                const html = script
+                    .replace(/\n\n/g, '</p><p>')
+                    .replace(/\n/g, '<br/>')
+                    .replace(/^/, '<p>')
+                    .replace(/$/, '</p>')
+                    .replace(/```(\w*)\n?([\s\S]*?)```/g,
+                        (_: string, lang: string, code: string) =>
+                            `<pre><code class="language-${lang || 'text'}">${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`
+                    );
+                return { label: 'Script', html };
+            }
+
+            // Fallback: show status info
+            const status = parsed?.video?.status || parsed?.status || '';
+            const stage = parsed?.video?.currentStage || parsed?.currentStage || '';
+            if (status) {
+                return {
+                    label: 'Script',
+                    html: `<p>Video generation status: <strong>${status}</strong>${stage ? ` (${stage})` : ''}</p><p>The script will appear once generation completes.</p>`,
+                };
+            }
+
+            return { label: 'Script', html: '' };
         } else {
-            // For YouTube video: show the description
-            const description = parsed?.video?.description || parsed?.video?.title || '';
-            return { label: 'Description', text: description };
+            // YouTube video types: description is in video.description or video.title
+            const title = parsed?.video?.title || '';
+            const description = parsed?.video?.description || '';
+            let html = '';
+            if (title) html += `<h3>${title}</h3>`;
+            if (description) html += `<p>${description}</p>`;
+            return { label: 'Description', html };
         }
     } catch {
-        // Not JSON — treat as HTML, strip YouTube URLs
-        let text = content
+        // Not JSON — it's HTML (VIDEO type stores content as HTML)
+        // Strip YouTube URL links but keep the rest
+        let html = content
+            .replace(/<p[^>]*>YouTube URL:.*?<\/p>/gi, '')
             .replace(/<a[^>]*href="[^"]*(?:youtube\.com|youtu\.be)[^"]*"[^>]*>.*?<\/a>/gi, '')
-            .replace(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/[^\s<"']*/gi, '')
-            .replace(/<iframe[^>]*(?:youtube\.com|youtu\.be)[^>]*>.*?<\/iframe>/gi, '')
             .replace(/<p[^>]*>\s*<\/p>/gi, '');
-        return { label: isAiVideo ? 'Script' : 'Description', text: text.trim() };
+        return { label: isAiVideo ? 'Script' : 'Description', html: html.trim() };
     }
 }
 
@@ -366,15 +402,18 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                     slide.slideType === 'ai-video' ||
                     slide.slideType === 'video-code' ||
                     slide.slideType === 'ai-video-code') && (() => {
-                    const { label, text } = extractVideoDisplayContent(slide.content || '', slide.slideType);
+                    const { label, html } = extractVideoDisplayContent(slide.content || '', slide.slideType);
                     return (
-                        <div className="h-full overflow-y-auto p-6 sm:p-8">
+                        <div className="h-full overflow-y-auto px-6 py-4 sm:px-8 sm:py-6">
                             <h4 className="mb-4 text-sm font-medium uppercase tracking-wide text-neutral-500">
                                 {label}
                             </h4>
-                            <div className="prose prose-lg max-w-none whitespace-pre-wrap text-neutral-800">
-                                {text || 'No content available'}
-                            </div>
+                            <div
+                                className="prose prose-base max-w-none prose-headings:text-neutral-900 prose-h3:text-lg prose-h3:font-semibold prose-p:text-neutral-700 prose-p:leading-relaxed"
+                                dangerouslySetInnerHTML={{
+                                    __html: html || '<p class="text-neutral-400">No content available</p>',
+                                }}
+                            />
                         </div>
                     );
                 })()}

@@ -7,11 +7,14 @@ import type {
     PaymentLinkMethod,
 } from '../../../-services/applicant-services';
 import { initiateManualPayment, generatePaymentLink } from '../../../-services/applicant-services';
-import { CardholderIcon, GlobeIcon, ArrowSquareOut } from '@phosphor-icons/react';
+import { CardholderIcon, GlobeIcon, ArrowSquareOut, EnvelopeSimple, SpinnerGap } from '@phosphor-icons/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getPublicUrl, UploadFileInS3 } from '@/services/upload_file';
 import { MyButton } from '@/components/design-system/button';
+import { Input } from '@/components/ui/input';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useTheme } from '@/providers/theme/theme-provider';
+import { sendPaymentLinkEmail } from '@/services/manage-finances';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -48,8 +51,14 @@ export const PaymentSection: React.FC<SectionProps> = ({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const proofInputRef = useRef<HTMLInputElement>(null);
 
+    // Email sending state
+    const [showEmailInput, setShowEmailInput] = useState(false);
+    const [linkEmail, setLinkEmail] = useState('');
+    const [isSendingLinkEmail, setIsSendingLinkEmail] = useState(false);
+
     // Get institute details for learner portal URL
     const { instituteDetails } = useInstituteDetailsStore();
+    const { getPrimaryColorCode } = useTheme();
     const learnerPortalBaseUrl = instituteDetails?.learner_portal_base_url;
     const instituteId = instituteDetails?.id ?? '';
 
@@ -101,6 +110,10 @@ export const PaymentSection: React.FC<SectionProps> = ({
             paymentOptionDetails?.qrCodeFileId
         );
         setGeneratedParentLink(link);
+        setLinkEmail(
+            formData.fatherInfo?.email || formData.motherInfo?.email || formData.guardianInfo?.email || ''
+        );
+        setShowEmailInput(false);
         navigator.clipboard.writeText(link);
         toast.success(
             `${method === 'ONLINE' ? 'Online payment' : 'UPI payment'} link copied to clipboard!`
@@ -114,8 +127,36 @@ export const PaymentSection: React.FC<SectionProps> = ({
             return;
         }
         setGeneratedParentLink(deepLink);
+        setLinkEmail(
+            formData.fatherInfo?.email || formData.motherInfo?.email || formData.guardianInfo?.email || ''
+        );
+        setShowEmailInput(false);
         navigator.clipboard.writeText(deepLink);
         toast.success('UPI deep link copied! Send to parent to open in any UPI app.');
+    };
+
+    const handleSendLinkEmail = async () => {
+        if (!linkEmail.trim() || !generatedParentLink) return;
+        setIsSendingLinkEmail(true);
+        try {
+            const recipientName =
+                formData.fatherInfo?.name || formData.motherInfo?.name || formData.guardianInfo?.name || 'Parent';
+            await sendPaymentLinkEmail(
+                linkEmail.trim(),
+                recipientName,
+                generatedParentLink,
+                registrationFeeName,
+                registrationFee,
+                registrationFeeCurrency,
+                getPrimaryColorCode()
+            );
+            toast.success('Payment link sent to email successfully');
+            setShowEmailInput(false);
+        } catch {
+            toast.error('Failed to send email. Please try again.');
+        } finally {
+            setIsSendingLinkEmail(false);
+        }
     };
 
     const generateTxnId = () => {
@@ -684,6 +725,49 @@ export const PaymentSection: React.FC<SectionProps> = ({
                                         includeMargin
                                     />
                                 </div>
+                            </div>
+
+                            {/* Send via Email */}
+                            <div className="mt-4 border-t border-primary-200 pt-4">
+                                {!showEmailInput ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowEmailInput(true)}
+                                        className="flex items-center gap-2 text-sm font-medium text-primary-700 hover:text-primary-800 transition"
+                                    >
+                                        <EnvelopeSimple size={16} weight="bold" />
+                                        Send link via Email
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="email"
+                                            value={linkEmail}
+                                            onChange={(e) => setLinkEmail(e.target.value)}
+                                            placeholder="parent@example.com"
+                                            className="h-9 text-sm flex-1"
+                                            disabled={isSendingLinkEmail}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleSendLinkEmail}
+                                            disabled={!linkEmail.trim() || isSendingLinkEmail}
+                                            className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition whitespace-nowrap"
+                                        >
+                                            {isSendingLinkEmail ? (
+                                                <>
+                                                    <SpinnerGap size={14} className="animate-spin" />
+                                                    Sending...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <EnvelopeSimple size={14} weight="bold" />
+                                                    Send
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

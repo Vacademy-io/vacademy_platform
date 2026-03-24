@@ -129,16 +129,19 @@ export default function AdmissionFormWizard() {
     const instituteId = instituteDetails?.id || '';
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedSessionId, setSelectedSessionId] = useState('');
+    const allBatches = instituteDetails?.batches_for_sessions ?? [];
+
     const packageSessionOptions = useMemo(() => {
-        if (!instituteDetails?.batches_for_sessions) return [];
-        return instituteDetails.batches_for_sessions
+        if (!allBatches.length) return [];
+        return allBatches
+            .filter((batch) => batch.is_parent === true || !batch.parent_id)
             .filter((batch) => !selectedSessionId || batch.session.id === selectedSessionId)
             .map((batch) => ({
                 id: batch.id,
-                label: `${batch.package_dto.package_name} - ${batch.level.level_name}`,
+                label: `${batch.package_dto.package_name} - ${batch.level.level_name}${batch.name ? ` - ${batch.name}` : ''}`,
                 sessionId: batch.session.id,
             }));
-    }, [instituteDetails, selectedSessionId]);
+    }, [allBatches, selectedSessionId]);
 
     const [formData, setFormData] = useState<AdmissionFormData>({
         sessionId: '',
@@ -257,13 +260,16 @@ export default function AdmissionFormWizard() {
             const parentEmail = data.email || '';
             const isMother = data.parentGender === 'mother';
 
+            // Normalize DOB from ISO to YYYY-MM-DD for date input
+            const dob = data.dob ? data.dob.split('T')[0] || '' : '';
+
             setFormData((prev) => ({
                 ...prev,
                 studentFirstName: firstName,
                 studentLastName: lastName,
                 gender: data.gender || '',
                 studentClass: data.classVal || '',
-                dateOfBirth: data.dob || '',
+                dateOfBirth: dob,
                 residentialPhone: parentMobile,
                 fatherName: isMother ? '' : parentName,
                 fatherMobile: isMother ? '' : parentMobile,
@@ -320,7 +326,7 @@ export default function AdmissionFormWizard() {
                 application_id: formData.applicationId || null,
                 first_name: formData.studentFirstName || '',
                 last_name: formData.studentLastName || '',
-                gender: formData.gender ? formData.gender.toUpperCase() : '',
+                gender: formData.gender || '',
                 class_applying_for:
                     formData.destinationPackageSessionId || formData.studentClass || '',
                 section: formData.section || '',
@@ -466,6 +472,7 @@ export default function AdmissionFormWizard() {
                         formData={formData}
                         handleChange={handleChange}
                         packageSessionOptions={packageSessionOptions}
+                        allBatches={allBatches}
                         onFormDataUpdate={handleFormDataUpdate}
                     />
                 )}

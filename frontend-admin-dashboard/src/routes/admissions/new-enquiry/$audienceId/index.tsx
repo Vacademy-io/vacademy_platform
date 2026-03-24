@@ -51,10 +51,12 @@ function NewEnquiryForm() {
 
     // Get package sessions for dropdown
     const packageSessionOptions =
-        instituteDetails?.batches_for_sessions.map((batch) => ({
-            id: batch.id,
-            label: `${batch.package_dto.package_name} ${batch.level.level_name}`,
-        })) || [];
+        instituteDetails?.batches_for_sessions
+            .filter((batch) => batch.is_parent === true || !batch.parent_id)
+            .map((batch) => ({
+                id: batch.id,
+                label: `${batch.level.level_name}${batch.name ? ` - ${batch.name}` : ''}`,
+            })) || [];
 
     // Form state
     const [formData, setFormData] = useState({

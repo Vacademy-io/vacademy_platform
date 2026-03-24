@@ -95,12 +95,17 @@ public class ApplicantPublicController {
                 applyRequest.setWorkflowType("APPLICATION");
 
                 java.util.Map<String, Object> formData = new java.util.HashMap<>();
-                formData.put("parent_name", row.getParentName());
-                formData.put("parent_phone", row.getParentPhone());
-                formData.put("parent_email", row.getParentEmail());
                 formData.put("child_name", row.getChildName());
                 formData.put("child_dob", row.getChildDob());
                 formData.put("child_gender", row.getChildGender());
+                formData.put("father_name", row.getFatherName());
+                formData.put("father_mobile", row.getFatherMobile());
+                formData.put("father_email", row.getFatherEmail());
+                formData.put("fathers_name", row.getFatherName());
+                formData.put("mother_name", row.getMotherName());
+                formData.put("mother_mobile", row.getMotherMobile());
+                formData.put("mother_email", row.getMotherEmail());
+                formData.put("mothers_name", row.getMotherName());
                 formData.put("address_line", row.getAddressLine() != null ? row.getAddressLine() : "");
 
                 applyRequest.setFormData(formData);

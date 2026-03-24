@@ -21,9 +21,14 @@ public class BulkAdmissionSubmitRowDTO {
     private String sessionId;
     private String destinationPackageSessionId;
 
-    private String parentName;
-    private String parentEmail;
-    private String parentMobile;
+    private String fatherName;
+    private String fatherEmail;
+    private String fatherMobile;
+    private String motherName;
+    private String motherEmail;
+    private String motherMobile;
+    private String guardianName;
+    private String guardianMobile;
 
     private String childName;
     private String childDob;

@@ -31,9 +31,14 @@ type ParsedCsvRow = {
     student_name: string;
     gender: 'MALE' | 'FEMALE' | 'OTHER';
     date_of_birth: string;
-    parent_name: string;
-    parent_email: string;
-    parent_mobile: string;
+    father_name?: string;
+    father_email?: string;
+    father_mobile?: string;
+    mother_name?: string;
+    mother_email?: string;
+    mother_mobile?: string;
+    guardian_name?: string;
+    guardian_mobile?: string;
     status: string;
     source_type?: 'WEBSITE' | 'GOOGLE_ADS' | 'FACEBOOK' | 'INSTAGRAM' | 'REFERRAL' | 'OTHER';
 };
@@ -49,9 +54,14 @@ const REQUIRED_COLUMN_LABELS = [
     'Student Name',
     'Gender',
     'Date of Birth',
-    'Parent Name',
-    'Parent Email',
-    'Parent Mobile',
+    'Father Name',
+    'Father Email',
+    'Father Mobile',
+    'Mother Name',
+    'Mother Email',
+    'Mother Mobile',
+    'Guardian Name',
+    'Guardian Mobile',
 ] as const;
 
 const HEADER_ALIASES: Record<string, keyof ParsedCsvRow | null> = {
@@ -65,20 +75,24 @@ const HEADER_ALIASES: Record<string, keyof ParsedCsvRow | null> = {
     date_of_birth: 'date_of_birth',
     dob: 'date_of_birth',
     birthday: 'date_of_birth',
-    parentname: 'parent_name',
-    parent_name: 'parent_name',
-    fathername: 'parent_name',
-    father_name: 'parent_name',
-    mothername: 'parent_name',
-    mother_name: 'parent_name',
-    parentemail: 'parent_email',
-    parent_email: 'parent_email',
-    fathersemail: 'parent_email',
-    father_email: 'parent_email',
-    parentmobile: 'parent_mobile',
-    parent_mobile: 'parent_mobile',
-    fathersmobile: 'parent_mobile',
-    father_mobile: 'parent_mobile',
+    fathername: 'father_name',
+    father_name: 'father_name',
+    fatheremail: 'father_email',
+    father_email: 'father_email',
+    fathersmobile: 'father_mobile',
+    fathermobile: 'father_mobile',
+    father_mobile: 'father_mobile',
+    mothername: 'mother_name',
+    mother_name: 'mother_name',
+    motheremail: 'mother_email',
+    mother_email: 'mother_email',
+    mothersmobile: 'mother_mobile',
+    mothermobile: 'mother_mobile',
+    mother_mobile: 'mother_mobile',
+    guardianname: 'guardian_name',
+    guardian_name: 'guardian_name',
+    guardianmobile: 'guardian_mobile',
+    guardian_mobile: 'guardian_mobile',
     status: 'status',
     enquirystatus: 'status',
     enquiry_status: 'status',
@@ -91,9 +105,6 @@ const REQUIRED_CANONICAL_FIELDS: Array<keyof ParsedCsvRow> = [
     'student_name',
     'gender',
     'date_of_birth',
-    'parent_name',
-    'parent_email',
-    'parent_mobile',
 ];
 
 const toAliasKey = (raw: string): string =>
@@ -172,8 +183,36 @@ export const AdmissionBulkImportDialog = ({ open, onOpenChange, sessionId, onSuc
     };
 
     const handleDownloadTemplate = () => {
-        const headers = ['Student Name', 'Gender', 'Date of Birth', 'Parent Name', 'Parent Email', 'Parent Mobile', 'Status', 'Source'];
-        const sample = ['John Student', 'MALE', '2015-06-01', 'Jane Parent', 'parent@example.com', '+919876543210', 'NEW', 'WEBSITE'];
+        const headers = [
+            'Student Name',
+            'Gender',
+            'Date of Birth',
+            'Father Name',
+            'Father Email',
+            'Father Mobile',
+            'Mother Name',
+            'Mother Email',
+            'Mother Mobile',
+            'Guardian Name',
+            'Guardian Mobile',
+            'Status',
+            'Source',
+        ];
+        const sample = [
+            'John Student',
+            'MALE',
+            '2015-06-01',
+            'John Father',
+            'father@example.com',
+            '+919876543210',
+            'Jane Mother',
+            'mother@example.com',
+            '+919876543211',
+            'Uncle Guardian',
+            '+919876543212',
+            'NEW',
+            'WEBSITE',
+        ];
         const csv = [headers.join(','), sample.join(',')].join('\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -226,22 +265,49 @@ export const AdmissionBulkImportDialog = ({ open, onOpenChange, sessionId, onSuc
                     }
 
                     const studentName = canonicalRow.student_name?.trim() || '';
-                    const parentName = canonicalRow.parent_name?.trim() || '';
-                    const parentEmail = canonicalRow.parent_email?.trim() || '';
-                    const parentMobile = canonicalRow.parent_mobile?.trim() || '';
+                    const fatherName = canonicalRow.father_name?.trim() || '';
+                    const fatherEmail = canonicalRow.father_email?.trim() || '';
+                    const fatherMobile = canonicalRow.father_mobile?.trim() || '';
+                    const motherName = canonicalRow.mother_name?.trim() || '';
+                    const motherEmail = canonicalRow.mother_email?.trim() || '';
+                    const motherMobile = canonicalRow.mother_mobile?.trim() || '';
+                    const guardianName = canonicalRow.guardian_name?.trim() || '';
+                    const guardianMobile = canonicalRow.guardian_mobile?.trim() || '';
                     const gender = normalizeGender(canonicalRow.gender);
                     const dobIso = normalizeDobToISO(canonicalRow.date_of_birth);
+                    const hasFather = !!(fatherName || fatherEmail || fatherMobile);
+                    const hasMother = !!(motherName || motherEmail || motherMobile);
+                    const hasAtLeastOneParent = hasFather || hasMother;
+                    const fatherValid =
+                        !hasFather || (!!fatherName && !!fatherEmail && !!fatherMobile && isValidEmail(fatherEmail) && isValidMobile(fatherMobile));
+                    const motherValid =
+                        !hasMother || (!!motherName && !!motherEmail && !!motherMobile && isValidEmail(motherEmail) && isValidMobile(motherMobile));
+                    const hasGuardian = !!(guardianName || guardianMobile);
+                    const guardianValid = !hasGuardian || (!!guardianName && !!guardianMobile && isValidMobile(guardianMobile));
 
-                    if (!studentName || !parentName || !parentEmail || !parentMobile || !gender || !dobIso || !isValidEmail(parentEmail) || !isValidMobile(parentMobile)) {
+                    if (
+                        !studentName ||
+                        !gender ||
+                        !dobIso ||
+                        !hasAtLeastOneParent ||
+                        !fatherValid ||
+                        !motherValid ||
+                        !guardianValid
+                    ) {
                         skipped += 1;
                         continue;
                     }
 
                     parsedRows.push({
                         student_name: studentName,
-                        parent_name: parentName,
-                        parent_email: parentEmail,
-                        parent_mobile: parentMobile,
+                        ...(fatherName ? { father_name: fatherName } : {}),
+                        ...(fatherEmail ? { father_email: fatherEmail } : {}),
+                        ...(fatherMobile ? { father_mobile: fatherMobile } : {}),
+                        ...(motherName ? { mother_name: motherName } : {}),
+                        ...(motherEmail ? { mother_email: motherEmail } : {}),
+                        ...(motherMobile ? { mother_mobile: motherMobile } : {}),
+                        ...(guardianName ? { guardian_name: guardianName } : {}),
+                        ...(guardianMobile ? { guardian_mobile: guardianMobile } : {}),
                         gender,
                         date_of_birth: dobIso,
                         status: parseOptionalEnquiryStatus(canonicalRow.status),
@@ -295,9 +361,14 @@ export const AdmissionBulkImportDialog = ({ open, onOpenChange, sessionId, onSuc
         const rows: BulkSubmitAdmissionRow[] = validRows.map((row) => ({
             session_id: sessionId,
             destination_package_session_id: destinationId,
-            parent_name: row.parent_name,
-            parent_email: row.parent_email,
-            parent_mobile: row.parent_mobile,
+            ...(row.father_name ? { father_name: row.father_name } : {}),
+            ...(row.father_email ? { father_email: row.father_email } : {}),
+            ...(row.father_mobile ? { father_mobile: row.father_mobile } : {}),
+            ...(row.mother_name ? { mother_name: row.mother_name } : {}),
+            ...(row.mother_email ? { mother_email: row.mother_email } : {}),
+            ...(row.mother_mobile ? { mother_mobile: row.mother_mobile } : {}),
+            ...(row.guardian_name ? { guardian_name: row.guardian_name } : {}),
+            ...(row.guardian_mobile ? { guardian_mobile: row.guardian_mobile } : {}),
             child_name: row.student_name,
             child_dob: row.date_of_birth,
             child_gender: row.gender,
@@ -395,22 +466,32 @@ export const AdmissionBulkImportDialog = ({ open, onOpenChange, sessionId, onSuc
                                         <th className="px-3 py-2">Student Name</th>
                                         <th className="px-3 py-2">Gender</th>
                                         <th className="px-3 py-2">Date of Birth</th>
-                                        <th className="px-3 py-2">Parent Name</th>
-                                        <th className="px-3 py-2">Parent Email</th>
-                                        <th className="px-3 py-2">Parent Mobile</th>
+                                        <th className="px-3 py-2">Father Name</th>
+                                        <th className="px-3 py-2">Father Email</th>
+                                        <th className="px-3 py-2">Father Mobile</th>
+                                        <th className="px-3 py-2">Mother Name</th>
+                                        <th className="px-3 py-2">Mother Email</th>
+                                        <th className="px-3 py-2">Mother Mobile</th>
+                                        <th className="px-3 py-2">Guardian Name</th>
+                                        <th className="px-3 py-2">Guardian Mobile</th>
                                         <th className="px-3 py-2">Status</th>
                                         <th className="px-3 py-2">Source</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {validRows.map((row, index) => (
-                                        <tr key={`${row.parent_email}-${index}`} className="border-t">
+                                        <tr key={`${row.student_name}-${index}`} className="border-t">
                                             <td className="px-3 py-2">{row.student_name}</td>
                                             <td className="px-3 py-2">{row.gender}</td>
                                             <td className="px-3 py-2">{row.date_of_birth}</td>
-                                            <td className="px-3 py-2">{row.parent_name}</td>
-                                            <td className="px-3 py-2">{row.parent_email}</td>
-                                            <td className="px-3 py-2">{row.parent_mobile}</td>
+                                            <td className="px-3 py-2">{row.father_name || '-'}</td>
+                                            <td className="px-3 py-2">{row.father_email || '-'}</td>
+                                            <td className="px-3 py-2">{row.father_mobile || '-'}</td>
+                                            <td className="px-3 py-2">{row.mother_name || '-'}</td>
+                                            <td className="px-3 py-2">{row.mother_email || '-'}</td>
+                                            <td className="px-3 py-2">{row.mother_mobile || '-'}</td>
+                                            <td className="px-3 py-2">{row.guardian_name || '-'}</td>
+                                            <td className="px-3 py-2">{row.guardian_mobile || '-'}</td>
                                             <td className="px-3 py-2">{row.status}</td>
                                             <td className="px-3 py-2">{row.source_type || '-'}</td>
                                         </tr>

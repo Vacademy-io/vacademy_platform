@@ -4,9 +4,14 @@ export interface BulkSubmitAdmissionRow {
     session_id: string;
     destination_package_session_id: string;
 
-    parent_name: string;
-    parent_email: string;
-    parent_mobile: string;
+    father_name?: string;
+    father_email?: string;
+    father_mobile?: string;
+    mother_name?: string;
+    mother_email?: string;
+    mother_mobile?: string;
+    guardian_name?: string;
+    guardian_mobile?: string;
 
     child_name: string;
     child_dob: string; // yyyy-MM-dd

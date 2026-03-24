@@ -21,9 +21,12 @@ public class BulkApplyRowDTO {
     private String sessionId;
     private String destinationPackageSessionId;
 
-    private String parentName;
-    private String parentPhone;
-    private String parentEmail;
+    private String fatherName;
+    private String fatherMobile;
+    private String fatherEmail;
+    private String motherName;
+    private String motherMobile;
+    private String motherEmail;
 
     private String childName;
     private String childDob;

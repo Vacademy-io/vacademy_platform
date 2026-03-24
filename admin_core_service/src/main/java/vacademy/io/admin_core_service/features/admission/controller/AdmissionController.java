@@ -116,7 +116,7 @@ public class AdmissionController {
                         .classGroup("")
 
                         .dateOfBirth(row.getChildDob())
-                        .mobileNumber(row.getParentMobile())
+                        .mobileNumber(row.getFatherMobile())
                         .admissionType("")
                         .studentAadhaar(null)
 
@@ -134,16 +134,16 @@ public class AdmissionController {
                         .howDidYouKnow("")
 
                         // Parent Details (Backend expects father_* for user creation)
-                        .fatherName(row.getParentName())
-                        .fatherMobile(row.getParentMobile())
-                        .fatherEmail(row.getParentEmail())
+                        .fatherName(row.getFatherName())
+                        .fatherMobile(row.getFatherMobile())
+                        .fatherEmail(row.getFatherEmail())
 
-                        .motherName(null)
-                        .motherMobile(null)
-                        .motherEmail(null)
+                        .motherName(row.getMotherName())
+                        .motherMobile(row.getMotherMobile())
+                        .motherEmail(row.getMotherEmail())
 
-                        .guardianName(row.getParentName())
-                        .guardianMobile(row.getParentMobile())
+                        .guardianName(row.getGuardianName())
+                        .guardianMobile(row.getGuardianMobile())
 
                         // Address (bulk CSV contract doesn't include these; keep empty strings)
                         .currentAddress("")

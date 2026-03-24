@@ -74,7 +74,23 @@ public class LearnerInvitationLinkService {
         try {
             String sourceId = userId + "_" + (enrollInvite != null ? enrollInvite.getId() : "default");
             String shortUrl = shortUrlManagementService.createShortUrl(longUrl, "REFERRAL_LINK", sourceId, instituteId);
-            return shortUrl != null ? shortUrlManagementService.getAbsoluteShortUrl(instituteId, shortUrl) : longUrl;
+            if (shortUrl != null) {
+                // Persist the short URL code back to the CouponCode so it can be
+                // reused on subsequent calls without creating duplicates.
+                try {
+                    Optional<CouponCode> couponCode = couponCodeService.getCouponCodeBySource(userId, "USER");
+                    if (couponCode.isPresent() && (couponCode.get().getShortUrl() == null
+                            || couponCode.get().getShortUrl().isBlank())) {
+                        couponCode.get().setShortUrl(shortUrl);
+                        couponCodeService.saveCouponCode(couponCode.get());
+                        log.info("Saved short URL '{}' to CouponCode for user: {}", shortUrl, userId);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to persist short URL to CouponCode for user {}: {}", userId, e.getMessage());
+                }
+                return shortUrlManagementService.getAbsoluteShortUrl(instituteId, shortUrl);
+            }
+            return longUrl;
         } catch (Exception e) {
             log.error("Error creating short URL for referral link: {}", e.getMessage());
             return longUrl;

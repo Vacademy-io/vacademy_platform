@@ -251,6 +251,7 @@ export function RegistrationFormPage() {
         if (enquiryData.child) {
             updates.studentName = enquiryData.child.name || '';
             updates.selectedPackageSessionId = enquiryData.child.destination_package_session_id || '';
+            updates.applyingForClass = enquiryData.child.destination_package_session_id || '';
             if (enquiryData.child.dob) {
                 // Convert ISO date to YYYY-MM-DD format
                 const date = new Date(enquiryData.child.dob);
@@ -404,7 +405,8 @@ export function RegistrationFormPage() {
                 formData.studentName &&
                 formData.dateOfBirth &&
                 formData.gender &&
-                formData.nationality
+                formData.nationality &&
+                formData.category
             ),
             hasErrors: false,
         },
@@ -414,7 +416,11 @@ export function RegistrationFormPage() {
             shortLabel: 'Academic',
             icon: <GraduationCap size={20} />,
             isComplete: Boolean(
-                formData.applyingForClass && formData.preferredBoard && formData.previousSchoolName
+                formData.applyingForClass &&
+                formData.preferredBoard &&
+                formData.previousSchoolName &&
+                formData.previousSchoolBoard &&
+                formData.lastClassAttended
             ),
             hasErrors: false,
         },
@@ -435,9 +441,12 @@ export function RegistrationFormPage() {
             shortLabel: 'Address',
             icon: <MapPin size={20} />,
             isComplete: Boolean(
+                formData.currentAddress?.houseNo &&
+                formData.currentAddress?.street &&
+                formData.currentAddress?.area &&
                 formData.currentAddress?.city &&
                 formData.currentAddress?.state &&
-                formData.currentAddress?.pincode
+                (formData.currentAddress?.pincode || formData.currentAddress?.pinCode)
             ),
             hasErrors: false,
         },
@@ -591,9 +600,9 @@ export function RegistrationFormPage() {
         }
     };
 
-    const updateFormData = (updates: Partial<Registration>) => {
+    const updateFormData = useCallback((updates: Partial<Registration>) => {
         setFormData((prev) => ({ ...prev, ...updates }));
-    };
+    }, []);
 
     const renderSectionContent = () => {
         switch (activeSection) {

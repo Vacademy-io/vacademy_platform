@@ -209,11 +209,48 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
     };
     const handleExportAttendance = () => {
         setIsAttendanceExporting(true);
-        const csvData = tableAttendanceData.content.map((item) => ({
-            index: item.index,
-            username: item.username,
-            attendanceStatus: item.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent',
-        }));
+        const csvData = (reportResponse || []).map((item, idx) => {
+            const engagement = item.engagementData ? (() => { try { return JSON.parse(item.engagementData); } catch { return null; } })() : null;
+            const duration = item.providerTotalDurationMinutes ?? '';
+            const talkTimeMin = engagement?.talkTime ? Math.round(engagement.talkTime / 60) : '';
+            const talks = engagement?.talks ?? '';
+            const raiseHands = engagement?.raisehand ?? '';
+            const emojis = engagement?.emojis ?? '';
+            const chats = engagement?.chats ?? '';
+            const pollVotes = engagement?.pollVotes ?? '';
+
+            // Active points formula
+            let activePoints: number | string = '';
+            if (duration !== '' || engagement) {
+                let score = 0;
+                if (typeof duration === 'number') score += duration;
+                if (engagement) {
+                    score += ((engagement.talkTime ?? 0) / 60) * 2;
+                    score += (engagement.talks ?? 0) * 0.5;
+                    score += (engagement.raisehand ?? 0) * 3;
+                    score += (engagement.emojis ?? 0) * 1;
+                    score += (engagement.chats ?? 0) * 1.5;
+                    score += (engagement.pollVotes ?? 0) * 2;
+                }
+                activePoints = Math.round(score);
+            }
+
+            return {
+                '#': idx + 1,
+                'Name': item.fullName,
+                'Email': item.email || '',
+                'Status': item.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent',
+                'Mode': item.statusType || '',
+                'Duration (min)': duration,
+                'Active Points': activePoints,
+                'Talk Time (min)': talkTimeMin,
+                'Talk Segments': talks,
+                'Raise Hands': raiseHands,
+                'Emojis': emojis,
+                'Chats': chats,
+                'Poll Votes': pollVotes,
+            };
+        });
         const csv = Papa.unparse(csvData);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);

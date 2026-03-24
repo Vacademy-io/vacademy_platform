@@ -12,8 +12,10 @@ import {
     HandWaving,
     Smiley,
     ChartBar,
+    DownloadSimple,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import Papa from 'papaparse';
 import { MyButton } from '@/components/design-system/button';
 import { Badge } from '@/components/ui/badge';
 import type { LiveSessionReport } from '../-services/utils';
@@ -33,6 +35,7 @@ interface AttendanceMarkingTableProps {
     sessionId: string;
     scheduleId: string;
     accessType: string;
+    sessionTitle?: string;
     onSaved?: () => void;
 }
 
@@ -90,6 +93,7 @@ export function AttendanceMarkingTable({
     data,
     sessionId,
     scheduleId,
+    sessionTitle,
     onSaved,
 }: AttendanceMarkingTableProps) {
     const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
@@ -224,6 +228,45 @@ export function AttendanceMarkingTable({
         }
     };
 
+    const handleExportCSV = useCallback(() => {
+        const csvData = sortedData.map((item, idx) => {
+            const engagement = parseEngagement(item.engagementData);
+            const duration = item.providerTotalDurationMinutes ?? '';
+            const talkTimeMin = engagement?.talkTime ? Math.round(engagement.talkTime / 60) : '';
+            const activePoints = computeActivePoints(item) ?? '';
+
+            return {
+                '#': idx + 1,
+                'Name': item.fullName,
+                'Email': item.email || '',
+                'Status': getStatus(item) === 'PRESENT' ? 'Present' : 'Absent',
+                'Mode': item.statusType || '',
+                'Duration (min)': duration,
+                'Active Points': activePoints,
+                'Talk Time (min)': talkTimeMin,
+                'Talk Segments': engagement?.talks ?? '',
+                'Raise Hands': engagement?.raisehand ?? '',
+                'Emojis': engagement?.emojis ?? '',
+                'Chats': engagement?.chats ?? '',
+                'Poll Votes': engagement?.pollVotes ?? '',
+            };
+        });
+        const csv = Papa.unparse(csvData);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const filename = sessionTitle
+            ? `attendance_${sessionTitle.replace(/[^a-zA-Z0-9]/g, '_')}.csv`
+            : `attendance_${sessionId}.csv`;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success('Attendance CSV downloaded');
+    }, [sortedData, getStatus, sessionId, sessionTitle]);
+
     const hasEngagementOrDuration = (student: LiveSessionReport) => {
         return student.providerTotalDurationMinutes || student.engagementData;
     };
@@ -242,17 +285,27 @@ export function AttendanceMarkingTable({
     return (
         <div className="space-y-3">
             {/* Summary */}
-            <div className="flex items-center gap-4 text-sm">
-                <span className="font-medium">Attendance</span>
-                <span className="flex items-center gap-1 text-green-600">
-                    <span className="h-2 w-2 rounded-full bg-green-500" />
-                    Present: {presentCount}
-                </span>
-                <span className="flex items-center gap-1 text-red-500">
-                    <span className="h-2 w-2 rounded-full bg-red-500" />
-                    Absent: {absentCount}
-                </span>
-                <span className="text-gray-500">Total: {data.length}</span>
+            <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-4">
+                    <span className="font-medium">Attendance</span>
+                    <span className="flex items-center gap-1 text-green-600">
+                        <span className="h-2 w-2 rounded-full bg-green-500" />
+                        Present: {presentCount}
+                    </span>
+                    <span className="flex items-center gap-1 text-red-500">
+                        <span className="h-2 w-2 rounded-full bg-red-500" />
+                        Absent: {absentCount}
+                    </span>
+                    <span className="text-gray-500">Total: {data.length}</span>
+                </div>
+                <button
+                    type="button"
+                    onClick={handleExportCSV}
+                    className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                >
+                    <DownloadSimple size={14} />
+                    Export CSV
+                </button>
             </div>
 
             {/* Table */}

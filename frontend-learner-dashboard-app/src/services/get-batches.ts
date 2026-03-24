@@ -47,11 +47,12 @@ export const getSesssionId = async (): Promise<string | undefined> => {
 export const fetchBatches = async () => {
   const INSTITUTE_ID = await getInstituteId();
   const sessionId = await getSesssionId();
+  const params: Record<string, string> = { instituteId: INSTITUTE_ID };
+  if (sessionId) {
+    params.sessionId = sessionId;
+  }
   const response = await authenticatedAxiosInstance.get(GET_BATCH_LIST, {
-    params: {
-      sessionId: sessionId,
-      instituteId: INSTITUTE_ID,
-    },
+    params,
   });
   return response.data;
 };

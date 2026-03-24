@@ -13,7 +13,8 @@ public class EmailDomainBlocklistUtil {
      * Add more domains here as needed in the future.
      */
     private static final List<String> BLOCKED_EMAIL_DOMAINS = Arrays.asList(
-            "@fivesep.in"
+            "@fivesep.in",
+            "@vacademy.com"
             // Add more blocked domains here, e.g.:
             // "@example.com",
             // "@testdomain.org"

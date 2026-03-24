@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { User, ShoppingCart, Plus, Minus } from "lucide-react";
+import { User, ShoppingCart, Plus, Minus, ShoppingBag } from "lucide-react";
 import { useCartStore } from "../../-stores/cart-store";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useNavigate } from "@tanstack/react-router";
 
 interface BookDetailsProps {
     fields?: {
@@ -35,6 +36,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
     if (!courseData) return null;
 
     const [coverUrl, setCoverUrl] = useState("");
+    const navigate = useNavigate();
     const { addItem, getItemByEnrollInviteId, updateQuantity, getCartMode, syncCart } = useCartStore();
 
     // Get current cart mode
@@ -226,7 +228,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                             // Show counter for Buy mode if item exists
                             if (isBuyMode && existingItem) {
                                 return (
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-3">
                                         <div className="flex items-center gap-1 border border-gray-200 rounded-lg bg-gray-50 shadow-sm hover:bg-gray-100 transition-colors">
                                             <Button
                                                 variant="ghost"
@@ -258,6 +260,17 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                                 <Plus className="h-4 w-4" />
                                             </Button>
                                         </div>
+                                        {/* Go to Cart button */}
+                                        <Button
+                                            className="bg-primary-400 hover:bg-primary-500 text-white font-semibold text-sm py-2 px-4 rounded-lg shadow-md flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                                            onClick={() => {
+                                                const pathTag = window.location.pathname.split('/').filter(Boolean)[0] || 'collections';
+                                                navigate({ to: `/${pathTag}/cart` });
+                                            }}
+                                        >
+                                            <ShoppingBag className="h-4 w-4" />
+                                            Go to Cart
+                                        </Button>
                                     </div>
                                 );
                             }

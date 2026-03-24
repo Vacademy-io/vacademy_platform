@@ -13,6 +13,7 @@ import {
   X,
   Plus,
   Minus,
+  ShoppingBag,
 } from "lucide-react";
 import { toTitleCase } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
@@ -628,35 +629,45 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                               // Show counter for Buy mode if item exists
                               if (isBuyMode && existingItem) {
                                 return (
-                                  <div className="flex items-center gap-1 border border-gray-200 rounded-lg bg-white shadow-xl">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1 border border-gray-200 rounded-lg bg-white shadow-xl">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 hover:bg-gray-100 active:bg-gray-200 rounded-l-lg transition-all duration-150"
+                                        onClick={async () => {
+                                          if (book.enrollInviteId) {
+                                            await updateQuantity(book.enrollInviteId, existingItem.quantity - 1);
+                                            window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                          }
+                                        }}
+                                        disabled={!book.enrollInviteId}
+                                      >
+                                        <Minus className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <span className="w-8 text-center text-xs font-semibold text-gray-700">{existingItem.quantity}</span>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 hover:bg-gray-100 active:bg-gray-200 rounded-r-lg transition-all duration-150"
+                                        onClick={async () => {
+                                          if (book.enrollInviteId) {
+                                            await updateQuantity(book.enrollInviteId, existingItem.quantity + 1);
+                                            window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                          }
+                                        }}
+                                        disabled={!book.enrollInviteId || (window.location.hostname.includes("readonrent") && book.available_slots === 0)}
+                                      >
+                                        <Plus className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                    {/* Go to Cart button */}
                                     <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 hover:bg-gray-100 active:bg-gray-200 rounded-l-lg transition-all duration-150"
-                                      onClick={async () => {
-                                        if (book.enrollInviteId) {
-                                          await updateQuantity(book.enrollInviteId, existingItem.quantity - 1);
-                                          window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                        }
-                                      }}
-                                      disabled={!book.enrollInviteId}
+                                      className="h-8 px-3 bg-primary-400 hover:bg-primary-500 text-white text-xs font-semibold rounded-lg shadow-md flex items-center gap-1.5 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                                      onClick={() => navigate({ to: `/${tagName}/cart` })}
                                     >
-                                      <Minus className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <span className="w-8 text-center text-xs font-semibold text-gray-700">{existingItem.quantity}</span>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 hover:bg-gray-100 active:bg-gray-200 rounded-r-lg transition-all duration-150"
-                                      onClick={async () => {
-                                        if (book.enrollInviteId) {
-                                          await updateQuantity(book.enrollInviteId, existingItem.quantity + 1);
-                                          window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                        }
-                                      }}
-                                      disabled={!book.enrollInviteId || (window.location.hostname.includes("readonrent") && book.available_slots === 0)}
-                                    >
-                                      <Plus className="h-3.5 w-3.5" />
+                                      <ShoppingBag className="h-3.5 w-3.5" />
+                                      Cart
                                     </Button>
                                   </div>
                                 );

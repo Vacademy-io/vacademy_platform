@@ -592,8 +592,8 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                     <div className="relative aspect-[9/16] rounded-xl overflow-hidden shadow-lg transition-all duration-500 ease-out md:group-hover:-translate-y-2 ring-1 ring-black/5">
                       <CourseImage previewImageUrl={book.thumbnail} alt={book.title} className="w-full h-full object-cover transform transition-transform duration-700 md:group-hover:scale-110" />
 
-                      {/* Stock Indicator Overlay - Only for Read On Rent project */}
-                      {window.location.hostname.includes("readonrent") && book.available_slots !== undefined && (
+                      {/* Stock Indicator Overlay */}
+                      {book.available_slots !== undefined && (
                         <div className="absolute top-2 left-2 z-20 px-2 py-1 rounded-lg text-[10px] font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
                           {book.available_slots > 5 ? (
                             <>
@@ -656,7 +656,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                             window.dispatchEvent(new CustomEvent('cartUpdated'));
                                           }
                                         }}
-                                        disabled={!book.enrollInviteId || (window.location.hostname.includes("readonrent") && book.available_slots === 0)}
+                                        disabled={!book.enrollInviteId || book.available_slots === 0}
                                       >
                                         <Plus className="h-3.5 w-3.5" />
                                       </Button>
@@ -700,11 +700,11 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                       }
                                     }
                                   }}
-                                  disabled={!book.enrollInviteId || (window.location.hostname.includes("readonrent") && book.available_slots === 0)}
+                                  disabled={!book.enrollInviteId || book.available_slots === 0}
                                   style={{ touchAction: "manipulation" }}
                                 >
                                   <ShoppingCart className="h-4 w-4 mr-2" />
-                                  {window.location.hostname.includes("readonrent") && book.available_slots === 0 ? "Out of Stock" : "Add to Cart"}
+                                  {book.available_slots === 0 ? "Out of Stock" : "Add to Cart"}
                                 </Button>
                               );
                             })()}

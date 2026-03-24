@@ -251,10 +251,10 @@ export default function SessionListPage() {
 
     // Filter bar component
     const FilterBar = () => (
-        <div className="mb-6 rounded-lg border bg-white p-4">
-            <div className="flex flex-wrap gap-3">
+        <div className="mb-4 rounded-lg border bg-white p-3 sm:mb-6 sm:p-4">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
                 {/* Search */}
-                <div className="relative min-w-[200px] flex-1">
+                <div className="relative min-w-0 flex-1 basis-full sm:basis-auto sm:min-w-[200px]">
                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -283,7 +283,7 @@ export default function SessionListPage() {
                 </div>
 
                 {/* Date range */}
-                <div className="w-[220px]">
+                <div className="w-[calc(50%-4px)] sm:w-[220px]">
                     <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
                         <PopoverTrigger asChild>
                             <button
@@ -365,7 +365,7 @@ export default function SessionListPage() {
                 </div>
 
                 {/* Time of day filter */}
-                <div className="w-[180px]">
+                <div className="w-[calc(50%-4px)] sm:w-[180px]">
                     <Popover open={timePopoverOpen} onOpenChange={setTimePopoverOpen}>
                         <PopoverTrigger asChild>
                             <button
@@ -408,7 +408,7 @@ export default function SessionListPage() {
                 </div>
 
                 {/* Meeting Type */}
-                <div className="w-[180px]">
+                <div className="w-[calc(50%-4px)] sm:w-[180px]">
                     <Popover>
                         <PopoverTrigger asChild>
                             <button
@@ -443,7 +443,7 @@ export default function SessionListPage() {
                 </div>
 
                 {/* Subject */}
-                <div className="w-[180px]">
+                <div className="w-[calc(50%-4px)] sm:w-[180px]">
                     <Popover>
                         <PopoverTrigger asChild>
                             <button
@@ -482,7 +482,7 @@ export default function SessionListPage() {
                 </div>
 
                 {/* Access Type */}
-                <div className="w-[180px]">
+                <div className="w-[calc(50%-4px)] sm:w-[180px]">
                     <Popover>
                         <PopoverTrigger asChild>
                             <button
@@ -518,7 +518,7 @@ export default function SessionListPage() {
                 </div>
 
                 {/* Streaming Service */}
-                <div className="w-[180px]">
+                <div className="w-[calc(50%-4px)] sm:w-[180px]">
                     <Popover>
                         <PopoverTrigger asChild>
                             <button
@@ -554,7 +554,7 @@ export default function SessionListPage() {
                 </div>
 
                 {/* Batch Filter */}
-                <div className="w-[220px]">
+                <div className="w-[calc(50%-4px)] sm:w-[220px]">
                     <SelectChips
                         options={batchOptions}
                         selected={selectedBatches}
@@ -739,13 +739,13 @@ export default function SessionListPage() {
         <>
             <FilterBar />
             <Tabs value={selectedTab} onValueChange={handleTabChange}>
-                <div className="flex justify-between">
-                    <TabsList className="inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <TabsList className="inline-flex h-auto justify-start gap-1 overflow-x-auto rounded-none border-b !bg-transparent p-0 sm:gap-4">
                         {Object.values(SessionStatus).map((status) => (
                             <TabsTrigger
                                 key={status}
                                 value={status}
-                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${selectedTab === status
+                                className={`flex shrink-0 gap-1.5 rounded-none px-4 py-2 text-sm !shadow-none sm:px-12 ${selectedTab === status
                                     ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                     : 'border-none bg-transparent'
                                     }`}
@@ -757,6 +757,7 @@ export default function SessionListPage() {
                     <MyButton
                         onClick={() => navigate({ to: '/study-library/live-session/schedule' })}
                         buttonType="primary"
+                        className="w-full sm:w-auto"
                     >
                         Schedule
                     </MyButton>

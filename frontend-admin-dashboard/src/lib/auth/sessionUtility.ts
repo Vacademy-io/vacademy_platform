@@ -33,9 +33,8 @@ const setAuthorizationCookie = (
     );
 
     const defaultOptions: Cookies.CookieAttributes = {
-        // Only set domain for production environments
-        ...(isProduction && { domain: SSO_CONFIG.SHARED_DOMAIN }),
-        // Only require secure for production HTTPS
+        // Do NOT set domain — let cookies scope to the exact hostname
+        // so admin.vacademy.io and learner.vacademy.io stay independent
         secure: isProduction,
         sameSite: 'lax',
         expires: 7, // 7 days
@@ -276,7 +275,7 @@ const removeCookiesAndLogout = (): void => {
     Cookies.remove(TokenKey.accessToken);
     Cookies.remove(TokenKey.refreshToken);
 
-    // Remove from shared domain
+    // Also remove any legacy cookies that were set on the shared parent domain
     Cookies.remove(TokenKey.accessToken, { domain: SSO_CONFIG.SHARED_DOMAIN });
     Cookies.remove(TokenKey.refreshToken, { domain: SSO_CONFIG.SHARED_DOMAIN });
 };

@@ -336,7 +336,7 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                     </div>
                 </div>
 
-                <div className="flex w-full items-center justify-start gap-8 text-sm text-neutral-500">
+                <div className="flex w-full flex-wrap items-center justify-start gap-x-6 gap-y-1 text-sm text-neutral-500 sm:gap-x-8">
                     <div className="flex items-center gap-2">
                         <span className="text-black">
                             {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:
@@ -372,17 +372,17 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                         </div>
                     )}
                 </div>
-                <div className="flex justify-between">
-                    <div className="flex items-center gap-4 overflow-hidden text-sm text-neutral-500">
-                        <h1 className="!font-normal text-black">Join Link:</h1>
-                        <span className="flex-1 truncate px-2 py-1 text-sm underline" title={joinLink}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-2 overflow-hidden text-sm text-neutral-500 sm:gap-4">
+                        <h1 className="shrink-0 !font-normal text-black">Join Link:</h1>
+                        <span className="min-w-0 flex-1 truncate px-1 py-1 text-sm underline sm:px-2" title={joinLink}>
                             {joinLink}
                         </span>
                         <MyButton
                             type="button"
                             scale="small"
                             buttonType="secondary"
-                            className="mr-4 h-8 min-w-8"
+                            className="h-8 min-w-8 shrink-0 sm:mr-4"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 copyToClipboard(joinLink);
@@ -392,7 +392,7 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                         </MyButton>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex shrink-0 items-center gap-4">
                         <QRCode
                             value={joinLink}
                             className="size-16"
@@ -416,12 +416,12 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                 heading="Participant Details"
                 open={openDialog}
                 onOpenChange={(open) => setOpenDialog(open)}
-                className="w-[80vw] max-w-4xl"
+                className="w-[95vw] max-w-4xl sm:w-[80vw]"
             >
                 <div className="flex h-full flex-col gap-3 p-4 text-sm">
                     {/* Registration Count Display */}
-                    <div className="flex items-center justify-between rounded-lg bg-primary-50 p-4">
-                        <div className="flex items-center gap-6">
+                    <div className="flex flex-col gap-3 rounded-lg bg-primary-50 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+                        <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                             <div className="text-lg font-semibold text-primary-500">
                                 Total Registrations: {reportResponse?.length || 0}
                             </div>

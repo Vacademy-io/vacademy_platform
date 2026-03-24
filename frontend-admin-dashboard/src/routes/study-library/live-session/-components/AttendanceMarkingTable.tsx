@@ -285,7 +285,7 @@ export function AttendanceMarkingTable({
     return (
         <div className="space-y-3">
             {/* Summary */}
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <div className="flex items-center gap-4">
                     <span className="font-medium">Attendance</span>
                     <span className="flex items-center gap-1 text-green-600">
@@ -315,7 +315,6 @@ export function AttendanceMarkingTable({
                         <tr className="border-b text-left text-xs font-medium text-gray-500">
                             <th className="px-3 py-2 w-[50px]">#</th>
                             <th className="px-3 py-2">Name</th>
-                            <th className="px-3 py-2">Email</th>
                             <th className="px-3 py-2 w-[120px]">
                                 <button
                                     type="button"
@@ -325,6 +324,7 @@ export function AttendanceMarkingTable({
                                     Status <SortIcon field="status" />
                                 </button>
                             </th>
+                            <th className="px-3 py-2">Email</th>
                             <th className="px-3 py-2 w-[100px]">
                                 <button
                                     type="button"
@@ -365,7 +365,6 @@ export function AttendanceMarkingTable({
                                     >
                                         <td className="px-3 py-2 text-gray-500">{index + 1}</td>
                                         <td className="px-3 py-2 font-medium">{student.fullName}</td>
-                                        <td className="px-3 py-2 text-gray-500">{student.email}</td>
                                         <td className="px-3 py-2">
                                             <button
                                                 type="button"
@@ -384,6 +383,7 @@ export function AttendanceMarkingTable({
                                                 {isPresent ? 'Present' : 'Absent'}
                                             </button>
                                         </td>
+                                        <td className="px-3 py-2 text-gray-500">{student.email}</td>
                                         <td className="px-3 py-2 text-gray-600">
                                             {student.providerTotalDurationMinutes != null ? (
                                                 <span className="flex items-center gap-1">

@@ -19,6 +19,7 @@ export interface StudentFeePaymentRowDTO {
     package_session_ids: string[];
     student_name: string;
     phone: string;
+    email: string | null;
     cpo_name: string;
     total_expected_amount: number;
     total_paid_amount: number;

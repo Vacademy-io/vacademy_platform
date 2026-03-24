@@ -21,6 +21,8 @@ public class AdmissionResponsesListItemDTO {
     private String admissionId; // audience_response.id
 
     private String destinationPackageSessionId; // audience_response.destination_package_session_id
+    private String enquiryId; // audience_response.enquiry_id
+    private String applicantId; // audience_response.applicant_id
 
     // Table columns (admission-focused)
     private String applyingForClass; // "Class" column

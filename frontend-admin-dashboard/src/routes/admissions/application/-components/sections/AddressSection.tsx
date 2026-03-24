@@ -160,9 +160,10 @@ export const AddressSection: React.FC<SectionProps> = ({ formData, updateFormDat
                             type="text"
                             className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:bg-neutral-100 disabled:text-neutral-500"
                             placeholder="e.g., 462001"
-                            value={data.pinCode || ''}
+                            value={data.pinCode || data.pincode || ''}
                             onChange={(e) => {
                                 updateField('pinCode', e.target.value);
+                                updateField('pincode', e.target.value);
                             }}
                             disabled={disabled}
                         />

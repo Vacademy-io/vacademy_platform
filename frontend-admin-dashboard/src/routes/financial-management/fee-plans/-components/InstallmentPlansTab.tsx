@@ -212,7 +212,7 @@ function FeeTypeCard({
     );
 }
 
-function PackageCard({ pkg }: { pkg: CPOPackage }) {
+function PackageCard({ pkg, allBatches = [] }: { pkg: CPOPackage; allBatches?: any[] }) {
     const [expandedFeeTypes, setExpandedFeeTypes] = useState<Set<string>>(new Set());
     const shouldFetchFullDetails = expandedFeeTypes.size > 0;
 
@@ -260,6 +260,34 @@ function PackageCard({ pkg }: { pkg: CPOPackage }) {
                             {feeTypesForRender.length !== 1 ? 's' : ''}
                         </span>
                     </div>
+                    {/* Linked class badges */}
+                    {pkg.package_session_links && pkg.package_session_links.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                            {pkg.package_session_links
+                                .filter((link) => {
+                                    const batch = allBatches.find(
+                                        (b) => b.id === link.package_session_id
+                                    );
+                                    return !batch || batch.is_parent === true || !batch.parent_id;
+                                })
+                                .map((link) => {
+                                    const batch = allBatches.find(
+                                        (b) => b.id === link.package_session_id
+                                    );
+                                    const label = batch
+                                        ? `${batch.level.level_name}${batch.name ? ` – ${batch.name}` : ''}`
+                                        : link.package_session_id.slice(0, 8);
+                                    return (
+                                        <span
+                                            key={link.package_session_id}
+                                            className="inline-flex items-center rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
+                                        >
+                                            {label}
+                                        </span>
+                                    );
+                                })}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -284,6 +312,7 @@ function PackageCard({ pkg }: { pkg: CPOPackage }) {
 // ─── Main Component ─────────────────────────────────────────────────────────────
 
 export default function InstallmentPlansTab() {
+    const [selectedSessionId, setSelectedSessionId] = useState<string>('');
     const [selectedPackageSessionId, setSelectedPackageSessionId] = useState<string | null>(null);
     const [showCreateDialog, setShowCreateDialog] = useState(false);
 
@@ -293,13 +322,39 @@ export default function InstallmentPlansTab() {
         return instituteDetails?.batches_for_sessions ?? [];
     }, [instituteDetails]);
 
-    // Build dropdown options from batches
-    const batchOptions = useMemo(() => {
-        return batches.map((batch) => ({
-            id: batch.id,
-            label: `${batch.package_dto.package_name} – ${batch.level.level_name} (${batch.session.session_name})`,
-        }));
+    // Derive unique sessions from batches
+    const sessions = useMemo(() => {
+        const map = new Map<string, { id: string; name: string }>();
+        batches.forEach((b) => {
+            if (!map.has(b.session.id)) {
+                map.set(b.session.id, { id: b.session.id, name: b.session.session_name });
+            }
+        });
+        return Array.from(map.values());
     }, [batches]);
+
+    // Default to first session
+    React.useEffect(() => {
+        if (!selectedSessionId && sessions.length > 0) {
+            setSelectedSessionId(sessions[0].id);
+        }
+    }, [sessions, selectedSessionId]);
+
+    // Build dropdown options from batches (parent/standalone only, filtered by session)
+    const batchOptions = useMemo(() => {
+        return batches
+            .filter((batch) => batch.is_parent === true || !batch.parent_id)
+            .filter((batch) => !selectedSessionId || batch.session.id === selectedSessionId)
+            .map((batch) => ({
+                id: batch.id,
+                label: `${batch.package_dto.package_name} – ${batch.level.level_name}${batch.name ? ` – ${batch.name}` : ''}`,
+            }));
+    }, [batches, selectedSessionId]);
+
+    // Reset package session filter when session changes
+    React.useEffect(() => {
+        setSelectedPackageSessionId(null);
+    }, [selectedSessionId]);
 
     // Fetch ALL CPOs for the institute (paginated)
     const { data: cpoListResponse, isLoading, isError, error } = useInstituteCPOList(0, 500);
@@ -351,16 +406,29 @@ export default function InstallmentPlansTab() {
 
                 {/* Session filter + Create button */}
                 <div className="flex items-center gap-3">
-                    {/* Batch / Session selector */}
-                    <div className="min-w-[260px]">
+                    {/* Session selector */}
+                    <div className="min-w-[180px]">
                         <select
-                            value={selectedPackageSessionId ?? ''}
-                            onChange={(e) => {
-                                setSelectedPackageSessionId(e.target.value || null);
-                            }}
+                            value={selectedSessionId}
+                            onChange={(e) => setSelectedSessionId(e.target.value)}
                             className="w-full cursor-pointer rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-primary-500 focus:ring-1 focus:ring-primary-200"
                         >
-                            <option value="">All Sessions</option>
+                            {sessions.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                    {s.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Class selector */}
+                    <div className="min-w-[220px]">
+                        <select
+                            value={selectedPackageSessionId ?? ''}
+                            onChange={(e) => setSelectedPackageSessionId(e.target.value || null)}
+                            className="w-full cursor-pointer rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-primary-500 focus:ring-1 focus:ring-primary-200"
+                        >
+                            <option value="">All Classes</option>
                             {batchOptions.map((opt) => (
                                 <option key={opt.id} value={opt.id}>
                                     {opt.label}
@@ -428,36 +496,6 @@ export default function InstallmentPlansTab() {
                 </div>
             )}
 
-            {/* ─── Stats ────────────────────────────────────────────────────────── */}
-            {!isLoading && cpoPackages.length > 0 && (
-                <div className="grid grid-cols-3 gap-4">
-                    <div className="rounded-xl border border-primary-100 bg-gradient-to-br from-primary-100 to-primary-200 p-4">
-                        <div className="text-xs font-bold uppercase tracking-wide text-primary-500">
-                            Total Packages
-                        </div>
-                        <div className="mt-1 text-2xl font-extrabold text-primary-500">
-                            {cpoPackages.length}
-                        </div>
-                    </div>
-                    <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-green-50 p-4">
-                        <div className="text-xs font-bold uppercase tracking-wide text-emerald-500">
-                            Total Fee Types
-                        </div>
-                        <div className="mt-1 text-2xl font-extrabold text-emerald-700">
-                            {cpoPackages.reduce((sum, p) => sum + (p.fee_types?.length ?? 0), 0)}
-                        </div>
-                    </div>
-                    <div className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-yellow-50 p-4">
-                        <div className="text-xs font-bold uppercase tracking-wide text-amber-500">
-                            Active Packages
-                        </div>
-                        <div className="mt-1 text-2xl font-extrabold text-amber-700">
-                            {cpoPackages.filter((p) => p.status === 'ACTIVE').length}
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* ─── Empty state ──────────────────────────────────────────────────── */}
             {!isLoading && !isError && cpoPackages.length === 0 && (
                 <div className="py-16 text-center text-gray-400">
@@ -485,7 +523,7 @@ export default function InstallmentPlansTab() {
             {cpoPackages.length > 0 && (
                 <div className="flex flex-col gap-4">
                     {cpoPackages.map((pkg) => (
-                        <PackageCard key={pkg.id} pkg={pkg} />
+                        <PackageCard key={pkg.id} pkg={pkg} allBatches={batches} />
                     ))}
                 </div>
             )}

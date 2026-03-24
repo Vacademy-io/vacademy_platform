@@ -14,7 +14,7 @@ import { Card } from '@/components/ui/card';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { EnquiryTable } from './-components/EnquiryTable';
 import { MyButton } from '@/components/design-system/button';
-import { Copy, Plus, X, UserPlus} from 'lucide-react';
+import { Copy, Plus, X, UserPlus } from 'lucide-react';
 import createCampaignLink from '@/routes/audience-manager/list/-utils/createCampaignLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { FilterChips } from '@/components/design-system/chips';
@@ -129,7 +129,10 @@ function EnquiryPage() {
     );
 
     const enquiries = useMemo(
-        () => (enquiriesData?.content || []).filter((enquiry: any) => enquiry.session_id !== null && enquiry.session_id !== undefined),
+        () =>
+            (enquiriesData?.content || []).filter(
+                (enquiry: any) => enquiry.session_id !== null && enquiry.session_id !== undefined
+            ),
         [enquiriesData?.content]
     );
     useEffect(() => {
@@ -178,10 +181,12 @@ function EnquiryPage() {
     const packageSessionOptions = useMemo(() => {
         if (!instituteDetails?.batches_for_sessions) return [];
 
-        return instituteDetails.batches_for_sessions.map((batch) => ({
-            id: batch.id,
-            label: `${batch.package_dto.package_name} - ${batch.level.level_name} - ${batch.session.session_name}`,
-        }));
+        return instituteDetails.batches_for_sessions
+            .filter((batch) => batch.is_parent === true || !batch.parent_id)
+            .map((batch) => ({
+                id: batch.id,
+                label: `${batch.package_dto.package_name} - ${batch.level.level_name} - ${batch.session.session_name}${batch.name ? ` - ${batch.name}` : ''}`,
+            }));
     }, [instituteDetails]);
 
     // Calculate filter values for API
@@ -219,14 +224,16 @@ function EnquiryPage() {
                 <h1 className="text-2xl font-bold">Enquiries</h1>
                 <div className="flex items-stretch gap-4">
                     <Select value={selectedEnquiryId} onValueChange={setSelectedEnquiryId}>
-                        <SelectTrigger className="h-auto w-[280px] py-1.5 px-3">
+                        <SelectTrigger className="h-auto w-[280px] px-3 py-1.5">
                             <SelectValue placeholder="Select Enquiry" />
                         </SelectTrigger>
                         <SelectContent>
                             {enquiries.map((enquiry) => (
                                 <SelectItem key={enquiry.id} value={enquiry.id || ''}>
                                     <div className="flex flex-col items-start gap-0.5 text-left">
-                                        <span className="text-sm font-medium">{enquiry.campaign_name}</span>
+                                        <span className="text-sm font-medium">
+                                            {enquiry.campaign_name}
+                                        </span>
                                         <span className="text-xs font-light text-muted-foreground">
                                             Enquiry type: {enquiry.campaign_type}
                                         </span>
@@ -238,7 +245,9 @@ function EnquiryPage() {
                     <MyButton
                         buttonType="primary"
                         scale="small"
-                        onClick={() => navigate({ to: `/admissions/new-enquiry/${selectedEnquiryId}` })}
+                        onClick={() =>
+                            navigate({ to: `/admissions/new-enquiry/${selectedEnquiryId}` })
+                        }
                         className="h-full"
                     >
                         <Plus className="mr-1 size-4" />
@@ -401,7 +410,7 @@ function EnquiryPage() {
             <div className="fixed bottom-8 right-8 z-[50]">
                 <Button
                     onClick={() => setIsCreateDialogOpen(true)}
-                    className="h-12 md:h-14 rounded-full bg-[#f37033] hover:bg-[#d65f29] text-white px-6 shadow-xl transition-all hover:-translate-y-1 hover:shadow-2xl"
+                    className="h-12 rounded-full bg-[#f37033] px-6 text-white shadow-xl transition-all hover:-translate-y-1 hover:bg-[#d65f29] hover:shadow-2xl md:h-14"
                 >
                     <Plus className="mr-2 size-5" />
                     Create New Enquiry Form

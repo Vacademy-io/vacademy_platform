@@ -30,11 +30,13 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
 
     React.useEffect(() => {
         if (instituteDetails?.batches_for_sessions) {
-            const sessions = instituteDetails.batches_for_sessions.map((batch) => ({
-                id: batch.id,
-                name: `${batch.package_dto.package_name} - ${batch.level.level_name}`,
-                levelName: batch.level.level_name,
-            }));
+            const sessions = instituteDetails.batches_for_sessions
+                .filter((batch) => batch.is_parent === true || !batch.parent_id)
+                .map((batch) => ({
+                    id: batch.id,
+                    name: `${batch.package_dto.package_name} - ${batch.level.level_name}${batch.name ? ` - ${batch.name}` : ''}`,
+                    levelName: batch.level.level_name,
+                }));
             setPackageSessions(sessions);
         }
 
@@ -109,12 +111,15 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
                                 <SelectValue placeholder="Select class" />
                             </SelectTrigger>
                             <SelectContent>
+                                <SelectItem value="Kindergarten">Kindergarten</SelectItem>
+                                <SelectItem value="Nursery">Nursery</SelectItem>
+                                <SelectItem value="LKG">LKG</SelectItem>
+                                <SelectItem value="UKG">UKG</SelectItem>
                                 {Array.from({ length: 12 }, (_, i) => i + 1).map((cls) => (
                                     <SelectItem key={cls} value={cls.toString()}>
                                         Class {cls}
                                     </SelectItem>
                                 ))}
-                                <SelectItem value="Kindergarten">Kindergarten</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -229,7 +234,9 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
                             Class / Grade Applying For <span className="text-red-500">*</span>
                         </Label>
                         <Select
-                            value={formData.selectedPackageSessionId || formData.applyingForClass || ''}
+                            value={
+                                formData.selectedPackageSessionId || formData.applyingForClass || ''
+                            }
                             onValueChange={(value) => {
                                 updateFormData({
                                     applyingForClass: value,

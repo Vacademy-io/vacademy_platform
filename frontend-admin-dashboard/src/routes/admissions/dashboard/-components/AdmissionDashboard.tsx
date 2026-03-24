@@ -30,10 +30,12 @@ export default function AdmissionDashboard() {
 
     const sessionOptions = useMemo(() => {
         if (!instituteDetails?.batches_for_sessions) return [];
-        return instituteDetails.batches_for_sessions.map((batch: any) => ({
-            id: batch.id,
-            label: `${batch.package_dto?.package_name} - ${batch.level?.level_name} - ${batch.session?.session_name}`,
-        }));
+        return instituteDetails.batches_for_sessions
+            .filter((batch: any) => batch.is_parent === true || !batch.parent_id)
+            .map((batch: any) => ({
+                id: batch.id,
+                label: `${batch.package_dto?.package_name} - ${batch.level?.level_name}${batch.name ? ` - ${batch.name}` : ''} - ${batch.session?.session_name}`,
+            }));
     }, [instituteDetails]);
 
     const packageSessionId = selectedSession !== 'all' ? selectedSession : undefined;

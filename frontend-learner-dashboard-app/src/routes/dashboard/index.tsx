@@ -70,6 +70,7 @@ import { MyMembershipWidget } from "./-components/MyMembershipWidget";
 import { MyBooksWidget } from "./-components/MyBooksWidget";
 import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidget";
 import { Preferences } from "@capacitor/preferences";
+import { AttendanceWidget } from "./-components/AttendanceWidget";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -466,11 +467,9 @@ export function DashboardComponent() {
                   className: "",
                   render: (
                     <StatCard
-                      title="Attendance"
+                      title="Attendance %"
                       count={
-                        weeklyAttendance?.days?.filter(
-                          (d) => d.status === "PRESENT"
-                        ).length || 0
+                        Math.round(weeklyAttendance?.attendancePercentage ?? 0)
                       }
                       icon={Clock}
                       onClick={() =>
@@ -552,8 +551,8 @@ export function DashboardComponent() {
                 },
                 {
                   id: "thisWeekAttendance" as const,
-                  className: "",
-                  render: null,
+                  className: "sm:col-span-2",
+                  render: <AttendanceWidget />,
                 },
                 {
                   id: "custom" as const,

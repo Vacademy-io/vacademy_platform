@@ -61,6 +61,9 @@ public class Enquiry {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
+    @Column(name = "parent_relation_with_child", length = 100)
+    private String parentRelationWithChild;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

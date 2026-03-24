@@ -31,6 +31,15 @@ public class AdmissionResponsesListItemDTO {
     private String parentName;
     private String parentEmail;
     private String parentMobile;
+    private String parentRelationWithChild;
+    private String fatherName;
+    private String fatherMobile;
+    private String fatherEmail;
+    private String motherName;
+    private String motherMobile;
+    private String motherEmail;
+    private String guardianName;
+    private String guardianMobile;
 
     private String trackingId; // applicant.tracking_id (if applicant exists)
     private String status; // audience_response.overall_status

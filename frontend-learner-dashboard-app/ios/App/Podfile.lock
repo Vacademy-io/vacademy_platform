@@ -3,6 +3,8 @@ PODS:
     - CapacitorCordova
   - CapacitorApp (7.0.1):
     - Capacitor
+  - CapacitorBrowser (7.0.4):
+    - Capacitor
   - CapacitorCommunityPrivacyScreen (6.0.0):
     - Capacitor
   - CapacitorCordova (7.4.2)
@@ -76,6 +78,7 @@ PODS:
 DEPENDENCIES:
   - "Capacitor (from `../../node_modules/.pnpm/@capacitor+ios@7.4.2_@capacitor+core@7.4.2/node_modules/@capacitor/ios`)"
   - "CapacitorApp (from `../../node_modules/.pnpm/@capacitor+app@7.0.1_@capacitor+core@7.4.2/node_modules/@capacitor/app`)"
+  - "CapacitorBrowser (from `../../node_modules/.pnpm/@capacitor+browser@7.0.4_@capacitor+core@7.4.2/node_modules/@capacitor/browser`)"
   - "CapacitorCommunityPrivacyScreen (from `../../node_modules/.pnpm/@capacitor-community+privacy-screen@6.0.0_@capacitor+core@7.4.2/node_modules/@capacitor-community/privacy-screen`)"
   - "CapacitorCordova (from `../../node_modules/.pnpm/@capacitor+ios@7.4.2_@capacitor+core@7.4.2/node_modules/@capacitor/ios`)"
   - "CapacitorFirebaseMessaging (from `../../node_modules/.pnpm/@capacitor-firebase+messaging@7.3.0_@capacitor+core@7.4.2_firebase@10.14.1/node_modules/@capacitor-firebase/messaging`)"
@@ -101,6 +104,8 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/.pnpm/@capacitor+ios@7.4.2_@capacitor+core@7.4.2/node_modules/@capacitor/ios"
   CapacitorApp:
     :path: "../../node_modules/.pnpm/@capacitor+app@7.0.1_@capacitor+core@7.4.2/node_modules/@capacitor/app"
+  CapacitorBrowser:
+    :path: "../../node_modules/.pnpm/@capacitor+browser@7.0.4_@capacitor+core@7.4.2/node_modules/@capacitor/browser"
   CapacitorCommunityPrivacyScreen:
     :path: "../../node_modules/.pnpm/@capacitor-community+privacy-screen@6.0.0_@capacitor+core@7.4.2/node_modules/@capacitor-community/privacy-screen"
   CapacitorCordova:
@@ -121,6 +126,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   Capacitor: 9d9e481b79ffaeacaf7a85d6a11adec32bd33b59
   CapacitorApp: febecbb9582cb353aed037e18ec765141f880fe9
+  CapacitorBrowser: affdd32ab6a1822942eb55095b3c5ecf3f656a9d
   CapacitorCommunityPrivacyScreen: 682470c41cce325d7a85b95907887919d4694066
   CapacitorCordova: 5e58d04631bc5094894ac106e2bf1da18a9e6151
   CapacitorFirebaseMessaging: f2be30f5cc99da414a82693e93e0f039d097aabf
@@ -138,6 +144,6 @@ SPEC CHECKSUMS:
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
 
-PODFILE CHECKSUM: d9d1421a146b81602270912df9c76f7bc2b78a17
+PODFILE CHECKSUM: 719db43025a6e7e82b2eda813015dd7cd7488eab
 
 COCOAPODS: 1.16.2

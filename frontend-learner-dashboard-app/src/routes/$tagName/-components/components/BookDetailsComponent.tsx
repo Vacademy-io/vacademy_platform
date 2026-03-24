@@ -24,10 +24,12 @@ interface BookDetailsProps {
     showPayment?: boolean;
     showAddToCart?: boolean;
     courseData?: any; // The real data fetched from CourseDetailsPage
+    tagName?: string;
 }
 
 export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
-    courseData
+    courseData,
+    tagName
 }) => {
     // If courseData is missing, we can't do much (it usually comes from the parent page fetching it)
     if (!courseData) return null;
@@ -136,7 +138,29 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                 {/* Book Image Section - Larger on Mobile */}
                 <div className="w-full md:w-2/5 lg:w-1/3 mb-4 md:mb-0">
                     <div className="md:sticky md:top-24">
-                        <div className="aspect-[9/16] w-full max-w-[280px] mx-auto md:max-w-none rounded-xl overflow-hidden shadow-2xl bg-gray-100 transition-transform duration-300 hover:shadow-3xl">
+                        <div className="relative aspect-[9/16] w-full max-w-[280px] mx-auto md:max-w-none rounded-xl overflow-hidden shadow-2xl bg-gray-100 transition-transform duration-300 hover:shadow-3xl">
+                            {/* Stock Indicator Overlay - Only for Read On Rent project */}
+                            {window.location.hostname.includes("readonrent") && courseData.available_slots !== undefined && (
+                                <div className="absolute top-2 left-2 z-20 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-2 border border-white/20">
+                                    {courseData.available_slots > 5 ? (
+                                        <>
+                                            <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                                            <span className="text-green-700 uppercase tracking-wider">In Stock</span>
+                                        </>
+                                    ) : courseData.available_slots > 0 ? (
+                                        <>
+                                            <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+                                            <span className="text-orange-700 uppercase tracking-wider">Only {courseData.available_slots} Left</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="w-2 h-2 rounded-full bg-gray-400" />
+                                            <span className="text-gray-600 uppercase tracking-wider">Out of Stock</span>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
                             {coverUrl ? (
                                 <img
                                     src={coverUrl}
@@ -229,7 +253,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                                         window.dispatchEvent(new CustomEvent('cartUpdated'));
                                                     }
                                                 }}
-                                                disabled={!courseData.enrollInviteId}
+                                                disabled={!courseData.enrollInviteId || (window.location.hostname.includes("readonrent") && courseData.available_slots === 0)}
                                             >
                                                 <Plus className="h-4 w-4" />
                                             </Button>
@@ -267,9 +291,10 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                             toast.error("Cannot add to cart: Missing enrollment info", { duration: 2000 });
                                         }
                                     }}
+                                    disabled={!courseData.enrollInviteId || (window.location.hostname.includes("readonrent") && courseData.available_slots === 0)}
                                 >
                                     <ShoppingCart className="h-4 w-4" />
-                                    Add to Cart
+                                    {window.location.hostname.includes("readonrent") && courseData.available_slots === 0 ? "Out of Stock" : "Add to Cart"}
                                 </Button>
                             );
                         })()}

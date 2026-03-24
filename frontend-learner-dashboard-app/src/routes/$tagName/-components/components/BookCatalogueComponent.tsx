@@ -55,6 +55,7 @@ interface Course {
   comma_separeted_tags?: string;
   enrollInviteId?: string;
   packageSessionId?: string;
+  available_slots?: number;
   [key: string]: any;
 }
 
@@ -115,6 +116,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
   tagName,
   globalSettings,
 }) => {
+  console.log("tagname is :", tagName);
   const navigate = useNavigate();
   const location = useLocation();
   const { addItem, getItemByEnrollInviteId, updateQuantity, getCartMode, syncCart } =
@@ -304,11 +306,18 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
             package_name: (c.package_name || "").toLowerCase(),
             course_html_description_html: c.course_html_description_html,
             textContent: textContent,
-            // Pre-process author name for faster search
             authorName: (c.instructors?.[0]?.full_name || c.instructor || "").toLowerCase(),
             ...c,
+            // Must be AFTER ...c spread to avoid being overwritten
+            available_slots: c.availableSlots !== undefined ? c.availableSlots : c.available_slots,
           } as Course;
         });
+
+        // Debug: log first item to check available_slots and tagName
+        if (transformed.length > 0) {
+          console.log("[Stock Debug] tagName:", tagName);
+          console.log("[Stock Debug] First book available_slots:", transformed[0].available_slots, "| raw availableSlots:", transformed[0].dataset?.availableSlots, "| raw available_slots:", transformed[0].dataset?.available_slots);
+        }
 
         // Filter out duplicates based on ID
         const uniqueCourses = Array.from(
@@ -433,6 +442,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
     if (book.thumbnail) searchParams.set("bannerImage", book.thumbnail);
     if (book.level) searchParams.set("level", book.level);
     if (book.price !== undefined && book.price !== null) searchParams.set("price", book.price.toString());
+    if (book.available_slots !== undefined) searchParams.set("available_slots", book.available_slots.toString());
 
     navigate({
       to: `/${tagName}/${book.id}`,
@@ -581,6 +591,28 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                     <div className="relative aspect-[9/16] rounded-xl overflow-hidden shadow-lg transition-all duration-500 ease-out md:group-hover:-translate-y-2 ring-1 ring-black/5">
                       <CourseImage previewImageUrl={book.thumbnail} alt={book.title} className="w-full h-full object-cover transform transition-transform duration-700 md:group-hover:scale-110" />
 
+                      {/* Stock Indicator Overlay - Only for Read On Rent project */}
+                      {window.location.hostname.includes("readonrent") && book.available_slots !== undefined && (
+                        <div className="absolute top-2 left-2 z-20 px-2 py-1 rounded-lg text-[10px] font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
+                          {book.available_slots > 5 ? (
+                            <>
+                              <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                              <span className="text-green-700 uppercase tracking-wider">In Stock</span>
+                            </>
+                          ) : book.available_slots > 0 ? (
+                            <>
+                              <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+                              <span className="text-orange-700 uppercase tracking-wider">Only {book.available_slots} Left</span>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                              <span className="text-gray-600 uppercase tracking-wider">Out of Stock</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+
                       {/* Bottom Gradient Overlay - Only visible on hover */}
                       <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/70 via-black/40 to-transparent opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-500 ease-in-out pointer-events-none" />
 
@@ -622,7 +654,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                           window.dispatchEvent(new CustomEvent('cartUpdated'));
                                         }
                                       }}
-                                      disabled={!book.enrollInviteId}
+                                      disabled={!book.enrollInviteId || (window.location.hostname.includes("readonrent") && book.available_slots === 0)}
                                     >
                                       <Plus className="h-3.5 w-3.5" />
                                     </Button>
@@ -657,10 +689,11 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                       }
                                     }
                                   }}
+                                  disabled={!book.enrollInviteId || (window.location.hostname.includes("readonrent") && book.available_slots === 0)}
                                   style={{ touchAction: "manipulation" }}
                                 >
                                   <ShoppingCart className="h-4 w-4 mr-2" />
-                                  Add to Cart
+                                  {window.location.hostname.includes("readonrent") && book.available_slots === 0 ? "Out of Stock" : "Add to Cart"}
                                 </Button>
                               );
                             })()}

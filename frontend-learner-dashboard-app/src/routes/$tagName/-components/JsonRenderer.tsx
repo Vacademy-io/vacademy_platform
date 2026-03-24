@@ -122,6 +122,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             key={id}
             {...props}
             courseData={courseData}
+            tagName={tagName}
           />
         );
       case "courseRecommendations":

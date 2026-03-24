@@ -37,6 +37,7 @@ interface CourseDetailsPageProps {
   bannerImage?: string;
   level?: string;
   price?: string;
+  available_slots?: number;
 }
 
 interface CourseData {
@@ -78,6 +79,7 @@ interface CourseData {
   course_html_description_html?: string;
   about_the_course_html?: string;
   currency?: string;
+  available_slots?: number;
 }
 
 export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
@@ -90,6 +92,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   bannerImage,
   level,
   price,
+  available_slots,
 }) => {
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
@@ -470,6 +473,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           about_the_course_html: course.about_the_course || course.about_the_course_html || "",
           comma_separeted_tags: course.tags || course.comma_separeted_tags || "",
           currency: finalCurrency,
+          available_slots: available_slots,
         } as any;
 
         setCourseData(courseData);

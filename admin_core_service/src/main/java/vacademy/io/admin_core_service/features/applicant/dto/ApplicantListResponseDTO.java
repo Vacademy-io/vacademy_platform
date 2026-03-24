@@ -65,6 +65,7 @@ public class ApplicantListResponseDTO {
         private String parentsToMotherEmail;
         private String guardianName;
         private String guardianMobile;
+        private String guardianEmail;
         private String addressLine;
         private String city;
         private String pinCode;

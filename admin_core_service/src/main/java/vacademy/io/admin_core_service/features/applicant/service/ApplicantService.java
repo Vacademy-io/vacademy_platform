@@ -383,6 +383,7 @@ public class ApplicantService {
                                                         data.put("mother_email", student.getParentsToMotherEmail());
                                                         data.put("guardian_name", student.getGuardianName());
                                                         data.put("guardian_mobile", student.getGuardianMobile());
+                                                        data.put("guardian_email", student.getGuardianEmail());
                                                         data.put("current_school", student.getPreviousSchoolName());
                                                         data.put("city", student.getCity());
                                                         data.put("address", student.getAddressLine());
@@ -587,6 +588,7 @@ public class ApplicantService {
                                                                                 student.getParentsToMotherEmail());
                                                                 studentData.setGuardianName(student.getGuardianName());
                                                                 studentData.setGuardianMobile(student.getGuardianMobile());
+                                                                studentData.setGuardianEmail(student.getGuardianEmail());
                                                                 studentData.setAddressLine(student.getAddressLine());
                                                                 studentData.setCity(student.getCity());
                                                                 studentData.setPinCode(student.getPinCode());
@@ -1149,6 +1151,7 @@ public class ApplicantService {
                         // Guardian details
                         student.setGuardianName(getFormDataString(formData, "guardian_name"));
                         student.setGuardianMobile(getFormDataString(formData, "guardian_mobile"));
+                        student.setGuardianEmail(getFormDataString(formData, "guardian_email"));
                         // Address
                         // student.setPermanentAddress(getFormDataString(formData,
                         // "permanent_address"));

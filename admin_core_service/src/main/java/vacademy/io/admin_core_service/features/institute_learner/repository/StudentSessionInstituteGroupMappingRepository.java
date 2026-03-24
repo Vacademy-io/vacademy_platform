@@ -199,6 +199,22 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("userId") String userId,
       @Param("instituteId") String instituteId);
 
+  /**
+   * Latest active learner mapping for receipt enrichment (class, section, academic year).
+   * Fetches package and session in one round trip.
+   */
+  @Query("SELECT m FROM StudentSessionInstituteGroupMapping m " +
+      "JOIN FETCH m.packageSession ps " +
+      "LEFT JOIN FETCH ps.packageEntity " +
+      "LEFT JOIN FETCH ps.session " +
+      "WHERE m.userId = :userId AND m.institute.id = :instituteId " +
+      "AND m.status = 'ACTIVE' AND m.packageSession.id IS NOT NULL " +
+      "AND ps.status = 'ACTIVE' " +
+      "ORDER BY m.createdAt DESC")
+  List<StudentSessionInstituteGroupMapping> findActiveMappingsWithFetchedPackageSession(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId);
+
   // Find all active admin mappings for a user
   @Query("SELECT m FROM StudentSessionInstituteGroupMapping m " +
       "LEFT JOIN FETCH m.subOrg " +

@@ -22,6 +22,7 @@ import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -165,21 +166,61 @@ public class AdminOfflineDataEntryManager {
             attempt.setSubmitData(attemptDataJson);
             studentAttemptService.updateStudentAttempt(attempt);
 
-            // Trigger the existing auto-evaluation pipeline
+            // Trigger auto-evaluation (synchronous - needed for marks)
             studentAttemptService.updateStudentAttemptWithResultAfterMarksCalculation(Optional.of(attempt));
 
-            // Send enriched assessment data to admin-core-service activity_log (same as online submissions)
-            try {
-                assessmentLLMAnalyticsService.sendAssessmentDataForAnalysisAsync(
-                        attempt, assessment.getId(), assessment.getName(),
-                        assessment.getAssessmentType(), assessment.getDuration(), 0);
-            } catch (Exception e) {
-                log.error("Failed to send offline assessment data for activity log - continuing anyway: {}", e.getMessage(), e);
-            }
+            // Send activity log asynchronously (don't block the response)
+            final StudentAttempt finalAttempt = attempt;
+            final Assessment finalAssessment = assessment;
+            CompletableFuture.runAsync(() -> {
+                try {
+                    assessmentLLMAnalyticsService.sendAssessmentDataForAnalysisAsync(
+                            finalAttempt, finalAssessment.getId(), finalAssessment.getName(),
+                            finalAssessment.getAssessmentType(), finalAssessment.getDuration(), 0);
+                } catch (Exception e) {
+                    log.error("Failed to send offline assessment data for activity log: {}", e.getMessage());
+                }
+            });
 
             return ResponseEntity.ok("Done");
         } catch (Exception e) {
             throw new VacademyException("Failed to submit offline responses: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Combined: create attempt + submit responses + evaluate in a single call.
+     * Eliminates 2 extra HTTP round-trips from the frontend.
+     */
+    public ResponseEntity<OfflineAttemptCreateResponse> createAttemptAndSubmitResponses(
+            CustomUserDetails userDetails,
+            String assessmentId,
+            String registrationId,
+            String instituteId,
+            OfflineResponseSubmitRequest request) {
+        try {
+            // Build a create request from the submit request's user fields
+            OfflineAttemptCreateRequest createRequest = OfflineAttemptCreateRequest.builder()
+                    .userId(request.getUserId())
+                    .fullName(request.getFullName())
+                    .email(request.getEmail())
+                    .username(request.getUsername())
+                    .mobileNumber(request.getMobileNumber())
+                    .batchId(request.getBatchId())
+                    .build();
+
+            // Step 1: Create the attempt
+            ResponseEntity<OfflineAttemptCreateResponse> createResponse =
+                    createOfflineAttempt(userDetails, assessmentId, registrationId, instituteId, createRequest);
+
+            String attemptId = createResponse.getBody().getAttemptId();
+
+            // Step 2: Submit and evaluate
+            submitOfflineResponses(userDetails, assessmentId, attemptId, instituteId, request);
+
+            return createResponse;
+        } catch (Exception e) {
+            throw new VacademyException("Failed to create and submit offline attempt: " + e.getMessage());
         }
     }
 

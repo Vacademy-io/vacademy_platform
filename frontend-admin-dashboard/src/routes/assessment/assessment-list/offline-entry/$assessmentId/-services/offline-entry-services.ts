@@ -2,6 +2,7 @@ import {
     GET_ADMIN_PARTICIPANTS,
     GET_BATCH_DETAILS_URL,
     OFFLINE_CREATE_ATTEMPT,
+    OFFLINE_CREATE_AND_SUBMIT,
     OFFLINE_SUBMIT_RESPONSES,
     SUBMIT_MARKS,
 } from '@/constants/urls';
@@ -171,6 +172,40 @@ export const createOfflineAttempt = async (
                   mobile_number: params.mobileNumber,
                   batch_id: params.batchId,
               },
+    });
+    return response?.data;
+};
+
+/**
+ * Combined: create attempt + submit responses + evaluate in a single HTTP call.
+ * Eliminates 2 extra round-trips compared to calling create-attempt and submit-responses separately.
+ */
+export const createAndSubmitOffline = async (
+    params: CreateAttemptParams,
+    data: OfflineResponseSubmitRequest
+): Promise<OfflineAttemptCreateResponse> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: OFFLINE_CREATE_AND_SUBMIT,
+        params: {
+            assessmentId: params.assessmentId,
+            instituteId: params.instituteId,
+            ...(params.registrationId ? { registrationId: params.registrationId } : {}),
+        },
+        data: {
+            ...data,
+            // Include user details for batch students
+            ...(params.registrationId
+                ? {}
+                : {
+                      user_id: params.userId,
+                      full_name: params.fullName,
+                      email: params.email,
+                      username: params.username,
+                      mobile_number: params.mobileNumber,
+                      batch_id: params.batchId,
+                  }),
+        },
     });
     return response?.data;
 };

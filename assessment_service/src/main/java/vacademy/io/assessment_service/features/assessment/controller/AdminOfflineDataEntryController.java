@@ -35,4 +35,14 @@ public class AdminOfflineDataEntryController {
             @RequestBody OfflineResponseSubmitRequest request) {
         return adminOfflineDataEntryManager.submitOfflineResponses(userDetails, assessmentId, attemptId, instituteId, request);
     }
+
+    @PostMapping("/create-and-submit")
+    public ResponseEntity<OfflineAttemptCreateResponse> createAndSubmit(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("assessmentId") String assessmentId,
+            @RequestParam(value = "registrationId", required = false) String registrationId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody OfflineResponseSubmitRequest request) {
+        return adminOfflineDataEntryManager.createAttemptAndSubmitResponses(userDetails, assessmentId, registrationId, instituteId, request);
+    }
 }

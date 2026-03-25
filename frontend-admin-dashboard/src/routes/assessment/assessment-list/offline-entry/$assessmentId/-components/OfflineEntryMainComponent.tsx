@@ -14,9 +14,8 @@ import { QuestionResponseForm } from './QuestionResponseForm';
 import { TableViewResponseForm } from './TableViewResponseForm';
 import { OfflineEntrySubmitDialog } from './OfflineEntrySubmitDialog';
 import {
-    createOfflineAttempt,
+    createAndSubmitOffline,
     submitDirectMarks,
-    submitOfflineResponses,
 } from '../-services/offline-entry-services';
 import {
     OfflineResponseState,
@@ -144,28 +143,7 @@ export const OfflineEntryMainComponent = () => {
         try {
             const iId = instituteDetails?.id ?? '';
 
-            const attemptResponse = await createOfflineAttempt(
-                selectedStudent.registrationId
-                    ? {
-                          assessmentId,
-                          instituteId: iId,
-                          registrationId: selectedStudent.registrationId,
-                      }
-                    : {
-                          assessmentId,
-                          instituteId: iId,
-                          userId: selectedStudent.userId,
-                          fullName: selectedStudent.name,
-                          email: selectedStudent.email,
-                          username: selectedStudent.username,
-                          mobileNumber: selectedStudent.mobileNumber,
-                          batchId: selectedStudent.batchId,
-                      }
-            );
-
-            const attemptId = attemptResponse.attempt_id;
-
-            // Step 1: Always submit option selections for auto-evaluation
+            // Build sections payload with option selections
             const sectionsPayload = sections.map((section) => ({
                 section_id: section.id,
                 questions: (questionsMap[section.id] ?? []).map((q: any) => ({
@@ -175,11 +153,25 @@ export const OfflineEntryMainComponent = () => {
                 })),
             }));
 
-            await submitOfflineResponses(assessmentId, attemptId, iId, {
+            const attemptParams = selectedStudent.registrationId
+                ? { assessmentId, instituteId: iId, registrationId: selectedStudent.registrationId }
+                : {
+                      assessmentId,
+                      instituteId: iId,
+                      userId: selectedStudent.userId,
+                      fullName: selectedStudent.name,
+                      email: selectedStudent.email,
+                      username: selectedStudent.username,
+                      mobileNumber: selectedStudent.mobileNumber,
+                      batchId: selectedStudent.batchId,
+                  };
+
+            // Single API call: create attempt + submit responses + auto-evaluate
+            const attemptResponse = await createAndSubmitOffline(attemptParams, {
                 sections: sectionsPayload,
             });
 
-            // Step 2: Override with direct marks for questions where marks were manually entered
+            // Override with direct marks for questions where marks were manually entered
             const directMarksQuestions = sections.flatMap((section) =>
                 (questionsMap[section.id] ?? [])
                     .filter((q: any) => responses[q.question_id]?.marks != null)
@@ -192,9 +184,12 @@ export const OfflineEntryMainComponent = () => {
             );
 
             if (directMarksQuestions.length > 0) {
-                await submitDirectMarks(assessmentId, attemptId, iId, {
-                    request: directMarksQuestions,
-                });
+                await submitDirectMarks(
+                    assessmentId,
+                    attemptResponse.attempt_id,
+                    iId,
+                    { request: directMarksQuestions }
+                );
             }
 
             toast.success('Offline responses submitted successfully');

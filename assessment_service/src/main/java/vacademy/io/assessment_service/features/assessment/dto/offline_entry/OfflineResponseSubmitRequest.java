@@ -14,4 +14,11 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class OfflineResponseSubmitRequest {
     private List<OfflineSectionResponse> sections;
+    // Optional: for combined create-and-submit (batch students without registration)
+    private String userId;
+    private String fullName;
+    private String email;
+    private String username;
+    private String mobileNumber;
+    private String batchId;
 }

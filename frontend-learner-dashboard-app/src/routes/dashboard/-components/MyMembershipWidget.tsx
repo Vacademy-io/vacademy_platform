@@ -167,7 +167,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                     <span className="text-lg font-bold text-primary leading-none">
                                         {membership.validity_in_days || 0}
                                     </span>
-                                    <span className="text-[8px] font-bold text-primary/70 uppercase">Days</span>
+                                    <span className="text-[8px] font-bold text-primary/70 uppercase">Days Remaining</span>
                                 </div>
                             </div>
 

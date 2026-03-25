@@ -1533,7 +1533,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ARRAY[CAST(MIN(l.id) AS text)] AS levelIds,
 
                 COALESCE((
-                    SELECT pp.validity_in_days
+                    SELECT CAST(GREATEST(0, EXTRACT(DAY FROM
+                        COALESCE(up.end_date, up.start_date + pp.validity_in_days * INTERVAL '1 day', up.created_at + pp.validity_in_days * INTERVAL '1 day')
+                        - CURRENT_TIMESTAMP
+                    )) AS INTEGER)
                     FROM user_plan up
                     JOIN payment_plan pp ON pp.id = up.plan_id
                     WHERE up.user_id = :userId
@@ -1774,7 +1777,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ARRAY[CAST(MIN(l.id) AS text)] AS levelIds,
 
                 COALESCE((
-                    SELECT pp.validity_in_days
+                    SELECT CAST(GREATEST(0, EXTRACT(DAY FROM
+                        COALESCE(up.end_date, up.start_date + pp.validity_in_days * INTERVAL '1 day', up.created_at + pp.validity_in_days * INTERVAL '1 day')
+                        - CURRENT_TIMESTAMP
+                    )) AS INTEGER)
                     FROM user_plan up
                     JOIN payment_plan pp ON pp.id = up.plan_id
                     WHERE up.user_id = :userId

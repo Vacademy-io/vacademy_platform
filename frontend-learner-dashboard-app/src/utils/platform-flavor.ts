@@ -19,6 +19,7 @@ export interface PlatformFlavorInfo {
 export const getPlatformFlavorInfo = async (): Promise<PlatformFlavorInfo> => {
   const platform = Capacitor.getPlatform();
   const isNative = platform === "android" || platform === "ios";
+  const isElectron = platform === "electron";
 
   let appId: string | null = null;
   let flavorConfigData = null;
@@ -39,6 +40,30 @@ export const getPlatformFlavorInfo = async (): Promise<PlatformFlavorInfo> => {
     } catch (error) {
       console.error("[Platform Flavor] Error getting app info:", error);
     }
+  } else if (isElectron) {
+    // Electron uses capacitor config's appId but App.getInfo() may not be available,
+    // so look up the appId directly from the flavor config
+    try {
+      const appInfo = await App.getInfo();
+      appId = appInfo.id;
+      flavorConfigData = flavorConfig[appId] || null;
+      console.log(
+        `[Platform Flavor] Detected electron platform, appId: ${appId}`,
+        flavorConfigData
+      );
+    } catch {
+      // App plugin may not be available in Electron; read appId from env var
+      // set at build time (VITE_ELECTRON_APP_ID), or fall back to default
+      const electronAppId =
+        (import.meta.env as Record<string, string>)?.VITE_ELECTRON_APP_ID ||
+        "io.vacademy.student.app";
+      appId = electronAppId;
+      flavorConfigData = flavorConfig[electronAppId] || null;
+      console.log(
+        `[Platform Flavor] Electron appId: ${electronAppId}`,
+        flavorConfigData
+      );
+    }
   }
 
   return {
@@ -58,8 +83,8 @@ export const getDomainAndSubdomain = async (): Promise<{
 }> => {
   const platformInfo = await getPlatformFlavorInfo();
 
-  // For native apps, use the flavor config
-  if (platformInfo.isNative && platformInfo.flavorConfig) {
+  // For native apps or Electron with flavor config, use the flavor config
+  if (platformInfo.flavorConfig) {
     const { domain, subdomain } = platformInfo.flavorConfig;
     console.log(
       `[Platform Flavor] Using flavor config - domain: ${domain}, subdomain: ${subdomain}`
@@ -67,7 +92,7 @@ export const getDomainAndSubdomain = async (): Promise<{
     return { domain, subdomain };
   }
 
-  // For web/electron, use the current hostname
+  // For web (or Electron without flavor config), use the current hostname
   return getCurrentDomainInfoFromLocation();
 };
 

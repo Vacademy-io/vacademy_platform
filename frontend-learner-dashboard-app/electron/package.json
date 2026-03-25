@@ -1,10 +1,10 @@
 {
-  "name": "SSDC_Horizon",
+  "name": "Shiksha_Nation",
   "version": "1.0.8",
-  "description": "The Learning System for SSDC",
+  "description": "AI-Powered Learning Platform",
   "author": {
-    "name": "shreyash jain",
-    "email": "shreyash@vidyayatan.com"
+    "name": "Shiksha Nation",
+    "email": "support@shikshanation.com"
   },
   "license": "MIT",
   "main": "build/src/index.js",
@@ -27,7 +27,8 @@
     "build:win:ssdc:legacy": "./build-windows.sh",
     "build:win:ssdc:asar": "./build-windows-asar-pnpm.sh",
     "build:win:ssdc:fast": "./build-windows-fast.sh",
-    "build:win:sevencs": "./build-windows-seven-cs.sh"
+    "build:win:sevencs": "./build-windows-seven-cs.sh",
+    "build:win:shikshanation": "./build-windows-shikshanation.sh"
   },
   "dependencies": {
     "@capacitor-community/electron": "^5.0.0",

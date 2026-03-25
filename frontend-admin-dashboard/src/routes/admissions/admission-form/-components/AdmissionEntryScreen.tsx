@@ -7,7 +7,8 @@ import { MyButton } from '@/components/design-system/button';
 import { X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { fetchEnquiryDetails } from '../../-services/applicant-services';
+import { fetchEnquiryDetails, fetchEnquiryDetailsByPhone } from '../../-services/applicant-services';
+import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
 
 export interface StudentSearchResult {
     id: string;
@@ -145,8 +146,6 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
     const [showApplicationModal, setShowApplicationModal] = useState(false);
     const [showParentTypeModal, setShowParentTypeModal] = useState(false);
     const [pendingEnquiryMapped, setPendingEnquiryMapped] = useState<Partial<StudentSearchResult> | null>(null);
-    const [enquiryTrackingId, setEnquiryTrackingId] = useState('');
-    const [enquiryPhone, setEnquiryPhone] = useState('');
     const [applicationId, setApplicationId] = useState('');
     const [applicationPhone, setApplicationPhone] = useState('');
     const [isLoadingLookup, setIsLoadingLookup] = useState(false);
@@ -167,8 +166,6 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
     const handleFromEnquiryOption = () => {
         setShowAdmissionTypeModal(false);
-        setEnquiryTrackingId('');
-        setEnquiryPhone('');
         setShowEnquiryModal(true);
     };
 
@@ -179,15 +176,10 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         setShowApplicationModal(true);
     };
 
-    const handleFetchEnquiry = async () => {
-        if (!enquiryTrackingId.trim() && !enquiryPhone.trim()) {
-            alert('Please enter either enquiry tracking ID or phone number');
-            return;
-        }
+    const handleSelectEnquiry = async (trackingId: string) => {
         setIsLoadingLookup(true);
         try {
-            const searchParam = enquiryTrackingId.trim() || enquiryPhone.trim();
-            const enquiryData = await fetchEnquiryDetails(searchParam);
+            const enquiryData = await fetchEnquiryDetails(trackingId);
 
             const mapped: Partial<StudentSearchResult> = {
                 id: enquiryData.enquiry_id || '',
@@ -206,8 +198,6 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 applicationId: null,
             };
 
-            setShowEnquiryModal(false);
-
             const parentGender = enquiryData.parent?.gender;
             if (parentGender === 'MALE') {
                 mapped.parentGender = 'father';
@@ -221,7 +211,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             }
         } catch (error) {
             console.error('Error fetching enquiry:', error);
-            alert('Failed to fetch enquiry details. Please check the tracking ID or phone number.');
+            alert('Failed to fetch enquiry details.');
         } finally {
             setIsLoadingLookup(false);
         }
@@ -710,71 +700,11 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 </div>
             )}
 
-            {/* Enter Enquiry Details Modal */}
-            {showEnquiryModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-                        <div className="mb-4 flex items-center justify-between">
-                            <h2 className="text-lg font-semibold text-neutral-900">Enter Enquiry Details</h2>
-                            <button
-                                onClick={() => { setShowEnquiryModal(false); setEnquiryTrackingId(''); setEnquiryPhone(''); }}
-                                className="text-neutral-400 hover:text-neutral-600"
-                            >
-                                <X className="size-5" />
-                            </button>
-                        </div>
-                        <div className="space-y-4">
-                            <div>
-                                <Label htmlFor="admEnquiryTrackingId">Enquiry Tracking ID</Label>
-                                <Input
-                                    id="admEnquiryTrackingId"
-                                    type="text"
-                                    placeholder="e.g., A9KQ2"
-                                    value={enquiryTrackingId}
-                                    onChange={(e) => setEnquiryTrackingId(e.target.value)}
-                                    className="mt-1"
-                                />
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <div className="h-px flex-1 bg-neutral-200"></div>
-                                <span className="text-xs text-neutral-500">OR</span>
-                                <div className="h-px flex-1 bg-neutral-200"></div>
-                            </div>
-                            <div>
-                                <Label htmlFor="admEnquiryPhone">Phone Number</Label>
-                                <Input
-                                    id="admEnquiryPhone"
-                                    type="tel"
-                                    placeholder="e.g., 9876543210"
-                                    value={enquiryPhone}
-                                    onChange={(e) => setEnquiryPhone(e.target.value)}
-                                    className="mt-1"
-                                />
-                            </div>
-                            <p className="text-xs text-neutral-500">
-                                Enter either the tracking ID or phone number of the enquiry you want to convert to an admission
-                            </p>
-                            <div className="flex gap-3">
-                                <MyButton
-                                    buttonType="secondary"
-                                    onClick={() => { setShowEnquiryModal(false); setEnquiryTrackingId(''); setEnquiryPhone(''); }}
-                                    className="flex-1"
-                                >
-                                    Cancel
-                                </MyButton>
-                                <MyButton
-                                    buttonType="primary"
-                                    onClick={handleFetchEnquiry}
-                                    disabled={isLoadingLookup || (!enquiryTrackingId.trim() && !enquiryPhone.trim())}
-                                    className="flex-1"
-                                >
-                                    {isLoadingLookup ? 'Loading...' : 'Continue'}
-                                </MyButton>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <EnquirySearchModal
+                isOpen={showEnquiryModal}
+                onClose={() => setShowEnquiryModal(false)}
+                onSelectForAdmission={handleSelectEnquiry}
+            />
 
             {/* Enter Application Details Modal */}
             {showApplicationModal && (

@@ -133,7 +133,8 @@ public class OpenPackageService {
                                         projection.getDripConditionJson(),
                                         instructors,
                                         projection.getLevelIds(),
-                                        projection.getReadTimeInMinutes(), projection.getPackageType());
+                                        projection.getReadTimeInMinutes(), projection.getPackageType(),
+                                        null);
                 }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
@@ -191,7 +192,8 @@ public class OpenPackageService {
                                 instructors,
                                 projection.getLevelIds(),
                                 getReadTimeInMinutes(packageId),
-                                projection.getPackageType());
+                                projection.getPackageType(),
+                                null);
 
                 return dto;
         }

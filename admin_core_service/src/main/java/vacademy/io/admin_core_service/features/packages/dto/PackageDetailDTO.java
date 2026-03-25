@@ -38,4 +38,5 @@ public class PackageDetailDTO {
     private List<String> levelIds;
     private Long readTimeInMinutes;
     private String packageType;
+    private Integer validityInDays;
 }

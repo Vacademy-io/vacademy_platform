@@ -375,23 +375,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             </div>
           )}
 
-          {/* Header Section with Theme Colors - Only show if title exists in JSON */}
-          {catalogueData?.pages?.[0]?.title && (
-            <div
-              className="w-full py-8 text-center text-white"
-              style={{
-                backgroundColor: domainRouting.instituteThemeCode ?
-                  `hsl(var(--primary))` :
-                  '#3b82f6' // fallback blue
-              }}
-            >
-              <div className="w-full px-4 sm:px-6 lg:px-8">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
-                  {catalogueData.pages[0].title}
-                </h1>
-              </div>
-            </div>
-          )}
+          {/* Legacy page title banner — removed in v2. Page titles are now handled by hero/textBlock components. */}
           {/* Render the matching page (home page by default, or specific slug) */}
           {catalogueData.pages
             .filter(page => {

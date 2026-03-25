@@ -1,8 +1,8 @@
 # Course Catalogue JSON Editor - Admin Portal Specification
 
-> **Version:** 1.0  
-> **Last Updated:** 2026-01-13  
-> **Status:** Draft
+> **Version:** 2.0
+> **Last Updated:** 2026-03-25
+> **Status:** Active
 
 ---
 
@@ -2690,13 +2690,326 @@ function RouteComponent() {
 
 ---
 
-**Document Maintainers:** @shreyashjain  
+---
+
+## 39. Per-Component Styling System (v2)
+
+> **Added:** 2026-03-25
+
+Every component now supports an optional `style` field for fine-grained visual control without touching component-specific props.
+
+### 39.1 ComponentStyle Interface
+
+```typescript
+interface ComponentStyle {
+  // Spacing
+  paddingTop?: string; paddingBottom?: string; paddingLeft?: string; paddingRight?: string;
+  marginTop?: string; marginBottom?: string;
+  // Background
+  backgroundColor?: string; backgroundImage?: string;
+  backgroundSize?: 'cover' | 'contain' | 'auto'; backgroundPosition?: string;
+  backgroundOverlay?: string; // rgba overlay on background images
+  gradient?: { type: 'linear' | 'radial'; angle?: number; stops: { color: string; position: number }[] };
+  // Border
+  borderWidth?: string; borderColor?: string;
+  borderStyle?: 'solid' | 'dashed' | 'dotted' | 'none';
+  borderRadius?: string;
+  // Shadow & Effects
+  boxShadow?: 'none' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  opacity?: number; maxWidth?: string; minHeight?: string;
+  customClass?: string;
+  // Typography (per-component override)
+  typography?: {
+    fontFamily?: string; fontSize?: string;
+    fontWeight?: '400' | '500' | '600' | '700' | '800';
+    lineHeight?: string; letterSpacing?: string;
+    textColor?: string; textAlign?: 'left' | 'center' | 'right';
+    textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  };
+  // Animation
+  animation?: {
+    entrance?: { type: 'fadeIn' | 'fadeInUp' | 'fadeInDown' | 'fadeInLeft' | 'fadeInRight' | 'scaleUp' | 'slideUp' | 'none'; duration?: number; delay?: number; easing?: string };
+    hover?: { type: 'none' | 'lift' | 'glow' | 'scale' | 'brighten' };
+  };
+  // Responsive
+  responsive?: { tablet?: Partial<ComponentStyle>; mobile?: Partial<ComponentStyle> };
+  visibility?: { desktop?: boolean; tablet?: boolean; mobile?: boolean };
+}
+```
+
+### 39.2 Admin Editor
+
+- **StyleEditor.tsx** — collapsible accordion below every component editor with sections: Spacing, Background (with gradient builder), Border & Shadow, Effects, Typography, Animation, Visibility
+- Applied via `buildComponentStyle()` utility that converts to `React.CSSProperties`
+
+### 39.3 Learner Rendering
+
+- **ComponentStyleWrapper** — wraps styled components with IntersectionObserver for scroll-triggered entrance animations
+- **Responsive CSS** — generates per-component `<style>` tags with media queries for tablet/mobile overrides
+- **Hover effects** — CSS classes: `.catalogue-hover-lift`, `.catalogue-hover-glow`, `.catalogue-hover-scale`, `.catalogue-hover-brighten`
+- **Animation keyframes** — defined in `catalogue-animations.css`: `catalogue-fadeIn`, `catalogue-fadeInUp`, etc.
+
+### 39.4 Key Files
+
+| File | Location |
+|------|----------|
+| StyleEditor.tsx | `admin/src/routes/manage-pages/-components/StyleEditor.tsx` |
+| style-utils.ts (admin) | `admin/src/routes/manage-pages/-utils/style-utils.ts` |
+| style-utils.ts (learner) | `learner/src/routes/$tagName/-utils/style-utils.ts` |
+| catalogue-animations.css | `learner/src/styles/catalogue-animations.css` |
+
+---
+
+## 40. Global Heading Scale
+
+> **Added:** 2026-03-25
+
+### 40.1 Settings
+
+Added to `GlobalSettings.theme`:
+
+```typescript
+headingScale?: 'compact' | 'default' | 'large' | 'display';
+```
+
+| Scale | h1 | h2 | h3 |
+|-------|----|----|-----|
+| compact | 2rem | 1.5rem | 1.25rem |
+| default | 2.5rem | 2rem | 1.5rem |
+| large | 3.5rem | 2.5rem | 2rem |
+| display | 4.5rem | 3rem | 2.25rem |
+
+### 40.2 Implementation
+
+- Admin: selector in GlobalSettingsEditor (4 buttons)
+- Learner: `data-heading-scale` attribute on page wrapper, CSS custom properties in `catalogue-tokens.css`
+
+---
+
+## 41. New Component Types (v2)
+
+> **Added:** 2026-03-25
+
+### 41.1 Utility Components
+
+| Type | Description | Key Props |
+|------|-------------|-----------|
+| `spacer` | Vertical space with optional divider | `height`, `showDivider`, `dividerStyle`, `dividerColor`, `dividerWidth`, `maxWidth` |
+| `textBlock` | Standalone rich text content | `content` (HTML), `maxWidth`, `alignment` |
+| `imageBlock` | Single image with caption & link | `src`, `alt`, `caption`, `linkUrl`, `alignment`, `maxWidth`, `borderRadius`, `aspectRatio` |
+| `buttonBlock` | Standalone CTA button | `text`, `url`, `target`, `variant` (filled/outline/ghost), `size`, `alignment`, `fullWidth`, colors |
+
+### 41.2 Content Components
+
+| Type | Description | Key Props |
+|------|-------------|-----------|
+| `featureGrid` | "Why Choose Us" icon grid | `headerText`, `subheading`, `columns` (2-4), `features[]` ({icon, title, description}), `style` (cards/minimal/bordered), `iconSize` |
+| `stepsProcess` | "How It Works" steps | `headerText`, `subheading`, `layout` (horizontal/vertical), `steps[]` ({number, title, description}), `connectorStyle` (line/dashed/dots/none), `accentColor` |
+| `newsletterSignup` | Email capture form | `heading`, `subheading`, `placeholder`, `buttonText`, `layout` (inline/stacked), `successMessage` |
+
+### 41.3 Interactive Components
+
+| Type | Description | Key Props |
+|------|-------------|-----------|
+| `tabsAccordion` | Tabbed or accordion content | `mode` (tabs/accordion), `items[]` ({title, content}), `allowMultiple`, `backgroundColor` |
+| `logoCloud` | Partner/trust logos | `headerText`, `logos[]` ({image, alt, url}), `layout` (grid/marquee), `grayscale`, `columns` |
+| `mapEmbed` | Google Maps embed | `embedUrl`, `height`, `borderRadius`, `title` |
+| `countdownTimer` | Live countdown | `targetDate`, `heading`, `expiredMessage`, `style` (cards/minimal), colors |
+
+### 41.4 Total Component Count: 34
+
+Original 22 + spacer, tabsAccordion, logoCloud, mapEmbed, countdownTimer, textBlock, featureGrid, imageBlock, buttonBlock, newsletterSignup, stepsProcess, + columnLayout variants = **34 unique types**.
+
+---
+
+## 42. Smart Link Picker & Routing
+
+> **Added:** 2026-03-25
+
+### 42.1 Problem
+
+All route/URL fields were free-text inputs. Users had to manually type page slugs with no validation or autocomplete.
+
+### 42.2 LinkPicker Component (Admin)
+
+**File:** `admin/src/routes/manage-pages/-components/LinkPicker.tsx`
+
+Features:
+- **Page/URL mode toggle** — switch between internal page selection and external URL input
+- **Searchable page list** — shows all pages with title, route slug, published status (green dot)
+- **Click-to-select** — visual selection with "Links to: /about-us" confirmation
+- **Clear button** — easy link removal
+- **Optional target toggle** — same tab / new tab
+
+### 42.3 Editors Updated
+
+LinkPicker replaces free-text inputs in:
+- ButtonBlock (`url`), ImageBlock (`linkUrl`), CTA Banner (`button.target`)
+- Header nav items (`navigation[].route`), Header auth links (`authLinks[].route`)
+- Footer links (`rightSection.links[].route`), PricingTable (`plans[].buttonTarget`)
+- MediaShowcase slider (`slides[].button.target`)
+
+### 42.4 CatalogueLink Component (Learner)
+
+**File:** `learner/src/routes/$tagName/-components/CatalogueLink.tsx`
+
+Smart link component that handles:
+- **External URLs** (http/https/mailto/tel) → regular `<a>` with `target=_blank`
+- **Anchor links** (`#pricing`) → smooth scroll to element
+- **Page + anchor** (`about-us#team`) → SPA navigate then scroll
+- **Internal routes** (`about-us`) → TanStack Router `navigate()` for SPA transitions
+- **Cmd/Ctrl+click** preserved for open-in-new-tab
+
+Replaces `<a href>` in: ButtonBlock, CTA Banner, PricingTable, ImageBlock renderers.
+
+---
+
+## 43. Anchor Links
+
+> **Added:** 2026-03-25
+
+### 43.1 Component Anchor ID
+
+Every component now has an optional `anchorId` field:
+
+```typescript
+interface Component {
+  // ...existing fields
+  anchorId?: string; // e.g. "pricing", "faq", "contact"
+}
+```
+
+- Admin: text field in PropertyPanel (below Enabled toggle), auto-strips special characters
+- Learner: rendered as `id={anchorId}` on component wrapper divs
+- Links: use `#pricing` for same-page scroll or `about-us#team` for cross-page anchor
+
+---
+
+## 44. Auto-Generate Navigation from Pages
+
+> **Added:** 2026-03-25
+
+### 44.1 Feature
+
+"Sync Pages" button in the Header editor that auto-populates navigation items from all published pages.
+
+### 44.2 Behavior
+
+- Reads `config.pages` and filters to published pages
+- Creates nav items: `{ label: page.title, route: page.route, openInSameTab: true }`
+- Detects home page → sets route to `"homepage"`
+- Replaces existing navigation (user can then manually reorder/edit)
+
+---
+
+## 45. Sticky Header
+
+> **Added:** 2026-03-25
+
+### 45.1 Setting
+
+```typescript
+interface GlobalSettings {
+  // ...existing fields
+  stickyHeader?: boolean;
+}
+```
+
+- Admin: toggle in HeaderEditor
+- Learner: header wrapper gets `sticky top-0 z-50` CSS class
+
+---
+
+## 46. Page-Level Background Color
+
+> **Added:** 2026-03-25
+
+### 46.1 Setting
+
+```typescript
+interface Page {
+  // ...existing fields
+  backgroundColor?: string; // hex color, e.g. "#F8FAFC"
+}
+```
+
+- Admin: ColorPicker in Page Settings panel
+- Learner: page content wrapped in `<div style={{ backgroundColor }}>` in CourseCataloguePage
+
+---
+
+## 47. Component Copy/Paste Across Pages
+
+> **Added:** 2026-03-25
+
+### 47.1 Store Actions
+
+```typescript
+interface EditorState {
+  clipboard: Component | null;
+  copyComponent: (pageId: string, componentId: string) => void;
+  pasteComponent: (pageId: string) => void;
+}
+```
+
+### 47.2 UX
+
+- **Copy:** "Copy to Clipboard" button on every component's property panel (deep-clones the component)
+- **Paste:** "Paste: [component type]" button in Page Settings (appears when clipboard has content)
+- IDs are regenerated on paste (including nested slot IDs for columnLayout)
+- Undo-able via Ctrl+Z
+
+---
+
+## 48. Back-to-Top Button
+
+> **Added:** 2026-03-25
+
+### 48.1 Setting
+
+```typescript
+interface GlobalSettings {
+  // ...existing fields
+  backToTop?: boolean;
+}
+```
+
+- Admin: toggle in GlobalSettingsEditor
+- Learner: floating button (dark circle with chevron-up) appears after 400px scroll, smooth-scrolls to top
+- Responsive: `bottom-6 right-6` on mobile, `bottom-8 right-8` on desktop
+- Hidden in preview mode
+
+---
+
+## 49. Rich Text Typography (catalogue-rich-text)
+
+> **Added:** 2026-03-25
+
+Custom CSS class `.catalogue-rich-text` in `catalogue-animations.css` provides typography styling for `textBlock` and any HTML content rendered via `dangerouslySetInnerHTML`:
+
+- h1/h2/h3 sizing and spacing
+- Link styling with theme primary color
+- List styles (disc for ul, decimal for ol)
+- Blockquote with left border
+- Strong/em formatting
+
+This replaces the `@tailwindcss/typography` `prose` class (which is not installed).
+
+---
+
+**Document Maintainers:** @shreyashjain
 **Related Files:**
 
 - `/src/routes/$tagName/-types/course-catalogue-types.ts`
 - `/src/routes/$tagName/-components/JsonRenderer.tsx`
+- `/src/routes/$tagName/-components/CatalogueLink.tsx`
+- `/src/routes/$tagName/-utils/style-utils.ts`
 - `/src/routes/$tagName/-services/course-catalogue-service.ts`
+- `/src/routes/$tagName/-services/route-matcher.ts`
+- `/src/routes/$tagName/-components/CourseCataloguePage.tsx`
 - `/src/routes/$tagName/-components/IntroPageComponent.tsx`
 - `/src/routes/$tagName/-components/LeadCollectionModal.tsx`
 - `/src/routes/$tagName/-components/components/BookDetailsComponent.tsx`
 - `/src/routes/$tagName/-stores/cart-store.ts`
+- `/src/styles/catalogue-animations.css`
+- `/src/styles/catalogue-tokens.css`

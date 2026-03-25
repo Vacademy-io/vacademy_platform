@@ -401,8 +401,8 @@ const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [
       {subheading && <p className="mb-12 text-center text-gray-500">{subheading}</p>}
       <div className={`grid gap-6 ${plans.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
         {plans.map((plan: any, i: number) => (
-          <div key={i} className={`relative flex flex-col rounded-2xl border-2 p-8 ${plan.highlighted ? 'border-blue-500 shadow-xl' : 'border-gray-200'}`}>
-            {plan.highlighted && <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-500 px-4 py-1 text-xs font-semibold text-white">Recommended</div>}
+          <div key={i} className={`relative flex flex-col rounded-2xl border-2 p-8 ${plan.highlighted ? 'border-primary-500 shadow-xl' : 'border-gray-200'}`}>
+            {plan.highlighted && <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-4 py-1 text-xs font-semibold text-white" style={{ backgroundColor: 'var(--primary-500, #3B82F6)' }}>Recommended</div>}
             <h3 className="text-xl font-bold text-gray-900">{plan.name}</h3>
             {plan.description && <p className="mt-1 text-sm text-gray-500">{plan.description}</p>}
             <div className="mt-4 flex items-baseline gap-1">
@@ -417,7 +417,7 @@ const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [
               ))}
             </ul>
             {plan.buttonText && (
-              <CatalogueLink to={plan.buttonTarget || '#'} className={`mt-8 block rounded-lg py-3 text-center font-semibold transition ${plan.highlighted ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-300 text-gray-900 hover:bg-gray-50'}`}>
+              <CatalogueLink to={plan.buttonTarget || '#'} className={`mt-8 block rounded-lg py-3 text-center font-semibold transition ${plan.highlighted ? 'text-white hover:opacity-90' : 'border border-gray-300 text-gray-900 hover:bg-gray-50'}`} style={plan.highlighted ? { backgroundColor: 'var(--primary-500, #3B82F6)' } : undefined}>
                 {plan.buttonText}
               </CatalogueLink>
             )}
@@ -453,7 +453,7 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
                 )}
               </div>
             ))}
-            <button type="submit" className="w-full rounded-lg bg-blue-500 py-3 font-semibold text-white hover:bg-blue-600 transition">
+            <button type="submit" className="w-full rounded-lg py-3 font-semibold text-white transition hover:opacity-90" style={{ backgroundColor: 'var(--primary-500, #3B82F6)' }}>
               {submitLabel}
             </button>
           </form>

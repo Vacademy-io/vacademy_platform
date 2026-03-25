@@ -15,7 +15,7 @@ interface StatsHighlightsProps {
   description?: string;
   stats?: Stat[];
   groups?: StatGroup[];
-  style: "circle" | "card" | "minimal";
+  style?: "circle" | "card" | "minimal";
   styles?: {
     backgroundColor?: string;
     textColor?: string;
@@ -28,75 +28,84 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
   description,
   stats,
   groups,
+  style: displayStyle = "card",
   styles = {},
 }) => {
-  const { hoverEffect = "none" } = styles;
+  const { backgroundColor, textColor, hoverEffect = "none" } = styles;
 
-  const getHoverClass = () => {
-    switch (hoverEffect) {
-      case "scale":
-        return "hover:scale-[1.02]";
-      case "shadow":
-        return "hover:border-gray-300";
-      default:
-        return "";
-    }
-  };
-
-  // Helper function to parse label and extract numeric part
-  const parseLabel = (label: string) => {
-    const spaceIndex = label.indexOf(' ');
-    if (spaceIndex === -1) {
-      return { numericPart: '', textPart: label };
-    }
-    const numericPart = label.substring(0, spaceIndex);
-    const textPart = label.substring(spaceIndex + 1);
-    return { numericPart, textPart };
-  };
+  const hoverClass =
+    hoverEffect === "scale" ? "hover:scale-[1.03] hover:shadow-lg" :
+    hoverEffect === "shadow" ? "hover:shadow-lg" : "";
 
   const renderStat = (stat: Stat, index: number) => {
-    const { numericPart, textPart } = parseLabel(stat.label);
-    
-    // NEUTRAL background with PRIMARY accent for numbers
-    const baseClasses = `text-center p-4 sm:p-5 bg-white border border-gray-200 rounded-lg transition-all duration-200 ${getHoverClass()}`;
+    // If stat has an explicit `value` field, use it as the big number and `label` as the description.
+    // Otherwise, try to detect a leading number in the label (e.g. "5000+ Sessions Led").
+    let bigValue = stat.value || "";
+    let labelText = stat.label || "";
 
-    return (
-      <div key={index} className={baseClasses}>
-        {/* PRIMARY ACCENT: Stat value/number */}
-        {stat.value && (
-          <div className="text-xl sm:text-2xl font-bold text-primary-600 mb-1">
-            {stat.value}
-          </div>
-        )}
-        {numericPart && (
-          <div className="text-lg sm:text-xl font-bold text-primary-600 mb-0.5">
-            {numericPart}
-          </div>
-        )}
-        {/* NEUTRAL: Description text */}
-        <div className="text-xs sm:text-sm text-gray-600">
-          {textPart}
+    if (!bigValue && labelText) {
+      // Try to extract a leading number/metric: "5000+ Sessions Led" → value="5000+", label="Sessions Led"
+      const match = labelText.match(/^([\d,.]+[+%]?)\s+(.+)$/);
+      if (match) {
+        bigValue = match[1]!;
+        labelText = match[2]!;
+      }
+    }
+
+    if (displayStyle === "minimal") {
+      return (
+        <div key={index} className={`text-center p-4 transition-all duration-200 ${hoverClass}`}>
+          {bigValue && (
+            <div className="text-3xl sm:text-4xl font-bold mb-1" style={{ color: textColor || 'var(--primary-500, #3B82F6)' }}>
+              {bigValue}
+            </div>
+          )}
+          <div className="text-sm sm:text-base text-gray-600">{labelText}</div>
         </div>
+      );
+    }
+
+    if (displayStyle === "circle") {
+      return (
+        <div key={index} className={`flex flex-col items-center text-center p-4 transition-all duration-200 ${hoverClass}`}>
+          <div
+            className="flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center rounded-full border-4 mb-3"
+            style={{ borderColor: textColor || 'var(--primary-500, #3B82F6)' }}
+          >
+            <span className="text-2xl sm:text-3xl font-bold" style={{ color: textColor || 'var(--primary-500, #3B82F6)' }}>
+              {bigValue || labelText}
+            </span>
+          </div>
+          {bigValue && <div className="text-sm sm:text-base text-gray-600">{labelText}</div>}
+        </div>
+      );
+    }
+
+    // Card style (default)
+    return (
+      <div key={index} className={`text-center p-5 sm:p-6 bg-white border border-gray-200 rounded-xl transition-all duration-200 ${hoverClass}`}>
+        {bigValue && (
+          <div className="text-3xl sm:text-4xl font-bold mb-1" style={{ color: textColor || 'var(--primary-500, #3B82F6)' }}>
+            {bigValue}
+          </div>
+        )}
+        <div className="text-sm sm:text-base text-gray-600 font-medium">{labelText}</div>
       </div>
     );
   };
 
   const useGroupsFormat = groups && groups.length > 0;
-  const displayStats = useGroupsFormat ? groups.flatMap(group => group.stats) : (stats || []);
 
   return (
-    // NEUTRAL: Section background
-    <section className="w-full py-6 sm:py-8 bg-gray-50">
-      <div className="w-full px-4 sm:px-6 lg:px-8">
+    <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-6">
-          {/* PRIMARY ACCENT: Section heading */}
-          <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-2">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
             {headerText}
           </h2>
-          {/* NEUTRAL: Description */}
           {!useGroupsFormat && description && (
-            <p className="text-sm text-gray-600 max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg text-gray-500 max-w-2xl mx-auto">
               {description}
             </p>
           )}
@@ -104,31 +113,31 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
 
         {/* Render Groups or Single Stats */}
         {useGroupsFormat ? (
-          <div className="space-y-6">
-            {groups.map((group, groupIndex) => (
-              <div
-                key={groupIndex}
-                className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6"
-              >
-                {/* Group Description */}
-                <div className="text-center mb-4">
-                  {/* PRIMARY ACCENT: Group heading */}
-                  <h3 className="text-sm sm:text-base font-medium text-primary-700">
+          <div className="space-y-8">
+            {groups!.map((group, groupIndex) => (
+              <div key={groupIndex} className="bg-white border border-gray-200 rounded-xl p-5 sm:p-8">
+                <div className="text-center mb-5">
+                  <h3 className="text-base sm:text-lg font-semibold" style={{ color: textColor || 'var(--primary-500, #3B82F6)' }}>
                     {group.description}
                   </h3>
                 </div>
-                
-                {/* Group Stats Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div className={`grid gap-4 sm:gap-5 ${
+                  group.stats.length <= 3 ? 'grid-cols-1 sm:grid-cols-3' :
+                  group.stats.length <= 4 ? 'grid-cols-2 sm:grid-cols-4' :
+                  'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'
+                }`}>
                   {group.stats.map((stat, index) => renderStat(stat, index))}
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          /* Legacy Single Stats Format */
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-            {displayStats.map((stat, index) => renderStat(stat, index))}
+          <div className={`grid gap-4 sm:gap-6 ${
+            (stats || []).length <= 3 ? 'grid-cols-1 sm:grid-cols-3 max-w-3xl mx-auto' :
+            (stats || []).length <= 4 ? 'grid-cols-2 sm:grid-cols-4 max-w-4xl mx-auto' :
+            'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
+          }`}>
+            {(stats || []).map((stat, index) => renderStat(stat, index))}
           </div>
         )}
       </div>

@@ -21,6 +21,159 @@ import { Label } from '@/components/ui/label';
 
 import { isYouTubeUrl, getYouTubeEmbedUrl } from '../../../shared/utils/youtube';
 
+/**
+ * Extracts the user-facing text from video/ai-video slide content.
+ *
+ * Data formats by slide type:
+ * - VIDEO: HTML string with <p>title</p><p>description</p><p>YouTube URL</p>
+ * - AI_VIDEO: JSON string with { videoId, status, scriptUrl, message, ... } (no script text)
+ * - VIDEO_CODE: JSON { video: {...}, code: { content: "markdown" }, layout }
+ * - AI_VIDEO_CODE: JSON { video: { videoId, scriptUrl, message, ... }, code: { content }, layout }
+ *
+ * Returns { label, html } where html is safe to render via dangerouslySetInnerHTML.
+ */
+function extractVideoDisplayContent(
+    content: string,
+    slideType: string
+): { label: string; html: string } {
+    if (!content) return { label: '', html: '' };
+
+    const isAiVideo = slideType === 'ai-video' || slideType === 'ai-video-code';
+
+    // Try parsing as JSON first (VIDEO_CODE, AI_VIDEO_CODE, AI_VIDEO)
+    try {
+        const parsed = JSON.parse(content);
+
+        if (isAiVideo) {
+            // AI video types: script is in code.content (markdown) or video.message
+            const script =
+                parsed?.code?.content ||
+                parsed?.video?.message ||
+                parsed?.message ||
+                '';
+
+            if (script) {
+                // Convert markdown-style newlines to HTML
+                const html = script
+                    .replace(/\n\n/g, '</p><p>')
+                    .replace(/\n/g, '<br/>')
+                    .replace(/^/, '<p>')
+                    .replace(/$/, '</p>')
+                    .replace(/```(\w*)\n?([\s\S]*?)```/g,
+                        (_: string, lang: string, code: string) =>
+                            `<pre><code class="language-${lang || 'text'}">${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`
+                    );
+                return { label: 'Script', html };
+            }
+
+            // Fallback: show status info
+            const status = parsed?.video?.status || parsed?.status || '';
+            const stage = parsed?.video?.currentStage || parsed?.currentStage || '';
+            if (status) {
+                return {
+                    label: 'Script',
+                    html: `<p>Video generation status: <strong>${status}</strong>${stage ? ` (${stage})` : ''}</p><p>The script will appear once generation completes.</p>`,
+                };
+            }
+
+            return { label: 'Script', html: '' };
+        } else {
+            // YouTube video types: description is in video.description or video.title
+            const title = parsed?.video?.title || '';
+            const description = parsed?.video?.description || '';
+            let html = '';
+            if (title) html += `<h3>${title}</h3>`;
+            if (description) html += `<p>${description}</p>`;
+            return { label: 'Description', html };
+        }
+    } catch {
+        // Not JSON — it's HTML (VIDEO type stores content as HTML)
+        // Strip YouTube URL links but keep the rest
+        let html = content
+            .replace(/<p[^>]*>YouTube URL:.*?<\/p>/gi, '')
+            .replace(/<a[^>]*href="[^"]*(?:youtube\.com|youtu\.be)[^"]*"[^>]*>.*?<\/a>/gi, '')
+            .replace(/<p[^>]*>\s*<\/p>/gi, '');
+        return { label: isAiVideo ? 'Script' : 'Description', html: html.trim() };
+    }
+}
+
+/**
+ * Strips HTML tags from a string, returning plain text.
+ */
+function stripHtml(html: string): string {
+    if (!html) return '';
+    return html.replace(/<[^>]+>/g, '').trim();
+}
+
+/**
+ * Parses quiz/assessment content from slide.content into a normalized QuizQuestion array.
+ * Handles both the simple format { questions: [...] } and the assessment format with nested objects.
+ */
+function parseQuizContent(content: string): { questions: QuizQuestion[]; answers: Record<number, string> } {
+    if (!content) return { questions: [], answers: {} };
+
+    try {
+        const parsed = JSON.parse(content);
+        let rawQuestions: any[] = [];
+        let answers: Record<number, string> = {};
+
+        if (Array.isArray(parsed.questions)) {
+            rawQuestions = parsed.questions;
+            answers = parsed.answers || {};
+        } else if (Array.isArray(parsed)) {
+            rawQuestions = parsed;
+        } else {
+            return { questions: [], answers: {} };
+        }
+
+        const questions: QuizQuestion[] = rawQuestions.map((q: any) => {
+            // Normalize question text - strip HTML if it contains tags
+            let questionText = '';
+            if (typeof q.question === 'object' && q.question?.content) {
+                questionText = stripHtml(q.question.content);
+            } else {
+                questionText = stripHtml(String(q.question || ''));
+            }
+
+            // Normalize options - strip HTML from each option
+            let options: string[] = [];
+            if (Array.isArray(q.options)) {
+                options = q.options.map((opt: any) => {
+                    if (typeof opt === 'object' && opt?.content) {
+                        return stripHtml(opt.content);
+                    }
+                    return stripHtml(String(opt || ''));
+                });
+            }
+
+            // Resolve correct answer index
+            let correctAnswerIndex = q.correctAnswerIndex ?? 0;
+            if (Array.isArray(q.correct_options) && q.correct_options.length > 0 && Array.isArray(q.options)) {
+                const correctId = q.correct_options[0];
+                const foundIdx = q.options.findIndex((opt: any) =>
+                    typeof opt === 'object' ? (opt.preview_id === correctId || opt.id === correctId) : opt === correctId
+                );
+                if (foundIdx !== -1) correctAnswerIndex = foundIdx;
+            }
+
+            // Normalize explanation
+            let explanation = '';
+            const expSource = q.explanation || q.exp;
+            if (typeof expSource === 'object' && expSource?.content) {
+                explanation = stripHtml(expSource.content);
+            } else {
+                explanation = stripHtml(String(expSource || ''));
+            }
+
+            return { question: questionText, options, correctAnswerIndex, explanation };
+        });
+
+        return { questions, answers };
+    } catch {
+        return { questions: [], answers: {} };
+    }
+}
+
 interface ContentEditorPanelProps {
     slide: SlideGeneration | null;
     onContentChange: (slideId: string, content: string) => void;
@@ -60,9 +213,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
             setDocumentContent(slide.content || '');
         } else if (
             slide.slideType === 'code-editor' ||
-            slide.slideType === 'solution' ||
-            slide.slideType === 'video-code' ||
-            slide.slideType === 'ai-video-code'
+            slide.slideType === 'solution'
         ) {
             setCodeContent(slide.content || '// Your code here\n');
         } else if (
@@ -70,24 +221,9 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
             slide.slideType === 'assessment' ||
             slide.slideType === 'ASSESSMENT'
         ) {
-            if (slide.content) {
-                try {
-                    const parsed = JSON.parse(slide.content);
-                    if (Array.isArray(parsed.questions)) {
-                        setQuizQuestions(parsed.questions);
-                        setSelectedAnswers(parsed.answers || {});
-                    } else if (Array.isArray(parsed)) {
-                        setQuizQuestions(parsed);
-                        setSelectedAnswers({});
-                    } else {
-                        setQuizQuestions(DEFAULT_QUIZ_QUESTIONS);
-                    }
-                } catch {
-                    setQuizQuestions(DEFAULT_QUIZ_QUESTIONS);
-                }
-            } else {
-                setQuizQuestions(DEFAULT_QUIZ_QUESTIONS);
-            }
+            const { questions, answers } = parseQuizContent(slide.content || '');
+            setQuizQuestions(questions.length > 0 ? questions : DEFAULT_QUIZ_QUESTIONS);
+            setSelectedAnswers(answers);
             setCurrentQuizIndex(0);
         }
         setIsEditing(true);
@@ -105,11 +241,16 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
             content = documentContent;
         } else if (
             slide.slideType === 'code-editor' ||
-            slide.slideType === 'solution' ||
+            slide.slideType === 'solution'
+        ) {
+            content = codeContent;
+        } else if (
+            slide.slideType === 'video' ||
+            slide.slideType === 'ai-video' ||
             slide.slideType === 'video-code' ||
             slide.slideType === 'ai-video-code'
         ) {
-            content = codeContent;
+            content = slide.content || '';
         } else if (
             slide.slideType === 'quiz' ||
             slide.slideType === 'assessment' ||
@@ -231,14 +372,14 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-hidden">
+            <div key={slide.id} className="flex-1 overflow-hidden">
                 {/* Document Content */}
                 {(slide.slideType === 'doc' ||
                     slide.slideType === 'objectives' ||
                     slide.slideType === 'topic') && (
                         <div className="h-full overflow-y-auto">
                             {isEditing ? (
-                                <div className="h-full">
+                                <div className="h-full px-6 py-4 sm:px-8 sm:py-6">
                                     <YooptaEditorWrapper
                                         value={documentContent}
                                         onChange={(content) => setDocumentContent(content)}
@@ -247,7 +388,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                                 </div>
                             ) : (
                                 <div
-                                    className="prose prose-sm max-w-none p-3 sm:p-6"
+                                    className="prose prose-base max-w-none px-6 py-4 sm:px-8 sm:py-6 prose-headings:text-neutral-900 prose-h1:text-2xl prose-h1:font-bold prose-h2:text-xl prose-h2:font-semibold prose-h3:text-lg prose-h3:font-semibold prose-p:text-neutral-700 prose-p:leading-relaxed"
                                     dangerouslySetInnerHTML={{
                                         __html: documentContent || '<p>No content available</p>',
                                     }}
@@ -256,38 +397,30 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                         </div>
                     )}
 
-                {/* Video Content */}
-                {(slide.slideType === 'video' || slide.slideType === 'ai-video') && (
-                    <div className="flex h-full items-center justify-center bg-neutral-900 p-3 sm:p-6">
-                        {slide.content && isYouTubeUrl(slide.content) ? (
-                            <iframe
-                                src={getYouTubeEmbedUrl(slide.content) || undefined}
-                                className="aspect-video w-full max-w-3xl rounded-lg"
-                                allowFullScreen
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            />
-                        ) : slide.aiVideoData?.timelineUrl ? (
-                            <div className="text-center text-white">
-                                <Video className="mx-auto mb-4 size-12 opacity-50" />
-                                <p className="text-sm">AI Content Generated</p>
-                                <p className="mt-2 text-xs text-neutral-400">
-                                    Video ID: {slide.aiVideoData.videoId}
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="text-center text-white">
-                                <Video className="mx-auto mb-4 size-12 opacity-50" />
-                                <p className="text-sm">Video content will appear here</p>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Code Content */}
-                {(slide.slideType === 'code-editor' ||
-                    slide.slideType === 'solution' ||
+                {/* Video / AI-Video / Video-Code / AI-Video-Code Content - show description or script */}
+                {(slide.slideType === 'video' ||
+                    slide.slideType === 'ai-video' ||
                     slide.slideType === 'video-code' ||
-                    slide.slideType === 'ai-video-code') && (
+                    slide.slideType === 'ai-video-code') && (() => {
+                    const { label, html } = extractVideoDisplayContent(slide.content || '', slide.slideType);
+                    return (
+                        <div className="h-full overflow-y-auto px-6 py-4 sm:px-8 sm:py-6">
+                            <h4 className="mb-4 text-sm font-medium uppercase tracking-wide text-neutral-500">
+                                {label}
+                            </h4>
+                            <div
+                                className="prose prose-base max-w-none prose-headings:text-neutral-900 prose-h3:text-lg prose-h3:font-semibold prose-p:text-neutral-700 prose-p:leading-relaxed"
+                                dangerouslySetInnerHTML={{
+                                    __html: html || '<p class="text-neutral-400">No content available</p>',
+                                }}
+                            />
+                        </div>
+                    );
+                })()}
+
+                {/* Code Content - only for pure code/solution slides */}
+                {(slide.slideType === 'code-editor' ||
+                    slide.slideType === 'solution') && (
                         <div className="h-full">
                             <Editor
                                 height="100%"
@@ -298,10 +431,11 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                                 options={{
                                     readOnly: !isEditing,
                                     minimap: { enabled: false },
-                                    fontSize: 13,
+                                    fontSize: 15,
                                     lineNumbers: 'on',
                                     scrollBeyondLastLine: false,
                                     wordWrap: 'on',
+                                    padding: { top: 16, bottom: 16 },
                                 }}
                             />
                         </div>
@@ -403,20 +537,13 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
 
                 {/* Homework/Assignment Content */}
                 {(slide.slideType === 'homework' || slide.slideType === 'assignment') && (
-                    <div className="h-full overflow-y-auto p-3 sm:p-6">
-                        <div className="mx-auto max-w-2xl">
-                            <div className="rounded-lg bg-neutral-50 p-6">
-                                <h4 className="mb-4 text-lg font-medium text-neutral-900">
-                                    Assignment
-                                </h4>
-                                <div
-                                    className="prose prose-sm max-w-none"
-                                    dangerouslySetInnerHTML={{
-                                        __html: slide.content || '<p>No assignment content</p>',
-                                    }}
-                                />
-                            </div>
-                        </div>
+                    <div className="h-full overflow-y-auto px-6 py-4 sm:px-8 sm:py-6">
+                        <div
+                            className="prose prose-base max-w-none prose-headings:text-neutral-900 prose-h1:text-2xl prose-h1:font-bold prose-h2:text-xl prose-h2:font-semibold prose-h3:text-lg prose-h3:font-semibold prose-p:text-neutral-700 prose-p:leading-relaxed"
+                            dangerouslySetInnerHTML={{
+                                __html: slide.content || '<p>No assignment content</p>',
+                            }}
+                        />
                     </div>
                 )}
             </div>

@@ -42,6 +42,6 @@ COPY . /app/ai_service
 
 EXPOSE 8077
 
-CMD ["uvicorn", "ai_service.main:app", "--host", "0.0.0.0", "--port", "8077"]
+CMD ["uvicorn", "ai_service.main:app", "--host", "0.0.0.0", "--port", "8077", "--timeout-keep-alive", "1200"]
 
 

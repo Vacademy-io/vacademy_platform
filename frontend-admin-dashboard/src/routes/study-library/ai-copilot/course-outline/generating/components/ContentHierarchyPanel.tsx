@@ -55,10 +55,15 @@ const getSlideIcon = (type: SlideType) => {
         case 'ai-storybook':
             return <BookOpen className="h-3.5 w-3.5 text-rose-600" />;
         case 'video-code':
-        case 'ai-video-code':
             return (
                 <div className="flex items-center">
                     <Video className="h-3.5 w-3.5 text-red-600" />
+                </div>
+            );
+        case 'ai-video-code':
+            return (
+                <div className="flex items-center">
+                    <Video className="h-3.5 w-3.5 text-blue-600" />
                 </div>
             );
         case 'code-editor':

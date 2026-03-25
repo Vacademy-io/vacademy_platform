@@ -1,6 +1,7 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
+import { getAiProductName } from '@/config/branding';
 import { useState, useCallback } from 'react';
 import { MyButton } from '@/components/design-system/button';
 import {
@@ -1623,7 +1624,7 @@ function RouteComponent() {
                         <div className="flex items-center justify-center gap-2 py-20">
                             <RefreshCw className="h-5 w-5 animate-spin text-indigo-600" />
                             <span className="text-sm font-medium text-indigo-600">
-                                AI is generating your course outline...
+                                {getAiProductName()} is generating your outline...
                             </span>
                         </div>
                     </div>

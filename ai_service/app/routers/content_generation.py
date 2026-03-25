@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 import uuid
 import json
+import asyncio
+import time
 
 from ..dependencies import get_course_outline_service
 from ..schemas.content_generation import ContentGenerationRequest
@@ -44,6 +46,7 @@ async def generate_content_from_coursetree(
 
     async def event_generator():
         try:
+            last_event_time = time.monotonic()
             async for event in service.generate_content_from_coursetree(
                 course_tree=payload.course_tree,
                 request_id=request_id,
@@ -51,8 +54,8 @@ async def generate_content_from_coursetree(
                 user_id=payload.user_id,
                 language=payload.language,
             ):
-                # Format as SSE: "data: <content>\n\n"
                 yield f"data: {event}\n\n"
+                last_event_time = time.monotonic()
         except PaymentRequiredError as exc:
             error_payload = json.dumps({
                 "type": "ERROR",

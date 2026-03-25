@@ -876,7 +876,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                 AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                 AND (
-                    :packageSessionFilter IS NULL
+                    CAST(:packageSessionFilter AS VARCHAR) IS NULL
                     OR :packageSessionFilter = ''
                     OR (:packageSessionFilter = 'PARENTS_ONLY' AND COALESCE(ps.is_parent, false) = true)
                     OR (:packageSessionFilter = 'CHILDREN_ONLY' AND ps.parent_id IS NOT NULL)
@@ -932,7 +932,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                             AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                             AND (
-                                :packageSessionFilter IS NULL
+                                CAST(:packageSessionFilter AS VARCHAR) IS NULL
                                 OR :packageSessionFilter = ''
                                 OR (:packageSessionFilter = 'PARENTS_ONLY' AND COALESCE(ps.is_parent, false) = true)
                                 OR (:packageSessionFilter = 'CHILDREN_ONLY' AND ps.parent_id IS NOT NULL)
@@ -1181,7 +1181,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                     AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                     AND (
-                        :packageSessionFilter IS NULL
+                        CAST(:packageSessionFilter AS VARCHAR) IS NULL
                         OR :packageSessionFilter = ''
                         OR (:packageSessionFilter = 'PARENTS_ONLY' AND COALESCE(ps.is_parent, false) = true)
                         OR (:packageSessionFilter = 'CHILDREN_ONLY' AND ps.parent_id IS NOT NULL)
@@ -1236,7 +1236,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                         AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                         AND (
-                            :packageSessionFilter IS NULL
+                            CAST(:packageSessionFilter AS VARCHAR) IS NULL
                             OR :packageSessionFilter = ''
                             OR (:packageSessionFilter = 'PARENTS_ONLY' AND COALESCE(ps.is_parent, false) = true)
                             OR (:packageSessionFilter = 'CHILDREN_ONLY' AND ps.parent_id IS NOT NULL)

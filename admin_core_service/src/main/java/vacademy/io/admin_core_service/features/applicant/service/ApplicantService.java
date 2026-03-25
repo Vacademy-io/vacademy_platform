@@ -686,6 +686,39 @@ public class ApplicantService {
         }
 
         /**
+         * Search for enquiries returning a list handles combinations dynamically,
+         * scoped to the given institute for data isolation
+         */
+        public List<EnquiryDetailsResponseDTO> searchEnquiries(String instituteId, String name, String phone, String trackingId) {
+                List<AudienceResponse> audienceResponses = new java.util.ArrayList<>();
+
+                // Depending on the filter provided, query the DB
+                if (trackingId != null && !trackingId.trim().isEmpty()) {
+                        // Precise match for Tracking ID — resolve to enquiry UUID first, then scope by institute
+                        Optional<vacademy.io.admin_core_service.features.enquiry.entity.Enquiry> enquiryOpt =
+                                        enquiryRepository.findByEnquiryTrackingId(trackingId);
+                        enquiryOpt.ifPresent(enq -> {
+                                audienceResponseRepository
+                                                .findByInstituteIdAndEnquiryId(instituteId, enq.getId().toString())
+                                                .ifPresent(audienceResponses::add);
+                        });
+                } else if (phone != null && !phone.trim().isEmpty()) {
+                        // Exact match for phone (might return multiple for siblings), scoped to institute
+                        audienceResponses.addAll(
+                                        audienceResponseRepository.findByInstituteIdAndParentMobile(instituteId, phone));
+                } else if (name != null && !name.trim().isEmpty()) {
+                        // Partial match for parent name, scoped to institute
+                        audienceResponses.addAll(
+                                        audienceResponseRepository.findByInstituteIdAndParentNameContainingIgnoreCase(instituteId, name));
+                }
+
+                // If no filters were provided, or nothing matched, we return empty list to protect DB
+                return audienceResponses.stream()
+                                .map(this::buildEnquiryDetailsResponse)
+                                .collect(java.util.stream.Collectors.toList());
+        }
+
+        /**
          * Build EnquiryDetailsResponseDTO from AudienceResponse
          */
         private EnquiryDetailsResponseDTO buildEnquiryDetailsResponse(AudienceResponse audienceResponse) {
@@ -746,10 +779,15 @@ public class ApplicantService {
                         }
                 }
 
+                // Derive overall_status from AudienceResponse; fall back to "ENQUIRY" if not set
+                String overallStatus = audienceResponse.getOverallStatus() != null
+                                ? audienceResponse.getOverallStatus()
+                                : (audienceResponse.getApplicantId() != null ? "APPLICATION" : "ENQUIRY");
+
                 return EnquiryDetailsResponseDTO.builder()
                                 .enquiryId(audienceResponse.getEnquiryId())
                                 .trackingId(trackingId)
-                                .alreadyApplied(audienceResponse.getApplicantId() != null)
+                                .overallStatus(overallStatus)
                                 .applicantId(audienceResponse.getApplicantId())
                                 .parent(parentDetails)
                                 .child(childDetails)

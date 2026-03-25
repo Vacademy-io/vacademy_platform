@@ -24,7 +24,7 @@ public class EnquiryDetailsResponseDTO {
 
     private String enquiryId;
     private String trackingId;
-    private Boolean alreadyApplied;
+    private String overallStatus; // "ENQUIRY" | "APPLICATION" | "ADMISSION"
     private String applicantId;
 
     private ParentDetails parent;

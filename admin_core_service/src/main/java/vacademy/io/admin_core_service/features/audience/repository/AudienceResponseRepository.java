@@ -149,6 +149,17 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         Optional<AudienceResponse> findFirstByParentMobileOrderByCreatedAtDesc(String parentMobile);
 
         /**
+         * Find all audience responses by parent mobile
+         */
+        List<AudienceResponse> findByParentMobile(String parentMobile);
+
+        /**
+         * Find audience responses by parent name containing (ignore case)
+         */
+        List<AudienceResponse> findByParentNameContainingIgnoreCase(String parentName);
+
+
+        /**
          * Find audience response by applicant ID
          */
         Optional<AudienceResponse> findByApplicantId(String applicantId);
@@ -191,5 +202,46 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("endDate") Timestamp endDate);
 
         Optional<AudienceResponse> findFirstByStudentUserIdAndApplicantIdIsNotNull(String studentUserId);
+
+        /**
+         * Find audience responses by parent mobile scoped to a specific institute
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND ar.parentMobile = :phone
+                            ORDER BY ar.submittedAt DESC
+                        """)
+        List<AudienceResponse> findByInstituteIdAndParentMobile(
+                        @Param("instituteId") String instituteId,
+                        @Param("phone") String phone);
+
+        /**
+         * Find audience responses by parent name (partial, case-insensitive) scoped to a specific institute
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND LOWER(ar.parentName) LIKE LOWER(CONCAT('%', :name, '%'))
+                            ORDER BY ar.submittedAt DESC
+                        """)
+        List<AudienceResponse> findByInstituteIdAndParentNameContainingIgnoreCase(
+                        @Param("instituteId") String instituteId,
+                        @Param("name") String name);
+
+        /**
+         * Find audience response by enquiry ID scoped to a specific institute
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND ar.enquiryId = :enquiryId
+                        """)
+        Optional<AudienceResponse> findByInstituteIdAndEnquiryId(
+                        @Param("instituteId") String instituteId,
+                        @Param("enquiryId") String enquiryId);
 }
 

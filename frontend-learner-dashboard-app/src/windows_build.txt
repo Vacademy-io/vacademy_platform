@@ -1,0 +1,5 @@
+npm run build  
+cp -r dist/* electron/app/
+cd electron  
+npm run build  
+npx electron-builder build --win -c ./electron-builder.production-asar.json

@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "35NLZB49QN.io.vacademy.student.app",
+        "paths": ["/assessment/examination", "/assessment/reports"]
+      }
+    ]
+  }
+}

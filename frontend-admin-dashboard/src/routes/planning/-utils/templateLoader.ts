@@ -1,0 +1,168 @@
+/**
+ * Loads the planning template HTML from the file
+ * @returns Promise with the template HTML string
+ */
+export async function loadPlanningTemplate(): Promise<string> {
+    try {
+        // Fetch the template file from the public directory or assets
+        const response = await fetch('/planning-template.html');
+        if (!response.ok) {
+            throw new Error('Failed to load planning template');
+        }
+        return await response.text();
+    } catch (error) {
+        console.error('Error loading planning template:', error);
+        // Return a basic fallback template
+        return `
+<div class="planner-table-container">
+    <table>
+        <thead>
+            <tr>
+                <th class="col-lesson">Lesson</th>
+                <th class="col-obj">Objectives</th>
+                <th class="col-mat">Materials</th>
+                <th class="col-act">Activities</th>
+                <th class="col-note">Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><textarea placeholder="e.g. Lesson 1 / Unit 1"></textarea></td>
+                <td><textarea placeholder="Students will be able to..."></textarea></td>
+                <td><textarea placeholder="Slides, handouts, markers..."></textarea></td>
+                <td><textarea placeholder="1. Warm-up&#10;2. Main Activity&#10;3. Closing"></textarea></td>
+                <td><textarea placeholder="Homework / Accommodations..."></textarea></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+        `.trim();
+    }
+}
+
+const HTML_TEMPLATE_HEAD = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planner Table</title>
+    <style>
+        /* Scoped styles to ensure it renders correctly inside a React div */
+        .planner-table-container {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            width: 100%;
+            background: white;
+            color: #1f2937;
+        }
+
+        .planner-table-container table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .planner-table-container th {
+            background-color: #f8fafc;
+            color: #6b7280;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 2px solid #e5e7eb;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .planner-table-container td {
+            border-bottom: 1px solid #f1f5f9;
+            padding: 8px;
+            vertical-align: top;
+            border-left: 1px solid #f9fafb;
+        }
+
+        /* Column Widths */
+        .planner-table-container .col-lesson { width: 12%; color: #4f46e5; font-weight: 600; }
+        .planner-table-container .col-obj { width: 22%; }
+        .planner-table-container .col-mat { width: 18%; }
+        .planner-table-container .col-act { width: 30%; }
+        .planner-table-container .col-note { width: 18%; }
+
+        /* Input Styling */
+        .planner-table-container textarea {
+            width: 100%;
+            min-height: 40px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            padding: 6px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            resize: none;
+            box-sizing: border-box;
+            background: transparent;
+            overflow: hidden;
+            display: block;
+        }
+
+        .planner-table-container textarea:focus {
+            outline: none;
+            background-color: white;
+            box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
+        }
+        
+        /* Print adjustments */
+        @media print {
+            .planner-table-container textarea {
+                border: none;
+                resize: none;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+`;
+
+const HTML_TEMPLATE_FOOTER = `
+</body>
+</html>`;
+
+/**
+ * Wraps the editor content in the full HTML document structure
+ * @param content - The inner HTML content (from editor)
+ * @returns Full HTML document string
+ */
+export function wrapContentInHTML(content: string): string {
+    // If content already has doctype/html tags, return as is
+    if (content.includes('<!DOCTYPE html>') || content.includes('<html')) {
+        return content;
+    }
+
+    return `${HTML_TEMPLATE_HEAD}${content}${HTML_TEMPLATE_FOOTER}`;
+}
+
+/**
+ * Extracts the inner HTML content from the full HTML document (removes doctype, head, body tags)
+ * @param html - The full HTML document string
+ * @returns Inner HTML content suitable for the editor
+ */
+export function unwrapContentFromHTML(html: string): string {
+    if (!html) return '';
+
+    // Simple regex to extract content between <body> and </body>
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    if (bodyMatch && bodyMatch[1]) {
+        return bodyMatch[1].trim();
+    }
+
+    // Fallback: if no body tag found, return as is (might be already a fragment)
+    // But check if it has doctype/html tags and strip them if possible to avoid issues
+    if (html.includes('<!DOCTYPE html>') || html.includes('<html')) {
+        // Try to parse with DOMParser to be safe
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        return doc.body.innerHTML;
+    }
+
+    return html;
+}

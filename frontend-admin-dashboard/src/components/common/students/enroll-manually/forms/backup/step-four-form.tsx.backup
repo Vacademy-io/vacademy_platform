@@ -1,0 +1,453 @@
+/* eslint-disable */
+import { FormStepHeading } from '../form-components/form-step-heading';
+import { Form, FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
+import { FormItemWrapper } from '../form-components/form-item-wrapper';
+import { useForm } from 'react-hook-form';
+import { MyInput } from '@/components/design-system/input';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useFormStore } from '@/stores/students/enroll-students-manually/enroll-manually-form-store';
+import {
+    StepFourData,
+    stepFourSchema,
+} from '@/schemas/student/student-list/schema-enroll-students-manually';
+import { StudentTable } from '@/types/student-table-types';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { getInstituteId } from '@/constants/helper';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { getUserId } from '@/utils/userDetails';
+import { MyDropdown } from '../dropdownForPackageItems';
+import { DropdownValueType } from '../dropdownTypesForPackageItems';
+
+interface PaymentPlan {
+    id: string;
+    plan_name: string;
+    plan_amount: number;
+}
+
+interface PaymentOption {
+    id: string;
+    option_name: string;
+}
+
+export const StepFourForm = ({
+    initialValues,
+    submitFn,
+}: {
+    initialValues?: StudentTable;
+    submitFn: (fn: () => void) => void;
+}) => {
+    const { stepThreeData, stepFourData, setStepFourData, nextStep } = useFormStore();
+    const instituteId = getInstituteId();
+
+    const [selectedPlan, setSelectedPlan] = useState<string>('');
+
+    // Get package_session_ids from Step 3 based on enrollment type
+    const packageSessionIds: string[] = useMemo(() => {
+        if (!stepThreeData) return [];
+
+        if (stepThreeData.enrollment_type === 'course') {
+            // For course enrollment, construct package_session_id from course/session/level
+            const courseId = stepThreeData.course?.id;
+            const sessionId = stepThreeData.session?.id;
+            const levelId = stepThreeData.level?.id;
+
+            if (courseId && sessionId && levelId) {
+                // Assuming package_session_id format is constructed from these IDs
+                // You may need to adjust this based on your actual data structure
+                return [`${courseId}_${sessionId}_${levelId}`];
+            }
+        } else if (stepThreeData.enrollment_type === 'invite' && stepThreeData.invite?.id) {
+            // For invite enrollment, we'll fetch plans based on invite
+            // Return empty here and handle in API call
+            return [];
+        }
+
+        return [];
+    }, [stepThreeData]);
+
+    // Fetch payment plans based on Step 3 selection
+    const { data: paymentPlansData, isLoading: isLoadingPlans } = useQuery({
+        queryKey: ['PAYMENT_PLANS', packageSessionIds, stepThreeData?.invite?.id],
+        queryFn: async () => {
+            if (stepThreeData?.enrollment_type === 'course' && packageSessionIds.length > 0) {
+                const response = await authenticatedAxiosInstance.get(
+                    '/admin-core-service/institute/package_session/v1/payment_plan',
+                    {
+                        params: {
+                            instituteId,
+                            packageSessionIds: packageSessionIds.join(','),
+                        },
+                    }
+                );
+                return response.data;
+            } else if (stepThreeData?.enrollment_type === 'invite' && stepThreeData.invite?.id) {
+                // Fetch plans for invite
+                const response = await authenticatedAxiosInstance.get(
+                    '/admin-core-service/institute/invite/v1/payment_plans',
+                    {
+                        params: {
+                            instituteId,
+                            inviteId: stepThreeData.invite.id,
+                        },
+                    }
+                );
+                return response.data;
+            }
+            return { plans: [] };
+        },
+        enabled: !!instituteId && !!stepThreeData && (packageSessionIds.length > 0 || !!stepThreeData.invite?.id),
+    });
+
+    const paymentPlans: PaymentPlan[] = paymentPlansData?.plans || [];
+
+    // Fetch payment options for selected plan
+    const { data: paymentOptionsData, isLoading: isLoadingOptions } = useQuery({
+        queryKey: ['PAYMENT_OPTIONS', selectedPlan],
+        queryFn: async () => {
+            if (!selectedPlan) return { options: [] };
+
+            const response = await authenticatedAxiosInstance.get(
+                '/admin-core-service/institute/payment_plan/v1/payment_options',
+                {
+                    params: {
+                        instituteId,
+                        planId: selectedPlan,
+                    },
+                }
+            );
+            return response.data;
+        },
+        enabled: !!instituteId && !!selectedPlan,
+    });
+
+    const paymentOptions: PaymentOption[] = paymentOptionsData?.options || [];
+
+    // File upload using useFileUpload hook
+    const fileUpload = useFileUpload();
+    const [uploadedFileId, setUploadedFileId] = useState<string>('');
+    const [isFileUploading, setIsFileUploading] = useState(false);
+    const userId = getUserId();
+
+    const form = useForm<StepFourData>({
+        resolver: zodResolver(stepFourSchema),
+        defaultValues: stepFourData || {
+            plan_id: '',
+            payment_option_id: '',
+            file_id: '',
+            transaction_id: '',
+        },
+        mode: 'onChange',
+    });
+
+    // Update form when stepFourData changes
+    useEffect(() => {
+        if (stepFourData) {
+            form.reset(stepFourData);
+            if (stepFourData.plan_id) {
+                setSelectedPlan(stepFourData.plan_id);
+            }
+        }
+    }, [stepFourData]);
+
+    // Update file_id in form when file is uploaded
+    useEffect(() => {
+        if (uploadedFileId) {
+            form.setValue('file_id', uploadedFileId);
+        }
+    }, [uploadedFileId]);
+
+    const handleFileUpload = async (file: File) => {
+        try {
+            setIsFileUploading(true);
+            const fileId = await fileUpload.uploadFile({
+                file,
+                setIsUploading: setIsFileUploading,
+                userId,
+                source: 'payment_receipt',
+                publicUrl: false,
+            });
+            if (fileId) {
+                setUploadedFileId(fileId);
+                form.setValue('file_id', fileId);
+            }
+        } catch (error) {
+            console.error('File upload error:', error);
+        } finally {
+            setIsFileUploading(false);
+        }
+    };
+
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            // Validate file type
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+            if (!allowedTypes.includes(file.type)) {
+                alert('Please upload only JPG, PNG, or PDF files');
+                return;
+            }
+            // Validate file size (5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                alert('File size must be less than 5MB');
+                return;
+            }
+            handleFileUpload(file);
+        }
+    };
+
+    const handleRemoveFile = () => {
+        setUploadedFileId('');
+        form.setValue('file_id', '');
+    };
+
+    const handlePlanChange = (planId: string) => {
+        setSelectedPlan(planId);
+        form.setValue('plan_id', planId);
+        // Reset payment option when plan changes
+        form.setValue('payment_option_id', '');
+    };
+
+    const onSubmit = (values: StepFourData) => {
+        setStepFourData(values);
+        nextStep();
+    };
+
+    const formRef = useRef<HTMLFormElement>(null);
+
+    const requestFormSubmit = () => {
+        if (formRef.current) {
+            formRef.current.requestSubmit();
+        }
+    };
+
+    useEffect(() => {
+        if (submitFn) {
+            submitFn(requestFormSubmit);
+        }
+    }, [submitFn]);
+
+    return (
+        <div>
+            <div className="flex flex-col justify-center px-6 text-neutral-600">
+                <Form {...form}>
+                    <form
+                        ref={formRef}
+                        onSubmit={form.handleSubmit(onSubmit)}
+                        className="flex flex-col gap-6"
+                    >
+                        <FormItemWrapper<StepFourData> control={form.control} name="plan_id">
+                            <FormStepHeading stepNumber={4} heading="Payment Details" />
+                        </FormItemWrapper>
+
+                        <div className="flex flex-col gap-8">
+                            {/* Payment Plan Selection (Optional) */}
+                            <FormField
+                                control={form.control}
+                                name="plan_id"
+                                render={({ field }) => {
+                                    const planDropdownList = paymentPlans.map((plan) => ({
+                                        id: plan.id,
+                                        name: `${plan.plan_name} - ₹${plan.plan_amount.toLocaleString()}`,
+                                    }));
+
+                                    const selectedPlanValue = field.value
+                                        ? planDropdownList.find((plan) => plan.id === field.value)
+                                        : undefined;
+
+                                    return (
+                                        <FormItem>
+                                            <FormControl>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-subtitle font-semibold">
+                                                        Select Payment Plan (Optional)
+                                                    </label>
+                                                    {isLoadingPlans ? (
+                                                        <div className="text-sm text-gray-500">
+                                                            Loading payment plans...
+                                                        </div>
+                                                    ) : paymentPlans.length === 0 ? (
+                                                        <div className="text-sm text-gray-500">
+                                                            No payment plans available
+                                                        </div>
+                                                    ) : (
+                                                        <MyDropdown
+                                                            currentValue={selectedPlanValue}
+                                                            dropdownList={planDropdownList}
+                                                            handleChange={(
+                                                                value: DropdownValueType
+                                                            ) => {
+                                                                if (
+                                                                    typeof value === 'object' &&
+                                                                    'id' in value
+                                                                ) {
+                                                                    handlePlanChange(value.id);
+                                                                }
+                                                            }}
+                                                            placeholder="Select a plan"
+                                                            required={false}
+                                                        />
+                                                    )}
+                                                </div>
+                                            </FormControl>
+                                        </FormItem>
+                                    );
+                                }}
+                            />
+
+                            {/* Payment Option Selection (Required) */}
+                            <FormField
+                                control={form.control}
+                                name="payment_option_id"
+                                render={({ field }) => {
+                                    const optionDropdownList = paymentOptions.map((option) => ({
+                                        id: option.id,
+                                        name: option.option_name,
+                                    }));
+
+                                    const selectedOptionValue = field.value
+                                        ? optionDropdownList.find(
+                                              (option) => option.id === field.value
+                                          )
+                                        : undefined;
+
+                                    return (
+                                        <FormItem>
+                                            <FormControl>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-subtitle font-semibold">
+                                                        Select Payment Option (Optional)
+                                                    </label>
+                                                    {!selectedPlan ? (
+                                                        <div className="text-sm text-gray-500">
+                                                            Please select a payment plan first
+                                                        </div>
+                                                    ) : isLoadingOptions ? (
+                                                        <div className="text-sm text-gray-500">
+                                                            Loading payment options...
+                                                        </div>
+                                                    ) : paymentOptions.length === 0 ? (
+                                                        <div className="text-sm text-gray-500">
+                                                            No payment options available for this
+                                                            plan
+                                                        </div>
+                                                    ) : (
+                                                        <MyDropdown
+                                                            currentValue={selectedOptionValue}
+                                                            dropdownList={optionDropdownList}
+                                                            handleChange={(
+                                                                value: DropdownValueType
+                                                            ) => {
+                                                                if (
+                                                                    typeof value === 'object' &&
+                                                                    'id' in value
+                                                                ) {
+                                                                    field.onChange(value.id);
+                                                                }
+                                                            }}
+                                                            placeholder="Select a payment option"
+                                                            error={
+                                                                form.formState.errors
+                                                                    .payment_option_id?.message
+                                                            }
+                                                            required={false}
+                                                            disable={!selectedPlan}
+                                                        />
+                                                    )}
+                                                </div>
+                                            </FormControl>
+                                        </FormItem>
+                                    );
+                                }}
+                            />
+
+                            {/* File Upload for Payment Receipt */}
+                            <FormField
+                                control={form.control}
+                                name="file_id"
+                                render={() => (
+                                    <FormItem>
+                                        <FormLabel className="text-subtitle font-semibold">
+                                            Upload Payment Receipt (Optional)
+                                        </FormLabel>
+                                        <FormControl>
+                                            <div className="flex flex-col gap-2">
+                                                <input
+                                                    type="file"
+                                                    accept="image/jpeg,image/png,image/jpg,application/pdf"
+                                                    onChange={handleFileChange}
+                                                    disabled={isFileUploading}
+                                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 disabled:opacity-50"
+                                                />
+                                                {isFileUploading && (
+                                                    <div className="text-sm text-gray-600">
+                                                        Uploading file...
+                                                    </div>
+                                                )}
+                                                {uploadedFileId && !isFileUploading && (
+                                                    <div className="flex items-center gap-2 text-sm text-green-600">
+                                                        <span>✓ File uploaded successfully</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleRemoveFile}
+                                                            className="text-red-600 hover:underline"
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                <p className="text-xs text-gray-500">
+                                                    Accepted formats: JPG, PNG, PDF (Max 5MB)
+                                                </p>
+                                            </div>
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+
+                            {/* Transaction ID Input */}
+                            <FormField
+                                control={form.control}
+                                name="transaction_id"
+                                render={({ field: { onChange, value, ...field } }) => (
+                                    <FormItem>
+                                        <FormControl>
+                                            <MyInput
+                                                inputType="text"
+                                                label="Transaction ID (Optional)"
+                                                inputPlaceholder="Enter transaction reference number"
+                                                input={value || ''}
+                                                onChangeFunction={onChange}
+                                                error={
+                                                    form.formState.errors.transaction_id
+                                                        ?.message as string
+                                                }
+                                                required={false}
+                                                size="large"
+                                                className="w-full"
+                                                {...field}
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+
+                            {/* Validation message */}
+                            {form.formState.errors.root && (
+                                <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
+                                    {form.formState.errors.root.message}
+                                </div>
+                            )}
+
+                            <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-md">
+                                <strong>Note:</strong> All payment details are optional. You can skip
+                                this step or provide payment information later.
+                            </div>
+                        </div>
+                    </form>
+                </Form>
+            </div>
+        </div>
+    );
+};

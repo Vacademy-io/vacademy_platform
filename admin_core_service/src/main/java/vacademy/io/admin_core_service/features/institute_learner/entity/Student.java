@@ -142,6 +142,9 @@ public class Student {
     @Column(name = "guardian_mobile")
     private String guardianMobile;
 
+    @Column(name = "guardian_email")
+    private String guardianEmail;
+
     // TODO (future migration): section, has_transport, student_type, class_group,
     // year_of_passing, previous_admission_no, religion, how_did_you_know,
     // father_aadhaar, father_qualification, father_occupation,
@@ -174,6 +177,9 @@ public class Student {
         }
         if (this.parentsEmail != null) {
             this.parentsEmail = this.parentsEmail.toLowerCase();
+        }
+        if (this.guardianEmail != null) {
+            this.guardianEmail = this.guardianEmail.toLowerCase();
         }
     }
 }

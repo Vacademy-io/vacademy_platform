@@ -1,8 +1,9 @@
 // src/services/engageApi.ts
 import axios from 'axios';
 import { type SessionDetailsResponse, type JoinSessionPayload } from '@/types';
+import { BASE_URL } from '@/config/baseUrl';
 
-const API_BASE_URL = 'https://backend-stage.vacademy.io/community-service/engage/learner';
+const API_BASE_URL = `${BASE_URL}/community-service/engage/learner`;
 
 export const getSessionDetails = async (
     inviteCode: string,

@@ -33,7 +33,7 @@ class OpenRouterOutlineLLMClient(OutlineLLMClient):
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         default_model: Optional[str] = None,
-        timeout_seconds: float = 60.0,
+        timeout_seconds: float = 1200.0,  # 20 minutes for long content generation
     ) -> None:
         settings = get_settings()
         self._base_url = base_url or getattr(settings, "llm_base_url", "")

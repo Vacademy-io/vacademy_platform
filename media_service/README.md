@@ -1,1 +1,0 @@
-# backend-media-service

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.learner.service.SubOrgAutoLinkService;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
@@ -57,6 +58,11 @@ public class BulkAssignmentService {
     private final LearnerService learnerService;
     private final CustomFieldValueService customFieldValueService;
     private final StudentRegistrationManager studentRegistrationManager;
+    private final SubOrgAutoLinkService subOrgAutoLinkService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private vacademy.io.admin_core_service.features.packages.service.PackageSessionService packageSessionService;
 
     private static final String DUPLICATE_SKIP = "SKIP";
     private static final String DUPLICATE_ERROR = "ERROR";
@@ -65,7 +71,7 @@ public class BulkAssignmentService {
     /**
      * Main entry point for bulk assignment.
      */
-    public BulkAssignResponseDTO bulkAssign(BulkAssignRequestDTO request) {
+    public BulkAssignResponseDTO bulkAssign(BulkAssignRequestDTO request, String adminUserId) {
         validateRequest(request);
 
         BulkAssignOptionsDTO options = request.getOptions() != null
@@ -155,7 +161,7 @@ public class BulkAssignmentService {
             for (String userId : allUserIds) {
                 BulkAssignResultItemDTO result = processAssignment(
                         userId, userMap, newUserDataMap, assignment, config,
-                        request.getInstituteId(), duplicateHandling, dryRun);
+                        request.getInstituteId(), duplicateHandling, dryRun, adminUserId);
                 results.add(result);
 
                 // Collect successful enrollments for notification
@@ -307,7 +313,8 @@ public class BulkAssignmentService {
             DefaultInviteResolver.ResolvedConfig config,
             String instituteId,
             String duplicateHandling,
-            boolean dryRun) {
+            boolean dryRun,
+            String adminUserId) {
 
         String packageSessionId = assignment.getPackageSessionId();
         UserDTO userDTO = userMap.get(userId);
@@ -348,7 +355,7 @@ public class BulkAssignmentService {
                 // Case B: TERMINATED / INACTIVE / EXPIRED → RE_ENROLL or SKIP
                 if (DUPLICATE_RE_ENROLL.equals(duplicateHandling)) {
                     return handleReEnroll(mapping, userId, userEmail, config,
-                            instituteId, dryRun, userDTO, extraDetails);
+                            instituteId, dryRun, userDTO, extraDetails, adminUserId);
                 } else if (DUPLICATE_ERROR.equals(duplicateHandling)) {
                     return buildFailedResult(userId, userMap, packageSessionId,
                             "Existing enrollment found with status: " + existingStatus);
@@ -364,7 +371,7 @@ public class BulkAssignmentService {
             }
 
             // Case C: No existing mapping → create new
-            return handleNewEnrollment(userId, userEmail, config, instituteId, dryRun, userDTO, extraDetails);
+            return handleNewEnrollment(userId, userEmail, config, instituteId, dryRun, userDTO, extraDetails, adminUserId);
 
         } catch (Exception e) {
             log.error("Error processing assignment userId={}, packageSessionId={}: {}",
@@ -387,7 +394,8 @@ public class BulkAssignmentService {
             String userId, String userEmail,
             DefaultInviteResolver.ResolvedConfig config,
             String instituteId, boolean dryRun,
-            UserDTO userDTO, StudentExtraDetails extraDetails) {
+            UserDTO userDTO, StudentExtraDetails extraDetails,
+            String adminUserId) {
 
         if (dryRun) {
             return BulkAssignResultItemDTO.builder()
@@ -451,6 +459,17 @@ public class BulkAssignmentService {
         log.info("Created enrollment: userId={}, packageSession={}, userPlan={}, mapping={}",
                 userId, config.getPackageSession().getId(), userPlan.getId(), mappingId);
 
+        // Decrement inventory (available slots) upon valid enrollment
+        try {
+            packageSessionService.decrementAvailability(config.getPackageSession().getId(), 1);
+        } catch (Exception e) {
+            log.warn("Failed to decrement inventory for admin assign packageSession {}: {}",
+                    config.getPackageSession().getId(), e.getMessage());
+        }
+
+        // Auto-link learner to sub-org if the enrolling admin belongs to one
+        subOrgAutoLinkService.linkIfSubOrgAdmin(userId, config.getPackageSession().getId(), mappingId, adminUserId);
+
         return BulkAssignResultItemDTO.builder()
                 .userId(userId).userEmail(userEmail)
                 .packageSessionId(config.getPackageSession().getId())
@@ -471,7 +490,8 @@ public class BulkAssignmentService {
             String userId, String userEmail,
             DefaultInviteResolver.ResolvedConfig config,
             String instituteId, boolean dryRun,
-            UserDTO userDTO, StudentExtraDetails extraDetails) {
+            UserDTO userDTO, StudentExtraDetails extraDetails,
+            String adminUserId) {
 
         if (dryRun) {
             return BulkAssignResultItemDTO.builder()
@@ -498,7 +518,7 @@ public class BulkAssignmentService {
             studentRegistrationManager.createStudentFromRequest(userDTO, extraDetails);
         }
 
-        // Update existing mapping
+        // Restore mapping status
         existingMapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
         existingMapping.setEnrolledDate(new Date());
         existingMapping.setUserPlanId(userPlan.getId());
@@ -525,6 +545,9 @@ public class BulkAssignmentService {
         log.info("Re-enrolled: userId={}, packageSession={}, userPlan={}, mapping={}",
                 userId, config.getPackageSession().getId(),
                 userPlan.getId(), existingMapping.getId());
+
+        // Auto-link learner to sub-org if the enrolling admin belongs to one
+        subOrgAutoLinkService.linkIfSubOrgAdmin(userId, config.getPackageSession().getId(), existingMapping.getId(), adminUserId);
 
         return BulkAssignResultItemDTO.builder()
                 .userId(userId).userEmail(userEmail)

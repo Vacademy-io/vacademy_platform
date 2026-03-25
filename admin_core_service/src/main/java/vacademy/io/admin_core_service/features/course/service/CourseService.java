@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
+import vacademy.io.admin_core_service.features.enroll_invite.service.DefaultEnrollInviteService;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
@@ -30,7 +31,12 @@ import vacademy.io.common.institute.entity.PackageInstitute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.util.StringUtils;
 
@@ -50,6 +56,7 @@ public class CourseService {
     private final PackageService packageService;
     private final PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationToPaymentOptionRepository;
     private final vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository enrollInviteRepository;
+    private final DefaultEnrollInviteService defaultEnrollInviteService;
 
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
@@ -78,6 +85,9 @@ public class CourseService {
                     instituteId, user);
         }
 
+        // Optionally create subgroup package sessions and map parent/children.
+        handleSubgroups(savedPackage, addCourseDTO, instituteId, user);
+
         return savedPackage.getId();
     }
 
@@ -104,6 +114,76 @@ public class CourseService {
             addNewSessionDTO.getLevels().forEach(level -> level.setPackageId(savedPackage.getId()));
             sessionService.addNewSession(addNewSessionDTO, instituteId, user);
         }
+    }
+
+    /**
+     * If the request declares that the course contains subgroups, create additional
+     * package sessions for each subgroup and map them as children under a parent
+     * batch using PackageSessionService.mapParentAndChildren.
+     *
+     * Backward compatible: if contains_subgroup is null/false or no subgroups
+     * are provided, this is a no-op.
+     */
+    private void handleSubgroups(PackageEntity savedPackage,
+                                 AddCourseDTO addCourseDTO,
+                                 String instituteId,
+                                 CustomUserDetails user) {
+        // Backward-compatible handler for legacy payloads where subgroups are sent
+        // at the root level of AddCourseDTO (course-wide subgroups).
+        // Newer payloads should prefer nested subgroups on AddLevelWithSessionDTO;
+        // those are handled inside SessionService.createPackageSession.
+        if (addCourseDTO == null
+                || addCourseDTO.getContainsSubgroup() == null
+                || !addCourseDTO.getContainsSubgroup()
+                || addCourseDTO.getSubgroups() == null
+                || addCourseDTO.getSubgroups().isEmpty()) {
+            return;
+        }
+
+        // Choose a parent batch for this course: the first ACTIVE package session.
+        List<PackageSession> activeSessionsForCourse = packageSessionRepository
+                .findByPackageEntity_IdAndStatus(savedPackage.getId(), PackageSessionStatusEnum.ACTIVE.name());
+
+        if (activeSessionsForCourse == null || activeSessionsForCourse.isEmpty()) {
+            // No active sessions to attach subgroups to; nothing to do.
+            return;
+        }
+
+        PackageSession parent = activeSessionsForCourse.get(0);
+
+        List<String> childIds = new ArrayList<>();
+
+        addCourseDTO.getSubgroups().forEach(subgroupDTO -> {
+            if (subgroupDTO == null || !org.springframework.util.StringUtils.hasText(subgroupDTO.getName())) {
+                return;
+            }
+
+            PackageSession child = new PackageSession();
+            child.setPackageEntity(parent.getPackageEntity());
+            child.setLevel(parent.getLevel());
+            child.setSession(parent.getSession());
+            child.setGroup(parent.getGroup());
+            child.setStatus(PackageSessionStatusEnum.ACTIVE.name());
+            child.setStartTime(parent.getStartTime());
+            child.setIsParent(false);
+            child.setParentId(null);
+            child.setName(subgroupDTO.getName());
+
+            // Copy inventory if present on parent
+            child.setMaxSeats(parent.getMaxSeats());
+            child.setAvailableSlots(parent.getAvailableSlots());
+
+            child = packageSessionRepository.save(child);
+            defaultEnrollInviteService.createDefaultEnrollInvite(child, instituteId);
+            childIds.add(child.getId());
+        });
+
+        if (childIds.isEmpty()) {
+            return;
+        }
+
+        // Mark parent and assign children in a validated, institute-aware way.
+        packageSessionService.mapParentAndChildren(instituteId, parent.getId(), childIds);
     }
 
     private void validateRequest(AddCourseDTO addCourseDTO) {
@@ -378,6 +458,10 @@ public class CourseService {
                 .readTimeInMinutes(0)
                 .isParent(packageSession.getIsParent())
                 .parentId(packageSession.getParentId())
+                .packageSessionName(
+                        StringUtils.hasText(packageSession.getName())
+                                ? packageSession.getPackageEntity().getPackageName() + " " + packageSession.getName()
+                                : null)
                 .build())
                 .collect(Collectors.toList());
     }

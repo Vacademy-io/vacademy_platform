@@ -17,4 +17,6 @@ public interface RoleRepository extends CrudRepository<Role, String> {
 
     Optional<Role> findByNameAndInstituteId(String name, String instituteId);
 
+    List<Role> findAllByInstituteIdIsNull();
+
 }

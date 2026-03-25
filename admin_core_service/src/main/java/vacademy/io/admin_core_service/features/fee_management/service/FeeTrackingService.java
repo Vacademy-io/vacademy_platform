@@ -267,12 +267,27 @@ public class FeeTrackingService {
             return a.compareTo(b);
         }
 
+        @SuppressWarnings("unchecked")
         private List<String> resolveStudentSearchQuery(FeeSearchFilterDTO.Filters filters) {
                 if (filters == null || !StringUtils.hasText(filters.getStudentSearchQuery())) {
-                        return null; 
+                        return null;
                 }
-                log.warn("studentSearchQuery filter is not yet supported. Ignoring filter value: '{}'", filters.getStudentSearchQuery());
-                return null;
+                String query = filters.getStudentSearchQuery().trim();
+                String pattern = query + "%";
+
+                List<String> matchedUserIds = entityManager.createNativeQuery(
+                        "SELECT DISTINCT s.user_id FROM student s " +
+                        "WHERE s.full_name ILIKE :pattern " +
+                        "OR s.username ILIKE :pattern " +
+                        "OR s.mobile_number ILIKE :pattern")
+                        .setParameter("pattern", pattern)
+                        .getResultList();
+
+                if (matchedUserIds.isEmpty()) {
+                        // Return a non-null empty list so the spec filters to zero results
+                        return List.of("__NO_MATCH__");
+                }
+                return matchedUserIds;
         }
 
         private Map<String, UserDTO> fetchUserMap(List<String> userIds) {

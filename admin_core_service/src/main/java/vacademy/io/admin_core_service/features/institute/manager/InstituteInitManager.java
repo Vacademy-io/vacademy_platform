@@ -23,7 +23,9 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageReposi
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectRepository;
+import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.common.auth.enums.Gender;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
@@ -43,6 +45,8 @@ import java.util.stream.Stream;
 
 @Component
 public class InstituteInitManager {
+
+        private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(InstituteInitManager.class);
 
         @Autowired
         InstituteModuleService instituteModuleService;
@@ -67,14 +71,23 @@ public class InstituteInitManager {
         @Autowired
         private InstituteCustomFiledService instituteCustomFiledService;
 
+        @Autowired
+        private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
+
         @Transactional
         public InstituteInfoDTO getInstituteDetails(String instituteId, boolean includeBatches) {
-                return buildInstituteInfoDTO(instituteId, true, includeBatches);
+                return buildInstituteInfoDTO(instituteId, true, includeBatches, null);
+        }
+
+        @Transactional
+        public InstituteInfoDTO getInstituteDetails(String instituteId, boolean includeBatches,
+                        CustomUserDetails user) {
+                return buildInstituteInfoDTO(instituteId, true, includeBatches, user);
         }
 
         @Transactional
         public InstituteInfoDTO getPublicInstituteDetails(String instituteId, boolean includeBatches) {
-                return buildInstituteInfoDTO(instituteId, false, includeBatches);
+                return buildInstituteInfoDTO(instituteId, false, includeBatches, null);
         }
 
         /**
@@ -86,7 +99,7 @@ public class InstituteInitManager {
          * @return Populated InstituteInfoDTO
          */
         private InstituteInfoDTO buildInstituteInfoDTO(String instituteId, boolean includePrivateFields,
-                        boolean includeBatches) {
+                        boolean includeBatches, CustomUserDetails user) {
                 // Trace the main database lookup
                 Institute institute = PerformanceTracer.traceDbQuery(
                                 "instituteRepository.findById",
@@ -174,6 +187,25 @@ public class InstituteInitManager {
                                         "packageSessionRepository.findPackageSessionsByInstituteId",
                                         () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
                                                         activeStatuses));
+
+                        // Filter by faculty mapping: only apply when user has HAS_FACULTY_ASSIGNED permission.
+                        // Admin/root users and users without this permission see all package sessions.
+                        if (user != null && hasFacultyAssignedPermission(user)) {
+                                List<String> allowedAccessIds = facultyMappingRepository
+                                                .findAccessIdsByUserIdAndInstituteId(
+                                                                user.getUserId(), instId, List.of("ACTIVE"));
+                                log.info("[FACULTY-FILTER] userId={}, instituteId={}, allowedAccessIds={}",
+                                                user.getUserId(), instId, allowedAccessIds);
+                                if (!allowedAccessIds.isEmpty()) {
+                                        Set<String> allowedSet = new HashSet<>(allowedAccessIds);
+                                        int beforeSize = packageSessions.size();
+                                        packageSessions = packageSessions.stream()
+                                                        .filter(ps -> allowedSet.contains(ps.getId()))
+                                                        .toList();
+                                        log.info("[FACULTY-FILTER] filtered packageSessions from {} to {}", beforeSize,
+                                                        packageSessions.size());
+                                }
+                        }
 
                         // Batch query to get all read times at once (eliminates N+1 query problem)
                         List<String> sessionIds = packageSessions.stream().map(PackageSession::getId).toList();
@@ -512,5 +544,15 @@ public class InstituteInitManager {
                                 .levels(levels)
                                 .sessions(sessions)
                                 .build();
+        }
+
+        /**
+         * Checks if the user has HAS_FACULTY_ASSIGNED permission in their JWT.
+         * Only users with this permission should have faculty-based filtering applied.
+         */
+        private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
+                return user.getAuthorities().stream()
+                                .map(auth -> auth.getAuthority())
+                                .anyMatch(authority -> "HAS_FACULTY_ASSIGNED".equalsIgnoreCase(authority));
         }
 }

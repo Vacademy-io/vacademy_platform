@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSettingDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
@@ -121,6 +122,9 @@ public class LearnerEnrollRequestService {
     @Autowired
     private StudentSessionInstituteGroupMappingRepository ssigmRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.packages.service.PackageSessionService packageSessionService;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         return recordLearnerRequest(learnerEnrollRequestDTO, Map.of());
@@ -131,6 +135,37 @@ public class LearnerEnrollRequestService {
             Map<String, Object> extraData) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
+            // B2B: Override auth roles from invite settingJson if it's a SUB_ORG invite
+            if (StringUtils.hasText(enrollDTO.getEnrollInviteId())) {
+                EnrollInvite preCheckInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
+                if (EnrollInviteTag.SUB_ORG.name().equals(preCheckInvite.getTag())) {
+                    boolean rolesResolved = false;
+                    if (StringUtils.hasText(preCheckInvite.getSettingJson())) {
+                        try {
+                            ObjectMapper mapper = new ObjectMapper();
+                            EnrollInviteSettingDTO settingDTO = mapper.readValue(
+                                    preCheckInvite.getSettingJson(), EnrollInviteSettingDTO.class);
+                            if (settingDTO.getSetting() != null
+                                    && settingDTO.getSetting().getSubOrgSetting() != null
+                                    && settingDTO.getSetting().getSubOrgSetting().getAuthRoles() != null
+                                    && !settingDTO.getSetting().getSubOrgSetting().getAuthRoles().isEmpty()) {
+                                learnerEnrollRequestDTO.getUser().setRoles(
+                                        settingDTO.getSetting().getSubOrgSetting().getAuthRoles());
+                                rolesResolved = true;
+                                log.info("Overrode user roles from SUB_ORG invite settingJson: {}",
+                                        settingDTO.getSetting().getSubOrgSetting().getAuthRoles());
+                            }
+                        } catch (Exception e) {
+                            log.warn("Failed to parse settingJson for role override: {}", e.getMessage());
+                        }
+                    }
+                    if (!rolesResolved) {
+                        throw new VacademyException(
+                                "Sub-org invite does not have admin roles configured. Please contact the organization admin.");
+                    }
+                }
+            }
+
             boolean sendCredentials = getSendCredentialsFlag(
                     learnerEnrollRequestDTO.getInstituteId(),
                     enrollDTO.getPackageSessionIds());
@@ -289,6 +324,18 @@ public class LearnerEnrollRequestService {
         // For PAID enrollments, notifications will be sent after webhook confirms
         // payment
         if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+
+            // Decrement inventory (available slots) for each enrolled package session
+            // For FREE enrollments, decrement immediately since no payment webhook follows
+            for (String packageSessionId : enrollDTO.getPackageSessionIds()) {
+                try {
+                    packageSessionService.decrementAvailability(packageSessionId, 1);
+                } catch (Exception e) {
+                    log.warn("Failed to decrement inventory for packageSession {} on free enrollment: {}",
+                            packageSessionId, e.getMessage());
+                    // Don't block enrollment if inventory update fails
+                }
+            }
             // Check if workflow is configured for the package session
             // If workflow exists, skip notifications - workflow will handle them
             boolean hasWorkflow = false;
@@ -487,7 +534,7 @@ public class LearnerEnrollRequestService {
                             .name(user.getFullName())
                             .status("ACTIVE")
                             .userType("ROOT_ADMIN")
-                            .accessType("PackageSession")
+                            .accessType("PACKAGE_SESSION")
                             .accessId(packageSessionId)
                             .accessPermission("FULL")
                             .linkageType("SUB_ORG")

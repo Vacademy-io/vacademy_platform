@@ -33,6 +33,7 @@ public class EnquiryWithResponseDTO {
     private String feeRangeExpectation;
     private String transportRequirement;
     private String mode;
+    private String parentRelationWithChild;
     private String enquiryTrackingId;
     private Integer interestScore;
     private String notes;

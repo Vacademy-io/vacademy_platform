@@ -4,8 +4,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.AttachmentUsersDTO;
+import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.dto.NotificationToUserDTO;
 import vacademy.io.notification_service.features.bounced_emails.service.BouncedEmailService;
@@ -63,7 +65,8 @@ public class NotificationService {
                         log.info("Skipping email notification for blocked email address: {}", channelId);
                         break;
                     }
-                    emailSenderService.sendHtmlEmail(channelId, parsedSubject, "email-service", parsedBody, instituteId);
+                    // Use UTILITY_EMAIL as default for regular notification emails
+                    emailSenderService.sendHtmlEmail(channelId, parsedSubject, "email-service", parsedBody, instituteId, null, null, NotificationConstants.UTILITY_EMAIL);
                     break;
                 default:
                     throw new IllegalArgumentException("Unsupported notification type: " + notificationType);
@@ -133,13 +136,19 @@ public class NotificationService {
                                         a -> Base64.getDecoder().decode(a.getAttachment())
                                 ));
 
+                        // Use emailType from DTO, default to UTILITY_EMAIL if not specified
+                        String emailType = StringUtils.hasText(attachmentNotificationDTO.getEmailType())
+                                ? attachmentNotificationDTO.getEmailType()
+                                : NotificationConstants.UTILITY_EMAIL;
+
                         emailSenderService.sendAttachmentEmail(
                                 channelId,
                                 attachmentNotificationDTO.getSubject(),
                                 "email-service",
                                 parsedBody,
                                 base64AttachmentNameAndAttachment,
-                                instituteId
+                                instituteId,
+                                emailType
                         );
                     } else {
                         throw new IllegalArgumentException("Unsupported notification type: " + notificationType);

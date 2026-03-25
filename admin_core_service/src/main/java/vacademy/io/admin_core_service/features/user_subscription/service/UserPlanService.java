@@ -101,6 +101,10 @@ public class UserPlanService {
     private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
 
     @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.packages.service.PackageSessionService packageSessionService;
+
+    @Autowired
     private vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository paymentPlanRepository;
 
     public UserPlan createUserPlan(String userId,
@@ -371,6 +375,18 @@ public class UserPlanService {
 
             learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
                     userPlan.getUserId(), enrollInvite.getId());
+
+            // Decrement inventory (available slots) for each enrolled package session
+            for (String psId : packageSessionIds) {
+                try {
+                    packageSessionService.decrementAvailability(psId, 1);
+                } catch (Exception e) {
+                    logger.warn("Failed to decrement inventory for packageSession {} after payment: {}",
+                            psId, e.getMessage());
+                    // Don't block enrollment if inventory update fails
+                }
+            }
+
             userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
             userPlanRepository.save(userPlan);
 

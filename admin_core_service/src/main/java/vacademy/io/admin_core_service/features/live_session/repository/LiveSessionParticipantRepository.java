@@ -32,7 +32,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         @Query(value = """
         WITH all_participants AS (
             -- Query for BATCH source type participants
-            SELECT 
+            SELECT
                 s.user_id AS studentId,
                 s.full_name AS fullName,
                 s.email AS email,
@@ -45,6 +45,9 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 lsl.details AS attendanceDetails,
                 lsl.created_at AS attendanceTimestamp,
                 'BATCH' AS source_type,
+                lsl.status_type AS statusType,
+                lsl.engagement_data AS engagementData,
+                lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
                 1 AS priority
             FROM live_session_participants lsp
             JOIN student_session_institute_group_mapping m
@@ -59,11 +62,11 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 AND lsl.log_type = 'ATTENDANCE_RECORDED'
             WHERE lsp.session_id = :sessionId
             AND lsp.source_type = 'BATCH'
-            
+
             UNION ALL
-            
+
             -- Query for USER source type participants
-            SELECT 
+            SELECT
                 s.user_id AS studentId,
                 s.full_name AS fullName,
                 s.email AS email,
@@ -76,6 +79,9 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 lsl.details AS attendanceDetails,
                 lsl.created_at AS attendanceTimestamp,
                 'USER' AS source_type,
+                lsl.status_type AS statusType,
+                lsl.engagement_data AS engagementData,
+                lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
                 2 AS priority
             FROM live_session_participants lsp
             JOIN student s
@@ -101,7 +107,10 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             attendanceStatus,
             attendanceDetails,
             attendanceTimestamp,
-            source_type AS sourceType
+            source_type AS sourceType,
+            statusType,
+            engagementData,
+            providerTotalDurationMinutes
         FROM all_participants
         ORDER BY studentId, priority ASC
     """, nativeQuery = true)
@@ -308,9 +317,21 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             @Param("endDate") LocalDate endDate
     );
 
+    interface SessionBatchProjection {
+        String getSessionId();
+        String getSourceId();
+    }
+
     @Query(value = """
-    SELECT 
-        CASE 
+        SELECT lsp.session_id AS sessionId, lsp.source_id AS sourceId
+        FROM live_session_participants lsp
+        WHERE lsp.session_id IN (:sessionIds) AND lsp.source_type = 'BATCH'
+        """, nativeQuery = true)
+    List<SessionBatchProjection> findBatchSourceIdsBySessionIds(@Param("sessionIds") List<String> sessionIds);
+
+    @Query(value = """
+    SELECT
+        CASE
             WHEN total_days = 0 THEN 0
             ELSE ROUND((attended_days * 100.0) / total_days, 2)
         END AS attendance_percentage

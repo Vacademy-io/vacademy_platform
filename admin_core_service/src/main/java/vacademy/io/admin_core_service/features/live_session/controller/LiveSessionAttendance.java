@@ -4,9 +4,12 @@ package vacademy.io.admin_core_service.features.live_session.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.live_session.dto.AdminMarkAttendanceRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.MarkAttendanceRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.service.LIveSessionAttendanceService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin-core-service/live-session")
@@ -26,5 +29,15 @@ public class LiveSessionAttendance {
         return ResponseEntity.ok("Attendance marked successfully.");
     }
 
-
+    /**
+     * Admin batch marking — mark multiple users as PRESENT or ABSENT.
+     * Records marked this way get statusType = OFFLINE.
+     */
+    @PostMapping("/admin-mark-attendance")
+    public ResponseEntity<Map<String, Integer>> adminMarkAttendance(
+            @RequestBody AdminMarkAttendanceRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        Map<String, Integer> result = lIveSessionAttendanceService.adminMarkAttendance(request);
+        return ResponseEntity.ok(result);
+    }
 }

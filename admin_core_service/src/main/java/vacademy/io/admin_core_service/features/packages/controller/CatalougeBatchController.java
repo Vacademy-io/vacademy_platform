@@ -20,7 +20,7 @@ public class CatalougeBatchController {
 
     @GetMapping("batches-by-session")
     public ResponseEntity<List<PackageDTOWithBatchDetails>> getBatchDetails(
-            @RequestParam String sessionId,
+            @RequestParam(required = false) String sessionId,
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
 

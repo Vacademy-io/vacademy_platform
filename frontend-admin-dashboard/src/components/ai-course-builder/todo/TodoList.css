@@ -1,0 +1,50 @@
+/* TodoList styles copied from ai-ui-course-builder */
+.todo-container {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  max-width: 100%;
+  overflow-x: auto; /* prevent layout breaking on narrow panes */
+}
+
+.todo-title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.todo-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.todo-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: color 0.2s ease;
+}
+
+.todo-list li.completed span {
+  text-decoration: line-through;
+  color: gray;
+}
+
+.todo-list .icon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.todo-list li span {
+  flex: 1;
+  overflow-wrap: anywhere; /* allow long text to break */
+} 

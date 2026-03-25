@@ -1,0 +1,44 @@
+// export const getEpochTimeInMillis = (): number => {
+//     return new Date().getTime(); // Returns epoch time in milliseconds
+// };
+
+import clsx, { ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export interface CodeExecutionResult {
+  output: string;
+  needsInput: boolean;
+  hasError?: boolean;
+}
+
+export const getEpochTimeInMillis = (): number => {
+  return Date.now();
+};
+
+export const getISTTimeISO = () => {
+  return new Date(new Date().getTime() + 330 * 60000).toISOString();
+};
+
+export const getISTTime = () => {
+  return new Date().toLocaleString("en-US", {
+    timeZone: "Asia/Kolkata",
+  });
+};
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export function formatBytes(bytes: number, decimals = 2) {
+  if (bytes === 0) return "0 Bytes";
+
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return (
+    Number.parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i]
+  );
+}

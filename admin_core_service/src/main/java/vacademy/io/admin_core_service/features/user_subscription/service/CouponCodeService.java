@@ -209,6 +209,10 @@ public class CouponCodeService {
         return getCouponCodeBySource(sourceId, sourceType.getValue());
     }
 
+    public CouponCode saveCouponCode(CouponCode couponCode) {
+        return couponCodeRepository.save(couponCode);
+    }
+
     /**
      * Updates a coupon code and its associated short URL
      */

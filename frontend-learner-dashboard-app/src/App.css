@@ -1,0 +1,1455 @@
+#root {
+  max-width: 100vw;
+  margin: 0 auto;
+  padding: 0;
+  text-align: left;
+  overflow-x: hidden;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+/* Enhanced Login Animations */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out;
+}
+
+.animate-fade-in-down {
+  animation: fade-in-down 0.6s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.6s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.6s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.6s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+/* Glassmorphism effects */
+.glass-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Hover effects */
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* Loading animations */
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.loading-dots > div {
+  width: 8px;
+  height: 8px;
+  background-color: currentColor;
+  border-radius: 50%;
+  animation: loading-bounce 1.4s ease-in-out infinite both;
+}
+
+.loading-dots > div:nth-child(1) { animation-delay: -0.32s; }
+.loading-dots > div:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes loading-bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dashboard Animations */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s ease-out forwards;
+}
+
+.animate-fade-in-down {
+  animation: fade-in-down 0.8s ease-out forwards;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.8s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.8s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.8s ease-out forwards;
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.8s ease-out forwards;
+  opacity: 0;
+}
+
+:root {
+  font-family: 'Figtree', 'SF Pro Display', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+  font-variant-ligatures: common-ligatures;
+  -webkit-text-size-adjust: 100%;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+
+/* Professional Animation Keyframes */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fade-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes gentle-pulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Animation Classes */
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out forwards;
+  opacity: 0;
+}
+
+.animate-fade-in-down {
+  animation: fade-in-down 0.6s ease-out forwards;
+  opacity: 0;
+}
+
+.animate-fade-in-left {
+  animation: fade-in-left 0.8s ease-out forwards;
+  opacity: 0;
+}
+
+.animate-fade-in-right {
+  animation: fade-in-right 0.6s ease-out forwards;
+  opacity: 0;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.7s ease-out forwards;
+  opacity: 0;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.5s ease-out forwards;
+  opacity: 0;
+}
+
+.animate-gentle-pulse {
+  animation: gentle-pulse 3s ease-in-out infinite;
+}
+
+/* Enterprise-level hover effects */
+.hover-lift {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* Glass morphism effect */
+.glass-morphism {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Gradient text effect */
+.gradient-text {
+  background: linear-gradient(135deg, hsl(var(--primary-600)), hsl(var(--primary-400)));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Enhanced button effects */
+.btn-enterprise {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-enterprise::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.btn-enterprise:hover::before {
+  left: 100%;
+}
+
+/* Professional loading spinner */
+.spinner-enterprise {
+  width: 20px;
+  height: 20px;
+  border: 2px solid hsl(var(--primary-200));
+  border-top: 2px solid hsl(var(--primary-600));
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Professional card shadows */
+.shadow-enterprise {
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.24);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.shadow-enterprise:hover {
+  box-shadow: 
+    0 14px 28px rgba(0, 0, 0, 0.25),
+    0 10px 10px rgba(0, 0, 0, 0.22);
+}
+
+/* Professional hover effects */
+.hover-lift {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Glass morphism effect */
+.glass-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Smooth focus ring */
+.focus-ring {
+  transition: all 0.2s ease-in-out;
+}
+
+.focus-ring:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: #3b82f6;
+}
+
+/* Loading spinner */
+@keyframes spin-smooth {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-smooth {
+  animation: spin-smooth 1s linear infinite;
+}
+
+/* Staggered animations */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }
+
+/* Professional button effects */
+.btn-professional {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-professional::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.btn-professional:hover::before {
+  left: 100%;
+}
+
+/* Smooth text underline effect */
+.text-underline-effect {
+  position: relative;
+  text-decoration: none;
+}
+
+.text-underline-effect::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background-color: currentColor;
+  transition: width 0.3s ease-in-out;
+}
+
+.text-underline-effect:hover::after {
+  width: 100%;
+}
+
+/* Enhanced pulse for loading states */
+@keyframes professional-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
+  }
+}
+
+.animate-professional-pulse {
+  animation: professional-pulse 2s ease-in-out infinite;
+}
+
+/* Smooth tab transition */
+.tab-indicator {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Professional gradient backgrounds */
+.gradient-professional-blue {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.gradient-professional-purple {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.gradient-professional-emerald {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.gradient-professional-orange {
+  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
+
+/* Modern Typography */
+.font-display {
+  font-family: 'Figtree', 'SF Pro Display', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  letter-spacing: -0.025em;
+}
+
+.font-body {
+  font-family: 'Figtree', system-ui, sans-serif;
+  font-feature-settings: 'cv11';
+}
+
+/* Refined animations */
+@keyframes gentle-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-gentle-fade-in {
+  animation: gentle-fade-in 0.4s ease-out;
+}
+
+/* Better glassmorphism */
+.glass-modern {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* Modern input styling */
+.input-modern {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.input-modern:focus {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(251, 146, 60, 0.5);
+  box-shadow: 
+    0 0 0 3px rgba(251, 146, 60, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Refined spacing */
+.space-modern > * + * {
+  margin-top: 1.5rem;
+}
+
+/* Dashboard specific animations */
+@keyframes slide-up-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.animate-slide-up-fade-in {
+  animation: slide-up-fade-in 0.6s ease-out;
+}
+
+.animate-scale-fade-in {
+  animation: scale-fade-in 0.5s ease-out;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  background-size: 200px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Modern card hover effects */
+.card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Professional gradient overlays */
+.gradient-overlay-orange {
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.1) 0%, rgba(249, 115, 22, 0.05) 100%);
+}
+
+.gradient-overlay-blue {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%);
+}
+
+/* Enhanced focus states */
+.focus-modern:focus {
+  outline: none;
+  box-shadow: 
+    0 0 0 3px rgba(251, 146, 60, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  border-color: rgba(251, 146, 60, 0.5);
+}
+
+/* Prevent horizontal scrolling on mobile */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+
+
+/* Mobile responsive utilities */
+@media (max-width: 640px) {
+  .animate-gentle-pulse {
+    animation-duration: 4s;
+  }
+  
+  /* Reduce hover effects on mobile */
+  .group:hover .group-hover\:scale-110 {
+    transform: scale(1.05);
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-1px);
+  }
+  
+  /* Better touch targets */
+  .cursor-pointer {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Ensure all containers fit within viewport */
+  .max-w-7xl {
+    max-width: 100vw;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  /* Prevent any element from exceeding viewport */
+  * {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+/* Better scrolling on mobile */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+}
+
+.overflow-x-auto::-webkit-scrollbar {
+  height: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background-color: rgba(155, 155, 155, 0.5);
+  border-radius: 2px;
+}
+
+/* Enhanced mobile interactions */
+@media (hover: none) and (pointer: coarse) {
+  .hover\:shadow-xl:hover {
+    box-shadow: none;
+  }
+  
+  .hover\:scale-\[1\.02\]:hover {
+    transform: none;
+  }
+  
+  .group:hover .group-hover\:opacity-100 {
+    opacity: 1;
+  }
+}
+
+/* Enhanced Mobile Overflow Prevention */
+@media (max-width: 640px) {
+  html {
+    overflow-x: hidden !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+  }
+  
+  body {
+    overflow-x: hidden !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    margin: 0;
+    padding: 0;
+  }
+  
+  #root {
+    overflow-x: hidden !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+  }
+  
+  /* Force all containers to respect mobile viewport */
+  .max-w-7xl, .max-w-4xl, .container {
+    max-width: 100vw !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+  
+  /* Chart specific fixes */
+  .recharts-wrapper, .recharts-surface {
+    max-width: 100% !important;
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+  
+  /* Table specific fixes */
+  table {
+    width: 100% !important;
+    table-layout: fixed !important;
+  }
+  
+  /* Grid fixes for mobile */
+  .grid {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Flex container fixes */
+  .flex {
+    flex-wrap: wrap !important;
+  }
+  
+  /* Card padding adjustments */
+  .p-6 {
+    padding: 1rem !important;
+  }
+  
+  .p-4 {
+    padding: 0.75rem !important;
+  }
+}
+
+/* Line clamp utilities for course catalog */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Enterprise course catalog specific styles */
+.course-card-hover {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.course-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+/* Professional shimmer effect for buttons */
+.shimmer-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-effect::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.shimmer-effect:hover::before {
+  left: 100%;
+}
+
+/* Gradient text effects for enterprise theme */
+.gradient-text-primary {
+  background: linear-gradient(135deg, hsl(var(--primary-600)), hsl(var(--primary-500)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Enhanced mobile touch interactions */
+@media (hover: none) and (pointer: coarse) {
+  .course-card-hover:active {
+    transform: scale(0.98);
+    transition: transform 0.1s;
+  }
+  
+  button:active {
+    transform: scale(0.95);
+    transition: transform 0.1s;
+  }
+}
+
+/* Professional filter panel animations */
+.filter-item-enter {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.filter-item-enter-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition: all 0.3s ease-out;
+}
+
+/* Mobile responsiveness improvements */
+@media (max-width: 640px) {
+  /* Prevent horizontal overflow on mobile */
+  .dashboard-container {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  
+  /* Improve touch targets on mobile */
+  .stat-card, .continue-learning-card, .live-session-card {
+    min-height: 44px;
+    padding: 12px 16px;
+  }
+  
+  /* Better text scaling on mobile */
+  .dashboard-title {
+    font-size: clamp(1.125rem, 4vw, 1.5rem);
+    line-height: 1.4;
+  }
+  
+  /* Reduce animation complexity on mobile for better performance */
+  .animate-gentle-pulse {
+    animation: none;
+  }
+  
+  /* Prevent text overflow */
+  .session-title, .course-title {
+    word-break: break-word;
+    hyphens: auto;
+  }
+  
+  /* Better spacing for mobile cards */
+  .mobile-card {
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  /* Ensure buttons are touch-friendly */
+  .mobile-button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px 16px;
+  }
+  
+  /* Better grid layouts for mobile */
+  .mobile-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  
+  /* Reduce blur effects for performance */
+  .backdrop-blur-sm {
+    backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.95);
+  }
+}
+
+/* Tablet responsive adjustments */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .tablet-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  
+  /* Better spacing for tablet */
+  .tablet-spacing {
+    padding: 1rem 1.5rem;
+  }
+}
+
+/* Prevent layout shifts */
+.prevent-shift {
+  contain: layout style;
+}
+
+/* Better scroll behavior */
+.smooth-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Optimize animations for reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .animate-gentle-pulse,
+  .animate-fade-in-up,
+  .animate-fade-in-down {
+    animation: none;
+  }
+  
+  .transition-all {
+    transition: none;
+  }
+}
+
+/* Better focus states for accessibility */
+.focus-visible:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Ensure proper aspect ratios for images */
+.yoga-image {
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Specific text overflow handling for dashboard cards */
+.continue-learning-card, .live-session-card {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.continue-learning-card .slide-title,
+.continue-learning-card .slide-description,
+.live-session-card .session-title,
+.live-session-card .session-time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  word-wrap: break-word;
+  word-break: break-all;
+}
+
+/* Force text truncation on very small screens */
+@media (max-width: 375px) {
+  .slide-title, .session-title {
+    font-size: 0.75rem !important;
+    max-width: 150px;
+  }
+  
+  .slide-description, .session-time {
+    font-size: 0.65rem !important;
+    max-width: 120px;
+  }
+}
+
+/* Ensure flex containers don't overflow */
+.dashboard-flex-container {
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+}
+
+/* Additional mobile-specific text handling */
+@media (max-width: 640px) {
+  /* Ensure all text in cards is properly constrained */
+  .dashboard-card-text {
+    max-width: calc(100vw - 120px); /* Account for icons and padding */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  /* Better handling for long course/session titles */
+  .course-title, .session-title, .slide-title {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    max-width: 100%;
+  }
+  
+  /* Prevent badge overflow */
+  .mobile-badge {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  
+  /* Better button sizing on mobile */
+  .mobile-action-button {
+    min-width: 60px;
+    flex-shrink: 0;
+  }
+}
+
+/* Hide scrollbar for modal */
+.scrollbar-hide {
+  -ms-overflow-style: none !important;  /* Internet Explorer 10+ */
+  scrollbar-width: none !important;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none !important;  /* Safari and Chrome */
+}
+
+.scrollbar-hide::-webkit-scrollbar-track {
+  display: none !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar-thumb {
+  display: none !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar-corner {
+  display: none !important;
+}
+
+/* Additional specificity for modal scrollbar hiding */
+.scrollbar-hide[style*="overflow: auto"],
+.scrollbar-hide[style*="overflow-y: auto"],
+.scrollbar-hide[style*="overflow-y: scroll"] {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.scrollbar-hide[style*="overflow: auto"]::-webkit-scrollbar,
+.scrollbar-hide[style*="overflow-y: auto"]::-webkit-scrollbar,
+.scrollbar-hide[style*="overflow-y: scroll"]::-webkit-scrollbar {
+  display: none !important;
+}
+
+.scrollbar-hide[style*="overflow: auto"]::-webkit-scrollbar-track,
+.scrollbar-hide[style*="overflow-y: auto"]::-webkit-scrollbar-track,
+.scrollbar-hide[style*="overflow-y: scroll"]::-webkit-scrollbar-track {
+  display: none !important;
+}
+
+.scrollbar-hide[style*="overflow: auto"]::-webkit-scrollbar-thumb,
+.scrollbar-hide[style*="overflow-y: auto"]::-webkit-scrollbar-thumb,
+.scrollbar-hide[style*="overflow-y: scroll"]::-webkit-scrollbar-thumb {
+  display: none !important;
+}
+
+/* Force hide scrollbars for all webkit browsers */
+.scrollbar-hide *::-webkit-scrollbar {
+  display: none !important;
+}
+
+.scrollbar-hide *::-webkit-scrollbar-track {
+  display: none !important;
+}
+
+.scrollbar-hide *::-webkit-scrollbar-thumb {
+  display: none !important;
+}
+
+/* Prevent body scroll when modal is open */
+body.modal-open {
+  overflow: hidden !important;
+  position: fixed !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Alternative approach for body scroll prevention */
+html.modal-open {
+  overflow: hidden !important;
+}
+
+/* Ensure modal backdrop prevents scroll */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  overflow: hidden;
+}
+
+/* Ensure modal content can scroll independently */
+.modal-backdrop > div {
+  overflow: visible !important;
+  max-height: 90vh !important;
+  width: auto !important;
+  height: auto !important;
+  position: relative !important;
+}
+
+/* Additional scrollbar hiding for all possible cases */
+.scrollbar-hide,
+.scrollbar-hide *,
+.scrollbar-hide *::before,
+.scrollbar-hide *::after {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar,
+.scrollbar-hide *::-webkit-scrollbar,
+.scrollbar-hide *::before::-webkit-scrollbar,
+.scrollbar-hide *::after::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar-track,
+.scrollbar-hide *::-webkit-scrollbar-track {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar-thumb,
+.scrollbar-hide *::-webkit-scrollbar-thumb {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Force hide scrollbars on the modal container itself */
+[class*="scrollbar-hide"] {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+[class*="scrollbar-hide"]::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Auth Modal specific scrolling styles */
+.auth-modal-content {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  scroll-behavior: smooth !important;
+  max-height: 90vh !important;
+  height: auto !important;
+  min-height: auto !important;
+}
+
+.auth-modal-content::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.auth-modal-content::-webkit-scrollbar-track {
+  display: none !important;
+}
+
+.auth-modal-content::-webkit-scrollbar-thumb {
+  display: none !important;
+}
+
+/* Ensure modal content can grow and scroll */
+.auth-modal-content > div {
+  min-height: auto !important;
+  height: auto !important;
+  max-height: none !important;
+}
+
+/* Override any conflicting styles */
+.auth-modal-content * {
+  max-height: none !important;
+}
+
+/* Force scrolling to work */
+.auth-modal-content {
+  overflow: auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* Mobile specific modal scrolling */
+@media (max-width: 640px) {
+  .auth-modal-content {
+    max-height: 85vh !important;
+    padding: 12px !important;
+  }
+}
+
+/* Tablet specific modal scrolling */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .auth-modal-content {
+    max-height: 88vh !important;
+  }
+}
+
+/* Desktop specific modal scrolling */
+@media (min-width: 1025px) {
+  .auth-modal-content {
+    max-height: 90vh !important;
+  }
+}
+
+/* Ensure modal content can expand beyond viewport if needed */
+.auth-modal-content {
+  min-height: auto !important;
+  height: auto !important;
+  max-height: 90vh !important;
+}
+
+/* Prevent content from being cut off */
+.auth-modal-content > * {
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+/* Smooth scrolling for better UX */
+.auth-modal-content {
+  scroll-behavior: smooth !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Ensure proper spacing in modal content */
+.auth-modal-content .space-y-4 > * + * {
+  margin-top: 1rem !important;
+}
+
+.auth-modal-content .space-y-6 > * + * {
+  margin-top: 1.5rem !important;
+}
+
+/* Better touch scrolling on mobile */
+@media (hover: none) and (pointer: coarse) {
+  .auth-modal-content {
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+  }
+}

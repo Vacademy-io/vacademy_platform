@@ -9,6 +9,14 @@ from pydantic import BaseModel, Field
 from enum import Enum
 
 
+class SessionMode(str, Enum):
+    """Enumeration of session modes (text vs voice variants)."""
+    TEXT = "text"
+    VOICE_INTERVIEW = "voice_interview"
+    VOICE_DOUBT = "voice_doubt"
+    VOICE_ORAL_TEST = "voice_oral_test"
+
+
 class ContextType(str, Enum):
     """Enumeration of supported context types."""
     SLIDE = "slide"
@@ -176,6 +184,7 @@ class InitSessionRequest(BaseModel):
         None, 
         description="Complete metadata with all data from frontend (can be set later via context API)"
     )
+    session_mode: Optional[SessionMode] = Field(SessionMode.TEXT, description="Session mode: text chat or voice variant")
     initial_message: Optional[str] = Field(None, description="Optional initial message from the user")
     
     class Config:
@@ -394,6 +403,7 @@ class CloseSessionResponse(BaseModel):
 
 
 __all__ = [
+    "SessionMode",
     "ContextType",
     "MessageType",
     "MessageIntent",

@@ -1,0 +1,64 @@
+/* Fix z-index issues for Excalidraw toolbar and UI elements */
+
+/* Ensure the main Excalidraw container has high z-index */
+.excalidraw {
+  z-index: 9999 !important;
+  position: relative !important;
+}
+
+/* Ensure all Excalidraw UI elements have proper z-index hierarchy */
+.excalidraw .layer-ui__wrapper {
+  z-index: 10000 !important;
+}
+
+/* Ensure toolbar appears above page header */
+.excalidraw .App-toolbar,
+.excalidraw .App-menu_top,
+.excalidraw .App-bottom-bar {
+  z-index: 10005 !important;
+}
+
+/* Ensure toolbar tools and buttons are properly layered */
+.excalidraw .Island,
+.excalidraw .Stack,
+.excalidraw .ToolIcon {
+  z-index: 10006 !important;
+}
+
+/* Ensure dropdowns and popovers appear above everything */
+.excalidraw .dropdown-menu,
+.excalidraw .popover,
+.excalidraw .excalidraw-tooltip {
+  z-index: 10010 !important;
+}
+
+/* Ensure modals appear above everything else */
+.excalidraw .Modal,
+.excalidraw .Dialog {
+  z-index: 10015 !important;
+}
+
+/* Fix specific toolbar positioning */
+.excalidraw .App-menu_top {
+  position: relative !important;
+  pointer-events: none !important;
+}
+
+.excalidraw .App-menu_top > * {
+  pointer-events: auto !important;
+}
+
+/* Ensure shapes section is properly positioned */
+.excalidraw .shapes-section {
+  z-index: 10007 !important;
+}
+
+/* Fix any overlay conflicts */
+.excalidraw .excalidraw-eye-dropper-backdrop {
+  z-index: 10008 !important;
+}
+
+/* Ensure canvas buttons are properly layered */
+.excalidraw .excalidraw-canvas-buttons {
+  z-index: 10004 !important;
+} 

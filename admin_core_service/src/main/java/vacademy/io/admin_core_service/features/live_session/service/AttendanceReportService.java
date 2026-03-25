@@ -251,6 +251,9 @@ public class AttendanceReportService {
                     .attendanceDetails(guestDto.getAttendanceDetails())
                     .attendanceTimestamp(guestDto.getAttendanceTimestamp())
                     .sourceType(guestDto.getSourceType())
+                    .statusType(guestDto.getStatusType())
+                    .engagementData(guestDto.getEngagementData())
+                    .providerTotalDurationMinutes(guestDto.getProviderTotalDurationMinutes())
                     .build();
         }
     }

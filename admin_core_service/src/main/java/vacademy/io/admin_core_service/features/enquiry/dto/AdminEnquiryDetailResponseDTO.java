@@ -29,6 +29,7 @@ public class AdminEnquiryDetailResponseDTO {
         private String feeRangeExpectation;
         private String transportRequirement;
         private String mode;
+        private String parentRelationWithChild;
         private Integer interestScore;
         private String notes;
         private String checklist;

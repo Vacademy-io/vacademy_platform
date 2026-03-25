@@ -199,6 +199,22 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("userId") String userId,
       @Param("instituteId") String instituteId);
 
+  /**
+   * Latest active learner mapping for receipt enrichment (class, section, academic year).
+   * Fetches package and session in one round trip.
+   */
+  @Query("SELECT m FROM StudentSessionInstituteGroupMapping m " +
+      "JOIN FETCH m.packageSession ps " +
+      "LEFT JOIN FETCH ps.packageEntity " +
+      "LEFT JOIN FETCH ps.session " +
+      "WHERE m.userId = :userId AND m.institute.id = :instituteId " +
+      "AND m.status = 'ACTIVE' AND m.packageSession.id IS NOT NULL " +
+      "AND ps.status = 'ACTIVE' " +
+      "ORDER BY m.createdAt DESC")
+  List<StudentSessionInstituteGroupMapping> findActiveMappingsWithFetchedPackageSession(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId);
+
   // Find all active admin mappings for a user
   @Query("SELECT m FROM StudentSessionInstituteGroupMapping m " +
       "LEFT JOIN FETCH m.subOrg " +
@@ -229,6 +245,19 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("packageSessionId") String packageSessionId,
       @Param("subOrgId") String subOrgId,
       @Param("userId") String userId);
+
+  // Find all admins for a sub-org (across all package sessions)
+  @Query(value = """
+      SELECT DISTINCT ssigm.user_id AS user_id,
+             s.full_name AS full_name,
+             ssigm.comma_separated_org_roles AS roles
+      FROM student_session_institute_group_mapping ssigm
+      JOIN student s ON s.user_id = ssigm.user_id
+      WHERE ssigm.sub_org_id = :subOrgId
+        AND ssigm.comma_separated_org_roles LIKE '%ADMIN%'
+        AND ssigm.status = 'ACTIVE'
+      """, nativeQuery = true)
+  List<Object[]> findAdminsBySubOrg(@Param("subOrgId") String subOrgId);
 
   List<StudentSessionInstituteGroupMapping> findByUserPlanIdAndStatus(String userPlanId, String status);
 

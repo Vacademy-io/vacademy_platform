@@ -1,0 +1,796 @@
+.panel-group {
+  height: 100%;
+  min-height: 100%;
+  max-height: 100%;
+  background-color: #f0f0f0;
+  overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.panel-content {
+  padding: 2px;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden; /* Keep hidden on panel wrapper to prevent external overflow */
+  background-color: #fff;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  /* Force fixed height container */
+  flex-shrink: 0;
+  flex-grow: 0;
+}
+
+/* Ensure child components fill the panel and handle overflow properly */
+.panel-content > * {
+  flex: 1 1 0; /* flex-grow: 1, flex-shrink: 1, flex-basis: 0 */
+  min-height: 0;
+  max-height: 100%;
+  height: 100%; /* Force full height */
+  overflow: auto; /* Allow each column to scroll independently */
+  isolation: auto; /* Allow scroll behavior */
+  /* Removed CSS containment - was blocking scrolling */
+  box-sizing: border-box;
+  /* Prevent content from expanding the container */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* ChatView component specific styling - now that panel content allows scrolling */
+.panel-content .ai-chat-container {
+  overflow: visible !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  isolation: auto !important; /* Remove isolation that blocks scrolling */
+}
+
+/* Ensure chat messages container can scroll */
+.panel-content .ai-chat-container .chat-messages {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  height: 100% !important; /* Fixed height instead of auto */
+  max-height: 100% !important; /* Strict max height */
+  isolation: auto !important; /* Remove isolation that blocks scrolling */
+  padding-top: 80px !important; /* Account for TodoProgress positioned at top */
+}
+
+.resize-handle {
+  width: 3px;
+  background-color: #e0e0e0;
+  cursor: col-resize;
+  transition: background-color 0.2s;
+}
+
+.resize-handle:hover {
+  background-color: #c0c0c0;
+}
+
+.resize-handle[data-active] {
+  background-color: #a0a0a0;
+}
+
+/* Vertical Responsiveness - Height-based media queries */
+
+/* Very short screens (under 500px height) - Ultra compact */
+@media (max-height: 500px) {
+  .panel-content {
+    padding: 0px;
+    border-radius: 0px;
+    box-shadow: none;
+    font-size: 0.75rem;
+  }
+
+  .resize-handle {
+    width: 1px;
+  }
+
+  /* Make text and elements smaller */
+  .panel-content > * {
+    font-size: 0.8em;
+    line-height: 1.2;
+  }
+}
+
+/* Short screens (500px - 600px height) - Compact */
+@media (min-height: 501px) and (max-height: 600px) {
+  .panel-content {
+    padding: 1px;
+    border-radius: 1px;
+    font-size: 0.85rem;
+  }
+
+  .resize-handle {
+    width: 2px;
+  }
+
+  .panel-content > * {
+    font-size: 0.9em;
+    line-height: 1.3;
+  }
+}
+
+/* Medium height screens (600px - 768px) - Standard compact */
+@media (min-height: 601px) and (max-height: 768px) {
+  .panel-content {
+    padding: 1px;
+    border-radius: 2px;
+  }
+
+  .resize-handle {
+    width: 2px;
+  }
+}
+
+/* Tall screens (768px+) - Standard layout */
+@media (min-height: 769px) {
+  .panel-content {
+    padding: 2px;
+    border-radius: 2px;
+  }
+
+  .resize-handle {
+    width: 3px;
+  }
+}
+
+/* Responsive adjustments for smaller width screens */
+@media (max-width: 768px) {
+  .panel-group {
+    font-size: 0.9rem;
+  }
+}
+
+/* For very small width screens */
+@media (max-width: 480px) {
+  .panel-group {
+    font-size: 0.8rem;
+  }
+
+  .panel-content {
+    padding: 0px;
+    border-radius: 0px;
+  }
+}
+
+/* Handle sidebar opening scenarios - aggressive width compression */
+@media (max-width: 1400px) {
+  .panel-content {
+    padding: 1px;
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    /* Force fixed height */
+    height: 100%;
+    max-height: 100%;
+    flex-shrink: 0;
+    flex-grow: 0;
+  }
+
+  .panel-content > * {
+    max-width: 100%;
+    overflow-x: hidden; /* Only hide horizontal overflow */
+    overflow-y: auto; /* Allow vertical scrolling */
+    box-sizing: border-box;
+    /* Force strict height constraints */
+    height: 100%;
+    max-height: 100%;
+    flex: 1 1 0;
+  }
+
+  .resize-handle {
+    width: 2px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .panel-content {
+    padding: 0px;
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    /* Force fixed height */
+    height: 100%;
+    max-height: 100%;
+    flex-shrink: 0;
+    flex-grow: 0;
+  }
+
+  .panel-content > * {
+    max-width: 100%;
+    overflow-x: hidden; /* Only hide horizontal overflow */
+    overflow-y: auto; /* Allow vertical scrolling */
+    box-sizing: border-box;
+    /* Force strict height constraints */
+    height: 100%;
+    max-height: 100%;
+    flex: 1 1 0;
+  }
+
+  .resize-handle {
+    width: 1px;
+  }
+}
+
+@media (max-width: 900px) {
+  .panel-content {
+    padding: 0px;
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    border-radius: 0px;
+    box-shadow: none;
+    /* Force fixed height */
+    height: 100%;
+    max-height: 100%;
+    flex-shrink: 0;
+    flex-grow: 0;
+  }
+
+  .panel-content > * {
+    max-width: 100%;
+    overflow-x: hidden; /* Only hide horizontal overflow */
+    overflow-y: auto; /* Allow vertical scrolling in narrow layouts */
+    box-sizing: border-box;
+    /* Force strict height constraints */
+    height: 100%;
+    max-height: 100%;
+    flex: 1 1 0;
+  }
+
+  .resize-handle {
+    width: 1px;
+  }
+}
+
+/* AI Course Builder Container - Full viewport fit with no scrollbars */
+.ai-course-builder-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 600px !important;
+  box-sizing: border-box !important;
+  position: relative !important;
+}
+
+/* Ensure no page-level scrollbars when AI course builder is active */
+body:has(.ai-course-builder-container) {
+  overflow: hidden !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+}
+
+html:has(.ai-course-builder-container) {
+  overflow: hidden !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+}
+
+/* Responsive adjustments for AI Course Builder dialog */
+@media (max-height: 700px) {
+  .ai-course-builder-container {
+    min-height: 500px !important;
+  }
+}
+
+@media (max-height: 600px) {
+  .ai-course-builder-container {
+    min-height: 400px !important;
+  }
+}
+
+/* Narrow layout for sidebar open state */
+.narrow-layout {
+  font-size: 11px;
+}
+
+.narrow-layout .panel-content {
+  padding: 0px;
+  border-radius: 0px;
+  box-shadow: none;
+}
+
+.narrow-layout .resize-handle {
+  width: 1px;
+}
+
+/* Ultra-narrow adjustments */
+.narrow-layout .panel-content > * {
+  font-size: 0.9em;
+}
+
+/* Fullscreen mode - ultra compact */
+.fullscreen-mode .panel-content {
+  padding: 0px !important;
+  border-radius: 0px !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
+}
+
+.fullscreen-mode .resize-handle {
+  width: 1px !important;
+}
+
+.fullscreen-mode .panel-content > * {
+  border-radius: 0px;
+}
+
+/* Header Vertical Responsiveness */
+
+/* Very short screens - Ultra compact header */
+@media (max-height: 500px) {
+  .header-responsive {
+    padding: 1px 4px !important;
+    min-height: 24px;
+  }
+
+  .header-title {
+    font-size: 0.7rem !important;
+    line-height: 1 !important;
+  }
+
+  .header-subtitle {
+    display: none !important; /* Hide subtitle on very short screens */
+  }
+
+  /* Ultra compact button */
+  .header-responsive button {
+    padding: 1px 4px !important;
+    font-size: 0.6rem !important;
+    min-height: 16px;
+  }
+
+  .header-responsive button svg {
+    width: 8px !important;
+    height: 8px !important;
+  }
+}
+
+/* Short screens - Compact header */
+@media (min-height: 501px) and (max-height: 600px) {
+  .header-responsive {
+    padding: 2px 6px !important;
+    min-height: 28px;
+  }
+
+  .header-title {
+    font-size: 0.8rem !important;
+    line-height: 1.1 !important;
+  }
+
+  .header-subtitle {
+    font-size: 0.6rem !important;
+    line-height: 1 !important;
+  }
+
+  .header-responsive button {
+    padding: 2px 6px !important;
+    font-size: 0.7rem !important;
+    min-height: 18px;
+  }
+
+  .header-responsive button svg {
+    width: 10px !important;
+    height: 10px !important;
+  }
+}
+
+/* Medium height screens - Standard compact header */
+@media (min-height: 601px) and (max-height: 768px) {
+  .header-responsive {
+    padding: 3px 8px !important;
+    min-height: 32px;
+  }
+
+  .header-title {
+    font-size: 0.9rem !important;
+  }
+
+  .header-subtitle {
+    font-size: 0.7rem !important;
+  }
+
+  .header-responsive button {
+    padding: 3px 8px !important;
+    font-size: 0.75rem !important;
+  }
+}
+
+/* Tall screens - Standard header */
+@media (min-height: 769px) {
+  .header-responsive {
+    padding: 4px 8px !important;
+    min-height: 36px;
+  }
+
+  .header-title {
+    font-size: 1rem !important;
+  }
+
+  .header-subtitle {
+    font-size: 0.75rem !important;
+  }
+}
+
+/* Initial chat view vertical responsiveness */
+
+/* Very short screens - Ultra compact initial view */
+@media (max-height: 500px) {
+  .initial-header {
+    margin-bottom: 2px !important;
+  }
+
+  .initial-title {
+    font-size: 1rem !important;
+    line-height: 1.1 !important;
+    margin: 0 !important;
+  }
+
+  .initial-subtitle {
+    display: none !important; /* Hide subtitle on very short screens */
+  }
+
+  /* Make container more compact */
+  .ai-course-builder-container > div {
+    padding: 1px !important;
+  }
+}
+
+/* Short screens - Compact initial view */
+@media (min-height: 501px) and (max-height: 600px) {
+  .initial-header {
+    margin-bottom: 4px !important;
+  }
+
+  .initial-title {
+    font-size: 1.2rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .initial-subtitle {
+    font-size: 0.7rem !important;
+    line-height: 1 !important;
+  }
+
+  .ai-course-builder-container > div {
+    padding: 2px !important;
+  }
+}
+
+/* Medium height screens - Standard compact */
+@media (min-height: 601px) and (max-height: 768px) {
+  .initial-header {
+    margin-bottom: 6px !important;
+  }
+
+  .initial-title {
+    font-size: 1.4rem !important;
+  }
+
+  .initial-subtitle {
+    font-size: 0.8rem !important;
+  }
+}
+
+/* Tall screens - Standard layout */
+@media (min-height: 769px) {
+  .initial-header {
+    margin-bottom: 8px !important;
+  }
+
+  .initial-title {
+    font-size: 1.5rem !important;
+  }
+
+  .initial-subtitle {
+    font-size: 0.875rem !important;
+  }
+}
+
+/* Component-specific vertical responsiveness */
+
+/* ChatView responsiveness */
+@media (max-height: 600px) {
+  .ai-chat-container {
+    font-size: 0.85rem;
+  }
+
+  .ai-chat-container .chat-messages {
+    padding: 8px !important;
+    gap: 6px !important;
+  }
+
+  .ai-chat-container .message {
+    gap: 4px !important;
+  }
+
+  .ai-chat-container .message-avatar {
+    width: 20px !important;
+    height: 20px !important;
+  }
+}
+
+@media (max-height: 500px) {
+  .ai-chat-container {
+    font-size: 0.75rem;
+  }
+
+  .ai-chat-container .chat-messages {
+    padding: 4px !important;
+    gap: 4px !important;
+  }
+
+  .ai-chat-container .message {
+    gap: 2px !important;
+  }
+
+  .ai-chat-container .message-avatar {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  /* Make input area more compact */
+  .ai-chat-container textarea {
+    min-height: 30px !important;
+    max-height: 80px !important;
+    padding: 4px 8px !important;
+    font-size: 0.75rem !important;
+  }
+
+  .ai-chat-container button {
+    padding: 4px 8px !important;
+    font-size: 0.7rem !important;
+  }
+}
+
+/* CourseExplorer responsiveness */
+@media (max-height: 600px) {
+  .course-explorer {
+    font-size: 0.85rem;
+  }
+
+  .course-explorer .tree-item {
+    padding: 2px 4px !important;
+    line-height: 1.2 !important;
+  }
+}
+
+@media (max-height: 500px) {
+  .course-explorer {
+    font-size: 0.75rem;
+  }
+
+  .course-explorer .tree-item {
+    padding: 1px 2px !important;
+    line-height: 1.1 !important;
+  }
+}
+
+/* DetailView responsiveness */
+@media (max-height: 600px) {
+  .detail-view {
+    font-size: 0.85rem;
+  }
+
+  .detail-view h1, .detail-view h2, .detail-view h3 {
+    line-height: 1.2 !important;
+    margin: 4px 0 !important;
+  }
+
+  .detail-view p {
+    line-height: 1.3 !important;
+    margin: 2px 0 !important;
+  }
+}
+
+@media (max-height: 500px) {
+  .detail-view {
+    font-size: 0.75rem;
+  }
+
+  .detail-view h1, .detail-view h2, .detail-view h3 {
+    line-height: 1.1 !important;
+    margin: 2px 0 !important;
+  }
+
+  .detail-view p {
+    line-height: 1.2 !important;
+    margin: 1px 0 !important;
+  }
+}
+
+/* Combined height and width responsiveness for ultra-compact mode */
+@media (max-height: 500px) and (max-width: 768px) {
+  .panel-content {
+    padding: 0px !important;
+    border-radius: 0px !important;
+    box-shadow: none !important;
+    font-size: 0.7rem !important;
+  }
+
+  .resize-handle {
+    width: 1px !important;
+  }
+
+  .header-responsive {
+    padding: 1px 2px !important;
+    min-height: 20px !important;
+  }
+
+  .header-title {
+    font-size: 0.6rem !important;
+  }
+
+  .header-subtitle {
+    display: none !important;
+  }
+}
+
+/* Unified Theme Overrides for All Three Tabs */
+
+/* Global font size uniformity */
+.panel-content .course-explorer,
+.panel-content .detail-view,
+.panel-content .ai-chat-container {
+  font-size: 11px !important;
+  line-height: 1.3 !important;
+}
+
+/* Ensure consistent colors across all components */
+.panel-content * {
+  --text-primary: hsl(var(--foreground));
+  --text-secondary: hsl(var(--muted-foreground));
+  --bg-primary: hsl(var(--background));
+  --bg-secondary: hsl(var(--muted));
+  --border-color: hsl(var(--border));
+  --accent-color: hsl(var(--primary-500));
+}
+
+/* CourseExplorer theme overrides */
+.course-explorer .tree-item-icon .chevron {
+  color: hsl(var(--primary-400)) !important;
+}
+
+.course-explorer .module-progress-fill {
+  background: hsl(var(--primary-500)) !important;
+}
+
+.course-explorer .course-explorer-empty-text {
+  color: hsl(var(--muted-foreground)) !important;
+  font-size: 10px !important;
+}
+
+/* DetailView theme overrides */
+.detail-view .type-badge {
+  background: hsl(var(--primary-50)) !important;
+  color: hsl(var(--primary-600)) !important;
+  font-size: 9px !important;
+  border: 1px solid hsl(var(--primary-200)) !important;
+}
+
+.detail-view .info-content {
+  font-size: 11px !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.detail-view .slide-title {
+  font-size: 14px !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.detail-view .slide-type-badge {
+  font-size: 9px !important;
+}
+
+/* ChatView theme overrides */
+.ai-chat-container .template-card {
+  border: 1px solid hsl(var(--primary-200)) !important;
+  background: hsl(var(--background)) !important;
+}
+
+.ai-chat-container .template-card:hover {
+  border-color: hsl(var(--primary-400)) !important;
+  background: hsl(var(--primary-50)) !important;
+}
+
+.ai-chat-container .template-card.selected {
+  border-color: hsl(var(--primary-500)) !important;
+  background: hsl(var(--primary-100)) !important;
+}
+
+.ai-chat-container .template-icon {
+  background: hsl(var(--primary-500)) !important;
+}
+
+.ai-chat-container .template-title {
+  font-size: 10px !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.ai-chat-container .chat-messages {
+  font-size: 10px !important;
+}
+
+.ai-chat-container .message-text {
+  background: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+  font-size: 10px !important;
+}
+
+.ai-chat-container .message.user .message-text {
+  background: hsl(var(--primary-100)) !important;
+  color: hsl(var(--primary-900)) !important;
+}
+
+/* Input area theme */
+.ai-chat-container .chat-textarea {
+  background: hsl(var(--background)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  color: hsl(var(--foreground)) !important;
+  font-size: 10px !important;
+}
+
+.ai-chat-container .chat-textarea:focus {
+  border-color: hsl(var(--primary-400)) !important;
+  box-shadow: 0 0 0 2px hsl(var(--primary-50)) !important;
+}
+
+.ai-chat-container .chat-textarea::placeholder {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* Button theme overrides */
+.panel-content button {
+  font-size: 9px !important;
+  background: hsl(var(--primary-500)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+  border: 1px solid hsl(var(--primary-600)) !important;
+  border-radius: 4px !important;
+  padding: 4px 8px !important;
+  transition: all 0.15s ease !important;
+}
+
+.panel-content button:hover {
+  background: hsl(var(--primary-600)) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Scrollbar theme for all components */
+.panel-content *::-webkit-scrollbar {
+  width: 2px !important;
+}
+
+.panel-content *::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.panel-content *::-webkit-scrollbar-thumb {
+  background: hsl(var(--border)) !important;
+  border-radius: 2px !important;
+}
+
+.panel-content *::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground)) !important;
+}
+
+/* Unified spacing */
+.panel-content h1, .panel-content h2, .panel-content h3 {
+  margin: 6px 0 4px 0 !important;
+  line-height: 1.2 !important;
+}
+
+.panel-content p {
+  margin: 4px 0 !important;
+  line-height: 1.3 !important;
+}
+
+/* No scrolling needed - perfect fit layout */

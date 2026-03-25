@@ -30,6 +30,7 @@ class ChatSessionRepository:
         institute_id: str,
         context_type: str,
         context_meta: dict,
+        session_mode: str = "text",
     ) -> ChatSession:
         """
         Create a new chat session.
@@ -40,6 +41,7 @@ class ChatSessionRepository:
             institute_id=institute_id,
             context_type=context_type,
             context_meta=context_meta,
+            session_mode=session_mode,
             status="ACTIVE",
             last_active=datetime.utcnow(),
         )

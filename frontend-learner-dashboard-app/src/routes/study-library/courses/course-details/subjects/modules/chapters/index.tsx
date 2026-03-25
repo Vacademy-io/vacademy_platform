@@ -1,0 +1,108 @@
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { LayoutContainer } from "@/components/common/layout-container/layout-container";
+import { ChapterMaterial } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/chapter-material";
+import { useEffect, useState } from "react";
+import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
+import { getSubjectName } from "@/utils/study-library/get-name-by-id/getSubjectNameById";
+import { CaretLeft } from "@phosphor-icons/react";
+import { ChapterSidebarComponent } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/chapter-sidebar-component";
+import { InitStudyLibraryProvider } from "@/providers/study-library/init-study-library-provider";
+import { ModulesWithChaptersProvider } from "@/providers/study-library/modules-with-chapters-provider";
+import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import { useQueryClient } from "@tanstack/react-query";
+import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
+import { toTitleCase } from "@/lib/utils";
+
+interface ModulesSearchParams {
+    courseId: string;
+    subjectId: string;
+    moduleId: string;
+    chapterId: string;
+}
+
+export const Route = createFileRoute(
+    "/study-library/courses/course-details/subjects/modules/chapters/"
+)({
+    component: ModuleMaterialPage,
+    validateSearch: (search: Record<string, unknown>): ModulesSearchParams => {
+        return {
+            courseId: search.courseId as string,
+            subjectId: search.subjectId as string,
+            moduleId: search.moduleId as string,
+            chapterId: search.moduleId as string,
+        };
+    },
+});
+
+function ModuleMaterialPage() {
+    const navigate = useNavigate();
+    const { courseId, subjectId, moduleId, chapterId } = Route.useSearch();
+    const [currentModuleId, setCurrentModuleId] = useState(moduleId);
+    const { setNavHeading } = useNavHeadingStore();
+    const { setActiveItem } = useContentStore();
+    const { studyLibraryData } = useStudyLibraryStore();
+
+    const queryClient = useQueryClient(); // Get the queryClient instance
+
+    const invalidateModulesQuery = () => {
+        queryClient.invalidateQueries({
+            queryKey: ["GET_MODULES_WITH_CHAPTERS", subjectId],
+        });
+    };
+
+    useEffect(() => {
+        setActiveItem(null);
+        invalidateModulesQuery();
+    }, []);
+
+    useEffect(() => {
+        navigate({
+            to: "/study-library/courses/course-details/subjects/modules/chapters",
+            search: {
+                courseId,
+                subjectId,
+                moduleId: currentModuleId,
+                chapterId: chapterId || "",
+            },
+            replace: true,
+        });
+    }, [currentModuleId, subjectId]);
+
+    // Module page heading
+    const [subjectName, setSubjectName] = useState("");
+
+    useEffect(() => {
+        setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
+    }, [studyLibraryData]);
+
+    const heading = (
+        <div className="flex items-center gap-4">
+            <CaretLeft
+                onClick={() => window.history.back()}
+                className="cursor-pointer"
+            />
+            <div>{toTitleCase(subjectName)}</div>
+        </div>
+    );
+
+    useEffect(() => {
+        setNavHeading(heading);
+    }, [subjectName]);
+
+    return (
+        <LayoutContainer
+            sidebarComponent={
+                <ChapterSidebarComponent
+                    currentModuleId={currentModuleId}
+                    setCurrentModuleId={setCurrentModuleId}
+                />
+            }
+        >
+            <InitStudyLibraryProvider>
+                <ModulesWithChaptersProvider subjectId={subjectId}>
+                    <ChapterMaterial currentModuleId={currentModuleId} />
+                </ModulesWithChaptersProvider>
+            </InitStudyLibraryProvider>
+        </LayoutContainer>
+    );
+}

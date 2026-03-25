@@ -68,8 +68,8 @@ class Settings(BaseSettings):
     admin_core_jdbc_url: Optional[str] = os.getenv("ADMIN_CORE_SERVICE_DB_URL")
 
     # SQLAlchemy pool tuning
-    db_pool_size: int = 5
-    db_max_overflow: int = 5
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
     db_pool_timeout_seconds: int = 30
     db_pool_recycle_seconds: int = 1800  # 30 minutes
     # Trigger git status
@@ -110,6 +110,9 @@ class Settings(BaseSettings):
 
     # YouTube API Configuration
     youtube_api_key: Optional[str] = None
+
+    # Sarvam AI Configuration (for Indian-language STT/TTS)
+    sarvam_api_key: str = ""
     
     # Internal Auth Configuration
     client_name: str = os.getenv("CLIENT_NAME", "ai_service")

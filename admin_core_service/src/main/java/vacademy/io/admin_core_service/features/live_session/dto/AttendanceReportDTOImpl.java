@@ -27,4 +27,7 @@ public class AttendanceReportDTOImpl implements AttendanceReportDTO {
     private String attendanceDetails;
     private Timestamp attendanceTimestamp;
     private String sourceType;
+    private String statusType;
+    private String engagementData;
+    private Integer providerTotalDurationMinutes;
 }

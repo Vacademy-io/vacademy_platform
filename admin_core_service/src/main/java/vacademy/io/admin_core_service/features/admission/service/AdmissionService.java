@@ -426,6 +426,8 @@ public class AdmissionService {
             student.setGuardianName(req.getGuardianName());
         if (req.getGuardianMobile() != null && !req.getGuardianMobile().isBlank())
             student.setGuardianMobile(req.getGuardianMobile());
+        if (req.getGuardianEmail() != null && !req.getGuardianEmail().isBlank())
+            student.setGuardianEmail(req.getGuardianEmail());
         if (req.getCurrentAddress() != null && !req.getCurrentAddress().isBlank())
             student.setAddressLine(req.getCurrentAddress());
         if (req.getCurrentLocality() != null && !req.getCurrentLocality().isBlank())
@@ -612,6 +614,7 @@ public class AdmissionService {
 
         student.setGuardianName(req.getGuardianName());
         student.setGuardianMobile(req.getGuardianMobile());
+        student.setGuardianEmail(req.getGuardianEmail());
         // TODO: restore once V119 migration adds:
         // father_aadhaar/qualification/occupation,
         // mother_aadhaar/qualification/occupation

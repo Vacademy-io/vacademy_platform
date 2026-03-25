@@ -19,8 +19,10 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogW
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentPlanDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.SubOrgDetailsDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.UpdatePaymentLogTrackingDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.OrderStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
@@ -900,6 +902,39 @@ public class PaymentLogService {
         PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId)
                 .orElseThrow(() -> new RuntimeException("Payment log not found with ID: " + paymentLogId));
         return paymentLog.mapToDTO();
+    }
+
+    /**
+     * Updates the tracking fields (tracking_id, tracking_source, order_status)
+     * for a specific payment log row. Payment log ID and order status are
+     * mandatory; tracking_id and tracking_source are optional (can be added later).
+     */
+    public void updatePaymentLogTracking(UpdatePaymentLogTrackingDTO dto) {
+        // --- Validate required fields ---
+        if (!StringUtils.hasText(dto.getPaymentLogId())) {
+            throw new VacademyException("Payment log ID must not be empty.");
+        }
+        if (!StringUtils.hasText(dto.getOrderStatus())) {
+            throw new VacademyException("Order status must not be empty.");
+        }
+
+        // Validate order status against enum
+        OrderStatusEnum validatedStatus = OrderStatusEnum.fromString(dto.getOrderStatus());
+
+        // --- Fetch and update ---
+        PaymentLog paymentLog = paymentLogRepository.findById(dto.getPaymentLogId())
+                .orElseThrow(() -> new VacademyException(
+                        "Payment log not found with ID: " + dto.getPaymentLogId()));
+
+        // Set tracking fields (nullable — tracking info may not be available yet)
+        paymentLog.setTrackingId(StringUtils.hasText(dto.getTrackingId()) ? dto.getTrackingId().trim() : null);
+        paymentLog.setTrackingSource(StringUtils.hasText(dto.getTrackingSource()) ? dto.getTrackingSource().trim() : null);
+        paymentLog.setOrderStatus(validatedStatus.name());
+
+        paymentLogRepository.save(paymentLog);
+
+        log.info("Updated tracking info for payment log ID={}: trackingId={}, trackingSource={}, orderStatus={}",
+                dto.getPaymentLogId(), dto.getTrackingId(), dto.getTrackingSource(), validatedStatus.name());
     }
 
     /**

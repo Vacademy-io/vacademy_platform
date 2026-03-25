@@ -28,6 +28,7 @@ class ChatSession(Base):
     institute_id = Column(String(255), nullable=False, index=True)
     context_type = Column(String(50), nullable=False)
     context_meta = Column(JSONB, nullable=False)
+    session_mode = Column(String(30), nullable=False, default="text")
     status = Column(String(20), nullable=False, default="ACTIVE")
     last_active = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

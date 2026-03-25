@@ -35,6 +35,11 @@ class InstituteSettingsService:
         "adherence_settings": {
             "level": "strict",
             "temperature": 0.5
+        },
+        "enabled_modes": ["general", "doubt", "practice"],
+        "voice_settings": {
+            "default_language": "en-IN",
+            "default_voice": "shubh"
         }
     }
     

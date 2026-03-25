@@ -51,6 +51,13 @@ public class EnrollInviteSettingDTO {
         @JsonProperty("ROLE_CONFIGURATION")
         private RoleConfiguration roleConfiguration;
 
+        /**
+         * Auth service roles to assign to users enrolling via this invite.
+         * e.g. ["TEACHER"], ["ADMIN"], ["STUDENT", "TEACHER"]
+         */
+        @JsonProperty("AUTH_ROLES")
+        private List<String> authRoles;
+
     }
 
     @Data

@@ -1,0 +1,127 @@
+Sample cURL Commands
+1. /init - Initialize Study Library
+bash
+curl --location 'http://localhost:8080/admin-core-service/v1/study-library/init?instituteId=abc123-institute-uuid' \
+--header 'Authorization: Bearer <your_jwt_token>' \
+--header 'Content-Type: application/json'
+2. /course-init - Initialize Course Details
+bash
+curl --location 'http://localhost:8080/admin-core-service/v1/study-library/course-init?courseId=course-uuid-456&instituteId=abc123-institute-uuid' \
+--header 'Authorization: Bearer <your_jwt_token>' \
+--header 'Content-Type: application/json'
+Sample Response (Same for Both APIs)
+
+we have updated the init api to return empty array
+
+course-init return List<CourseDTOWithDetails>:
+
+json
+[
+  {
+    "course": {
+      "id": "course-uuid-456",
+      "package_name": "Full Stack Web Development",
+      "thumbnail_file_id": "thumb-media-id-789",
+      "status": "ACTIVE",
+      "is_course_published_to_catalaouge": true,
+      "course_preview_image_media_id": "preview-media-id-001",
+      "course_banner_media_id": "banner-media-id-002",
+      "course_media_id": "course-media-id-003",
+      "why_learn": "Master modern web development technologies",
+      "who_should_learn": "Beginners and intermediate developers",
+      "about_the_course": "A comprehensive course covering frontend and backend development",
+      "tags": "javascript,react,nodejs,fullstack",
+      "course_depth": 3,
+      "course_html_description": "<p>Learn to build modern web applications...</p>"
+    },
+    "sessions": [
+      {
+        "session_dto": {
+          "id": "session-uuid-001",
+          "session_name": "2025-2026 Batch",
+          "status": "ACTIVE",
+          "start_date": "2025-01-15T00:00:00.000+00:00"
+        },
+        "level_with_details": [
+          {
+            "id": "level-uuid-001",
+            "name": "Beginner",
+            "duration_in_days": 30,
+            "read_time_in_minutes": 120.5,
+            "subjects": [
+              {
+                "id": "subject-uuid-001",
+                "subject_name": "HTML & CSS Fundamentals",
+                "subject_code": "HTML101",
+                "credit": 3,
+                "thumbnail_id": "subject-thumb-001",
+                "created_at": "2025-01-01T10:00:00.000+00:00",
+                "updated_at": "2025-01-10T14:30:00.000+00:00",
+                "subject_order": 1,
+                "parent_id": null
+              },
+              {
+                "id": "subject-uuid-002",
+                "subject_name": "JavaScript Basics",
+                "subject_code": "JS101",
+                "credit": 4,
+                "thumbnail_id": "subject-thumb-002",
+                "created_at": "2025-01-02T10:00:00.000+00:00",
+                "updated_at": "2025-01-10T14:30:00.000+00:00",
+                "subject_order": 2,
+                "parent_id": null
+              }
+            ],
+            "instructors": [
+              {
+                "id": "instructor-uuid-001",
+                "username": "john.doe@example.com",
+                "email": "john.doe@example.com",
+                "full_name": "John Doe"
+              }
+            ]
+          },
+          {
+            "id": "level-uuid-002",
+            "name": "Intermediate",
+            "duration_in_days": 45,
+            "read_time_in_minutes": 180.0,
+            "subjects": [
+              {
+                "id": "subject-uuid-003",
+                "subject_name": "React.js",
+                "subject_code": "REACT201",
+                "credit": 5,
+                "thumbnail_id": "subject-thumb-003",
+                "created_at": "2025-01-03T10:00:00.000+00:00",
+                "updated_at": "2025-01-10T14:30:00.000+00:00",
+                "subject_order": 1,
+                "parent_id": null
+              }
+            ],
+            "instructors": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "course": {
+      "id": "course-uuid-789",
+      "package_name": "Data Science Fundamentals",
+      "thumbnail_file_id": "thumb-media-id-456",
+      "status": "ACTIVE",
+      "is_course_published_to_catalaouge": false,
+      "course_preview_image_media_id": null,
+      "course_banner_media_id": null,
+      "course_media_id": null,
+      "why_learn": "Gain essential data science skills",
+      "who_should_learn": "Analysts and aspiring data scientists",
+      "about_the_course": "Introduction to data analysis and visualization",
+      "tags": "python,pandas,data-science",
+      "course_depth": 2,
+      "course_html_description": null
+    },
+    "sessions": []
+  }
+]

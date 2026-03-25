@@ -1,0 +1,68 @@
+/* AI Slide Dropdown Z-Index and Display Fixes */
+
+/* Ensure AI dropdown has proper z-index */
+.ai-slide-dropdown {
+  z-index: 10020 !important;
+  position: relative !important;
+}
+
+/* Fix z-index for dropdown menu specifically in AI course explorer */
+.course-explorer [data-radix-popper-content-wrapper] {
+  z-index: 10025 !important;
+}
+
+/* Ensure dropdown content appears above other elements */
+.course-explorer [role="menu"],
+.course-explorer [role="listbox"] {
+  z-index: 10030 !important;
+  position: relative !important;
+}
+
+/* Fix dropdown backdrop and overlay */
+.course-explorer .dropdown-backdrop {
+  z-index: 10015 !important;
+}
+
+/* Ensure tree item add buttons don't get covered */
+.tree-item-add {
+  z-index: 10010 !important;
+  position: relative !important;
+}
+
+/* Fix for any modal or dialog content that might interfere */
+.course-explorer .modal,
+.course-explorer .dialog {
+  z-index: 9999 !important;
+}
+
+/* Ensure proper stacking context for tree items with dropdowns */
+.tree-item.chapter {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.tree-item.chapter:hover {
+  z-index: 10005 !important;
+}
+
+/* Style the scaled dropdown container */
+.ai-slide-dropdown-container {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* Ensure the button scales properly */
+.ai-slide-dropdown-container button {
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+  min-width: auto !important;
+}
+
+/* Fix for any overflow issues */
+.course-explorer {
+  overflow: visible !important;
+}
+
+.tree-item-children {
+  overflow: visible !important;
+}

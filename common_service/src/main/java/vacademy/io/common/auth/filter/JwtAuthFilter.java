@@ -55,6 +55,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return;
         }
 
+        // --- JWT authentication (best-effort) ---
+        // If the token is ours and valid, SecurityContext is populated.
+        // If parsing fails (e.g. external JWT from BBB), we skip auth silently
+        // and let Spring Security's permitAll / authenticated rules decide.
         try {
             // Extract JWT token from the header (remove "Bearer ")
             final String jwt = authHeader.substring(7);
@@ -138,14 +142,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     }
                 }
             }
-
-            // Proceed with the filter chain (other filters and request handling)
-            filterChain.doFilter(request, response);
-        } catch (Exception exception) {
-            // Log any errors during JWT processing
-            log.error(exception.getMessage());
+        } catch (ExpiredTokenException exception) {
+            // Expired Vacademy token — reject immediately
             throw new VacademyException(exception.getMessage());
+        } catch (Exception exception) {
+            // Unrecognised / external JWT (e.g. BBB HS512 token) — skip auth silently.
+            // SecurityContext stays empty; Spring Security rules (permitAll vs authenticated) decide access.
+            log.debug("JWT processing skipped (unrecognised token): {}", exception.getMessage());
         }
+
+        // Always proceed with the filter chain — authorization is enforced by Spring Security, not here
+        filterChain.doFilter(request, response);
     }
 
     /**

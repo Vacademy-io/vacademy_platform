@@ -14,4 +14,5 @@ public class PresentationAiGenerateRequest {
     private String language;
     private String text;
     private String initialData;
+    private String model;
 }

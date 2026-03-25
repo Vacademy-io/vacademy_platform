@@ -176,13 +176,30 @@ export const onRequest: PagesFunction = async (context) => {
   // Inject OG tags before </head>
   html = html.replace("</head>", `    ${ogTags}\n  </head>`);
 
-  // If there's a logo URL, also inject a favicon link for crawlers
+  // Replace existing apple-touch-icon and favicon with institute logo for crawlers
   if (ogImage) {
+    const escapedLogo = escapeHtml(ogImage);
+    // Replace apple-touch-icon href
     html = html.replace(
-      "</head>",
-      `    <link rel="icon" href="${escapeHtml(ogImage)}" />\n  </head>`
+      /<link\s+rel="apple-touch-icon"[^>]*\/>/,
+      `<link rel="apple-touch-icon" href="${escapedLogo}" />`
     );
+    // Replace any existing shortcut icon / icon links
+    html = html.replace(
+      /<link\s+rel="(?:shortcut )?icon"[^>]*\/>/g,
+      `<link rel="icon" href="${escapedLogo}" />`
+    );
+    // Also add a favicon link if none existed
+    if (!html.includes('rel="icon"')) {
+      html = html.replace(
+        "</head>",
+        `    <link rel="icon" href="${escapedLogo}" />\n  </head>`
+      );
+    }
   }
+
+  // Strip the manifest link for crawlers — it references default Vacademy icons
+  html = html.replace(/<link\s+rel="manifest"[^>]*\/?>/, "");
 
   return new Response(html, {
     status: response.status,

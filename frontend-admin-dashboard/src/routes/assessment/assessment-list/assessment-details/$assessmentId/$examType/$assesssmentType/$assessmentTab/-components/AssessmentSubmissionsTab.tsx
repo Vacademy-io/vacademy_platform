@@ -44,6 +44,8 @@ import Papa from 'papaparse';
 import { useRef } from 'react';
 import { useUsersCredentials } from '@/routes/manage-students/students-list/-services/usersCredentials';
 import { OpenStudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/open-student-side-view';
+import { useNavigate } from '@tanstack/react-router';
+import { getAssessmentSettingsFromCache } from '@/services/assessment-settings';
 
 export interface SelectedSubmissionsFilterInterface {
     name: string;
@@ -60,10 +62,13 @@ export interface SelectedReleaseResultFilterInterface {
 }
 
 const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
+    const navigate = useNavigate();
     const { data: initData } = useSuspenseQuery(useInstituteQuery());
     const { BatchesFilterData } = useFilterDataForAssesment(initData);
     const instituteId = getInstituteId();
     const { assessmentId, examType, assesssmentType, assessmentTab } = Route.useParams();
+    const assessmentSettings = getAssessmentSettingsFromCache();
+    const isOfflineEntryEnabled = assessmentSettings.offlineEntry.enabled;
     const { data: totalMarks } = useSuspenseQuery(
         handleGetAssessmentTotalMarksData({ assessmentId })
     );
@@ -865,11 +870,11 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                 onValueChange={handleAttemptedTab}
                 className="flex w-full flex-col gap-4"
             >
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                     <TabsList className="mb-2 ml-4 mt-6 inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
                         <TabsTrigger
                             value="Attempted"
-                            className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                            className={`flex gap-1.5 rounded-none px-6 py-2 !shadow-none ${
                                 selectedTab === 'Attempted'
                                     ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                     : 'border-none bg-transparent'
@@ -892,7 +897,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         {assessmentTab !== 'previousTests' && (
                             <TabsTrigger
                                 value="Ongoing"
-                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                                className={`flex gap-1.5 rounded-none px-6 py-2 !shadow-none ${
                                     selectedTab === 'Ongoing'
                                         ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                         : 'border-none bg-transparent'
@@ -915,7 +920,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         )}
                         <TabsTrigger
                             value="Pending"
-                            className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                            className={`flex gap-1.5 rounded-none px-6 py-2 !shadow-none ${
                                 selectedTab === 'Pending'
                                     ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                     : 'border-none bg-transparent'
@@ -934,7 +939,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             </Badge>
                         </TabsTrigger>
                     </TabsList>
-                    <div className="flex items-center gap-6">
+                    <div className="mr-4 mt-4 flex items-center gap-2">
                         <ExportDialogPDFCSV
                             handleExportPDF={handleExportPDF}
                             handleExportCSV={handleExportCSV}
@@ -945,14 +950,30 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                 getStudentSubmissionsDataCSV.status === 'pending' ? true : false
                             }
                         />
+                        {isOfflineEntryEnabled && (
+                            <MyButton
+                                type="button"
+                                scale="small"
+                                buttonType="primary"
+                                className="font-medium"
+                                onClick={() =>
+                                    navigate({
+                                        to: '/assessment/assessment-list/offline-entry/$assessmentId',
+                                        params: { assessmentId },
+                                    })
+                                }
+                            >
+                                Offline Entry
+                            </MyButton>
+                        )}
                         <MyButton
                             type="button"
-                            scale="large"
+                            scale="small"
                             buttonType="secondary"
-                            className="min-w-8 font-medium"
+                            className="min-w-8"
                             onClick={handleRefreshLeaderboard}
                         >
-                            <ArrowCounterClockwise size={32} />
+                            <ArrowCounterClockwise size={18} />
                         </MyButton>
                     </div>
                 </div>
@@ -1025,51 +1046,52 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     </div>
                 </div>
                 {selectedParticipantsTab === 'internal' && (
-                    <div className="flex items-center justify-between">
-                        <Tabs
-                            value={batchSelectionTab}
-                            onValueChange={handleBatchSeletectionTab}
-                            className="flex w-fit flex-col gap-4"
-                        >
-                            <TabsList className="mb-2 ml-4 mt-6 inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
-                                <TabsTrigger
-                                    value="batch"
-                                    className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
-                                        batchSelectionTab === 'batch'
-                                            ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
-                                            : 'border-none bg-transparent'
-                                    }`}
-                                >
-                                    <span
-                                        className={`${
-                                            batchSelectionTab === 'batch' ? 'text-primary-500' : ''
+                    <div className="flex flex-col gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <Tabs
+                                value={batchSelectionTab}
+                                onValueChange={handleBatchSeletectionTab}
+                                className="flex w-fit flex-col gap-4"
+                            >
+                                <TabsList className="mb-2 ml-4 mt-4 inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
+                                    <TabsTrigger
+                                        value="batch"
+                                        className={`flex gap-1.5 rounded-none px-8 py-2 !shadow-none ${
+                                            batchSelectionTab === 'batch'
+                                                ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                                : 'border-none bg-transparent'
                                         }`}
                                     >
-                                        Batch Selection
-                                    </span>
-                                </TabsTrigger>
-                                <TabsTrigger
-                                    value="individual"
-                                    className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
-                                        batchSelectionTab === 'individual'
-                                            ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
-                                            : 'border-none bg-transparent'
-                                    }`}
-                                >
-                                    <span
-                                        className={`${
+                                        <span
+                                            className={`${
+                                                batchSelectionTab === 'batch' ? 'text-primary-500' : ''
+                                            }`}
+                                        >
+                                            Batch Selection
+                                        </span>
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="individual"
+                                        className={`flex gap-1.5 rounded-none px-8 py-2 !shadow-none ${
                                             batchSelectionTab === 'individual'
-                                                ? 'text-primary-500'
-                                                : ''
+                                                ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                                : 'border-none bg-transparent'
                                         }`}
                                     >
-                                        Individual Selection
-                                    </span>
-                                </TabsTrigger>
-                            </TabsList>
-                        </Tabs>
-                        {selectedTab === 'Attempted' && (
-                            <div className="mt-2 flex justify-between gap-6">
+                                        <span
+                                            className={`${
+                                                batchSelectionTab === 'individual'
+                                                    ? 'text-primary-500'
+                                                    : ''
+                                            }`}
+                                        >
+                                            Individual Selection
+                                        </span>
+                                    </TabsTrigger>
+                                </TabsList>
+                            </Tabs>
+                            {selectedTab === 'Attempted' && (
+                                <div className="mr-4 flex items-center gap-3">
                                 <Dialog>
                                     <DialogTrigger>
                                         <MyButton
@@ -1092,8 +1114,9 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                     </DialogContent>
                                 </Dialog>
                                 <AssessmentGlobalLevelReleaseResultAssessment />
-                            </div>
-                        )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
                 <div className="flex max-h-[72vh] flex-col gap-6 overflow-y-auto p-4">

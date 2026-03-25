@@ -263,6 +263,7 @@ public class SessionService {
             child.setAvailableSlots(parent.getAvailableSlots());
 
             child = packageSessionRepository.save(child);
+            defaultEnrollInviteService.createDefaultEnrollInvite(child, instituteId);
             childIds.add(child.getId());
         });
 

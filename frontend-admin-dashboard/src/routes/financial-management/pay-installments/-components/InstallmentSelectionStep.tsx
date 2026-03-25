@@ -1,19 +1,18 @@
 import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { ArrowLeft, CurrencyInr, Wallet, WarningCircle, X } from '@phosphor-icons/react';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
-import { Input } from '@/components/ui/input';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { StudentFeePaymentRowDTO, StudentFeeDueDTO } from '@/types/manage-finances';
 import {
     fetchStudentDues,
     getStudentDuesQueryKey,
-    allocateSelectedPayment,
     generateInvoiceForInstallments,
+    sendInvoiceEmail,
 } from '@/services/manage-finances';
-import { getInstituteId } from '@/constants/helper';
-import { ConfirmPaymentDialog } from './ConfirmPaymentDialog';
+import { useTheme } from '@/providers/theme/theme-provider';
+import { InvoiceActionDialog } from './InvoiceActionDialog';
 import { cn } from '@/lib/utils';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -54,15 +53,15 @@ const FILTER_STATUS_CONFIG = [
 interface InstallmentSelectionStepProps {
     student: StudentFeePaymentRowDTO;
     onBack: () => void;
-    onSuccess: (amount: number) => void;
+    onProceedToPayment: (selectedDues: StudentFeeDueDTO[]) => void;
 }
 
 export function InstallmentSelectionStep({
     student,
     onBack,
-    onSuccess,
+    onProceedToPayment,
 }: InstallmentSelectionStepProps) {
-    const queryClient = useQueryClient();
+    const { getPrimaryColorCode } = useTheme();
 
     const { data: dues, isLoading, error } = useQuery({
         queryKey: getStudentDuesQueryKey(student.student_id),
@@ -71,26 +70,21 @@ export function InstallmentSelectionStep({
     });
 
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [amount, setAmount] = useState('');
-    const [remarks, setRemarks] = useState('');
-    const [showConfirm, setShowConfirm] = useState(false);
+    const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
 
     // Filters
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [dueDateFrom, setDueDateFrom] = useState('');
     const [dueDateTo, setDueDateTo] = useState('');
 
-    // Apply filters to dues
     const filteredDues = useMemo(() => {
         if (!dues) return [];
         return dues.filter((d) => {
-            // Status filter
             if (statusFilter === 'OVERDUE') {
                 if (!d.is_overdue) return false;
             } else if (statusFilter !== 'ALL') {
                 if (d.status !== statusFilter) return false;
             }
-            // Date range filter
             if (dueDateFrom && d.due_date) {
                 if (dayjs(d.due_date).isBefore(dayjs(dueDateFrom), 'day')) return false;
             }
@@ -101,7 +95,6 @@ export function InstallmentSelectionStep({
         });
     }, [dues, statusFilter, dueDateFrom, dueDateTo]);
 
-    // Payable from filtered list
     const payableDues = useMemo(
         () => filteredDues.filter((d) => d.status !== 'PAID' && d.amount_due > 0),
         [filteredDues]
@@ -117,7 +110,6 @@ export function InstallmentSelectionStep({
         [selectedDues]
     );
 
-    // Summary totals across ALL installments (unfiltered)
     const summaryTotals = useMemo(() => {
         if (!dues) return { totalFee: 0, totalPaid: 0, totalDue: 0 };
         return dues.reduce(
@@ -141,18 +133,14 @@ export function InstallmentSelectionStep({
     const toggleSelect = (id: string) => {
         setSelectedIds((prev) => {
             const next = new Set(prev);
-            if (next.has(id)) {
-                next.delete(id);
-            } else {
-                next.add(id);
-            }
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
             return next;
         });
     };
 
     const toggleSelectAll = () => {
         if (selectedIds.size === payableDues.length && payableDues.length > 0) {
-            // Deselect only the visible payable ones
             setSelectedIds((prev) => {
                 const next = new Set(prev);
                 payableDues.forEach((d) => next.delete(d.id));
@@ -167,64 +155,40 @@ export function InstallmentSelectionStep({
         }
     };
 
-    const handleAmountChange = (value: string) => {
-        if (value === '' || /^\d*\.?\d*$/.test(value)) {
-            setAmount(value);
-        }
-    };
-
-    const parsedAmount = parseFloat(amount) || 0;
-
-    const mutation = useMutation({
-        mutationFn: () => {
-            const instituteId = getInstituteId();
-            if (!instituteId) throw new Error('Institute ID not found');
-            return allocateSelectedPayment(student.student_id, {
-                institute_id: instituteId,
-                student_fee_payment_ids: Array.from(selectedIds),
-                amount: parsedAmount,
-                remarks: remarks || undefined,
-            });
-        },
-        onSuccess: () => {
-            toast.success('Payment submitted successfully');
-            queryClient.invalidateQueries({
-                queryKey: getStudentDuesQueryKey(student.student_id),
-            });
-            onSuccess(parsedAmount);
-        },
-        onError: (err: any) => {
-            toast.error(err?.response?.data?.ex || err?.message || 'Payment failed');
-        },
-    });
-
     const invoiceMutation = useMutation({
         mutationFn: () =>
             generateInvoiceForInstallments(student.student_id, Array.from(selectedIds)),
         onSuccess: (data) => {
             if (data.download_url) {
                 window.open(data.download_url, '_blank');
-                toast.success('Invoice generated successfully');
+                toast.success('Invoice downloaded successfully');
+                setShowInvoiceDialog(false);
             } else {
                 toast.error('Invoice generated but download URL not available');
             }
         },
         onError: (err: any) => {
-            toast.error(
-                err?.response?.data?.error || err?.message || 'Failed to generate invoice'
-            );
+            toast.error(err?.response?.data?.error || err?.message || 'Failed to generate invoice');
         },
     });
 
-    const handleSubmit = () => {
-        if (selectedIds.size === 0 || parsedAmount <= 0) return;
-        setShowConfirm(true);
-    };
-
-    const handleConfirm = () => {
-        setShowConfirm(false);
-        mutation.mutate();
-    };
+    const emailInvoiceMutation = useMutation({
+        mutationFn: async (email: string) => {
+            const data = await generateInvoiceForInstallments(
+                student.student_id,
+                Array.from(selectedIds)
+            );
+            if (!data.download_url) throw new Error('Download URL not available');
+            await sendInvoiceEmail(email, student.student_name, data.download_url, getPrimaryColorCode());
+        },
+        onSuccess: () => {
+            toast.success('Invoice sent to email successfully');
+            setShowInvoiceDialog(false);
+        },
+        onError: (err: any) => {
+            toast.error(err?.response?.data?.error || err?.message || 'Failed to send invoice email');
+        },
+    });
 
     // ── Render ───────────────────────────────────────────────────────────
 
@@ -252,7 +216,7 @@ export function InstallmentSelectionStep({
 
     return (
         <div className="flex flex-col h-[calc(100vh-220px)]">
-            {/* ── Top section (scrolls away) ── */}
+            {/* ── Top section ── */}
             <div className="space-y-4 mb-4">
                 {/* Header */}
                 <div className="flex items-center gap-4 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -340,7 +304,6 @@ export function InstallmentSelectionStep({
                     {/* Filters */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                            {/* Status pills */}
                             <div className="flex items-center gap-2 flex-wrap">
                                 {FILTER_STATUS_CONFIG.map((s) => (
                                     <button
@@ -360,7 +323,6 @@ export function InstallmentSelectionStep({
 
                             <div className="h-5 w-px bg-gray-200 hidden sm:block" />
 
-                            {/* Date range */}
                             <div className="flex items-center gap-2">
                                 <label className="text-xs font-medium text-gray-500">From:</label>
                                 <input
@@ -404,49 +366,27 @@ export function InstallmentSelectionStep({
                                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             />
                                         </th>
-                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                            Fee Type
-                                        </th>
-                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                            CPO / Plan
-                                        </th>
-                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                            Expected
-                                        </th>
-                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                            Discount
-                                        </th>
-                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                            Paid
-                                        </th>
-                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                            Due
-                                        </th>
-                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                            Due / Overdue
-                                        </th>
-                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                            Due Date
-                                        </th>
-                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                                            Status
-                                        </th>
+                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Fee Type</th>
+                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">CPO / Plan</th>
+                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Expected</th>
+                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Discount</th>
+                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Paid</th>
+                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Due</th>
+                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Due / Overdue</th>
+                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
+                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 text-sm font-medium">
                                     {filteredDues.length === 0 && (
                                         <tr>
-                                            <td
-                                                colSpan={10}
-                                                className="py-12 text-center text-gray-400"
-                                            >
+                                            <td colSpan={10} className="py-12 text-center text-gray-400">
                                                 No installments match the selected filters.
                                             </td>
                                         </tr>
                                     )}
                                     {filteredDues.map((inst: StudentFeeDueDTO) => {
-                                        const isPayable =
-                                            inst.status !== 'PAID' && inst.amount_due > 0;
+                                        const isPayable = inst.status !== 'PAID' && inst.amount_due > 0;
                                         const isSelected = selectedIds.has(inst.id);
                                         return (
                                             <tr
@@ -456,9 +396,7 @@ export function InstallmentSelectionStep({
                                                         ? 'bg-blue-50/40'
                                                         : 'hover:bg-gray-50/60'
                                                 } ${!isPayable ? 'opacity-50' : 'cursor-pointer'}`}
-                                                onClick={() =>
-                                                    isPayable && toggleSelect(inst.id)
-                                                }
+                                                onClick={() => isPayable && toggleSelect(inst.id)}
                                             >
                                                 <td className="py-3 px-4">
                                                     <input
@@ -470,27 +408,15 @@ export function InstallmentSelectionStep({
                                                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-30"
                                                     />
                                                 </td>
-                                                <td className="py-3 px-4 text-gray-800 font-semibold">
-                                                    {inst.fee_type_name}
-                                                </td>
-                                                <td className="py-3 px-4 text-gray-600">
-                                                    {inst.cpo_name || '\u2014'}
-                                                </td>
-                                                <td className="py-3 px-4 text-gray-700">
-                                                    {formatCurrency(inst.amount_expected)}
-                                                </td>
+                                                <td className="py-3 px-4 text-gray-800 font-semibold">{inst.fee_type_name}</td>
+                                                <td className="py-3 px-4 text-gray-600">{inst.cpo_name || '\u2014'}</td>
+                                                <td className="py-3 px-4 text-gray-700">{formatCurrency(inst.amount_expected)}</td>
                                                 <td className="py-3 px-4 text-gray-500">
-                                                    {inst.discount_amount > 0
-                                                        ? `-${formatCurrency(inst.discount_amount)}`
-                                                        : '\u2014'}
+                                                    {inst.discount_amount > 0 ? `-${formatCurrency(inst.discount_amount)}` : '\u2014'}
                                                 </td>
-                                                <td className="py-3 px-4 text-emerald-700 font-semibold">
-                                                    {formatCurrency(inst.amount_paid)}
-                                                </td>
+                                                <td className="py-3 px-4 text-emerald-700 font-semibold">{formatCurrency(inst.amount_paid)}</td>
                                                 <td className="py-3 px-4 text-red-600 font-semibold">
-                                                    {inst.amount_due > 0
-                                                        ? formatCurrency(inst.amount_due)
-                                                        : '\u2014'}
+                                                    {inst.amount_due > 0 ? formatCurrency(inst.amount_due) : '\u2014'}
                                                 </td>
                                                 <td className="py-3 px-4">
                                                     {inst.is_overdue ? (
@@ -498,9 +424,7 @@ export function InstallmentSelectionStep({
                                                             <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" />
                                                             Overdue
                                                             {inst.days_overdue > 0 && (
-                                                                <span className="text-red-500 font-normal">
-                                                                    ({inst.days_overdue}d)
-                                                                </span>
+                                                                <span className="text-red-500 font-normal">({inst.days_overdue}d)</span>
                                                             )}
                                                         </span>
                                                     ) : inst.amount_due > 0 ? (
@@ -509,17 +433,11 @@ export function InstallmentSelectionStep({
                                                             Due
                                                         </span>
                                                     ) : (
-                                                        <span className="text-gray-400">
-                                                            {'\u2014'}
-                                                        </span>
+                                                        <span className="text-gray-400">{'\u2014'}</span>
                                                     )}
                                                 </td>
                                                 <td className="py-3 px-4 text-gray-600">
-                                                    {inst.due_date
-                                                        ? dayjs(inst.due_date).format(
-                                                              'D MMM YYYY'
-                                                          )
-                                                        : '\u2014'}
+                                                    {inst.due_date ? dayjs(inst.due_date).format('D MMM YYYY') : '\u2014'}
                                                 </td>
                                                 <td className="py-3 px-4">
                                                     <StatusPill status={inst.status} />
@@ -533,13 +451,10 @@ export function InstallmentSelectionStep({
                     </div>
 
                     {/* ── Fixed bottom action bar ── */}
-                    <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4 space-y-3">
-                        {/* Row 1: Summary + Inputs */}
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4">
+                        <div className="flex items-center gap-4">
                             <div className="text-sm text-gray-600">
-                                <span className="font-bold text-gray-800">
-                                    {selectedIds.size}
-                                </span>{' '}
+                                <span className="font-bold text-gray-800">{selectedIds.size}</span>{' '}
                                 installment{selectedIds.size !== 1 ? 's' : ''} selected
                                 {selectedIds.size > 0 && (
                                     <>
@@ -555,49 +470,19 @@ export function InstallmentSelectionStep({
                             <div className="flex-1" />
 
                             <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-2">
-                                    <label className="text-sm font-medium text-gray-600">
-                                        Amount:
-                                    </label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
-                                            ₹
-                                        </span>
-                                        <Input
-                                            value={amount}
-                                            onChange={(e) => handleAmountChange(e.target.value)}
-                                            placeholder={totalSelectedDue.toString()}
-                                            className="pl-7 w-36"
-                                        />
-                                    </div>
-                                </div>
-                                <Input
-                                    value={remarks}
-                                    onChange={(e) => setRemarks(e.target.value)}
-                                    placeholder="Remarks (optional)"
-                                    className="w-48"
-                                />
                                 <button
-                                    onClick={() => invoiceMutation.mutate()}
-                                    disabled={
-                                        selectedIds.size === 0 || invoiceMutation.isPending
-                                    }
+                                    onClick={() => setShowInvoiceDialog(true)}
+                                    disabled={selectedIds.size === 0}
                                     className="px-5 py-2 bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                                 >
-                                    {invoiceMutation.isPending
-                                        ? 'Generating...'
-                                        : 'Generate Invoice'}
+                                    Generate Invoice
                                 </button>
                                 <button
-                                    onClick={handleSubmit}
-                                    disabled={
-                                        selectedIds.size === 0 ||
-                                        parsedAmount <= 0 ||
-                                        mutation.isPending
-                                    }
+                                    onClick={() => onProceedToPayment(selectedDues)}
+                                    disabled={selectedIds.size === 0}
                                     className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                                 >
-                                    {mutation.isPending ? 'Submitting...' : 'Submit Payment'}
+                                    Proceed to Pay
                                 </button>
                             </div>
                         </div>
@@ -605,14 +490,15 @@ export function InstallmentSelectionStep({
                 </>
             )}
 
-            <ConfirmPaymentDialog
-                open={showConfirm}
-                onOpenChange={setShowConfirm}
+            <InvoiceActionDialog
+                open={showInvoiceDialog}
+                onOpenChange={setShowInvoiceDialog}
                 studentName={student.student_name}
-                amount={parsedAmount}
-                installmentCount={selectedIds.size}
-                isSubmitting={mutation.isPending}
-                onConfirm={handleConfirm}
+                studentEmail={student.email}
+                isGenerating={invoiceMutation.isPending}
+                isSendingEmail={emailInvoiceMutation.isPending}
+                onDownload={() => invoiceMutation.mutate()}
+                onSendEmail={(email) => emailInvoiceMutation.mutate(email)}
             />
         </div>
     );

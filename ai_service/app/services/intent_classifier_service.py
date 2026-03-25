@@ -120,10 +120,11 @@ class IntentClassifierService:
         """
         # Try to extract topic from message
         topic_patterns = [
-            r'quiz\s+(?:on|about)\s+([^,.!?]+)',
-            r'practice\s+([^,.!?]+)',
-            r'test\s+me\s+on\s+([^,.!?]+)',
+            r'quiz\s+(?:me\s+)?(?:on|about)\s+([^,.!?]+)',
+            r'practice\s+(?:questions?\s+)?(?:on|about\s+)?([^,.!?]+)',
+            r'test\s+me\s+(?:on|about)\s+([^,.!?]+)',
             r'questions?\s+(?:on|about)\s+([^,.!?]+)',
+            r'(?:i\s+want\s+to\s+practice|give\s+me\s+(?:a\s+)?quiz)\s+(?:on|about)\s+([^,.!?]+)',
         ]
 
         # Generic/deictic words that refer to current context, not a real topic

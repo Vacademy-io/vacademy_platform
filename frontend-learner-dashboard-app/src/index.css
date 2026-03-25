@@ -2,6 +2,8 @@
 @import './styles/catalogue-tokens.css';
 /* Catalogue Color Themes & Border Radius Variants */
 @import './styles/catalogue-themes.css';
+/* Catalogue Animations - Entrance, hover, scroll effects */
+@import './styles/catalogue-animations.css';
 
 @tailwind base;
 @tailwind components;

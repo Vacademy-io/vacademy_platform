@@ -13,6 +13,7 @@ import { TemplateSettings } from '@/components/templates';
 import AiSettings from '../-components/AiSettings';
 import SchoolSettings from '../-components/School/SchoolSettings';
 import WhiteLabelSettings from '../-components/WhiteLabelSettings';
+import AssessmentSettings from '../-components/AssessmentSettings';
 import WhatsAppSettings from '../-components/WhatsAppSettings/WhatsAppSettings';
 
 export const getAvailableSettingsTabs = () => {
@@ -56,6 +57,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Course,
             value: 'Course Settings',
             component: CourseSettings,
+        },
+        {
+            tab: SettingsTabs.Assessment,
+            value: 'Assessment Settings',
+            component: AssessmentSettings,
         },
         {
             tab: SettingsTabs.CustomFields,

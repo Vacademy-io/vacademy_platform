@@ -34,4 +34,5 @@ public class ChildDetailsDTO {
      * All enrollments (from student table) for this child
      */
     private List<Student> enrollments;
+
 }

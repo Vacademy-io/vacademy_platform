@@ -30,6 +30,7 @@ import {
 } from "@/services/get-batches";
 import { useQuery } from "@tanstack/react-query";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { computeAttendanceStats } from "@/services/attendance/useAttendanceStats";
 
 export const Route = createFileRoute("/learning-centre/attendance/")({
   component: RouteComponent,
@@ -159,6 +160,11 @@ function RouteComponent() {
     return selectedBatch?.label || "All Batches";
   }, [selectedBatchId, batchOptions]);
 
+  const attendanceStats = useMemo(() => {
+    if (!attendanceData?.schedules) return null;
+    return computeAttendanceStats(attendanceData.schedules);
+  }, [attendanceData]);
+
   return (
     <LayoutContainer>
       <Helmet>
@@ -178,6 +184,59 @@ function RouteComponent() {
           <p className="text-neutral-600">
             Track your attendance for live classes and sessions
           </p>
+        </div>
+
+        {/* Summary Stats */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-lg border border-neutral-200 bg-white p-3 text-center">
+            {isLoading ? (
+              <div className="mx-auto h-8 w-12 animate-pulse rounded bg-neutral-100" />
+            ) : (
+              <div
+                className={`text-2xl font-bold ${
+                  (attendanceStats?.attendancePercentage ?? 0) >= 75
+                    ? "text-emerald-600"
+                    : (attendanceStats?.attendancePercentage ?? 0) >= 50
+                      ? "text-amber-600"
+                      : "text-red-600"
+                }`}
+              >
+                {attendanceStats?.attendancePercentage ?? 0}%
+              </div>
+            )}
+            <div className="mt-1 text-xs text-neutral-500">Overall %</div>
+          </div>
+          <div className="rounded-lg border border-neutral-200 bg-white p-3 text-center">
+            {isLoading ? (
+              <div className="mx-auto h-8 w-12 animate-pulse rounded bg-neutral-100" />
+            ) : (
+              <div className="flex items-center justify-center gap-1 text-2xl font-bold text-neutral-800">
+                <span className={attendanceStats?.currentStreak ? "text-orange-500" : "text-neutral-300"}>🔥</span>
+                {attendanceStats?.currentStreak ?? 0}
+              </div>
+            )}
+            <div className="mt-1 text-xs text-neutral-500">Day Streak</div>
+          </div>
+          <div className="rounded-lg border border-neutral-200 bg-white p-3 text-center">
+            {isLoading ? (
+              <div className="mx-auto h-8 w-12 animate-pulse rounded bg-neutral-100" />
+            ) : (
+              <div className="text-2xl font-bold text-emerald-600">
+                {attendanceStats?.presentDays ?? 0}
+              </div>
+            )}
+            <div className="mt-1 text-xs text-neutral-500">Days Present</div>
+          </div>
+          <div className="rounded-lg border border-neutral-200 bg-white p-3 text-center">
+            {isLoading ? (
+              <div className="mx-auto h-8 w-12 animate-pulse rounded bg-neutral-100" />
+            ) : (
+              <div className="text-2xl font-bold text-red-500">
+                {attendanceStats?.absentDays ?? 0}
+              </div>
+            )}
+            <div className="mt-1 text-xs text-neutral-500">Days Absent</div>
+          </div>
         </div>
 
         {/* Filters card */}

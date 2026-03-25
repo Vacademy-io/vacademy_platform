@@ -18,6 +18,11 @@ import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstitute
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import ClipLoader from "react-spinners/ClipLoader";
+import {
+  getOAuthRedirectOrigin,
+  isNativeOAuthRequired,
+  openOAuthInSystemBrowser,
+} from "@/lib/auth/nativeOAuth";
 
 interface ModularDynamicLoginContainerProps {
   instituteId?: string;
@@ -428,7 +433,7 @@ export function ModularDynamicLoginContainer({
     };
   }, [onLoginSuccess]);
 
-  const handleOAuthLogin = (provider: "google" | "github") => {
+  const handleOAuthLogin = async (provider: "google" | "github") => {
     try {
       // Get current page information for redirection after login
       const currentPath = window.location.pathname;
@@ -474,11 +479,13 @@ export function ModularDynamicLoginContainer({
         localStorage.removeItem('OAUTH_RESULT');
         oauthPopupOpenedAtRef.current = Date.now();
       } catch { /* ignore */ }
-      
+
+      // Resolve the public-facing origin for OAuth redirect
+      // On native (Android/iOS) window.location.origin is localhost, so we use the public URL
+      const redirectOrigin = await getOAuthRedirectOrigin();
+
       // Create minimal state object
-      // Use static oauth-popup-handler.html so backend redirect lands on a simple page that sends tokens to parent and closes popup
       const stateObj: Record<string, unknown> = {
-        from: `${window.location.origin}/oauth-popup-handler.html?popup=1`,
         account_type: "login",
         user_type: "learner",
       };
@@ -488,17 +495,29 @@ export function ModularDynamicLoginContainer({
         stateObj.institute_id = instituteIdFromUrl;
       }
 
+      if (isNativeOAuthRequired()) {
+        // Native: redirect back to the public learner route (deep link will catch it)
+        stateObj.from = `${redirectOrigin}/login/oauth/learner`;
+      } else {
+        // Web: redirect back to the static popup handler
+        stateObj.from = `${redirectOrigin}/oauth-popup-handler.html?popup=1`;
+      }
+
       const stateJson = JSON.stringify(stateObj);
       const base64State = btoa(stateJson);
       const encodedState = encodeURIComponent(base64State);
       const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodedState}`;
-      
-      // Open OAuth in popup window
-      const popup = window.open(
-        loginUrl,
-        'oauth_popup',
-        'width=500,height=600,scrollbars=yes,resizable=yes'
-      );
+
+      if (isNativeOAuthRequired()) {
+        // Native: open in system browser via Capacitor Browser plugin
+        await openOAuthInSystemBrowser(loginUrl);
+      } else {
+        // Web: open OAuth in popup window
+        const popup = window.open(
+          loginUrl,
+          'oauth_popup',
+          'width=500,height=600,scrollbars=yes,resizable=yes'
+        );
 
       if (!popup) {
         console.error('[OAuth] Popup blocked');
@@ -508,6 +527,7 @@ export function ModularDynamicLoginContainer({
 
       // Focus the popup
       popup.focus();
+     }
     } catch {
       toast.error("Failed to initiate login. Please try again.");
     }

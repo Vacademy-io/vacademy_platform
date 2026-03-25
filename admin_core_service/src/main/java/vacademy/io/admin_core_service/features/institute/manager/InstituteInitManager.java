@@ -188,9 +188,9 @@ public class InstituteInitManager {
                                         () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
                                                         activeStatuses));
 
-                        // Filter by faculty mapping: if user has entries in faculty_subject_package_session_mapping,
-                        // scope to only their assigned package sessions. No entries = full access.
-                        if (user != null) {
+                        // Filter by faculty mapping: only apply when user has HAS_FACULTY_ASSIGNED permission.
+                        // Admin/root users and users without this permission see all package sessions.
+                        if (user != null && hasFacultyAssignedPermission(user)) {
                                 List<String> allowedAccessIds = facultyMappingRepository
                                                 .findAccessIdsByUserIdAndInstituteId(
                                                                 user.getUserId(), instId, List.of("ACTIVE"));
@@ -544,5 +544,15 @@ public class InstituteInitManager {
                                 .levels(levels)
                                 .sessions(sessions)
                                 .build();
+        }
+
+        /**
+         * Checks if the user has HAS_FACULTY_ASSIGNED permission in their JWT.
+         * Only users with this permission should have faculty-based filtering applied.
+         */
+        private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
+                return user.getAuthorities().stream()
+                                .map(auth -> auth.getAuthority())
+                                .anyMatch(authority -> "HAS_FACULTY_ASSIGNED".equalsIgnoreCase(authority));
         }
 }

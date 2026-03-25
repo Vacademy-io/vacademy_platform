@@ -249,6 +249,7 @@ public class EnquiryService {
                 .feeRangeExpectation(enquiry.getFeeRangeExpectation())
                 .transportRequirement(enquiry.getTransportRequirement())
                 .mode(enquiry.getMode())
+                .parentRelationWithChild(enquiry.getParentRelationWithChild())
                 .interestScore(enquiry.getInterestScore())
                 .notes(enquiry.getNotes())
                 .checklist(enquiry.getChecklist())

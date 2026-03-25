@@ -4,12 +4,15 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Trash2, ChevronDown, ChevronUp, Settings, Copy, ArrowUp, ArrowDown, LayoutGrid } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, Settings, Copy, ArrowUp, ArrowDown, LayoutGrid, Clipboard, ClipboardPaste, Anchor } from 'lucide-react';
 import { useState } from 'react';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
 import { VariantSwitcher } from './VariantSwitcher';
 import { RichTextField } from './RichTextField';
+import { StyleEditor } from './StyleEditor';
+import { LinkPicker } from './LinkPicker';
+import type { ComponentStyle } from '../-types/editor-types';
 
 export const PropertyPanel = () => {
     const {
@@ -25,6 +28,10 @@ export const PropertyPanel = () => {
         reorderComponents,
         togglePagePublished,
         updatePageSeo,
+        updatePageBackgroundColor,
+        copyComponent,
+        pasteComponent,
+        clipboard,
     } = useEditorStore();
 
     if (!config) return null;
@@ -169,12 +176,48 @@ export const PropertyPanel = () => {
                     />
                 </div>
 
+                {/* Anchor ID */}
+                <div className="space-y-1">
+                    <Label className="flex items-center gap-1 text-xs text-gray-500">
+                        <Anchor className="size-3" /> Anchor ID
+                    </Label>
+                    <Input
+                        value={component.anchorId || ''}
+                        onChange={(e) => updateComponent(pageId, component!.id, { anchorId: e.target.value.replace(/[^a-zA-Z0-9-_]/g, '') })}
+                        placeholder="e.g. pricing, faq, contact"
+                        className="h-7 text-xs"
+                    />
+                    {component.anchorId && (
+                        <p className="text-[10px] text-gray-400">Link to this: <code className="rounded bg-gray-100 px-1">#{component.anchorId}</code></p>
+                    )}
+                </div>
+
+                {/* Copy component */}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs"
+                    onClick={() => copyComponent(pageId, component!.id)}
+                >
+                    <Clipboard className="mr-1.5 size-3" /> Copy to Clipboard
+                </Button>
+
                 {/* Component-specific editors */}
                 <ComponentEditor
                     component={component}
                     pageId={pageId}
                     updateComponent={updateComponent}
                 />
+
+                {/* Universal style editor — spacing, background, border, typography, animation */}
+                <div className="border-t border-gray-100 pt-4">
+                    <StyleEditor
+                        style={component.style || {}}
+                        onChange={(newStyle: ComponentStyle) =>
+                            updateComponent(pageId, component!.id, { style: newStyle })
+                        }
+                    />
+                </div>
             </div>
         );
     }
@@ -217,6 +260,25 @@ export const PropertyPanel = () => {
                             <Input value={page.route} readOnly disabled />
                         </div>
                     </div>
+
+                    {/* Page Background Color */}
+                    <ColorPickerField
+                        label="Page Background Color"
+                        value={page.backgroundColor || '#ffffff'}
+                        onChange={(c) => updatePageBackgroundColor(page.id, c)}
+                    />
+
+                    {/* Paste component */}
+                    {clipboard && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs"
+                            onClick={() => pasteComponent(page.id)}
+                        >
+                            <ClipboardPaste className="mr-1.5 size-3" /> Paste: {clipboard.type.replace(/([A-Z])/g, ' $1').trim()}
+                        </Button>
+                    )}
 
                     {/* SEO */}
                     <div className="space-y-3 rounded-lg border bg-gray-50 p-3">
@@ -513,6 +575,46 @@ const GlobalSettingsEditor = ({
                     </div>
                 </div>
 
+                {/* Heading Scale */}
+                <div className="space-y-2">
+                    <Label className="text-xs text-gray-500">Heading Scale</Label>
+                    <div className="flex gap-2">
+                        {(
+                            [
+                                { key: 'compact',  label: 'Compact' },
+                                { key: 'default',  label: 'Default' },
+                                { key: 'large',    label: 'Large' },
+                                { key: 'display',  label: 'Display' },
+                            ] as const
+                        ).map(({ key, label }) => {
+                            const isActive = (gs.theme?.headingScale || 'default') === key;
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => updateField('theme.headingScale', key)}
+                                    className={`flex-1 rounded-lg border-2 py-1.5 text-[10px] font-medium transition-all ${
+                                        isActive
+                                            ? 'border-gray-800 bg-white shadow-sm'
+                                            : 'border-transparent bg-white hover:border-gray-300'
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Back to Top Button */}
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs text-gray-500">Back to Top Button</Label>
+                    <Switch
+                        checked={gs.backToTop || false}
+                        onCheckedChange={(c) => updateField('backToTop', c)}
+                    />
+                </div>
+
                 {/* Mode */}
                 <div className="flex items-center justify-between">
                     <Label className="text-xs text-gray-500">Mode</Label>
@@ -680,6 +782,10 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
         teamSection: 'Team', announcementFeed: 'Announcements', imageGallery: 'Image Gallery',
         videoEmbed: 'Video', buyRentSection: 'Buy/Rent', policyRenderer: 'Policy',
         cartComponent: 'Cart', courseDetails: 'Course Details', bookDetails: 'Book Details',
+        spacer: 'Spacer', tabsAccordion: 'Tabs/Accordion', logoCloud: 'Logo Cloud',
+        mapEmbed: 'Map', countdownTimer: 'Countdown', textBlock: 'Text Block',
+        featureGrid: 'Feature Grid', imageBlock: 'Image', buttonBlock: 'Button',
+        newsletterSignup: 'Newsletter', stepsProcess: 'Steps/Process',
     };
 
     return (
@@ -940,6 +1046,30 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
         case 'columnLayout':
             return <ColumnLayoutEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
 
+        case 'spacer':
+            return <SpacerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'tabsAccordion':
+            return <TabsAccordionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'logoCloud':
+            return <LogoCloudEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'mapEmbed':
+            return <MapEmbedEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'countdownTimer':
+            return <CountdownTimerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+
+        case 'textBlock':
+            return <TextBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'featureGrid':
+            return <FeatureGridEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'imageBlock':
+            return <ImageBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'buttonBlock':
+            return <ButtonBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'newsletterSignup':
+            return <NewsletterSignupEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'stepsProcess':
+            return <StepsProcessEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+
         default:
             return (
                 <GenericEditor
@@ -1107,7 +1237,11 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                                             {slide.button?.enabled && (
                                                 <div className="ml-4 space-y-2">
                                                     <Input placeholder="Button text" value={slide.button.text} onChange={(e) => updateSlide(index, 'button.text', e.target.value)} />
-                                                    <Input placeholder="Target route" value={slide.button.target} onChange={(e) => updateSlide(index, 'button.target', e.target.value)} />
+                                                    <LinkPicker
+                                                        label="Button Link"
+                                                        value={slide.button.target || ''}
+                                                        onChange={(v) => updateSlide(index, 'button.target', v)}
+                                                    />
                                                 </div>
                                             )}
                                         </div>
@@ -1406,6 +1540,24 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp('authLinks', (props.authLinks || []).filter((_: any, i: number) => i !== index));
     };
 
+    const config = useEditorStore((s) => s.config);
+    const updateGlobalSettings = useEditorStore((s) => s.updateGlobalSettings);
+
+    const syncNavFromPages = () => {
+        if (!config) return;
+        const navItems = config.pages
+            .filter((p) => p.published !== false)
+            .map((p) => {
+                const isHome = p.id === 'home' || p.route === 'homepage' || p.route === '/' || p.route === '';
+                return {
+                    label: p.title || p.route || p.id,
+                    route: isHome ? 'homepage' : p.route,
+                    openInSameTab: true,
+                };
+            });
+        updateProp('navigation', navItems);
+    };
+
     return (
         <div className="space-y-4">
             <h4 className="text-sm font-medium">Header Settings</h4>
@@ -1443,13 +1595,27 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                 onChange={(c) => updateProp('textColor', c)}
             />
 
+            {/* Sticky Header */}
+            <div className="flex items-center justify-between">
+                <Label className="text-xs">Sticky Header</Label>
+                <Switch
+                    checked={config?.globalSettings?.stickyHeader || false}
+                    onCheckedChange={(c) => updateGlobalSettings({ stickyHeader: c })}
+                />
+            </div>
+
             {/* Navigation Links */}
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <Label>Navigation Links</Label>
-                    <Button size="sm" variant="outline" onClick={addNavItem}>
-                        <Plus className="mr-1 size-3" /> Add
-                    </Button>
+                    <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" onClick={syncNavFromPages} title="Auto-generate from published pages" className="text-xs text-blue-600">
+                            Sync Pages
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={addNavItem}>
+                            <Plus className="mr-1 size-3" /> Add
+                        </Button>
+                    </div>
                 </div>
                 {(props.navigation || []).map((item: any, index: number) => (
                     <div key={index} className="rounded border bg-gray-50 p-2">
@@ -1481,10 +1647,10 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                     value={item.label}
                                     onChange={(e) => updateNavItem(index, 'label', e.target.value)}
                                 />
-                                <Input
-                                    placeholder="Route (e.g. /about or https://...)"
-                                    value={item.route}
-                                    onChange={(e) => updateNavItem(index, 'route', e.target.value)}
+                                <LinkPicker
+                                    label="Route"
+                                    value={item.route || ''}
+                                    onChange={(v) => updateNavItem(index, 'route', v)}
                                 />
                                 <div className="flex items-center justify-between">
                                     <Label className="text-xs">Open in same tab</Label>
@@ -1542,10 +1708,10 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                     value={link.label || ''}
                                     onChange={(e) => updateAuthLink(index, 'label', e.target.value)}
                                 />
-                                <Input
-                                    placeholder="Route (e.g. login, signup, /contact)"
+                                <LinkPicker
+                                    label="Route"
                                     value={link.route || ''}
-                                    onChange={(e) => updateAuthLink(index, 'route', e.target.value)}
+                                    onChange={(v) => updateAuthLink(index, 'route', v)}
                                 />
                             </div>
                         )}
@@ -1686,11 +1852,10 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                                         value={link.label || ''}
                                         onChange={(e) => updateRightSectionLink(sectionKey, li, 'label', e.target.value)}
                                     />
-                                    <Input
-                                        className="h-7 text-xs"
-                                        placeholder="Route"
+                                    <LinkPicker
+                                        label=""
                                         value={link.route || ''}
-                                        onChange={(e) => updateRightSectionLink(sectionKey, li, 'route', e.target.value)}
+                                        onChange={(v) => updateRightSectionLink(sectionKey, li, 'route', v)}
                                     />
                                     <Button
                                         size="sm"
@@ -2307,7 +2472,11 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
                 {props.button?.enabled && (
                     <>
                         <Input placeholder="Button text" value={props.button?.text || ''} onChange={(e) => updateProp('button', { ...props.button, text: e.target.value })} />
-                        <Input placeholder="Target route" value={props.button?.target || ''} onChange={(e) => updateProp('button', { ...props.button, target: e.target.value })} />
+                        <LinkPicker
+                            label="Button Link"
+                            value={props.button?.target || ''}
+                            onChange={(v) => updateProp('button', { ...props.button, target: v })}
+                        />
                     </>
                 )}
             </div>
@@ -2362,7 +2531,7 @@ const PricingTableEditor = ({ component, pageId, updateComponent }: any) => {
                                     <Textarea rows={3} value={(plan.features || []).join('\n')} onChange={(e) => updatePlan(i, 'features', e.target.value.split('\n').filter(Boolean))} />
                                 </div>
                                 <Input placeholder="Button text" value={plan.buttonText || ''} onChange={(e) => updatePlan(i, 'buttonText', e.target.value)} />
-                                <Input placeholder="Button target route" value={plan.buttonTarget || ''} onChange={(e) => updatePlan(i, 'buttonTarget', e.target.value)} />
+                                <LinkPicker label="Button Link" value={plan.buttonTarget || ''} onChange={(v) => updatePlan(i, 'buttonTarget', v)} />
                                 <div className="flex items-center justify-between">
                                     <Label className="text-xs">Highlighted (recommended)</Label>
                                     <Switch checked={plan.highlighted || false} onCheckedChange={(c) => updatePlan(i, 'highlighted', c)} />
@@ -2547,6 +2716,597 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
                         {props.showCaptions && <Input placeholder="Caption" value={img.caption || ''} onChange={(e) => updateImage(i, 'caption', e.target.value)} />}
                     </div>
                 ))}
+            </div>
+        </div>
+    );
+};
+
+/* ─── Spacer Editor ────────────────────────────────────────────────────── */
+const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <Label className="text-xs">Height</Label>
+                <div className="flex flex-wrap gap-1 mt-1">
+                    {['16px', '24px', '32px', '48px', '64px', '80px', '120px'].map((v) => (
+                        <button key={v} onClick={() => updateProp('height', v)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.height === v ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{v}</button>
+                    ))}
+                </div>
+            </div>
+            <div className="flex items-center justify-between">
+                <Label className="text-xs">Show Divider</Label>
+                <Switch checked={props.showDivider || false} onCheckedChange={(c) => updateProp('showDivider', c)} />
+            </div>
+            {props.showDivider && (
+                <>
+                    <div>
+                        <Label className="text-xs">Divider Style</Label>
+                        <div className="flex gap-1 mt-1">
+                            {['solid', 'dashed', 'dotted'].map((s) => (
+                                <button key={s} onClick={() => updateProp('dividerStyle', s)}
+                                    className={`rounded px-2 py-1 text-[11px] font-medium capitalize ${props.dividerStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                            ))}
+                        </div>
+                    </div>
+                    <ColorPickerField label="Divider Color" value={props.dividerColor || '#E5E7EB'} onChange={(c) => updateProp('dividerColor', c)} />
+                    <div>
+                        <Label className="text-xs">Divider Width</Label>
+                        <div className="flex gap-1 mt-1">
+                            {['1px', '2px', '3px', '4px'].map((w) => (
+                                <button key={w} onClick={() => updateProp('dividerWidth', w)}
+                                    className={`rounded px-2 py-1 text-[11px] font-medium ${props.dividerWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{w}</button>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <Label className="text-xs">Max Width</Label>
+                        <div className="flex gap-1 mt-1">
+                            {['40%', '60%', '80%', '100%'].map((w) => (
+                                <button key={w} onClick={() => updateProp('maxWidth', w)}
+                                    className={`rounded px-2 py-1 text-[11px] font-medium ${props.maxWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{w}</button>
+                            ))}
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
+/* ─── Tabs / Accordion Editor ──────────────────────────────────────────── */
+const TabsAccordionEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const items = props.items || [];
+    const [expandedItem, setExpandedItem] = useState<number | null>(null);
+
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const addItem = () => updateProp('items', [...items, { title: `Item ${items.length + 1}`, content: '<p>New content</p>' }]);
+    const deleteItem = (i: number) => { updateProp('items', items.filter((_: any, idx: number) => idx !== i)); if (expandedItem === i) setExpandedItem(null); };
+    const updateItem = (i: number, field: string, value: any) => {
+        const newItems = [...items];
+        newItems[i] = { ...newItems[i], [field]: value };
+        updateProp('items', newItems);
+    };
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <Label className="text-xs">Mode</Label>
+                <div className="flex gap-1 mt-1">
+                    {['tabs', 'accordion'].map((m) => (
+                        <button key={m} onClick={() => updateProp('mode', m)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.mode === m ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{m}</button>
+                    ))}
+                </div>
+            </div>
+            {props.mode === 'accordion' && (
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs">Allow Multiple Open</Label>
+                    <Switch checked={props.allowMultiple || false} onCheckedChange={(c) => updateProp('allowMultiple', c)} />
+                </div>
+            )}
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <Label className="text-xs font-medium">Items ({items.length})</Label>
+                    <Button variant="ghost" size="sm" onClick={addItem} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                </div>
+                <div className="space-y-2">
+                    {items.map((item: any, i: number) => (
+                        <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <button onClick={() => setExpandedItem(expandedItem === i ? null : i)} className="text-xs font-medium text-left flex-1">
+                                    {item.title || `Item ${i + 1}`}
+                                </button>
+                                <Button variant="ghost" size="sm" onClick={() => deleteItem(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                            </div>
+                            {expandedItem === i && (
+                                <div className="space-y-2">
+                                    <Input value={item.title || ''} onChange={(e) => updateItem(i, 'title', e.target.value)} placeholder="Title" />
+                                    <RichTextField label="Content" value={item.content || ''} onChange={(html) => updateItem(i, 'content', html)} />
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Logo Cloud Editor ────────────────────────────────────────────────── */
+const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const logos = props.logos || [];
+
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const addLogo = () => updateProp('logos', [...logos, { image: '', alt: `Logo ${logos.length + 1}`, url: '' }]);
+    const deleteLogo = (i: number) => updateProp('logos', logos.filter((_: any, idx: number) => idx !== i));
+    const updateLogo = (i: number, field: string, value: any) => {
+        const newLogos = [...logos];
+        newLogos[i] = { ...newLogos[i], [field]: value };
+        updateProp('logos', newLogos);
+    };
+
+    return (
+        <div className="space-y-4">
+            <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder="Header text" />
+            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder="Subheading" />
+            <div>
+                <Label className="text-xs">Layout</Label>
+                <div className="flex gap-1 mt-1">
+                    {['grid', 'marquee'].map((l) => (
+                        <button key={l} onClick={() => updateProp('layout', l)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Columns</Label>
+                <div className="flex gap-1 mt-1">
+                    {[3, 4, 5, 6].map((c) => (
+                        <button key={c} onClick={() => updateProp('columns', c)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium ${props.columns === c ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{c}</button>
+                    ))}
+                </div>
+            </div>
+            <div className="flex items-center justify-between">
+                <Label className="text-xs">Grayscale</Label>
+                <Switch checked={props.grayscale !== false} onCheckedChange={(c) => updateProp('grayscale', c)} />
+            </div>
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <Label className="text-xs font-medium">Logos ({logos.length})</Label>
+                    <Button variant="ghost" size="sm" onClick={addLogo} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                </div>
+                <div className="space-y-2">
+                    {logos.map((logo: any, i: number) => (
+                        <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium">Logo {i + 1}</span>
+                                <Button variant="ghost" size="sm" onClick={() => deleteLogo(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                            </div>
+                            <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} />
+                            <Input placeholder="Alt text" value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
+                            <Input placeholder="Link URL (optional)" value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Map Embed Editor ─────────────────────────────────────────────────── */
+const MapEmbedEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <Label className="text-xs">Title</Label>
+                <Input value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder="Our Location" />
+            </div>
+            <div>
+                <Label className="text-xs">Google Maps Embed URL</Label>
+                <Textarea value={props.embedUrl || ''} onChange={(e) => updateProp('embedUrl', e.target.value)} placeholder="https://www.google.com/maps/embed?pb=..." rows={3} />
+            </div>
+            <div>
+                <Label className="text-xs">Height</Label>
+                <div className="flex gap-1 mt-1">
+                    {['300px', '400px', '500px', '600px'].map((h) => (
+                        <button key={h} onClick={() => updateProp('height', h)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.height === h ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{h}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Border Radius</Label>
+                <div className="flex gap-1 mt-1">
+                    {['0', '4px', '8px', '16px', '24px'].map((r) => (
+                        <button key={r} onClick={() => updateProp('borderRadius', r)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r || '0'}</button>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Countdown Timer Editor ───────────────────────────────────────────── */
+const CountdownTimerEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <Label className="text-xs">Heading</Label>
+                <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} placeholder="Event Starts In" />
+            </div>
+            <div>
+                <Label className="text-xs">Target Date</Label>
+                <Input type="datetime-local" value={props.targetDate || ''} onChange={(e) => updateProp('targetDate', e.target.value)} />
+            </div>
+            <div>
+                <Label className="text-xs">Expired Message</Label>
+                <Input value={props.expiredMessage || ''} onChange={(e) => updateProp('expiredMessage', e.target.value)} placeholder="The event has started!" />
+            </div>
+            <div>
+                <Label className="text-xs">Style</Label>
+                <div className="flex gap-1 mt-1">
+                    {['cards', 'minimal'].map((s) => (
+                        <button key={s} onClick={() => updateProp('style', s)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                    ))}
+                </div>
+            </div>
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#1E293B'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF'} onChange={(c) => updateProp('textColor', c)} />
+        </div>
+    );
+};
+
+/* ─── Text Block Editor ────────────────────────────────────────────────── */
+const TextBlockEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    return (
+        <div className="space-y-4">
+            <RichTextField
+                label="Content"
+                value={props.content || ''}
+                onChange={(html) => updateProp('content', html)}
+            />
+            <div>
+                <Label className="text-xs">Max Width</Label>
+                <div className="flex gap-1 mt-1">
+                    {['600px', '800px', '1000px', '100%'].map((w) => (
+                        <button key={w} onClick={() => updateProp('maxWidth', w)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.maxWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{w}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Alignment</Label>
+                <div className="flex gap-1 mt-1">
+                    {['left', 'center', 'right'].map((a) => (
+                        <button key={a} onClick={() => updateProp('alignment', a)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Feature Grid Editor ──────────────────────────────────────────────── */
+const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const features = props.features || [];
+    const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const addFeature = () => updateProp('features', [...features, { icon: '⭐', title: 'New Feature', description: 'Description here' }]);
+    const deleteFeature = (i: number) => { updateProp('features', features.filter((_: any, idx: number) => idx !== i)); if (expandedIdx === i) setExpandedIdx(null); };
+    const updateFeature = (i: number, field: string, value: any) => {
+        const updated = [...features];
+        updated[i] = { ...updated[i], [field]: value };
+        updateProp('features', updated);
+    };
+
+    return (
+        <div className="space-y-4">
+            <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder="Header text" />
+            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder="Subheading" />
+            <div>
+                <Label className="text-xs">Columns</Label>
+                <div className="flex gap-1 mt-1">
+                    {[2, 3, 4].map((c) => (
+                        <button key={c} onClick={() => updateProp('columns', c)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium ${props.columns === c ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{c}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Style</Label>
+                <div className="flex gap-1 mt-1">
+                    {['cards', 'minimal', 'bordered'].map((s) => (
+                        <button key={s} onClick={() => updateProp('style', s)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Icon Size</Label>
+                <div className="flex gap-1 mt-1">
+                    {['small', 'medium', 'large'].map((s) => (
+                        <button key={s} onClick={() => updateProp('iconSize', s)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.iconSize === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                    ))}
+                </div>
+            </div>
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <Label className="text-xs font-medium">Features ({features.length})</Label>
+                    <Button variant="ghost" size="sm" onClick={addFeature} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                </div>
+                <div className="space-y-2">
+                    {features.map((f: any, i: number) => (
+                        <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <button onClick={() => setExpandedIdx(expandedIdx === i ? null : i)} className="text-xs font-medium text-left flex-1 truncate">
+                                    {f.icon} {f.title || `Feature ${i + 1}`}
+                                </button>
+                                <Button variant="ghost" size="sm" onClick={() => deleteFeature(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                            </div>
+                            {expandedIdx === i && (
+                                <div className="space-y-2">
+                                    <Input value={f.icon || ''} onChange={(e) => updateFeature(i, 'icon', e.target.value)} placeholder="Icon (emoji or text)" />
+                                    <Input value={f.title || ''} onChange={(e) => updateFeature(i, 'title', e.target.value)} placeholder="Title" />
+                                    <Textarea value={f.description || ''} onChange={(e) => updateFeature(i, 'description', e.target.value)} placeholder="Description" rows={2} />
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Image Block Editor ───────────────────────────────────────────────── */
+const ImageBlockEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    return (
+        <div className="space-y-4">
+            <ImageUploadField label="Image" value={props.src || ''} onChange={(url) => updateProp('src', url)} />
+            <Input value={props.alt || ''} onChange={(e) => updateProp('alt', e.target.value)} placeholder="Alt text" />
+            <Input value={props.caption || ''} onChange={(e) => updateProp('caption', e.target.value)} placeholder="Caption (optional)" />
+            <LinkPicker
+                label="Link (optional)"
+                value={props.linkUrl || ''}
+                onChange={(v) => updateProp('linkUrl', v)}
+                showTarget
+                target={props.linkTarget}
+                onTargetChange={(t) => updateProp('linkTarget', t)}
+                placeholder="Link this image to a page or URL"
+            />
+            <div>
+                <Label className="text-xs">Alignment</Label>
+                <div className="flex gap-1 mt-1">
+                    {['left', 'center', 'right'].map((a) => (
+                        <button key={a} onClick={() => updateProp('alignment', a)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Max Width</Label>
+                <div className="flex gap-1 mt-1">
+                    {['300px', '500px', '800px', '100%'].map((w) => (
+                        <button key={w} onClick={() => updateProp('maxWidth', w)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.maxWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{w}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Border Radius</Label>
+                <div className="flex gap-1 mt-1">
+                    {['0', '4px', '8px', '16px', '9999px'].map((r) => (
+                        <button key={r} onClick={() => updateProp('borderRadius', r)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === '9999px' ? 'Full' : r}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Aspect Ratio</Label>
+                <div className="flex gap-1 mt-1">
+                    {['auto', '16/9', '4/3', '1/1', '3/4'].map((r) => (
+                        <button key={r} onClick={() => updateProp('aspectRatio', r)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.aspectRatio === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r}</button>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Button Block Editor ──────────────────────────────────────────────── */
+const ButtonBlockEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    return (
+        <div className="space-y-4">
+            <Input value={props.text || ''} onChange={(e) => updateProp('text', e.target.value)} placeholder="Button text" />
+            <LinkPicker
+                label="Link Destination"
+                value={props.url || ''}
+                onChange={(v) => updateProp('url', v)}
+                showTarget
+                target={props.target}
+                onTargetChange={(t) => updateProp('target', t)}
+            />
+            <div>
+                <Label className="text-xs">Variant</Label>
+                <div className="flex gap-1 mt-1">
+                    {['filled', 'outline', 'ghost'].map((v) => (
+                        <button key={v} onClick={() => updateProp('variant', v)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.variant === v ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Size</Label>
+                <div className="flex gap-1 mt-1">
+                    {['small', 'medium', 'large'].map((s) => (
+                        <button key={s} onClick={() => updateProp('size', s)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.size === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Alignment</Label>
+                <div className="flex gap-1 mt-1">
+                    {['left', 'center', 'right'].map((a) => (
+                        <button key={a} onClick={() => updateProp('alignment', a)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                    ))}
+                </div>
+            </div>
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#3B82F6'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF'} onChange={(c) => updateProp('textColor', c)} />
+            <div>
+                <Label className="text-xs">Border Radius</Label>
+                <div className="flex gap-1 mt-1">
+                    {['4px', '8px', '12px', '9999px'].map((r) => (
+                        <button key={r} onClick={() => updateProp('borderRadius', r)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === '9999px' ? 'Pill' : r}</button>
+                    ))}
+                </div>
+            </div>
+            <div className="flex items-center justify-between">
+                <Label className="text-xs">Full Width</Label>
+                <Switch checked={props.fullWidth || false} onCheckedChange={(c) => updateProp('fullWidth', c)} />
+            </div>
+        </div>
+    );
+};
+
+/* ─── Newsletter Signup Editor ─────────────────────────────────────────── */
+const NewsletterSignupEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    return (
+        <div className="space-y-4">
+            <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} placeholder="Heading" />
+            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder="Subheading" />
+            <Input value={props.placeholder || ''} onChange={(e) => updateProp('placeholder', e.target.value)} placeholder="Input placeholder" />
+            <Input value={props.buttonText || ''} onChange={(e) => updateProp('buttonText', e.target.value)} placeholder="Button text" />
+            <Input value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} placeholder="Success message" />
+            <div>
+                <Label className="text-xs">Layout</Label>
+                <div className="flex gap-1 mt-1">
+                    {['inline', 'stacked'].map((l) => (
+                        <button key={l} onClick={() => updateProp('layout', l)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                    ))}
+                </div>
+            </div>
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#F8FAFC'} onChange={(c) => updateProp('backgroundColor', c)} />
+        </div>
+    );
+};
+
+/* ─── Steps / Process Editor ───────────────────────────────────────────── */
+const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const steps = props.steps || [];
+    const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const addStep = () => updateProp('steps', [...steps, { number: String(steps.length + 1), title: `Step ${steps.length + 1}`, description: 'Description here' }]);
+    const deleteStep = (i: number) => { updateProp('steps', steps.filter((_: any, idx: number) => idx !== i)); if (expandedIdx === i) setExpandedIdx(null); };
+    const updateStep = (i: number, field: string, value: any) => {
+        const updated = [...steps];
+        updated[i] = { ...updated[i], [field]: value };
+        updateProp('steps', updated);
+    };
+
+    return (
+        <div className="space-y-4">
+            <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder="Header text" />
+            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder="Subheading" />
+            <div>
+                <Label className="text-xs">Layout</Label>
+                <div className="flex gap-1 mt-1">
+                    {['horizontal', 'vertical'].map((l) => (
+                        <button key={l} onClick={() => updateProp('layout', l)}
+                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Connector Style</Label>
+                <div className="flex gap-1 mt-1">
+                    {['line', 'dashed', 'dots', 'none'].map((s) => (
+                        <button key={s} onClick={() => updateProp('connectorStyle', s)}
+                            className={`rounded px-2 py-1 text-[11px] font-medium capitalize ${props.connectorStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                    ))}
+                </div>
+            </div>
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Accent Color" value={props.accentColor || '#3B82F6'} onChange={(c) => updateProp('accentColor', c)} />
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <Label className="text-xs font-medium">Steps ({steps.length})</Label>
+                    <Button variant="ghost" size="sm" onClick={addStep} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                </div>
+                <div className="space-y-2">
+                    {steps.map((step: any, i: number) => (
+                        <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <button onClick={() => setExpandedIdx(expandedIdx === i ? null : i)} className="text-xs font-medium text-left flex-1 truncate">
+                                    {step.number || i + 1}. {step.title || `Step ${i + 1}`}
+                                </button>
+                                <Button variant="ghost" size="sm" onClick={() => deleteStep(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                            </div>
+                            {expandedIdx === i && (
+                                <div className="space-y-2">
+                                    <Input value={step.number || ''} onChange={(e) => updateStep(i, 'number', e.target.value)} placeholder="Step number/label" />
+                                    <Input value={step.title || ''} onChange={(e) => updateStep(i, 'title', e.target.value)} placeholder="Title" />
+                                    <Textarea value={step.description || ''} onChange={(e) => updateStep(i, 'description', e.target.value)} placeholder="Description" rows={2} />
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { fetchEnquiryDetails, fetchEnquiryDetailsByPhone } from '../../-services/applicant-services';
 import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
+import { AdmissionBulkImportDialog } from './AdmissionBulkImportDialog';
 
 export interface StudentSearchResult {
     id: string;
@@ -110,6 +111,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
     const sessions = useMemo(() => instituteDetails?.sessions ?? [], [instituteDetails]);
     const [selectedSessionId, setSelectedSessionId] = useState('');
+    const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
     const [initialLoadDone, setInitialLoadDone] = useState(false);
 
@@ -119,15 +121,18 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         }
     }, [sessions, selectedSessionId]);
 
+    const allBatches = instituteDetails?.batches_for_sessions ?? [];
+
     const packageSessionOptions = useMemo(() => {
-        if (!instituteDetails?.batches_for_sessions) return [];
-        return instituteDetails.batches_for_sessions
+        if (!allBatches.length) return [];
+        return allBatches
+            .filter((batch) => batch.is_parent === true || !batch.parent_id)
             .filter((batch) => !selectedSessionId || batch.session.id === selectedSessionId)
             .map((batch) => ({
                 id: batch.id,
-                label: `${batch.package_dto.package_name} - ${batch.level.level_name}`,
+                label: `${batch.package_dto.package_name} - ${batch.level.level_name}${batch.name ? ` - ${batch.name}` : ''}`,
             }));
-    }, [instituteDetails, selectedSessionId]);
+    }, [allBatches, selectedSessionId]);
 
     const [fromSource, setFromSource] = useState('From Enquiry');
     const [searchBy, setSearchBy] = useState('Student Name');
@@ -140,6 +145,19 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
     const [sourceFilters, setSourceFilters] = useState<{ id: string; label: string }[]>([]);
     const [dateRangeFilters, setDateRangeFilters] = useState<{ id: string; label: string }[]>([]);
     const [packageSessionFilters, setPackageSessionFilters] = useState<{ id: string; label: string }[]>([]);
+    const [sectionFilters, setSectionFilters] = useState<{ id: string; label: string }[]>([]);
+
+    const sectionFilterOptions = useMemo(() => {
+        if (packageSessionFilters.length === 0) return [];
+        const parentId = packageSessionFilters[0]?.id;
+        if (!parentId) return [];
+        return allBatches
+            .filter((b) => b.parent_id === parentId)
+            .map((b) => ({
+                id: b.id,
+                label: b.name || b.level.level_name,
+            }));
+    }, [allBatches, packageSessionFilters]);
 
     const [showAdmissionTypeModal, setShowAdmissionTypeModal] = useState(false);
     const [showEnquiryModal, setShowEnquiryModal] = useState(false);
@@ -150,13 +168,14 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
     const [applicationPhone, setApplicationPhone] = useState('');
     const [isLoadingLookup, setIsLoadingLookup] = useState(false);
 
-    const hasActiveFilters = statusFilters.length > 0 || sourceFilters.length > 0 || dateRangeFilters.length > 0 || packageSessionFilters.length > 0;
+    const hasActiveFilters = statusFilters.length > 0 || sourceFilters.length > 0 || dateRangeFilters.length > 0 || packageSessionFilters.length > 0 || sectionFilters.length > 0;
 
     const clearAllFilters = () => {
         setStatusFilters([]);
         setSourceFilters([]);
         setDateRangeFilters([]);
         setPackageSessionFilters([]);
+        setSectionFilters([]);
     };
 
     const handleNewAdmission = () => {
@@ -257,8 +276,9 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             }
 
             const item = results[0];
+            const resolvedApplicantId = item.applicant_id || item.application_id || null;
             const mapped: Partial<StudentSearchResult> = {
-                id: item.admission_id || item.application_id || '',
+                id: resolvedApplicantId || item.admission_id || '',
                 studentName: item.student_name || '',
                 gender: item.gender || '',
                 dob: item.date_of_birth ? new Date(item.date_of_birth).toISOString().split('T')[0] : '',
@@ -268,10 +288,10 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 address: '',
                 classVal: getDisplayClass(item),
                 sourceType: 'APPLICATION',
-                sourceId: item.admission_id || item.application_id || '',
+                sourceId: resolvedApplicantId || item.admission_id || '',
                 destinationPackageSessionId: item.destination_package_session_id || '',
                 enquiryId: null,
-                applicationId: item.admission_id || item.application_id || null,
+                applicationId: resolvedApplicantId,
             };
 
             setShowApplicationModal(false);
@@ -304,7 +324,11 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
             if (statusFilters.length > 0) body.statuses = statusFilters.map(f => f.id);
             if (sourceFilters.length > 0) body.sources = sourceFilters.map(f => f.id);
-            if (packageSessionFilters.length > 0) body.destination_package_session_id = packageSessionFilters[0]?.id;
+            if (sectionFilters.length > 0) {
+                body.destination_package_session_id = sectionFilters[0]?.id;
+            } else if (packageSessionFilters.length > 0) {
+                body.destination_package_session_id = packageSessionFilters[0]?.id;
+            }
 
             const dateRange = dateRangeFilters.length > 0 ? getDateRange(dateRangeFilters[0]?.id || '') : undefined;
             if (dateRange) {
@@ -347,7 +371,10 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
     const handleSelectResult = (item: any) => {
         const sourceType = fromSource === 'From Enquiry' ? 'ENQUIRY' : 'APPLICATION';
-        const sourceId = item.admission_id || item.enquiry_id || item.application_id || item.id || '';
+        const sourceId =
+            sourceType === 'APPLICATION'
+                ? item.applicant_id || item.application_id || item.admission_id || item.id || ''
+                : item.enquiry_id || item.admission_id || item.id || '';
 
         const isEnquiry = sourceType === 'ENQUIRY' || item.status === 'ENQUIRY';
         const isApplication = sourceType === 'APPLICATION' || item.status === 'APPLICATION';
@@ -368,7 +395,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             sourceId,
             destinationPackageSessionId: item.destination_package_session_id || '',
             enquiryId: isEnquiry ? (item.enquiry_id || item.admission_id || null) : null,
-            applicationId: isApplication ? (item.application_id || item.admission_id || null) : null,
+            applicationId: isApplication ? (item.applicant_id || item.application_id || null) : null,
         }, selectedSessionId);
     };
 
@@ -401,6 +428,14 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                         </svg>
                         Admission Form
                     </button>
+                    <MyButton
+                        buttonType="secondary"
+                        disabled={!selectedSessionId}
+                        onClick={() => setIsBulkImportOpen(true)}
+                        className="px-4 py-2"
+                    >
+                        Bulk Import
+                    </MyButton>
                 </div>
             </div>
 
@@ -441,14 +476,32 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 />
                 {packageSessionOptions.length > 0 && (
                     <FilterChips
-                        label="Package Session"
+                        label="Class"
                         filterList={packageSessionOptions}
                         selectedFilters={packageSessionFilters}
                         handleSelect={(option) => {
                             const exists = packageSessionFilters.some((f) => f.id === option.id);
-                            setPackageSessionFilters(exists ? packageSessionFilters.filter((f) => f.id !== option.id) : [option]);
+                            if (exists) {
+                                setPackageSessionFilters([]);
+                            } else {
+                                setPackageSessionFilters([option]);
+                            }
+                            setSectionFilters([]);
                         }}
-                        handleClearFilters={() => setPackageSessionFilters([])}
+                        handleClearFilters={() => { setPackageSessionFilters([]); setSectionFilters([]); }}
+                        clearFilters={false}
+                    />
+                )}
+                {sectionFilterOptions.length > 0 && (
+                    <FilterChips
+                        label="Section"
+                        filterList={sectionFilterOptions}
+                        selectedFilters={sectionFilters}
+                        handleSelect={(option) => {
+                            const exists = sectionFilters.some((f) => f.id === option.id);
+                            setSectionFilters(exists ? [] : [option]);
+                        }}
+                        handleClearFilters={() => setSectionFilters([])}
                         clearFilters={false}
                     />
                 )}
@@ -816,6 +869,16 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                     </div>
                 </div>
             )}
+
+            <AdmissionBulkImportDialog
+                open={isBulkImportOpen}
+                onOpenChange={setIsBulkImportOpen}
+                sessionId={selectedSessionId}
+                onSuccess={() => {
+                    // Refresh current search results if user had already searched.
+                    handleSearch();
+                }}
+            />
         </div>
     );
 }

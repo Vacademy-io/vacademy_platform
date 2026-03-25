@@ -62,6 +62,7 @@ const isPlaceholderImage = (imageUrl?: string | null): boolean => {
 export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
   layout,
   backgroundImage,
+  backgroundColor,
   left,
   right,
   styles = {},
@@ -71,7 +72,6 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
 
   return useMemo(() => {
     const heroTitle = courseData?.title || left?.title || "";
-    // Use courseData.description first, then fallback to left.description
     const heroDescription = (courseData?.description?.trim()) ? courseData.description : (left?.description?.trim() || "");
     const heroImage = courseData?.previewImage || courseData?.bannerImage || right?.image || "";
     const heroImageAlt = right?.alt || courseData?.title || "Course preview";
@@ -88,6 +88,7 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
       heroImageAlt,
       roundedEdges,
       textAlign,
+      backgroundColor,
     };
 
     if (isHeroImagePlaceholder) {
@@ -117,6 +118,7 @@ const HeroSectionPlaceholder: React.FC<{
   textAlign: "left" | "center" | "right";
   right?: HeroSectionProps['right'];
   courseData?: HeroSectionProps['courseData'];
+  backgroundColor?: string;
 }> = ({
   layout,
   left,
@@ -125,6 +127,7 @@ const HeroSectionPlaceholder: React.FC<{
   heroDescription,
   roundedEdges,
   textAlign,
+  backgroundColor,
 }) => {
   const navigate = useNavigate();
 
@@ -138,31 +141,31 @@ const HeroSectionPlaceholder: React.FC<{
 
   return (
     <section
-      className={`w-full py-8 md:py-12 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden bg-gray-50`}
-      style={{ textAlign }}
+      className={`w-full py-12 md:py-20 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden`}
+      style={{ textAlign, backgroundColor: backgroundColor || '#f8fafc' }}
     >
-      {/* Compact container padding */}
-      <div className="w-full px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             {/* Left Content */}
             {(left || courseData) && (
-              <div className="space-y-3">
+              <div className="space-y-5">
                 {heroTitle && (
-                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 leading-tight">
+                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
                     {heroTitle}
                   </h1>
                 )}
                 {heroDescription && (
                   <div
-                    className="text-base sm:text-lg text-gray-600 leading-relaxed"
+                    className="text-lg sm:text-xl text-gray-600 leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: heroDescription }}
                   />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="mt-2 px-5 py-2.5 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200"
+                    className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor || 'var(--primary-500, #3B82F6)' }}
                   >
                     {left.button.text}
                   </button>
@@ -172,24 +175,25 @@ const HeroSectionPlaceholder: React.FC<{
           </div>
         ) : (
           /* Centered Layout */
-          <div className="text-center space-y-3 max-w-3xl mx-auto">
+          <div className="text-center space-y-5 max-w-3xl mx-auto">
             {(left || courseData) && (
               <>
                 {heroTitle && (
-                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">
+                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
                     {heroTitle}
                   </h1>
                 )}
                 {heroDescription && (
                   <div
-                    className="text-base sm:text-lg text-gray-600"
+                    className="text-lg sm:text-xl text-gray-600 leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: heroDescription }}
                   />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="mt-2 px-6 py-2.5 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200"
+                    className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor || 'var(--primary-500, #3B82F6)' }}
                   >
                     {left.button.text}
                   </button>
@@ -218,6 +222,7 @@ const HeroSectionWithState: React.FC<{
   textAlign: "left" | "center" | "right";
   heroTitle: string;
   heroDescription: string;
+  backgroundColor?: string;
 }> = ({
   layout,
   left,
@@ -232,6 +237,7 @@ const HeroSectionWithState: React.FC<{
   textAlign,
   heroTitle,
   heroDescription,
+  backgroundColor,
 }) => {
   const navigate = useNavigate();
   const [resolvedImageUrl, setResolvedImageUrl] = useState<string>(heroImage);
@@ -282,9 +288,10 @@ const HeroSectionWithState: React.FC<{
 
   return (
     <section
-      className={`w-full py-8 md:py-12 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden ${hasBgImage ? '' : 'bg-gray-50'}`}
+      className={`w-full py-12 md:py-20 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden`}
       style={{
         textAlign,
+        backgroundColor: hasBgImage ? undefined : (backgroundColor || '#f8fafc'),
         ...(hasBgImage ? {
           backgroundImage: `url(${resolvedBgUrl})`,
           backgroundSize: 'cover',
@@ -292,28 +299,28 @@ const HeroSectionWithState: React.FC<{
         } : {}),
       }}
     >
-      {/* Compact container padding */}
-      <div className="w-full px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             {/* Left Content */}
             {(left || courseData) && (
-              <div className="space-y-3">
+              <div className="space-y-5">
                 {heroTitle && (
-                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 leading-tight">
+                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
                     {heroTitle}
                   </h1>
                 )}
                 {heroDescription && (
                   <div
-                    className="text-base sm:text-lg text-gray-600 leading-relaxed"
+                    className="text-lg sm:text-xl text-gray-600 leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: heroDescription }}
                   />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="mt-2 px-5 py-2.5 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200"
+                    className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor || 'var(--primary-500, #3B82F6)' }}
                   >
                     {left.button.text}
                   </button>
@@ -327,7 +334,7 @@ const HeroSectionWithState: React.FC<{
                 <img
                   src={resolvedImageUrl || heroImage}
                   alt={heroImageAlt}
-                  className="max-w-full h-auto max-h-[280px] lg:max-h-[320px] rounded-lg object-cover"
+                  className="w-full h-auto max-h-[400px] lg:max-h-[480px] rounded-xl object-contain"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
                   }}
@@ -337,24 +344,25 @@ const HeroSectionWithState: React.FC<{
           </div>
         ) : (
           /* Centered Layout */
-          <div className="text-center space-y-3 max-w-3xl mx-auto">
+          <div className="text-center space-y-5 max-w-3xl mx-auto">
             {(left || courseData) && (
               <>
                 {heroTitle && (
-                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">
+                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
                     {heroTitle}
                   </h1>
                 )}
                 {heroDescription && (
                   <div
-                    className="text-base sm:text-lg text-gray-600"
+                    className="text-lg sm:text-xl text-gray-600 leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: heroDescription }}
                   />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="mt-2 px-6 py-2.5 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200"
+                    className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor || 'var(--primary-500, #3B82F6)' }}
                   >
                     {left.button.text}
                   </button>

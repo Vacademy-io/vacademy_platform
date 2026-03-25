@@ -732,4 +732,32 @@
     box-shadow: none !important;
     background-image: none !important;
   }
+
+  /* =============================================
+     HEADING SCALE — set via data attribute
+     ============================================= */
+  :root {
+    --heading-h1: 2.5rem;
+    --heading-h2: 2rem;
+    --heading-h3: 1.5rem;
+    --body-font-size: 1rem;
+  }
+
+  [data-heading-scale="compact"] {
+    --heading-h1: 2rem;
+    --heading-h2: 1.5rem;
+    --heading-h3: 1.25rem;
+  }
+
+  [data-heading-scale="large"] {
+    --heading-h1: 3.5rem;
+    --heading-h2: 2.5rem;
+    --heading-h3: 2rem;
+  }
+
+  [data-heading-scale="display"] {
+    --heading-h1: 4.5rem;
+    --heading-h2: 3rem;
+    --heading-h3: 2.25rem;
+  }
 }

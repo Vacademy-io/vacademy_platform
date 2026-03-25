@@ -33,6 +33,13 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "practice",
   },
 
+    // Enark Uplift Teacher Training Android app
+  "io.enarkuplift.app": {
+    appName: "Uplift Teacher Training",
+    domain: "enarkuplift.in",
+    subdomain: "training",
+  },
+
   // ============ Android app IDs ============
   // (must match applicationId in build.gradle)
 
@@ -59,8 +66,15 @@ export const flavorConfig: FlavorConfigs = {
 
   //SSDC Android App
    "io.vacademy.student.app": {
-    appName: "Vacademy Learner",
+    appName: "SSDC Horizon",
     domain: "vacademy.io",
     subdomain: "ssdc",
   },
+
+   // Enark Uplift Teacher Training Android app
+  "com.enarkuplift.app": {
+    appName: "Uplift Teacher Training",
+    domain: "enarkuplift.in",
+    subdomain: "training",
+  }
 };

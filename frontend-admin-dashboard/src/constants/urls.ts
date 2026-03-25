@@ -54,6 +54,9 @@ export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audien
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
+export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;
+export const BULK_SUBMIT_APPLICATION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/applicant/bulk-apply`;
+export const BULK_SUBMIT_ADMISSION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/admission/bulk-submit-with-admission`;
 export const GET_CUSTOM_FIELD_SETUP = `${BASE_URL}/admin-core-service/common/custom-fields/setup`;
 
 // Field Mapping
@@ -626,3 +629,8 @@ export const GET_CPO_LIST = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${instituteId}`;
 export const GET_CPO_FULL_DETAILS = (cpoId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${cpoId}/full`;
+
+// Offline Data Entry
+export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;
+export const OFFLINE_SUBMIT_RESPONSES = `${BASE_URL}/assessment-service/assessment/offline-entry/submit-responses`;
+export const OFFLINE_CREATE_AND_SUBMIT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-and-submit`;

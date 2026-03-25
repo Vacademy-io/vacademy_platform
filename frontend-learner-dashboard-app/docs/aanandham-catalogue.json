@@ -1,0 +1,1053 @@
+{
+  "version": "2.0",
+  "globalSettings": {
+    "courseCatalogeType": {
+      "enabled": false
+    },
+    "mode": "light",
+    "theme": {
+      "preset": "rose",
+      "primaryColor": "#5B1A3A",
+      "borderRadius": "rounded",
+      "headingScale": "large"
+    },
+    "fonts": {
+      "enabled": false,
+      "family": "Inter"
+    },
+    "compactness": "medium",
+    "audience": "adults",
+    "leadCollection": {
+      "enabled": false,
+      "mandatory": false,
+      "inviteLink": null,
+      "fields": []
+    },
+    "enrquiry": {
+      "enabled": true,
+      "requirePayment": false
+    },
+    "payment": {
+      "enabled": false,
+      "provider": "stripe",
+      "fields": []
+    },
+    "stickyHeader": true,
+    "backToTop": true,
+    "layout": {
+      "header": {
+        "id": "header-global",
+        "type": "header",
+        "enabled": true,
+        "props": {
+          "logo": "REPLACE_WITH_LOGO_URL",
+          "title": "Aanandham",
+          "backgroundColor": "#ffffff",
+          "textColor": "#000000",
+          "navigation": [
+            { "label": "Home", "route": "homepage", "openInSameTab": true },
+            { "label": "About", "route": "about", "openInSameTab": true },
+            { "label": "Courses", "route": "courses", "openInSameTab": true },
+            { "label": "Testimonials", "route": "testimonials", "openInSameTab": true },
+            { "label": "Resources", "route": "resources", "openInSameTab": true },
+            { "label": "Contact", "route": "contact", "openInSameTab": true }
+          ],
+          "authLinks": [
+            { "label": "Login", "route": "login" },
+            { "label": "Start Free Trial", "route": "courses" }
+          ]
+        }
+      },
+      "footer": {
+        "id": "footer-global",
+        "type": "footer",
+        "enabled": true,
+        "props": {
+          "layout": "three-column",
+          "leftSection": {
+            "title": "Aanandham",
+            "text": "<p>Your Ultimate Life Healer. We guide you toward holistic wellness across five dimensions — physical, mental, emotional, spiritual, and social well-being.</p><p>Heal Holistically. Live Joyfully.</p>"
+          },
+          "rightSection1": {
+            "title": "Quick Links",
+            "links": [
+              { "label": "Home", "route": "homepage" },
+              { "label": "About", "route": "about" },
+              { "label": "Courses", "route": "courses" },
+              { "label": "Testimonials", "route": "testimonials" },
+              { "label": "Resources", "route": "resources" },
+              { "label": "Contact", "route": "contact" }
+            ]
+          },
+          "rightSection2": {
+            "title": "Legal",
+            "links": [
+              { "label": "Terms & Conditions", "route": "terms" },
+              { "label": "Privacy Policy", "route": "privacy-policy" },
+              { "label": "Cookie Policy", "route": "cookie-policy" }
+            ]
+          },
+          "rightSection3": {
+            "title": "Connect",
+            "links": [
+              { "label": "Facebook", "route": "https://www.facebook.com/aanandham" },
+              { "label": "Instagram", "route": "https://www.instagram.com/aanandham" },
+              { "label": "YouTube", "route": "https://www.youtube.com/@aanandham" },
+              { "label": "WhatsApp", "route": "https://wa.me/YOUR_PHONE_NUMBER" }
+            ]
+          },
+          "bottomNote": "© 2025 Aanandham. All rights reserved."
+        }
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "home",
+      "route": "homepage",
+      "title": "Home",
+      "published": true,
+      "seo": {
+        "metaTitle": "Aanandham — Heal Holistically | Your Ultimate Life Healer",
+        "metaDescription": "Transform your life through holistic wellness. Yoga, meditation, emotional healing and more with Aanandham."
+      },
+      "components": [
+        {
+          "id": "home-hero",
+          "type": "heroSection",
+          "enabled": true,
+          "anchorId": "hero",
+          "props": {
+            "layout": "centered",
+            "backgroundColor": "#FDF2F0",
+            "left": {
+              "title": "Heal Holistically — Your Ultimate Life Healer",
+              "description": "<p>Transform your life across five dimensions of wellness. Join thousands who have found balance, strength, and inner peace through our holistic programs.</p>",
+              "button": {
+                "enabled": true,
+                "text": "Start Your Journey Now",
+                "action": "navigate",
+                "target": "courses"
+              }
+            },
+            "right": {
+              "image": "REPLACE_WITH_HERO_IMAGE_URL",
+              "alt": "Holistic wellness and yoga"
+            },
+            "styles": {
+              "padding": "60px",
+              "roundedEdges": true,
+              "textAlign": "center"
+            }
+          },
+          "style": {
+            "paddingTop": "48px",
+            "paddingBottom": "48px"
+          }
+        },
+        {
+          "id": "home-gallery",
+          "type": "imageGallery",
+          "enabled": true,
+          "anchorId": "gallery",
+          "props": {
+            "headerText": "",
+            "subheading": "",
+            "images": [
+              { "src": "REPLACE_WITH_GALLERY_IMAGE_1", "alt": "Yoga session", "caption": "" },
+              { "src": "REPLACE_WITH_GALLERY_IMAGE_2", "alt": "Meditation class", "caption": "" },
+              { "src": "REPLACE_WITH_GALLERY_IMAGE_3", "alt": "Wellness workshop", "caption": "" },
+              { "src": "REPLACE_WITH_GALLERY_IMAGE_4", "alt": "Group session", "caption": "" },
+              { "src": "REPLACE_WITH_GALLERY_IMAGE_5", "alt": "Community gathering", "caption": "" },
+              { "src": "REPLACE_WITH_GALLERY_IMAGE_6", "alt": "Holistic healing", "caption": "" }
+            ],
+            "columns": 3,
+            "gap": "medium",
+            "showCaptions": false
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "32px",
+            "paddingBottom": "32px"
+          }
+        },
+        {
+          "id": "home-stats",
+          "type": "statsHighlights",
+          "enabled": true,
+          "anchorId": "stats",
+          "props": {
+            "headerText": "Our Impact",
+            "description": "Helping people transform their lives, one session at a time.",
+            "stats": [
+              { "label": "Sessions Led", "value": "5000+" },
+              { "label": "Workshops Conducted", "value": "200+" },
+              { "label": "Client Satisfaction", "value": "98%" }
+            ],
+            "style": "card",
+            "styles": {
+              "backgroundColor": "#ffffff",
+              "textColor": "#5B1A3A",
+              "hoverEffect": "scale"
+            }
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "48px",
+            "paddingBottom": "48px",
+            "animation": {
+              "entrance": { "type": "fadeInUp", "duration": 600 }
+            }
+          }
+        },
+        {
+          "id": "home-cta-trial",
+          "type": "ctaBanner",
+          "enabled": true,
+          "props": {
+            "heading": "Start Your Transformation Today",
+            "subheading": "Try our 7-Day Free Trial and experience holistic wellness firsthand.",
+            "backgroundColor": "#5B1A3A",
+            "textColor": "#ffffff",
+            "layout": "centered",
+            "button": {
+              "enabled": true,
+              "text": "Join 7-Day Free Trial",
+              "target": "courses",
+              "style": "primary"
+            }
+          },
+          "style": {
+            "paddingTop": "16px",
+            "paddingBottom": "16px"
+          }
+        },
+        {
+          "id": "home-about-block",
+          "type": "textBlock",
+          "enabled": true,
+          "anchorId": "about-preview",
+          "props": {
+            "content": "<h2>What We Offer</h2><p>Our wellness sessions are designed to bring lasting transformation. From stress relief and improved flexibility to better posture and sustainable home practice — we address the whole person, not just symptoms.</p><p>Each program is carefully crafted to nurture your physical fitness, mental strength, emotional wellness, spiritual progress, and social engagement.</p>",
+            "maxWidth": "800px",
+            "alignment": "center"
+          },
+          "style": {
+            "paddingTop": "48px",
+            "paddingBottom": "32px",
+            "paddingLeft": "32px",
+            "paddingRight": "32px"
+          }
+        },
+        {
+          "id": "home-values",
+          "type": "featureGrid",
+          "enabled": true,
+          "anchorId": "values",
+          "props": {
+            "headerText": "Five Dimensions of Wellness",
+            "subheading": "Our holistic approach addresses every aspect of your well-being.",
+            "columns": 5,
+            "features": [
+              { "icon": "💪", "title": "Physical Fitness", "description": "Build strength, flexibility, and vitality through yoga and movement." },
+              { "icon": "🧠", "title": "Mental Strength", "description": "Develop focus, clarity, and resilience for everyday challenges." },
+              { "icon": "💚", "title": "Emotional Wellness", "description": "Process emotions healthily and cultivate inner peace." },
+              { "icon": "🕊️", "title": "Spiritual Progress", "description": "Deepen your connection with yourself through meditation and reflection." },
+              { "icon": "🤝", "title": "Social Engagement", "description": "Build meaningful connections within a supportive community." }
+            ],
+            "style": "cards",
+            "iconSize": "large",
+            "backgroundColor": "#f8fafc"
+          },
+          "style": {
+            "paddingTop": "48px",
+            "paddingBottom": "48px",
+            "animation": {
+              "entrance": { "type": "fadeInUp", "duration": 600 }
+            }
+          }
+        },
+        {
+          "id": "home-services",
+          "type": "featureGrid",
+          "enabled": true,
+          "anchorId": "services",
+          "props": {
+            "headerText": "How We Help You",
+            "subheading": "",
+            "columns": 3,
+            "features": [
+              { "image": "REPLACE_WITH_COACHING_IMAGE", "title": "Individual Coaching", "description": "Personalised one-on-one sessions tailored to your unique wellness goals." },
+              { "image": "REPLACE_WITH_MEDITATION_IMAGE", "title": "Group Meditation", "description": "Join our community sessions for collective healing and shared growth." },
+              { "image": "REPLACE_WITH_KNOWLEDGE_IMAGE", "title": "Knowledge Sharing", "description": "Educational workshops on nutrition, mindfulness, and holistic living." }
+            ],
+            "style": "cards",
+            "iconSize": "large",
+            "backgroundColor": "#ffffff"
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "48px",
+            "paddingBottom": "48px"
+          }
+        },
+        {
+          "id": "home-founder",
+          "type": "columnLayout",
+          "enabled": true,
+          "anchorId": "founder",
+          "props": {
+            "columns": 2,
+            "columnWidths": ["1/3", "2/3"],
+            "gap": "lg",
+            "align": "center",
+            "stackOnMobile": true,
+            "slots": [
+              [
+                {
+                  "id": "founder-photo",
+                  "type": "imageBlock",
+                  "enabled": true,
+                  "props": {
+                    "src": "REPLACE_WITH_FOUNDER_PHOTO",
+                    "alt": "Jayanthi Bommana — Founder of Aanandham",
+                    "borderRadius": "16px",
+                    "maxWidth": "100%",
+                    "alignment": "center",
+                    "aspectRatio": "3/4"
+                  }
+                }
+              ],
+              [
+                {
+                  "id": "founder-bio",
+                  "type": "textBlock",
+                  "enabled": true,
+                  "props": {
+                    "content": "<h2>Meet Your Guide</h2><h3>Jayanthi Bommana</h3><p>With years of dedicated practice and teaching experience, Jayanthi founded Aanandham to make holistic wellness accessible to everyone. Her journey from personal transformation to guiding thousands has been one of passion, perseverance, and purpose.</p><p>Known as \"Joyful Jayanthi\" on social media, she brings warmth, expertise, and genuine care to every session.</p>",
+                    "maxWidth": "100%",
+                    "alignment": "left"
+                  }
+                }
+              ]
+            ]
+          },
+          "style": {
+            "paddingLeft": "48px",
+            "paddingRight": "48px",
+            "paddingTop": "64px",
+            "paddingBottom": "64px",
+            "backgroundColor": "#FDF2F0"
+          }
+        },
+        {
+          "id": "home-testimonials",
+          "type": "testimonialSection",
+          "enabled": true,
+          "anchorId": "testimonials",
+          "props": {
+            "headerText": "What Our Members Say",
+            "description": "Real stories from real people who transformed their lives.",
+            "layout": "grid-scroll",
+            "testimonials": [
+              {
+                "name": "Member 1",
+                "role": "Location / Background",
+                "feedback": "Replace with actual testimonial text about their wellness journey and transformation.",
+                "avatar": "REPLACE_WITH_AVATAR_1"
+              },
+              {
+                "name": "Member 2",
+                "role": "Location / Background",
+                "feedback": "Replace with actual testimonial text about their experience with Aanandham programs.",
+                "avatar": "REPLACE_WITH_AVATAR_2"
+              },
+              {
+                "name": "Member 3",
+                "role": "Location / Background",
+                "feedback": "Replace with actual testimonial text about physical and mental improvements.",
+                "avatar": "REPLACE_WITH_AVATAR_3"
+              },
+              {
+                "name": "Member 4",
+                "role": "Location / Background",
+                "feedback": "Replace with actual testimonial text about their holistic healing experience.",
+                "avatar": "REPLACE_WITH_AVATAR_4"
+              }
+            ],
+            "styles": {
+              "backgroundColor": "#ffffff",
+              "roundedEdges": true,
+              "cardHoverEffect": "lift",
+              "scrollEnabled": true
+            }
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "48px",
+            "paddingBottom": "48px"
+          }
+        },
+        {
+          "id": "home-conditions",
+          "type": "textBlock",
+          "enabled": true,
+          "anchorId": "conditions",
+          "props": {
+            "content": "<h2>Conditions We Help With</h2><ul><li>Chronic stress and anxiety</li><li>Back pain and poor posture</li><li>Weight management challenges</li><li>Sleep disorders and fatigue</li><li>Emotional overwhelm</li><li>Lack of flexibility and mobility</li><li>Low energy and motivation</li><li>Digestive issues</li><li>Lifestyle-related conditions</li><li>Need for spiritual grounding</li></ul>",
+            "maxWidth": "700px",
+            "alignment": "center"
+          },
+          "style": {
+            "paddingTop": "48px",
+            "paddingBottom": "48px",
+            "backgroundColor": "#f8fafc"
+          }
+        },
+        {
+          "id": "home-programs",
+          "type": "pricingTable",
+          "enabled": true,
+          "anchorId": "programs",
+          "props": {
+            "headerText": "Our Programs",
+            "subheading": "Choose the plan that fits your wellness journey.",
+            "plans": [
+              {
+                "name": "9-Week Life Transformation",
+                "price": "Contact Us",
+                "period": "",
+                "description": "A comprehensive program covering detox, nutrition, yoga, emotional healing, and lifestyle redesign.",
+                "features": [
+                  "Weekly guided sessions",
+                  "Personalised meal plans",
+                  "Yoga & meditation modules",
+                  "Emotional healing workshops",
+                  "Community support group"
+                ],
+                "highlighted": true,
+                "buttonText": "Learn More",
+                "buttonTarget": "courses"
+              },
+              {
+                "name": "Happy Lifestyle Membership",
+                "price": "Contact Us",
+                "period": "/month",
+                "description": "Ongoing access to live sessions, resources, and community for sustained well-being.",
+                "features": [
+                  "Daily live yoga sessions",
+                  "Weekly meditation circles",
+                  "Resource library access",
+                  "Community forum",
+                  "Monthly workshops"
+                ],
+                "highlighted": false,
+                "buttonText": "Learn More",
+                "buttonTarget": "courses"
+              }
+            ]
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "48px",
+            "paddingBottom": "48px",
+            "animation": {
+              "entrance": { "type": "fadeInUp", "duration": 600 }
+            }
+          }
+        },
+        {
+          "id": "home-video-testimonials",
+          "type": "mediaShowcase",
+          "enabled": true,
+          "anchorId": "video-stories",
+          "props": {
+            "headerText": "Transformation Stories",
+            "description": "Watch real journeys of change and healing.",
+            "media": [
+              { "type": "video", "url": "REPLACE_WITH_YOUTUBE_URL_1", "caption": "Transformation Story 1" },
+              { "type": "video", "url": "REPLACE_WITH_YOUTUBE_URL_2", "caption": "Transformation Story 2" },
+              { "type": "video", "url": "REPLACE_WITH_YOUTUBE_URL_3", "caption": "Transformation Story 3" },
+              { "type": "video", "url": "REPLACE_WITH_YOUTUBE_URL_4", "caption": "Transformation Story 4" }
+            ],
+            "layout": "grid",
+            "styles": {
+              "backgroundColor": "#ffffff",
+              "roundedEdges": true
+            }
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "48px",
+            "paddingBottom": "48px"
+          }
+        },
+        {
+          "id": "home-contact",
+          "type": "contactForm",
+          "enabled": true,
+          "anchorId": "contact",
+          "props": {
+            "heading": "Get in Touch",
+            "subheading": "Have questions? We'd love to hear from you.",
+            "fields": [
+              { "name": "name", "label": "Your Name", "type": "text", "required": true },
+              { "name": "phone", "label": "Phone Number", "type": "text", "required": false },
+              { "name": "email", "label": "Email Address", "type": "email", "required": true },
+              { "name": "message", "label": "Your Message", "type": "textarea", "required": true }
+            ],
+            "submitLabel": "Send Message",
+            "successMessage": "Thank you for reaching out! We'll get back to you soon.",
+            "backgroundColor": "#FDF2F0"
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "48px",
+            "paddingBottom": "48px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "about",
+      "route": "about",
+      "title": "About",
+      "published": true,
+      "seo": {
+        "metaTitle": "About Aanandham — Our Story & Mission",
+        "metaDescription": "Learn about Jayanthi Bommana and the Aanandham journey toward holistic wellness."
+      },
+      "components": [
+        {
+          "id": "about-hero",
+          "type": "heroSection",
+          "enabled": true,
+          "props": {
+            "layout": "split",
+            "backgroundColor": "#FDF2F0",
+            "left": {
+              "title": "About Aanandham",
+              "description": "<p>Founded by Jayanthi Bommana, Aanandham was born from a personal journey of transformation and a deep desire to help others discover holistic well-being.</p>",
+              "button": { "enabled": false, "text": "", "action": "navigate", "target": "" }
+            },
+            "right": {
+              "image": "REPLACE_WITH_FOUNDER_PORTRAIT",
+              "alt": "Jayanthi Bommana"
+            },
+            "styles": { "padding": "40px", "roundedEdges": true, "textAlign": "left" }
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px"
+          }
+        },
+        {
+          "id": "about-story",
+          "type": "textBlock",
+          "enabled": true,
+          "props": {
+            "content": "<h2>Our Journey</h2><p>Replace this with the founder's personal story — the journey from discovery to building Aanandham. Include key milestones, challenges overcome, and the vision that drives the organization forward.</p><p>Share how the holistic approach was developed and what makes Aanandham's methodology unique.</p>",
+            "maxWidth": "800px",
+            "alignment": "center"
+          },
+          "style": {
+            "paddingTop": "48px",
+            "paddingBottom": "32px",
+            "paddingLeft": "32px",
+            "paddingRight": "32px"
+          }
+        },
+        {
+          "id": "about-timeline",
+          "type": "stepsProcess",
+          "enabled": true,
+          "props": {
+            "headerText": "Milestones",
+            "subheading": "",
+            "layout": "horizontal",
+            "steps": [
+              { "number": "2009", "title": "The Beginning", "description": "Personal wellness journey begins." },
+              { "number": "2012", "title": "Teaching Starts", "description": "First community yoga sessions launched." },
+              { "number": "2021", "title": "Aanandham Founded", "description": "Formal organization established to scale impact." },
+              { "number": "2022", "title": "Global Reach", "description": "Online programs launched, reaching members worldwide." }
+            ],
+            "connectorStyle": "line",
+            "backgroundColor": "#f8fafc",
+            "accentColor": "#5B1A3A"
+          },
+          "style": {
+            "paddingTop": "48px",
+            "paddingBottom": "48px"
+          }
+        },
+        {
+          "id": "about-mission",
+          "type": "textBlock",
+          "enabled": true,
+          "props": {
+            "content": "<h2>Our Mission</h2><p>At Aanandham, we believe in treating the whole person — not just symptoms. Our mission is to empower individuals to take charge of their own health and happiness through a balanced approach to physical, mental, emotional, spiritual, and social well-being.</p>",
+            "maxWidth": "800px",
+            "alignment": "center"
+          },
+          "style": {
+            "paddingTop": "48px",
+            "paddingBottom": "64px",
+            "paddingLeft": "32px",
+            "paddingRight": "32px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "courses",
+      "route": "courses",
+      "title": "Courses",
+      "published": true,
+      "seo": {
+        "metaTitle": "Courses — Aanandham Wellness Programs",
+        "metaDescription": "Explore our range of holistic wellness programs — from 9-week transformations to ongoing memberships."
+      },
+      "components": [
+        {
+          "id": "courses-hero",
+          "type": "textBlock",
+          "enabled": true,
+          "props": {
+            "content": "<h1>Our Courses</h1><p>How Can We Help You?</p>",
+            "maxWidth": "600px",
+            "alignment": "center"
+          },
+          "style": {
+            "paddingTop": "48px",
+            "paddingBottom": "32px"
+          }
+        },
+        {
+          "id": "courses-featured",
+          "type": "featureGrid",
+          "enabled": true,
+          "props": {
+            "headerText": "Featured Programs",
+            "subheading": "",
+            "columns": 3,
+            "features": [
+              { "icon": "🌿", "title": "9-Week Life Transformation", "description": "A complete program covering detox, nutrition plans, yoga, emotional healing, and lifestyle redesign." },
+              { "icon": "😊", "title": "Happy Lifestyle Membership", "description": "Ongoing access to daily live sessions, weekly workshops, and a supportive community." },
+              { "icon": "⚡", "title": "Easy Membership", "description": "A lighter option for those looking to maintain their practice with flexible access." }
+            ],
+            "style": "cards",
+            "iconSize": "large",
+            "backgroundColor": "#ffffff"
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingBottom": "32px"
+          }
+        },
+        {
+          "id": "courses-9week-detail",
+          "type": "columnLayout",
+          "enabled": true,
+          "anchorId": "9-week-program",
+          "props": {
+            "columns": 2,
+            "columnWidths": ["1/2", "1/2"],
+            "gap": "lg",
+            "align": "center",
+            "stackOnMobile": true,
+            "slots": [
+              [
+                {
+                  "id": "9week-image",
+                  "type": "imageBlock",
+                  "enabled": true,
+                  "props": {
+                    "src": "REPLACE_WITH_9WEEK_PROGRAM_IMAGE",
+                    "alt": "9-Week Life Transformation Program",
+                    "borderRadius": "12px",
+                    "maxWidth": "100%",
+                    "alignment": "center"
+                  }
+                }
+              ],
+              [
+                {
+                  "id": "9week-text",
+                  "type": "textBlock",
+                  "enabled": true,
+                  "props": {
+                    "content": "<h2>9-Week Life Transformation</h2><p>Our flagship program that takes you through a complete mind-body reset:</p><ul><li>Week 1-2: Detox & cleansing</li><li>Week 3-4: Nutrition & eating plans</li><li>Week 5-6: Yoga & movement</li><li>Week 7-8: Emotional healing</li><li>Week 9: Integration & sustainable lifestyle</li></ul>",
+                    "maxWidth": "100%",
+                    "alignment": "left"
+                  }
+                }
+              ]
+            ]
+          },
+          "style": {
+            "paddingLeft": "48px",
+            "paddingRight": "48px",
+            "paddingTop": "48px",
+            "paddingBottom": "48px",
+            "backgroundColor": "#FDF2F0"
+          }
+        },
+        {
+          "id": "courses-weight-loss",
+          "type": "ctaBanner",
+          "enabled": true,
+          "props": {
+            "heading": "6-Week Fast-Track Weight Loss Program",
+            "subheading": "Daily live sessions designed for rapid, healthy transformation. Limited spots available.",
+            "backgroundColor": "#5B1A3A",
+            "textColor": "#ffffff",
+            "layout": "centered",
+            "button": {
+              "enabled": true,
+              "text": "Enquire Now",
+              "target": "contact"
+            }
+          }
+        },
+        {
+          "id": "courses-adults",
+          "type": "featureGrid",
+          "enabled": true,
+          "props": {
+            "headerText": "Adult Programs",
+            "subheading": "",
+            "columns": 2,
+            "features": [
+              { "icon": "🧘", "title": "5-Day Health Workshop", "description": "An intensive short course covering key wellness fundamentals. Coming soon." },
+              { "icon": "🔥", "title": "21-Day Holistic Challenge", "description": "A focused challenge to kick-start your wellness journey. Coming soon." }
+            ],
+            "style": "bordered",
+            "iconSize": "large",
+            "backgroundColor": "#ffffff"
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "48px",
+            "paddingBottom": "32px"
+          }
+        },
+        {
+          "id": "courses-kids",
+          "type": "featureGrid",
+          "enabled": true,
+          "props": {
+            "headerText": "Kids Programs",
+            "subheading": "Nurturing young minds and bodies through fun, age-appropriate wellness activities.",
+            "columns": 2,
+            "features": [
+              { "icon": "🌟", "title": "12-Week Term-Time Course", "description": "Weekly sessions during school terms — building healthy habits early." },
+              { "icon": "🎯", "title": "5-Day Term Break Sessions", "description": "Intensive holiday programs to keep kids active and mindful during breaks." }
+            ],
+            "style": "cards",
+            "iconSize": "large",
+            "backgroundColor": "#f8fafc"
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "32px",
+            "paddingBottom": "48px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "testimonials",
+      "route": "testimonials",
+      "title": "Testimonials",
+      "published": true,
+      "seo": {
+        "metaTitle": "Testimonials — Aanandham Member Stories",
+        "metaDescription": "Hear from our members about their holistic wellness transformation with Aanandham."
+      },
+      "components": [
+        {
+          "id": "testimonials-header",
+          "type": "textBlock",
+          "enabled": true,
+          "props": {
+            "content": "<h1>Testimonials</h1><p>Our Members' Voices</p>",
+            "maxWidth": "600px",
+            "alignment": "center"
+          },
+          "style": {
+            "paddingTop": "48px",
+            "paddingBottom": "32px"
+          }
+        },
+        {
+          "id": "testimonials-list",
+          "type": "testimonialSection",
+          "enabled": true,
+          "props": {
+            "headerText": "",
+            "description": "",
+            "layout": "grid-scroll",
+            "testimonials": [
+              {
+                "name": "Member Name 1",
+                "role": "Location / Background",
+                "feedback": "Replace with actual testimonial about wellness improvements, health transformation, and personal growth experienced through Aanandham's programs.",
+                "avatar": "REPLACE_WITH_MEMBER_PHOTO_1"
+              },
+              {
+                "name": "Member Name 2",
+                "role": "Location / Background",
+                "feedback": "Replace with actual testimonial about the impact of yoga, meditation, and holistic coaching on their daily life.",
+                "avatar": "REPLACE_WITH_MEMBER_PHOTO_2"
+              },
+              {
+                "name": "Member Name 3",
+                "role": "Location / Background",
+                "feedback": "Replace with actual testimonial about emotional healing, stress relief, and community support found at Aanandham.",
+                "avatar": "REPLACE_WITH_MEMBER_PHOTO_3"
+              }
+            ],
+            "styles": {
+              "backgroundColor": "#ffffff",
+              "roundedEdges": true,
+              "cardHoverEffect": "lift"
+            }
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingBottom": "48px"
+          }
+        },
+        {
+          "id": "testimonials-video",
+          "type": "mediaShowcase",
+          "enabled": true,
+          "props": {
+            "headerText": "Video Testimonials",
+            "description": "Watch real transformation stories.",
+            "media": [
+              { "type": "video", "url": "REPLACE_WITH_YOUTUBE_URL_1", "caption": "Story 1" },
+              { "type": "video", "url": "REPLACE_WITH_YOUTUBE_URL_2", "caption": "Story 2" }
+            ],
+            "layout": "grid",
+            "styles": { "backgroundColor": "#f8fafc", "roundedEdges": true }
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "32px",
+            "paddingBottom": "48px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "resources",
+      "route": "resources",
+      "title": "Resources",
+      "published": true,
+      "seo": {
+        "metaTitle": "Free Resources — Aanandham Wellness",
+        "metaDescription": "Access free yoga tutorials, meditation guides, and wellness resources from Aanandham."
+      },
+      "components": [
+        {
+          "id": "resources-header",
+          "type": "textBlock",
+          "enabled": true,
+          "props": {
+            "content": "<h1>Resources</h1><p>Free tools and guides to support your wellness journey.</p>",
+            "maxWidth": "600px",
+            "alignment": "center"
+          },
+          "style": { "paddingTop": "48px", "paddingBottom": "32px" }
+        },
+        {
+          "id": "resources-free",
+          "type": "featureGrid",
+          "enabled": true,
+          "props": {
+            "headerText": "Free Resources",
+            "subheading": "",
+            "columns": 3,
+            "features": [
+              { "icon": "🏋️", "title": "5-Minute Workout", "description": "A quick daily routine you can do anywhere. Watch the video guide." },
+              { "icon": "🌍", "title": "Community Initiative", "description": "Join our community wellness drives and make a difference together." },
+              { "icon": "🙏", "title": "Prayers & Chanting Guide", "description": "A curated collection of mantras and chanting practices for daily peace." }
+            ],
+            "style": "cards",
+            "iconSize": "large",
+            "backgroundColor": "#ffffff"
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingBottom": "32px"
+          }
+        },
+        {
+          "id": "resources-yoga",
+          "type": "featureGrid",
+          "enabled": true,
+          "props": {
+            "headerText": "Yogasanas Practice",
+            "subheading": "Follow along with these guided tutorials.",
+            "columns": 3,
+            "features": [
+              { "icon": "🪑", "title": "Chair Suryanamaskar", "description": "Gentle sun salutations modified for chair practice. Great for office breaks." },
+              { "icon": "☀️", "title": "Traditional Suryanamaskar", "description": "The classic 12-step sun salutation flow for daily practice." },
+              { "icon": "🧘", "title": "Beginners Yoga", "description": "A foundational sequence for those new to yoga practice." }
+            ],
+            "style": "cards",
+            "iconSize": "large",
+            "backgroundColor": "#FDF2F0"
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "32px",
+            "paddingBottom": "48px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "contact",
+      "route": "contact",
+      "title": "Contact",
+      "published": true,
+      "seo": {
+        "metaTitle": "Contact Aanandham — Get in Touch",
+        "metaDescription": "Reach out to Aanandham for enquiries about our wellness programs, courses, and services."
+      },
+      "components": [
+        {
+          "id": "contact-header",
+          "type": "textBlock",
+          "enabled": true,
+          "props": {
+            "content": "<h1>Contact Us</h1><p>We'd love to hear from you. Whether you have a question about our programs, pricing, or anything else — our team is ready to help.</p>",
+            "maxWidth": "700px",
+            "alignment": "center"
+          },
+          "style": { "paddingTop": "48px", "paddingBottom": "32px" }
+        },
+        {
+          "id": "contact-info",
+          "type": "featureGrid",
+          "enabled": true,
+          "props": {
+            "headerText": "",
+            "subheading": "",
+            "columns": 3,
+            "features": [
+              { "icon": "📞", "title": "Phone", "description": "REPLACE_WITH_PHONE_NUMBER" },
+              { "icon": "✉️", "title": "Email", "description": "support@aanandham.uk" },
+              { "icon": "🌐", "title": "Website", "description": "aanandham.uk" }
+            ],
+            "style": "bordered",
+            "iconSize": "large",
+            "backgroundColor": "#f8fafc"
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingBottom": "32px"
+          }
+        },
+        {
+          "id": "contact-form",
+          "type": "contactForm",
+          "enabled": true,
+          "props": {
+            "heading": "Send Us a Message",
+            "subheading": "",
+            "fields": [
+              { "name": "name", "label": "Your Name", "type": "text", "required": true },
+              { "name": "phone", "label": "Phone Number", "type": "text", "required": false },
+              { "name": "email", "label": "Email Address", "type": "email", "required": true },
+              { "name": "message", "label": "Your Message", "type": "textarea", "required": true }
+            ],
+            "submitLabel": "Send Message",
+            "successMessage": "Thank you! We'll get back to you within 24 hours.",
+            "backgroundColor": "#ffffff"
+          },
+          "style": {
+            "paddingLeft": "32px",
+            "paddingRight": "32px",
+            "paddingTop": "32px",
+            "paddingBottom": "64px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "terms",
+      "route": "terms",
+      "title": "Terms & Conditions",
+      "published": true,
+      "components": [
+        {
+          "id": "terms-content",
+          "type": "textBlock",
+          "enabled": true,
+          "props": {
+            "content": "<h1>Terms & Conditions</h1><p>Replace with your terms and conditions content.</p>",
+            "maxWidth": "800px",
+            "alignment": "left"
+          },
+          "style": { "paddingTop": "48px", "paddingBottom": "64px", "paddingLeft": "32px", "paddingRight": "32px" }
+        }
+      ]
+    },
+    {
+      "id": "privacy",
+      "route": "privacy-policy",
+      "title": "Privacy Policy",
+      "published": true,
+      "components": [
+        {
+          "id": "privacy-content",
+          "type": "textBlock",
+          "enabled": true,
+          "props": {
+            "content": "<h1>GDPR & Privacy Policy</h1><p>Replace with your privacy policy content.</p>",
+            "maxWidth": "800px",
+            "alignment": "left"
+          },
+          "style": { "paddingTop": "48px", "paddingBottom": "64px", "paddingLeft": "32px", "paddingRight": "32px" }
+        }
+      ]
+    },
+    {
+      "id": "cookies",
+      "route": "cookie-policy",
+      "title": "Cookie Policy",
+      "published": true,
+      "components": [
+        {
+          "id": "cookie-content",
+          "type": "textBlock",
+          "enabled": true,
+          "props": {
+            "content": "<h1>Cookie Policy</h1><p>Replace with your cookie policy content.</p>",
+            "maxWidth": "800px",
+            "alignment": "left"
+          },
+          "style": { "paddingTop": "48px", "paddingBottom": "64px", "paddingLeft": "32px", "paddingRight": "32px" }
+        }
+      ]
+    }
+  ]
+}

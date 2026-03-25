@@ -21,7 +21,7 @@ import {
     type Applicant,
 } from '../../-services/applicant-services';
 import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
@@ -30,6 +30,7 @@ import { StudentSidebar } from '@/routes/manage-students/students-list/-componen
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import type { StudentTable } from '@/types/student-table-types';
+import { ApplicationBulkImportDialog } from './ApplicationBulkImportDialog';
 
 // Map an Applicant to a minimal StudentTable shape for the sidebar profile header
 const mapApplicantToStudent = (applicant: Applicant): StudentTable =>
@@ -84,6 +85,7 @@ function RegistrationListPageInner({
     const { setSelectedStudent } = useStudentSidebar();
     const { setNavHeading } = useNavHeadingStore();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
     const { getAllSessions, instituteDetails } = useInstituteDetailsStore();
@@ -100,6 +102,7 @@ function RegistrationListPageInner({
     const [showRegistrationTypeModal, setShowRegistrationTypeModal] = useState(false);
     const [showEnquiryModal, setShowEnquiryModal] = useState(false);
     const [isLoadingEnquiry, setIsLoadingEnquiry] = useState(false);
+    const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
     // Debounce search query
     useEffect(() => {
@@ -286,6 +289,13 @@ function RegistrationListPageInner({
                         <Plus className="mr-2 size-4" />
                         New Application
                     </MyButton>
+                    <MyButton
+                        buttonType="secondary"
+                        onClick={() => setIsBulkImportOpen(true)}
+                        disabled={!selectedSessionId}
+                    >
+                        Bulk Import
+                    </MyButton>
                 </div>
             </div>
 
@@ -299,6 +309,15 @@ function RegistrationListPageInner({
                         <div className="text-center">
                             <p className="text-neutral-500">No applications found</p>
                             <p className="text-sm text-neutral-400">Try adjusting your filters</p>
+                            <div className="mt-4 flex justify-center">
+                                <MyButton
+                                    buttonType="secondary"
+                                    onClick={() => setIsBulkImportOpen(true)}
+                                    disabled={!selectedSessionId}
+                                >
+                                    Bulk Import
+                                </MyButton>
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -454,6 +473,12 @@ function RegistrationListPageInner({
                 isOpen={showEnquiryModal}
                 onClose={() => setShowEnquiryModal(false)}
                 onSelectForApplication={handleSelectEnquiry}
+            />
+
+            <ApplicationBulkImportDialog
+                open={isBulkImportOpen}
+                onOpenChange={setIsBulkImportOpen}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['applicants'] })}
             />
 
             {/* Applicant details now shown in the StudentSidebar on the right */}

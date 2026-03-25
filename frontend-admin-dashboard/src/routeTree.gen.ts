@@ -134,6 +134,7 @@ import { Route as HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRoute
 import { Route as AudienceManagerListCampaignUsersAddIndexRouteImport } from "./routes/audience-manager/list/campaign-users/add/index"
 import { Route as AssessmentEvaluationAiAttemptIdProcessIdIndexRouteImport } from "./routes/assessment/evaluation-ai/$attemptId/$processId/index"
 import { Route as AssessmentCreateAssessmentAssessmentIdExamtypeIndexRouteImport } from "./routes/assessment/create-assessment/$assessmentId/$examtype/index"
+import { Route as AssessmentAssessmentListOfflineEntryAssessmentIdIndexRouteImport } from "./routes/assessment/assessment-list/offline-entry/$assessmentId/index"
 import { Route as StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRouteImport } from "./routes/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRouteImport } from "./routes/study-library/courses/course-details/subjects/modules/index"
 import { Route as StudyLibraryAiCopilotCourseOutlineGeneratingViewerIndexRouteImport } from "./routes/study-library/ai-copilot/course-outline/generating/viewer/index"
@@ -1121,6 +1122,16 @@ const AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute =
       "./routes/assessment/create-assessment/$assessmentId/$examtype/index.lazy"
     ).then((d) => d.Route),
   )
+const AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute =
+  AssessmentAssessmentListOfflineEntryAssessmentIdIndexRouteImport.update({
+    id: "/assessment/assessment-list/offline-entry/$assessmentId/",
+    path: "/assessment/assessment-list/offline-entry/$assessmentId/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import(
+      "./routes/assessment/assessment-list/offline-entry/$assessmentId/index.lazy"
+    ).then((d) => d.Route),
+  )
 const StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute =
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRouteImport.update({
     id: "/study-library/ai-copilot/shared/components/YouTubePlayerSimple",
@@ -1347,6 +1358,7 @@ export interface FileRoutesByFullPath {
   "/study-library/live-session/schedule/": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
+  "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
   "/assessment/create-assessment/$assessmentId/$examtype/": typeof AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute
   "/assessment/evaluation-ai/$attemptId/$processId/": typeof AssessmentEvaluationAiAttemptIdProcessIdIndexRoute
   "/audience-manager/list/campaign-users/add/": typeof AudienceManagerListCampaignUsersAddIndexRoute
@@ -1485,6 +1497,7 @@ export interface FileRoutesByTo {
   "/study-library/live-session/schedule": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add": typeof StudyLibraryVoltAddIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
+  "/assessment/assessment-list/offline-entry/$assessmentId": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
   "/assessment/create-assessment/$assessmentId/$examtype": typeof AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute
   "/assessment/evaluation-ai/$attemptId/$processId": typeof AssessmentEvaluationAiAttemptIdProcessIdIndexRoute
   "/audience-manager/list/campaign-users/add": typeof AudienceManagerListCampaignUsersAddIndexRoute
@@ -1625,6 +1638,7 @@ export interface FileRoutesById {
   "/study-library/live-session/schedule/": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
+  "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
   "/assessment/create-assessment/$assessmentId/$examtype/": typeof AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute
   "/assessment/evaluation-ai/$attemptId/$processId/": typeof AssessmentEvaluationAiAttemptIdProcessIdIndexRoute
   "/audience-manager/list/campaign-users/add/": typeof AudienceManagerListCampaignUsersAddIndexRoute
@@ -1766,6 +1780,7 @@ export interface FileRouteTypes {
     | "/study-library/live-session/schedule/"
     | "/study-library/volt/add/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
+    | "/assessment/assessment-list/offline-entry/$assessmentId/"
     | "/assessment/create-assessment/$assessmentId/$examtype/"
     | "/assessment/evaluation-ai/$attemptId/$processId/"
     | "/audience-manager/list/campaign-users/add/"
@@ -1904,6 +1919,7 @@ export interface FileRouteTypes {
     | "/study-library/live-session/schedule"
     | "/study-library/volt/add"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
+    | "/assessment/assessment-list/offline-entry/$assessmentId"
     | "/assessment/create-assessment/$assessmentId/$examtype"
     | "/assessment/evaluation-ai/$attemptId/$processId"
     | "/audience-manager/list/campaign-users/add"
@@ -2043,6 +2059,7 @@ export interface FileRouteTypes {
     | "/study-library/live-session/schedule/"
     | "/study-library/volt/add/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
+    | "/assessment/assessment-list/offline-entry/$assessmentId/"
     | "/assessment/create-assessment/$assessmentId/$examtype/"
     | "/assessment/evaluation-ai/$attemptId/$processId/"
     | "/audience-manager/list/campaign-users/add/"
@@ -2182,6 +2199,7 @@ export interface RootRouteChildren {
   StudyLibraryLiveSessionScheduleIndexRoute: typeof StudyLibraryLiveSessionScheduleIndexRoute
   StudyLibraryVoltAddIndexRoute: typeof StudyLibraryVoltAddIndexRoute
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute: typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
+  AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute: typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
   AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute: typeof AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute
   AssessmentEvaluationAiAttemptIdProcessIdIndexRoute: typeof AssessmentEvaluationAiAttemptIdProcessIdIndexRoute
   AudienceManagerListCampaignUsersAddIndexRoute: typeof AudienceManagerListCampaignUsersAddIndexRoute
@@ -3092,6 +3110,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AssessmentCreateAssessmentAssessmentIdExamtypeIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/assessment/assessment-list/offline-entry/$assessmentId/": {
+      id: "/assessment/assessment-list/offline-entry/$assessmentId/"
+      path: "/assessment/assessment-list/offline-entry/$assessmentId"
+      fullPath: "/assessment/assessment-list/offline-entry/$assessmentId/"
+      preLoaderRoute: typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": {
       id: "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
       path: "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
@@ -3319,6 +3344,8 @@ const rootRouteChildren: RootRouteChildren = {
   StudyLibraryVoltAddIndexRoute: StudyLibraryVoltAddIndexRoute,
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute:
     StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute,
+  AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute:
+    AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute,
   AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute:
     AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute,
   AssessmentEvaluationAiAttemptIdProcessIdIndexRoute:

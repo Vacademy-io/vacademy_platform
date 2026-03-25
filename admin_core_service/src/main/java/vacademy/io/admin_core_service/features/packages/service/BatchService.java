@@ -19,9 +19,10 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.PackageDTO;
 import vacademy.io.common.institute.entity.PackageEntity;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.common.institute.entity.session.PackageSession;
+
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,14 +37,34 @@ public class BatchService {
     @Autowired
     private PackageRepository packageRepository;
 
+    @Autowired
+    private StudentSessionInstituteGroupMappingRepository ssigmRepository;
+
     @Transactional
-    public List<PackageDTOWithBatchDetails> getBatchDetails(String sessionId,String instituteId, CustomUserDetails user){
-        List<PackageEntity>packages = packageSessionRepository.findPackagesBySessionIdAndStatuses(sessionId,instituteId,List.of(PackageSessionStatusEnum.ACTIVE.name()));
-        List<PackageDTOWithBatchDetails>packageDTOWithBatchDetails = new ArrayList<>();
+    public List<PackageDTOWithBatchDetails> getBatchDetails(String sessionId, String instituteId, CustomUserDetails user){
+        List<PackageEntity> packages;
+
+        if (sessionId != null && !sessionId.isEmpty()) {
+            packages = packageSessionRepository.findPackagesBySessionIdAndStatuses(sessionId, instituteId, List.of(PackageSessionStatusEnum.ACTIVE.name()));
+        } else {
+            // Fallback: get packages from user's active package sessions via SSIGM
+            List<String> packageSessionIds = ssigmRepository.findPackageSessionIdsByUserIdAndInstituteId(user.getUserId(), instituteId);
+            if (packageSessionIds.isEmpty()) {
+                return new ArrayList<>();
+            }
+            List<PackageSession> packageSessions = packageSessionRepository.findPackageSessionsByIds(packageSessionIds);
+            Set<String> seenPackageIds = new HashSet<>();
+            packages = packageSessions.stream()
+                    .map(PackageSession::getPackageEntity)
+                    .filter(p -> seenPackageIds.add(p.getId()))
+                    .collect(Collectors.toList());
+        }
+
+        List<PackageDTOWithBatchDetails> packageDTOWithBatchDetails = new ArrayList<>();
         for (PackageEntity packageEntity : packages) {
             PackageDTO packageDTO = new PackageDTO(packageEntity);
-            List<BatchProjection> batches = packageSessionRepository.findBatchDetailsWithLatestInviteCode(packageEntity.getId(),List.of(PackageSessionStatusEnum.ACTIVE.name()),List.of(LearnerStatusEnum.ACTIVE.name()));
-            packageDTOWithBatchDetails.add(new PackageDTOWithBatchDetails(packageDTO,batches));
+            List<BatchProjection> batches = packageSessionRepository.findBatchDetailsWithLatestInviteCode(packageEntity.getId(), List.of(PackageSessionStatusEnum.ACTIVE.name()), List.of(LearnerStatusEnum.ACTIVE.name()));
+            packageDTOWithBatchDetails.add(new PackageDTOWithBatchDetails(packageDTO, batches));
         }
         return packageDTOWithBatchDetails;
     }

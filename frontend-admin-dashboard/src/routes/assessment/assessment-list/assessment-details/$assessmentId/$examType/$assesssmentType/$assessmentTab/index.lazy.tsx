@@ -13,7 +13,13 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { DotIcon, DotIconOffline } from '@/svgs';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
-import { CaretLeft, CheckCircle, LockSimple, PauseCircle, PencilSimpleLine } from '@phosphor-icons/react';
+import {
+    CaretLeft,
+    CheckCircle,
+    LockSimple,
+    PauseCircle,
+    PencilSimpleLine,
+} from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { toast } from 'sonner';
@@ -68,16 +74,14 @@ const AssessmentHeader = ({ assessmentDetails }: { assessmentDetails: any }) => 
     };
 
     const getModeIcon = (mode: string) => {
-        return mode === 'EXAM' ? (
-            <DotIcon className="mr-2" />
-        ) : (
-            <DotIconOffline className="mr-2" />
-        );
+        return mode === 'EXAM' ? <DotIcon className="mr-2" /> : <DotIconOffline className="mr-2" />;
     };
 
     return (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-            <h1 className="font-semibold text-lg sm:text-xl">{assessmentDetails[0]?.saved_data.name}</h1>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+            <h1 className="text-lg font-semibold sm:text-xl">
+                {assessmentDetails[0]?.saved_data.name}
+            </h1>
             <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                 <Badge
                     className={`rounded-md border border-neutral-300 ${getVisibilityBadgeClass(
@@ -95,7 +99,10 @@ const AssessmentHeader = ({ assessmentDetails }: { assessmentDetails: any }) => 
                     {getModeIcon(assessmentDetails[0]?.saved_data.assessment_mode)}
                     {assessmentDetails[0]?.saved_data.assessment_mode}
                 </Badge>
-                <Separator orientation="vertical" className="h-8 w-px bg-neutral-300 hidden sm:block" />
+                <Separator
+                    orientation="vertical"
+                    className="hidden h-8 w-px bg-neutral-300 sm:block"
+                />
                 <Badge
                     className={`rounded-md border ${getStatusBadgeClass(
                         assessmentDetails?.[0]?.status
@@ -113,7 +120,7 @@ const AssessmentActions = ({
     isPreviewAssessmentDialogOpen,
     setIsPreviewAssessmentDialogOpen,
     questionsDataSectionWise,
-    assessmentId
+    assessmentId,
 }: {
     isPreviewAssessmentDialogOpen: boolean;
     setIsPreviewAssessmentDialogOpen: (open: boolean) => void;
@@ -160,13 +167,15 @@ const AssessmentActions = ({
                     </MyButton>
                 </DialogTrigger>
                 {Object.keys(questionsDataSectionWise).length > 0 && (
-                    <DialogContent className="no-scrollbar !m-0 h-[90vh] !w-[95vw] sm:!w-[90vw] !max-w-full !gap-0 overflow-y-auto !p-0 [&>button]:hidden">
-                        <AssessmentPreview handleCloseDialog={() => setIsPreviewAssessmentDialogOpen(false)} />
+                    <DialogContent className="no-scrollbar !m-0 h-[90vh] !w-[95vw] !max-w-full !gap-0 overflow-y-auto !p-0 sm:!w-[90vw] [&>button]:hidden">
+                        <AssessmentPreview
+                            handleCloseDialog={() => setIsPreviewAssessmentDialogOpen(false)}
+                        />
                     </DialogContent>
                 )}
             </Dialog>
             <MyButton scale="large" onClick={handleExportAssessment} className="py-4">
-                Offline Paper
+                Export Offline
             </MyButton>
         </div>
     );
@@ -234,7 +243,7 @@ const AssessmentDetailsComponent = () => {
                 />
             </Helmet>
             <div>
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
                     <AssessmentHeader assessmentDetails={assessmentDetails} />
                     <AssessmentActions
                         isPreviewAssessmentDialogOpen={isPreviewAssessmentDialogOpen}
@@ -245,18 +254,20 @@ const AssessmentDetailsComponent = () => {
                 </div>
                 <Separator className="mt-4" />
                 <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <TabsList className="mb-2 mt-6 inline-flex h-auto justify-start gap-0 rounded-none border-b !bg-transparent p-0 overflow-x-auto scrollbar-hide">
+                    <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                        <TabsList className="scrollbar-hide mb-2 mt-6 inline-flex h-auto justify-start gap-0 overflow-x-auto rounded-none border-b !bg-transparent p-0">
                             <TabsTrigger
                                 value="overview"
-                                className={`flex gap-1.5 rounded-none px-4 sm:px-12 py-2 !shadow-none whitespace-nowrap ${selectedTab === 'overview'
-                                    ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
-                                    : 'border-none bg-transparent'
-                                    }`}
+                                className={`flex gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-12 ${
+                                    selectedTab === 'overview'
+                                        ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                        : 'border-none bg-transparent'
+                                }`}
                             >
                                 <span
-                                    className={`${selectedTab === 'overview' ? 'text-primary-500' : ''
-                                        }`}
+                                    className={`${
+                                        selectedTab === 'overview' ? 'text-primary-500' : ''
+                                    }`}
                                 >
                                     Overview
                                 </span>
@@ -264,71 +275,83 @@ const AssessmentDetailsComponent = () => {
                             {assessmentTab !== 'upcomingTests' && (
                                 <TabsTrigger
                                     value="submissions"
-                                    className={`flex gap-1.5 rounded-none px-4 sm:px-12 py-2 !shadow-none whitespace-nowrap ${selectedTab === 'submissions'
-                                        ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
-                                        : 'border-none bg-transparent'
-                                        }`}
+                                    className={`flex gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-12 ${
+                                        selectedTab === 'submissions'
+                                            ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                            : 'border-none bg-transparent'
+                                    }`}
                                 >
                                     <span
-                                        className={`${selectedTab === 'submissions' ? 'text-primary-500' : ''
-                                            }`}
+                                        className={`${
+                                            selectedTab === 'submissions' ? 'text-primary-500' : ''
+                                        }`}
                                     >
-                                        {examType === 'SURVEY' ? 'Individual Respondents' : 'Submissions'}
+                                        {examType === 'SURVEY'
+                                            ? 'Individual Respondents'
+                                            : 'Submissions'}
                                     </span>
                                 </TabsTrigger>
                             )}
                             <TabsTrigger
                                 value="basicInfo"
-                                className={`flex gap-1.5 rounded-none px-4 sm:px-12 py-2 !shadow-none whitespace-nowrap ${selectedTab === 'basicInfo'
-                                    ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
-                                    : 'border-none bg-transparent'
-                                    }`}
+                                className={`flex gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-12 ${
+                                    selectedTab === 'basicInfo'
+                                        ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                        : 'border-none bg-transparent'
+                                }`}
                             >
                                 <span
-                                    className={`${selectedTab === 'basicInfo' ? 'text-primary-500' : ''
-                                        }`}
+                                    className={`${
+                                        selectedTab === 'basicInfo' ? 'text-primary-500' : ''
+                                    }`}
                                 >
                                     Basic Info
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
                                 value="questions"
-                                className={`flex gap-1.5 rounded-none px-4 sm:px-12 py-2 !shadow-none whitespace-nowrap ${selectedTab === 'questions'
-                                    ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
-                                    : 'border-none bg-transparent'
-                                    }`}
+                                className={`flex gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-12 ${
+                                    selectedTab === 'questions'
+                                        ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                        : 'border-none bg-transparent'
+                                }`}
                             >
                                 <span
-                                    className={`${selectedTab === 'questions' ? 'text-primary-500' : ''
-                                        }`}
+                                    className={`${
+                                        selectedTab === 'questions' ? 'text-primary-500' : ''
+                                    }`}
                                 >
                                     Questions
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
                                 value="participants"
-                                className={`flex gap-1.5 rounded-none px-4 sm:px-12 py-2 !shadow-none whitespace-nowrap ${selectedTab === 'participants'
-                                    ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
-                                    : 'border-none bg-transparent'
-                                    }`}
+                                className={`flex gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-12 ${
+                                    selectedTab === 'participants'
+                                        ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                        : 'border-none bg-transparent'
+                                }`}
                             >
                                 <span
-                                    className={`${selectedTab === 'participants' ? 'text-primary-500' : ''
-                                        }`}
+                                    className={`${
+                                        selectedTab === 'participants' ? 'text-primary-500' : ''
+                                    }`}
                                 >
                                     Participants
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
                                 value="accessControl"
-                                className={`flex gap-1.5 rounded-none px-4 sm:px-12 py-2 !shadow-none whitespace-nowrap ${selectedTab === 'accessControl'
-                                    ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
-                                    : 'border-none bg-transparent'
-                                    }`}
+                                className={`flex gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-12 ${
+                                    selectedTab === 'accessControl'
+                                        ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                        : 'border-none bg-transparent'
+                                }`}
                             >
                                 <span
-                                    className={`${selectedTab === 'accessControl' ? 'text-primary-500' : ''
-                                        }`}
+                                    className={`${
+                                        selectedTab === 'accessControl' ? 'text-primary-500' : ''
+                                    }`}
                                 >
                                     Access Control
                                 </span>
@@ -346,7 +369,7 @@ const AssessmentDetailsComponent = () => {
                             </MyButton>
                         )}
                     </div>
-                    <div className="max-h-[72vh] overflow-y-auto pr-8 scrollbar-hide">
+                    <div className="scrollbar-hide max-h-[72vh] overflow-y-auto pr-8">
                         <TabsContent value="overview">
                             {examType === 'SURVEY' ? (
                                 <SurveyMainOverviewTab
@@ -356,10 +379,13 @@ const AssessmentDetailsComponent = () => {
                                         .join(',')}
                                     assessmentName={assessmentDetails[0]?.saved_data?.name || ''}
                                     assessmentDetails={{
-                                        assessment_visibility: assessmentDetails[1]?.saved_data?.assessment_visibility,
+                                        assessment_visibility:
+                                            assessmentDetails[1]?.saved_data?.assessment_visibility,
                                         live_assessment_access: {
-                                            batch_ids: assessmentDetails[1]?.saved_data?.live_assessment_access?.batch_ids ?? []
-                                        }
+                                            batch_ids:
+                                                assessmentDetails[1]?.saved_data
+                                                    ?.live_assessment_access?.batch_ids ?? [],
+                                        },
                                     }}
                                 />
                             ) : (
@@ -375,10 +401,13 @@ const AssessmentDetailsComponent = () => {
                                         .join(',')}
                                     assessmentName={assessmentDetails[0]?.saved_data?.name || ''}
                                     assessmentDetails={{
-                                        assessment_visibility: assessmentDetails[1]?.saved_data?.assessment_visibility,
+                                        assessment_visibility:
+                                            assessmentDetails[1]?.saved_data?.assessment_visibility,
                                         live_assessment_access: {
-                                            batch_ids: assessmentDetails[1]?.saved_data?.live_assessment_access?.batch_ids ?? []
-                                        }
+                                            batch_ids:
+                                                assessmentDetails[1]?.saved_data
+                                                    ?.live_assessment_access?.batch_ids ?? [],
+                                        },
                                     }}
                                 />
                             ) : (

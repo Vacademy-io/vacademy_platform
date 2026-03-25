@@ -23,4 +23,6 @@ public class MeetingRecordingDTO {
     private String providerMeetingId;
     /** Vacademy media service file ID (set when recording is uploaded to S3) */
     private String fileId;
+    /** Recording type: "content" (screen share / camera-as-content), "webcams" (participants), "full" (legacy single) */
+    private String type;
 }

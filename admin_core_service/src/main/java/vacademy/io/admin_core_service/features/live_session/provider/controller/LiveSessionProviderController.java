@@ -593,9 +593,10 @@ public class LiveSessionProviderController {
         long durationSeconds = body.containsKey("durationSeconds")
                 ? ((Number) body.get("durationSeconds")).longValue() : 0;
         String startTime = (String) body.getOrDefault("startTime", java.time.Instant.now().toString());
+        String recordingType = (String) body.getOrDefault("type", "full");
 
-        log.info("[BBB Recording] Complete upload: meetingId={}, fileId={}, duration={}s",
-                meetingId, fileId, durationSeconds);
+        log.info("[BBB Recording] Complete upload: meetingId={}, fileId={}, type={}, duration={}s",
+                meetingId, fileId, recordingType, durationSeconds);
 
         // Find schedule by providerMeetingId
         List<SessionSchedule> schedules = scheduleRepository.findByProviderMeetingId(meetingId);
@@ -611,6 +612,7 @@ public class LiveSessionProviderController {
                 .durationSeconds(durationSeconds)
                 .startTime(startTime)
                 .providerMeetingId(meetingId)
+                .type(recordingType)
                 .build();
 
         for (SessionSchedule schedule : schedules) {
@@ -623,11 +625,20 @@ public class LiveSessionProviderController {
                             new com.fasterxml.jackson.core.type.TypeReference<List<MeetingRecordingDTO>>() {});
                     recordings = new java.util.ArrayList<>(recordings);
                 }
+                // Deduplicate: skip if a recording with the same recordingId already exists
+                String finalRecordingId = recordingId;
+                boolean alreadyExists = recordings.stream()
+                        .anyMatch(r -> finalRecordingId.equals(r.getRecordingId()));
+                if (alreadyExists) {
+                    log.info("[BBB Recording] Recording {} already exists for scheduleId={}, skipping",
+                            recordingId, schedule.getId());
+                    continue;
+                }
                 recordings.add(recording);
                 schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(recordings));
                 schedule.setLastRecordingSyncAt(new java.util.Date());
                 scheduleRepository.save(schedule);
-                log.info("[BBB Recording] Saved recording for scheduleId={}", schedule.getId());
+                log.info("[BBB Recording] Saved recording (type={}) for scheduleId={}", recordingType, schedule.getId());
             } catch (Exception e) {
                 log.error("[BBB Recording] Failed to save for scheduleId={}: {}",
                         schedule.getId(), e.getMessage());

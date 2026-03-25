@@ -218,13 +218,16 @@ class ContentGenerationPrompts:
 - Keep code examples SHORT, CLEAR, and PRACTICAL (aim for 20-50 lines per example)
 - Structure with clear headings and explanations
 
-**Code Requirements**:
-- Generate working, executable code examples
-- Include comments explaining key concepts
-- Use best practices and clean code principles
-- Make code examples relevant to the video topic
-- Include both simple and slightly advanced examples if appropriate
-- Add brief explanations before each code block
+**Code Requirements (CRITICAL — every code block MUST be runnable)**:
+- Every code block must be **syntactically correct and complete** — a learner should be able to copy-paste it and run it without errors
+- Include ALL necessary imports/includes at the top of each code block
+- Do NOT use placeholder code like `pass`, `...`, `# TODO`, or `# your code here`
+- Every function/class must have a real, working implementation
+- Add a runnable entry point: `if __name__ == "__main__":` for Python, `main()` for Go/Java, top-level calls for JavaScript/TypeScript
+- Include **sample output** as a comment at the end of each code block (e.g., `# Output: Hello, World!`)
+- Use best practices, clean code principles, and proper error handling
+- Include inline comments explaining key concepts
+- Make code examples directly relevant to the video topic
 
 **Code Block Format**:
 ````markdown
@@ -233,9 +236,16 @@ class ContentGenerationPrompts:
 Brief explanation of what this code does.
 
 ```python
-# Your code here
-def example():
-    pass
+import math
+
+def calculate_area(radius: float) -> float:
+    \"\"\"Calculate the area of a circle.\"\"\"
+    return math.pi * radius ** 2
+
+if __name__ == "__main__":
+    area = calculate_area(5.0)
+    print(f"Area of circle with radius 5: {{area:.2f}}")
+    # Output: Area of circle with radius 5: 78.54
 ```
 
 Explanation of the code output or key concepts.
@@ -281,8 +291,14 @@ Explanation of the code output or key concepts.
 **Output format**:
 - HTML only.
 - **Heading Rule**: The content MUST start with the main heading `<h1>Assignment</h1>`.
-- Use <h2> for the single task title, <p> for instructions, <pre><code> for code snippets or starter code.
+- Use <h2> for the single task title, <p> for instructions, <pre><code class="language-xxx"> for code snippets or starter code.
 - Structure: Main heading ("Assignment"), task title, short introduction paragraph, then one section for the single homework task.
+
+**Code Formatting (CRITICAL)**:
+- All code inside <pre><code> MUST have correct indentation — use spaces (not tabs) exactly as the code would appear in an IDE.
+- Do NOT flatten or minify the code. Each nested block (function body, loop body, if-else body) must be indented properly.
+- Include ALL necessary imports at the top of each code snippet.
+- Starter code must be syntactically valid — no `...`, `pass`, or pseudo-code unless explicitly marking a section for the student to fill in (use `# TODO: implement this` with a clear comment).
 
 **Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML. Start with <h1>Assignment</h1>."""
 
@@ -323,7 +339,13 @@ Explanation of the code output or key concepts.
 - HTML only.
 - **Heading Rule**: The content MUST start with the main heading `<h1>Assignment Solutions</h1>`.
 - Use exactly two subsection headings: "Hint" (first), then "Solution" (second). Do not use "Exact solution" or "Exact Solution"—use "Solution" only.
-- Use <pre><code> for all code. Use <ol> or <p> for step-by-step instructions where appropriate.
+- Use <pre><code class="language-xxx"> for all code. Use <ol> or <p> for step-by-step instructions where appropriate.
+
+**Code Formatting (CRITICAL)**:
+- All code inside <pre><code> MUST have correct indentation — use spaces (not tabs) exactly as the code would appear in an IDE.
+- Do NOT flatten or minify the code. Each nested block (function body, loop body, if-else body) must be indented properly.
+- Solution code must be **complete and runnable** — include all imports, a main entry point, and expected output as a comment.
+- Do NOT use placeholder code like `pass` or `...` in the solution — every function must have a real implementation.
 
 **Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML. Always put the HINT before the Solution. Use the heading "Solution", not "Exact Solution". Start with <h1>Assignment Solutions</h1>."""
 

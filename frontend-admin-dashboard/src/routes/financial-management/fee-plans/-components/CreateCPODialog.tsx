@@ -39,6 +39,7 @@ export interface CPOForm {
     name: string;
     status: string;
     packageSessionId: string;
+    packageSessionIds: string[];
     feeTypes: FeeTypeForm[];
 }
 
@@ -170,12 +171,10 @@ export function buildCreateCPOPayload(form: CPOForm): CreateCPOPayload {
                 discount_value: 0,
             },
         })),
-        package_session_links: [
-            {
-                enroll_invite_id: null,
-                package_session_id: form.packageSessionId,
-            },
-        ],
+        package_session_links: form.packageSessionIds.map((id) => ({
+            enroll_invite_id: null,
+            package_session_id: id,
+        })),
     };
 }
 
@@ -183,17 +182,28 @@ function generateInstallments(count: number, totalAmount: number): InstallmentFo
     const today = new Date();
     const perInstallment = totalAmount ? Math.floor(totalAmount / count) : 0;
     const remainder = totalAmount ? totalAmount - perInstallment * count : 0;
+
+    // Determine month gap based on installment count
+    const monthGap = count <= 1 ? 12 : count === 2 ? 6 : count <= 4 ? 3 : 1;
+
     return Array.from({ length: count }, (_, i) => {
-        const startDay = new Date(today.getFullYear(), today.getMonth() + i, 1);
-        const dueDay = new Date(today.getFullYear(), today.getMonth() + i, 10);
-        const startDate = startDay.toISOString().split('T')[0];
+        const monthOffset = i * monthGap;
+        const monthStart = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+        // Last day of the period (spans monthGap months)
+        const periodEnd = new Date(today.getFullYear(), today.getMonth() + monthOffset + monthGap, 0);
+        // Due date = period end + 7 days
+        const dueDay = new Date(periodEnd);
+        dueDay.setDate(dueDay.getDate() + 7);
+
+        const startDate = monthStart.toISOString().split('T')[0];
+        const endDate = periodEnd.toISOString().split('T')[0];
         const dueDate = dueDay.toISOString().split('T')[0];
         return {
             id: i + 1,
             amount: i === 0 ? perInstallment + remainder : perInstallment,
             startDate,
             dueDate,
-            endDate: dueDate,
+            endDate,
         };
     });
 }
@@ -677,12 +687,93 @@ function FeeTypeEditor({
     );
 }
 
+// ─── Class Multi-Select Dropdown ─────────────────────────────────────────────────
+
+function ClassMultiSelect({
+    batchOptions,
+    selectedIds,
+    onToggle,
+}: {
+    batchOptions: BatchOption[];
+    selectedIds: string[];
+    onToggle: (id: string) => void;
+}) {
+    const [open, setOpen] = useState(false);
+
+    const selectedLabels = batchOptions
+        .filter((opt) => selectedIds.includes(opt.id))
+        .map((opt) => opt.label);
+
+    return (
+        <div className="relative">
+            <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Select Class <span className="text-red-500">*</span>
+            </Label>
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm outline-none transition focus:border-primary-500 focus:ring-1 focus:ring-primary-200"
+            >
+                <span className={selectedIds.length === 0 ? 'text-gray-400' : 'text-gray-700'}>
+                    {selectedIds.length === 0
+                        ? 'Select classes...'
+                        : selectedLabels.length <= 2
+                          ? selectedLabels.join(', ')
+                          : `${selectedLabels.length} classes selected`}
+                </span>
+                <svg
+                    className={`h-4 w-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M19 9l-7 7-7-7"
+                    />
+                </svg>
+            </button>
+
+            {open && (
+                <div className="absolute z-[1300] mt-1 max-h-[200px] w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                    {batchOptions.length === 0 && (
+                        <p className="px-3 py-2 text-sm text-gray-400">No classes available</p>
+                    )}
+                    {batchOptions.map((opt) => (
+                        <label
+                            key={opt.id}
+                            className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm transition hover:bg-gray-50"
+                        >
+                            <input
+                                type="checkbox"
+                                checked={selectedIds.includes(opt.id)}
+                                onChange={() => onToggle(opt.id)}
+                                className="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500"
+                            />
+                            <span className="text-gray-700">{opt.label}</span>
+                        </label>
+                    ))}
+                </div>
+            )}
+
+            {selectedIds.length > 0 && (
+                <p className="mt-1 text-xs text-gray-500">
+                    {selectedIds.length} class{selectedIds.length !== 1 ? 'es' : ''} selected
+                </p>
+            )}
+        </div>
+    );
+}
+
 // ─── Main Dialog ────────────────────────────────────────────────────────────────
 
 export default function CreateCPODialog({
     onSave,
     onClose,
     batchOptions,
+    allBatches = [],
     defaultPackageSessionId,
     isSaving = false,
 }: {
@@ -696,14 +787,32 @@ export default function CreateCPODialog({
         name: '',
         status: 'ACTIVE',
         packageSessionId: defaultPackageSessionId ?? '',
+        packageSessionIds: defaultPackageSessionId ? [defaultPackageSessionId] : [],
         feeTypes: [createEmptyFeeType(1)],
     });
 
     useEffect(() => {
-        if (!form.packageSessionId && batchOptions.length > 0) {
-            setForm((prev) => ({ ...prev, packageSessionId: batchOptions[0].id }));
+        if (form.packageSessionIds.length === 0 && batchOptions.length > 0) {
+            setForm((prev) => ({
+                ...prev,
+                packageSessionId: batchOptions[0].id,
+                packageSessionIds: [batchOptions[0].id],
+            }));
         }
-    }, [batchOptions, form.packageSessionId]);
+    }, [batchOptions, form.packageSessionIds.length]);
+
+    const togglePackageSession = (id: string) => {
+        setForm((prev) => {
+            const ids = prev.packageSessionIds.includes(id)
+                ? prev.packageSessionIds.filter((i) => i !== id)
+                : [...prev.packageSessionIds, id];
+            return {
+                ...prev,
+                packageSessionIds: ids,
+                packageSessionId: ids[0] ?? '',
+            };
+        });
+    };
 
     const addFeeType = () => {
         const nextId = Math.max(...form.feeTypes.map((f) => f.id), 0) + 1;
@@ -728,7 +837,7 @@ export default function CreateCPODialog({
     };
 
     const isValid =
-        form.packageSessionId !== '' &&
+        form.packageSessionIds.length > 0 &&
         form.name.trim() !== '' &&
         form.feeTypes.length > 0 &&
         form.feeTypes.every((ft) => ft.name.trim() !== '' && parseFloat(ft.amount as string) > 0);
@@ -814,29 +923,12 @@ export default function CreateCPODialog({
 
                 {/* Body */}
                 <div className="flex flex-col gap-5 px-6 py-5">
-                    {/* Class / Batch Selector */}
-                    <div>
-                        <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            Select Class / Batch <span className="text-red-500">*</span>
-                        </Label>
-                        <Select
-                            value={form.packageSessionId}
-                            onValueChange={(value) =>
-                                setForm((prev) => ({ ...prev, packageSessionId: value }))
-                            }
-                        >
-                            <SelectTrigger className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-primary-500 focus:ring-1 focus:ring-primary-200">
-                                <SelectValue placeholder="Select a class" />
-                            </SelectTrigger>
-                            <SelectContent className="z-[1200]">
-                                {batchOptions.map((opt) => (
-                                    <SelectItem key={opt.id} value={opt.id}>
-                                        {opt.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    {/* Class Selector (multi-select dropdown) */}
+                    <ClassMultiSelect
+                        batchOptions={batchOptions}
+                        selectedIds={form.packageSessionIds}
+                        onToggle={togglePackageSession}
+                    />
 
                     {/* Package Name & Status */}
                     <div className="grid grid-cols-[1fr_200px] gap-4">

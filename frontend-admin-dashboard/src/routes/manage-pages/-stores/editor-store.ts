@@ -17,6 +17,7 @@ interface EditorState {
     selectedGlobalLayout: 'header' | 'footer' | null;
     activeTab: 'visual' | 'json';
     previewViewport: 'desktop' | 'tablet' | 'mobile';
+    clipboard: Component | null;
 
     // Actions
     setConfig: (config: CatalogueConfig) => void;
@@ -39,6 +40,11 @@ interface EditorState {
     duplicatePage: (pageId: string) => void;
     togglePagePublished: (pageId: string) => void;
     updatePageSeo: (pageId: string, seo: Page['seo']) => void;
+    updatePageBackgroundColor: (pageId: string, color: string) => void;
+
+    // Clipboard
+    copyComponent: (pageId: string, componentId: string) => void;
+    pasteComponent: (pageId: string) => void;
 
     // Layout slot actions
     addToSlot: (pageId: string, layoutId: string, slotIndex: number, component: Component) => void;
@@ -142,6 +148,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     selectedGlobalLayout: null,
     activeTab: 'visual',
     previewViewport: 'desktop',
+    clipboard: null,
 
     setConfig: (config) =>
         set({
@@ -360,6 +367,62 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             if (!state.config) return {};
             const newPages = state.config.pages.map((p) =>
                 p.id === pageId ? { ...p, seo: { ...p.seo, ...seo } } : p
+            );
+            const newConfig = { ...state.config, pages: newPages };
+            return pushToHistory(state, newConfig);
+        }),
+
+    updatePageBackgroundColor: (pageId, color) =>
+        set((state) => {
+            if (!state.config) return {};
+            const newPages = state.config.pages.map((p) =>
+                p.id === pageId ? { ...p, backgroundColor: color || undefined } : p
+            );
+            const newConfig = { ...state.config, pages: newPages };
+            return pushToHistory(state, newConfig);
+        }),
+
+    copyComponent: (pageId, componentId) =>
+        set((state) => {
+            if (!state.config) return {};
+            const page = state.config.pages.find((p) => p.id === pageId);
+            if (!page) return {};
+            // Recursive find in top-level and slots
+            const find = (comps: Component[]): Component | null => {
+                for (const c of comps) {
+                    if (c.id === componentId) return c;
+                    if (Array.isArray(c.props?.slots)) {
+                        for (const slot of c.props.slots as Component[][]) {
+                            const found = find(slot);
+                            if (found) return found;
+                        }
+                    }
+                }
+                return null;
+            };
+            const comp = find(page.components);
+            if (!comp) return {};
+            return { clipboard: JSON.parse(JSON.stringify(comp)) };
+        }),
+
+    pasteComponent: (pageId) =>
+        set((state) => {
+            if (!state.config || !state.clipboard) return {};
+            const pasted: Component = {
+                ...JSON.parse(JSON.stringify(state.clipboard)),
+                id: `${state.clipboard.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            };
+            // Regenerate IDs in nested slots
+            if (Array.isArray(pasted.props?.slots)) {
+                pasted.props.slots = (pasted.props.slots as Component[][]).map((slot: Component[]) =>
+                    slot.map((child: Component) => ({
+                        ...child,
+                        id: `${child.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    }))
+                );
+            }
+            const newPages = state.config.pages.map((p) =>
+                p.id === pageId ? { ...p, components: [...p.components, pasted] } : p
             );
             const newConfig = { ...state.config, pages: newPages };
             return pushToHistory(state, newConfig);

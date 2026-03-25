@@ -566,6 +566,204 @@ export const renderComponentPreview = (
             return <DataPlaceholder label="Book Details" description="Renders the current book's detail data" />;
         case 'policyRenderer':
             return <DataPlaceholder label="Policy Page" description="Renders policy / terms content" />;
+        case 'spacer': {
+            const dividerStyle = props.showDivider ? {
+                borderTop: `${props.dividerWidth || '1px'} ${props.dividerStyle || 'solid'} ${props.dividerColor || '#E5E7EB'}`,
+                maxWidth: props.maxWidth || '100%',
+                margin: '0 auto',
+            } : {};
+            return (
+                <div style={{ height: props.height || '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {props.showDivider && <hr style={{ ...dividerStyle, width: '100%' }} />}
+                </div>
+            );
+        }
+        case 'tabsAccordion': {
+            const items = props.items || [];
+            return (
+                <section className="py-8 px-6">
+                    {props.mode === 'accordion' ? (
+                        <div className="mx-auto max-w-2xl space-y-2">
+                            {items.map((item: any, i: number) => (
+                                <div key={i} className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                                    <div className="font-medium text-gray-800">{item.title || `Item ${i + 1}`}</div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="mx-auto max-w-2xl">
+                            <div className="flex border-b border-gray-200">
+                                {items.map((item: any, i: number) => (
+                                    <div key={i} className={`px-4 py-2 text-sm font-medium ${i === 0 ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>
+                                        {item.title || `Tab ${i + 1}`}
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="p-4 text-sm text-gray-600" dangerouslySetInnerHTML={{ __html: items[0]?.content || 'Tab content' }} />
+                        </div>
+                    )}
+                </section>
+            );
+        }
+        case 'logoCloud': {
+            const logos = props.logos || [];
+            return (
+                <section className="py-10 px-8 text-center">
+                    {props.headerText && <h3 className="mb-6 text-lg font-semibold text-gray-400 uppercase tracking-wider">{props.headerText}</h3>}
+                    <div className="flex flex-wrap items-center justify-center gap-8">
+                        {logos.length === 0 ? (
+                            <div className="text-sm text-gray-300">Add logos via the property panel</div>
+                        ) : logos.map((logo: any, i: number) => (
+                            <div key={i} className={`h-10 w-24 rounded bg-gray-100 ${props.grayscale ? 'grayscale' : ''}`}>
+                                {logo.image ? (
+                                    <img src={logo.image} alt={logo.alt || ''} className="h-full w-full object-contain" />
+                                ) : (
+                                    <div className="flex h-full items-center justify-center text-xs text-gray-300">Logo</div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            );
+        }
+        case 'mapEmbed':
+            return (
+                <section className="py-6 px-6">
+                    {props.title && <h3 className="mb-3 text-lg font-semibold text-gray-800">{props.title}</h3>}
+                    <div className="flex items-center justify-center rounded bg-gray-100" style={{ height: props.height || '400px', borderRadius: props.borderRadius || '8px' }}>
+                        {props.embedUrl ? (
+                            <div className="text-sm text-gray-500">Map embed preview</div>
+                        ) : (
+                            <div className="text-sm text-gray-300">Add a Google Maps embed URL</div>
+                        )}
+                    </div>
+                </section>
+            );
+        case 'countdownTimer':
+            return (
+                <section className="py-10 px-8 text-center" style={{ backgroundColor: props.backgroundColor || '#1E293B' }}>
+                    <h3 className="mb-6 text-xl font-bold" style={{ color: props.textColor || '#FFFFFF' }}>
+                        {props.heading || 'Event Starts In'}
+                    </h3>
+                    <div className="flex justify-center gap-4">
+                        {['Days', 'Hours', 'Mins', 'Secs'].map((unit) => (
+                            <div key={unit} className="rounded-lg bg-white/10 px-5 py-3">
+                                <div className="text-3xl font-bold" style={{ color: props.textColor || '#FFFFFF' }}>00</div>
+                                <div className="mt-1 text-xs uppercase tracking-wider" style={{ color: props.textColor ? `${props.textColor}99` : '#FFFFFF99' }}>{unit}</div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            );
+        case 'textBlock':
+            return (
+                <section className="py-8 px-6">
+                    <div
+                        style={{ maxWidth: props.maxWidth || '800px', margin: props.alignment === 'center' ? '0 auto' : props.alignment === 'right' ? '0 0 0 auto' : undefined }}
+                        className="max-w-none text-gray-700 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-1 [&_p]:mb-3 [&_a]:text-blue-600 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1"
+                        dangerouslySetInnerHTML={{ __html: props.content || '<p>Text block — click to edit content</p>' }}
+                    />
+                </section>
+            );
+        case 'featureGrid': {
+            const features = props.features || [];
+            const cols = props.columns || 3;
+            return (
+                <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#FFFFFF' }}>
+                    {props.headerText && <h2 className="mb-1 text-center text-2xl font-bold text-gray-900">{props.headerText}</h2>}
+                    {props.subheading && <p className="mb-8 text-center text-sm text-gray-500">{props.subheading}</p>}
+                    <div className="mx-auto max-w-5xl" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 20 }}>
+                        {features.map((f: any, i: number) => (
+                            <div key={i} className={`text-center ${props.style === 'cards' ? 'rounded-xl border border-gray-100 bg-white p-5 shadow-sm' : 'p-4'}`}>
+                                <div className={`mb-3 ${props.iconSize === 'large' ? 'text-3xl' : 'text-2xl'}`}>{f.icon || '⭐'}</div>
+                                <h4 className="mb-1 text-sm font-semibold text-gray-800">{f.title}</h4>
+                                <p className="text-xs text-gray-500">{f.description}</p>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            );
+        }
+        case 'imageBlock':
+            return (
+                <section className="py-6 px-6" style={{ textAlign: (props.alignment as any) || 'center' }}>
+                    {props.src ? (
+                        <img
+                            src={props.src}
+                            alt={props.alt || ''}
+                            style={{ maxWidth: props.maxWidth || '100%', borderRadius: props.borderRadius || '8px', display: 'inline-block' }}
+                            className="h-auto"
+                        />
+                    ) : (
+                        <div className="mx-auto flex h-48 w-80 items-center justify-center rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 text-sm text-gray-300">
+                            Upload an image
+                        </div>
+                    )}
+                    {props.caption && <p className="mt-2 text-xs text-gray-400">{props.caption}</p>}
+                </section>
+            );
+        case 'buttonBlock': {
+            const btnVariant = props.variant || 'filled';
+            const btnBg = props.backgroundColor || '#3B82F6';
+            const btnText = props.textColor || (btnVariant === 'filled' ? '#FFFFFF' : btnBg);
+            return (
+                <section className="py-8 px-6" style={{ textAlign: (props.alignment as any) || 'center' }}>
+                    <span
+                        className={`inline-block font-medium transition ${props.fullWidth ? 'w-full' : ''}`}
+                        style={{
+                            padding: props.size === 'small' ? '8px 20px' : props.size === 'large' ? '14px 36px' : '10px 28px',
+                            fontSize: props.size === 'small' ? '13px' : props.size === 'large' ? '16px' : '14px',
+                            backgroundColor: btnVariant === 'filled' ? btnBg : 'transparent',
+                            color: btnText,
+                            border: btnVariant === 'outline' ? `2px solid ${btnBg}` : btnVariant === 'ghost' ? 'none' : 'none',
+                            borderRadius: props.borderRadius || '8px',
+                        }}
+                    >
+                        {props.text || 'Button'}
+                    </span>
+                </section>
+            );
+        }
+        case 'newsletterSignup':
+            return (
+                <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#F8FAFC' }}>
+                    <div className="mx-auto max-w-lg text-center">
+                        {props.heading && <h3 className="mb-1 text-xl font-bold text-gray-900">{props.heading}</h3>}
+                        {props.subheading && <p className="mb-5 text-sm text-gray-500">{props.subheading}</p>}
+                        <div className={`flex ${props.layout === 'stacked' ? 'flex-col' : ''} gap-2`}>
+                            <div className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-left text-sm text-gray-400">
+                                {props.placeholder || 'Enter your email'}
+                            </div>
+                            <span className="rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-medium text-white">
+                                {props.buttonText || 'Subscribe'}
+                            </span>
+                        </div>
+                    </div>
+                </section>
+            );
+        case 'stepsProcess': {
+            const steps = props.steps || [];
+            const isHorizontal = props.layout !== 'vertical';
+            return (
+                <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#FFFFFF' }}>
+                    {props.headerText && <h2 className="mb-1 text-center text-2xl font-bold text-gray-900">{props.headerText}</h2>}
+                    {props.subheading && <p className="mb-8 text-center text-sm text-gray-500">{props.subheading}</p>}
+                    <div className={`mx-auto max-w-4xl ${isHorizontal ? 'flex items-start justify-center gap-4' : 'flex flex-col gap-6'}`}>
+                        {steps.map((step: any, i: number) => (
+                            <div key={i} className={`flex ${isHorizontal ? 'flex-1 flex-col items-center text-center' : 'items-start gap-4'}`}>
+                                <div className="mb-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-500 text-sm font-bold text-white">
+                                    {step.number || i + 1}
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-semibold text-gray-800">{step.title}</h4>
+                                    <p className="mt-0.5 text-xs text-gray-500">{step.description}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            );
+        }
         case 'columnLayout': {
             const slots: any[][] = props.slots || [[], []];
             const colWidths: string[] = props.columnWidths || [];

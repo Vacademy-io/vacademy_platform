@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useEditorStore } from '../-stores/editor-store';
 import { renderComponentPreview } from './ComponentPreviews';
 import { CATALOGUE_EDITOR_CONFIG } from '@/constants/catalogue-editor';
+import { buildComponentStyle } from '../-utils/style-utils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchBothInstituteAPIs } from '@/services/student-list-section/getInstituteDetails';
 
@@ -50,15 +51,17 @@ const SlotDropZone = ({
             {slotComponents.map((child: any) => {
                 const isSelected = child.id === selectedComponentId;
                 const isDisabled = child.enabled === false;
+                const childStyle = buildComponentStyle(child.style);
                 return (
                     <div
                         key={child.id}
                         onClick={(e) => { e.stopPropagation(); onSelectComponent(child.id); }}
-                        className={`relative cursor-pointer transition-all ${isDisabled ? 'opacity-40' : ''} ${
+                        className={`relative cursor-pointer transition-all ${child.style?.customClass || ''} ${isDisabled ? 'opacity-40' : ''} ${
                             isSelected
                                 ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]'
                                 : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'
                         }`}
+                        style={childStyle}
                         title={isDisabled ? `${child.type} (hidden)` : child.type}
                     >
                         {isSelected && (
@@ -98,14 +101,16 @@ const ColumnLayoutCanvas = ({
         const map: Record<string, string> = { '1/2': '1fr', '1/3': '1fr', '2/3': '2fr', '1/4': '1fr', '3/4': '3fr' };
         return map[w ?? ''] || '1fr';
     };
+    const layoutStyle = buildComponentStyle(component.style);
     return (
         <div
             onClick={(e) => { e.stopPropagation(); onSelectComponent(component.id); }}
-            className={`relative cursor-pointer transition-all p-3 ${
+            className={`relative cursor-pointer transition-all p-3 ${component.style?.customClass || ''} ${
                 isSelected
                     ? 'outline outline-2 outline-teal-500 outline-offset-[-2px] bg-teal-50/40'
                     : 'hover:outline hover:outline-1 hover:outline-teal-300 hover:outline-offset-[-1px]'
             }`}
+            style={layoutStyle}
         >
             <div className="absolute left-0 top-0 z-50 select-none rounded-br bg-teal-500 px-2 py-0.5 text-[10px] font-medium text-white">
                 {slots.length} Columns
@@ -308,6 +313,8 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
 
                             const isSelected = component.id === selectedComponentId;
                             const isDisabled = component.enabled === false;
+                            const componentStyle = buildComponentStyle(component.style);
+                            const hasOverlay = component.style?.backgroundImage && component.style?.backgroundOverlay;
                             return (
                                 <div
                                     key={component.id}
@@ -315,15 +322,28 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                         e.stopPropagation();
                                         selectComponent(component.id);
                                     }}
-                                    className={`relative cursor-pointer transition-all ${
+                                    className={`relative cursor-pointer transition-all ${component.style?.customClass || ''} ${
                                         isDisabled ? 'opacity-40' : ''
                                     } ${
                                         isSelected
                                             ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]'
                                             : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'
                                     }`}
+                                    style={componentStyle}
                                     title={isDisabled ? `${component.type} (hidden)` : component.type}
                                 >
+                                    {/* Background overlay */}
+                                    {hasOverlay && (
+                                        <div
+                                            style={{
+                                                position: 'absolute',
+                                                inset: 0,
+                                                backgroundColor: component.style!.backgroundOverlay,
+                                                zIndex: 0,
+                                                borderRadius: componentStyle.borderRadius,
+                                            }}
+                                        />
+                                    )}
                                     {/* Selection label */}
                                     {isSelected && (
                                         <div className="absolute left-0 top-0 z-50 select-none rounded-br-md bg-blue-500 px-2 py-0.5 text-xs font-medium text-white">
@@ -337,7 +357,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                         </div>
                                     )}
                                     {/* Disable pointer events so child links/buttons don't interfere */}
-                                    <div style={{ pointerEvents: 'none' }}>
+                                    <div style={{ pointerEvents: 'none', position: hasOverlay ? 'relative' : undefined, zIndex: hasOverlay ? 1 : undefined }}>
                                         {renderComponentPreview(component)}
                                     </div>
                                 </div>

@@ -394,6 +394,166 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             showCaptions: false,
         },
     },
+    spacer: {
+        type: 'spacer',
+        enabled: true,
+        props: {
+            height: '48px',
+            showDivider: false,
+            dividerStyle: 'solid',
+            dividerColor: '#E5E7EB',
+            dividerWidth: '1px',
+            maxWidth: '100%',
+        },
+    },
+
+    tabsAccordion: {
+        type: 'tabsAccordion',
+        enabled: true,
+        props: {
+            mode: 'tabs',
+            items: [
+                { title: 'Tab 1', content: '<p>Content for tab 1</p>' },
+                { title: 'Tab 2', content: '<p>Content for tab 2</p>' },
+                { title: 'Tab 3', content: '<p>Content for tab 3</p>' },
+            ],
+            defaultOpen: 0,
+            allowMultiple: false,
+            backgroundColor: '#FFFFFF',
+        },
+    },
+
+    logoCloud: {
+        type: 'logoCloud',
+        enabled: true,
+        props: {
+            headerText: 'Trusted By',
+            subheading: '',
+            logos: [],
+            layout: 'grid',
+            grayscale: true,
+            columns: 5,
+        },
+    },
+
+    mapEmbed: {
+        type: 'mapEmbed',
+        enabled: true,
+        props: {
+            embedUrl: '',
+            height: '400px',
+            borderRadius: '8px',
+            title: 'Our Location',
+        },
+    },
+
+    countdownTimer: {
+        type: 'countdownTimer',
+        enabled: true,
+        props: {
+            targetDate: '',
+            heading: 'Event Starts In',
+            expiredMessage: 'The event has started!',
+            backgroundColor: '#1E293B',
+            textColor: '#FFFFFF',
+            style: 'cards',
+        },
+    },
+    textBlock: {
+        type: 'textBlock',
+        enabled: true,
+        props: {
+            content: '<h2>Your Heading Here</h2><p>Write your content here. This is a rich text block — you can add headings, paragraphs, lists, links, and more.</p>',
+            maxWidth: '800px',
+            alignment: 'center',
+        },
+    },
+
+    featureGrid: {
+        type: 'featureGrid',
+        enabled: true,
+        props: {
+            headerText: 'Why Choose Us',
+            subheading: 'Everything you need to succeed',
+            columns: 3,
+            features: [
+                { icon: '🎓', title: 'Expert Instructors', description: 'Learn from industry professionals with years of experience.' },
+                { icon: '📚', title: 'Rich Content', description: 'Access comprehensive course materials and resources.' },
+                { icon: '🏆', title: 'Certified Courses', description: 'Earn recognized certificates upon completion.' },
+                { icon: '💡', title: 'Interactive Learning', description: 'Engage with hands-on projects and exercises.' },
+                { icon: '🕐', title: 'Flexible Schedule', description: 'Learn at your own pace, anytime, anywhere.' },
+                { icon: '🤝', title: 'Community Support', description: 'Join a thriving community of learners.' },
+            ],
+            style: 'cards',
+            iconSize: 'large',
+            backgroundColor: '#FFFFFF',
+        },
+    },
+
+    imageBlock: {
+        type: 'imageBlock',
+        enabled: true,
+        props: {
+            src: '',
+            alt: 'Image',
+            caption: '',
+            linkUrl: '',
+            linkTarget: '_blank',
+            alignment: 'center',
+            maxWidth: '100%',
+            borderRadius: '8px',
+            aspectRatio: 'auto',
+        },
+    },
+
+    buttonBlock: {
+        type: 'buttonBlock',
+        enabled: true,
+        props: {
+            text: 'Get Started',
+            url: '',
+            target: '_self',
+            variant: 'filled',
+            size: 'large',
+            alignment: 'center',
+            backgroundColor: '',
+            textColor: '',
+            borderRadius: '8px',
+            fullWidth: false,
+        },
+    },
+
+    newsletterSignup: {
+        type: 'newsletterSignup',
+        enabled: true,
+        props: {
+            heading: 'Stay Updated',
+            subheading: 'Subscribe to our newsletter for the latest updates.',
+            placeholder: 'Enter your email',
+            buttonText: 'Subscribe',
+            layout: 'inline',
+            backgroundColor: '#F8FAFC',
+            successMessage: 'Thank you for subscribing!',
+        },
+    },
+
+    stepsProcess: {
+        type: 'stepsProcess',
+        enabled: true,
+        props: {
+            headerText: 'How It Works',
+            subheading: 'Get started in just a few steps',
+            layout: 'horizontal',
+            steps: [
+                { number: '1', title: 'Sign Up', description: 'Create your free account in seconds.' },
+                { number: '2', title: 'Choose a Course', description: 'Browse our catalog and pick what interests you.' },
+                { number: '3', title: 'Start Learning', description: 'Access your course materials and begin.' },
+            ],
+            connectorStyle: 'line',
+            backgroundColor: '#FFFFFF',
+            accentColor: '',
+        },
+    },
 };
 
 export const getComponentTemplate = (type: string): Component => {

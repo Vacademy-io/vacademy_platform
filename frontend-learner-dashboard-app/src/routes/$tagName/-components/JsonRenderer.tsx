@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Page, GlobalSettings, CourseCatalogueData } from "../-types/course-catalogue-types";
+import { buildComponentStyle, buildResponsiveCSS, getHoverClass, type ComponentStyle } from "../-utils/style-utils";
+import { CatalogueLink } from "./CatalogueLink";
 import { HeaderComponent } from "./components/HeaderComponent";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
@@ -176,6 +178,29 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "imageGallery":
         return <ImageGalleryRenderer key={id} {...props} />;
 
+      case "spacer":
+        return <SpacerRenderer key={id} {...props} />;
+      case "tabsAccordion":
+        return <TabsAccordionRenderer key={id} {...props} />;
+      case "logoCloud":
+        return <LogoCloudRenderer key={id} {...props} />;
+      case "mapEmbed":
+        return <MapEmbedRenderer key={id} {...props} />;
+      case "countdownTimer":
+        return <CountdownTimerRenderer key={id} {...props} />;
+      case "textBlock":
+        return <TextBlockRenderer key={id} {...props} />;
+      case "featureGrid":
+        return <FeatureGridRenderer key={id} {...props} />;
+      case "imageBlock":
+        return <ImageBlockRenderer key={id} {...props} />;
+      case "buttonBlock":
+        return <ButtonBlockRenderer key={id} {...props} />;
+      case "newsletterSignup":
+        return <NewsletterSignupRenderer key={id} {...props} />;
+      case "stepsProcess":
+        return <StepsProcessRenderer key={id} {...props} />;
+
       case "columnLayout": {
         const {
           slots = [] as any[][],
@@ -235,21 +260,31 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         const rendered = renderComponent(component);
         if (!rendered) return null;
 
+        const componentStyle = buildComponentStyle(component.style);
+        const responsiveCSS = buildResponsiveCSS(component.id, component.style);
+        const hoverClass = getHoverClass(component.style);
+        const hasOverlay = component.style?.backgroundImage && component.style?.backgroundOverlay;
+        const hasStyle = component.style && Object.keys(component.style).length > 0;
+
         if (isPreviewMode) {
           const isSelected = component.id === selectedComponentId;
           return (
             <div
               key={component.id}
+              id={component.anchorId || undefined}
               data-component-id={component.id}
+              data-cid={component.id}
               onClick={() => onComponentClick?.(component.id, page.id)}
-              className={`relative ${isSelected ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]' : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'}`}
-              style={{ cursor: 'pointer' }}
+              className={`relative ${component.style?.customClass || ''} ${hoverClass} ${isSelected ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]' : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'}`}
+              style={{ cursor: 'pointer', ...componentStyle }}
             >
-              {/* Transparent overlay prevents inner interactive elements from firing in preview mode */}
-              <div style={{ pointerEvents: 'none' }}>
+              {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
+              {hasOverlay && (
+                <div style={{ position: 'absolute', inset: 0, backgroundColor: component.style!.backgroundOverlay, zIndex: 0, borderRadius: componentStyle.borderRadius }} />
+              )}
+              <div style={{ pointerEvents: 'none', position: hasOverlay ? 'relative' : undefined, zIndex: hasOverlay ? 1 : undefined }}>
                 {rendered}
               </div>
-              {/* Selection label shown when this component is selected */}
               {isSelected && (
                 <div className="absolute top-0 left-0 z-50 bg-blue-500 text-white text-xs px-2 py-0.5 rounded-br-md font-medium select-none">
                   {component.type}
@@ -259,6 +294,19 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           );
         }
 
+        // Normal (non-preview) rendering with style wrapper
+        if (hasStyle) {
+          return (
+            <ComponentStyleWrapper key={component.id} component={component} componentStyle={componentStyle} responsiveCSS={responsiveCSS} hoverClass={hoverClass}>
+              {rendered}
+            </ComponentStyleWrapper>
+          );
+        }
+
+        // Plain rendering — still add anchor ID if present
+        if (component.anchorId) {
+          return <div key={component.id} id={component.anchorId}>{rendered}</div>;
+        }
         return <React.Fragment key={component.id}>{rendered}</React.Fragment>;
       })}
     </div>
@@ -337,9 +385,9 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
           {subheading && <p style={{ color: textColor, opacity: 0.85 }} className="mt-2 text-lg">{subheading}</p>}
         </div>
         {button?.enabled && (
-          <a href={button.target || '#'} className="mt-4 inline-block rounded-lg bg-white px-8 py-3 font-semibold shadow-md transition hover:opacity-90" style={{ color: backgroundColor }}>
+          <CatalogueLink to={button.target || '#'} className="mt-4 inline-block rounded-lg bg-white px-8 py-3 font-semibold shadow-md transition hover:opacity-90" style={{ color: backgroundColor }}>
             {button.text}
-          </a>
+          </CatalogueLink>
         )}
       </div>
     </section>
@@ -369,9 +417,9 @@ const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [
               ))}
             </ul>
             {plan.buttonText && (
-              <a href={plan.buttonTarget || '#'} className={`mt-8 block rounded-lg py-3 text-center font-semibold transition ${plan.highlighted ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-300 text-gray-900 hover:bg-gray-50'}`}>
+              <CatalogueLink to={plan.buttonTarget || '#'} className={`mt-8 block rounded-lg py-3 text-center font-semibold transition ${plan.highlighted ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-300 text-gray-900 hover:bg-gray-50'}`}>
                 {plan.buttonText}
-              </a>
+              </CatalogueLink>
             )}
           </div>
         ))}
@@ -482,3 +530,452 @@ const ImageGalleryRenderer: React.FC<any> = ({ headerText, images = [], columns 
     </div>
   </section>
 );
+
+/* ─── Spacer / Divider ─────────────────────────────────────────────────── */
+
+const SpacerRenderer: React.FC<any> = ({ height = '48px', showDivider = false, dividerStyle = 'solid', dividerColor = '#E5E7EB', dividerWidth = '1px', maxWidth = '100%' }) => (
+  <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    {showDivider && (
+      <hr style={{ borderTop: `${dividerWidth} ${dividerStyle} ${dividerColor}`, maxWidth, width: '100%', margin: '0 auto' }} />
+    )}
+  </div>
+);
+
+/* ─── Tabs / Accordion ─────────────────────────────────────────────────── */
+
+const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defaultOpen = 0, allowMultiple = false, backgroundColor = '#FFFFFF' }) => {
+  const [activeTab, setActiveTab] = React.useState(defaultOpen);
+  const [openIndices, setOpenIndices] = React.useState<Set<number>>(new Set([defaultOpen]));
+
+  const toggleAccordion = (i: number) => {
+    setOpenIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) {
+        next.delete(i);
+      } else {
+        if (!allowMultiple) next.clear();
+        next.add(i);
+      }
+      return next;
+    });
+  };
+
+  if (mode === 'accordion') {
+    return (
+      <section style={{ backgroundColor }} className="py-12 px-4">
+        <div className="mx-auto max-w-3xl space-y-2">
+          {items.map((item: any, i: number) => (
+            <div key={i} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <button onClick={() => toggleAccordion(i)} className="flex w-full items-center justify-between px-5 py-4 text-left font-medium text-gray-800 hover:bg-gray-50">
+                {item.title}
+                <span className={`text-gray-400 transition-transform ${openIndices.has(i) ? 'rotate-180' : ''}`}>&#9662;</span>
+              </button>
+              {openIndices.has(i) && (
+                <div className="px-5 pb-4 text-sm text-gray-600" dangerouslySetInnerHTML={{ __html: item.content || '' }} />
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section style={{ backgroundColor }} className="py-12 px-4">
+      <div className="mx-auto max-w-3xl">
+        <div className="flex border-b border-gray-200">
+          {items.map((item: any, i: number) => (
+            <button key={i} onClick={() => setActiveTab(i)}
+              className={`px-5 py-3 text-sm font-medium transition-colors ${i === activeTab ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+              {item.title}
+            </button>
+          ))}
+        </div>
+        {items[activeTab] && (
+          <div className="p-5 text-gray-600" dangerouslySetInnerHTML={{ __html: items[activeTab].content || '' }} />
+        )}
+      </div>
+    </section>
+  );
+};
+
+/* ─── Logo Cloud ───────────────────────────────────────────────────────── */
+
+const LogoCloudRenderer: React.FC<any> = ({ headerText, subheading, logos = [], layout = 'grid', grayscale = true, columns = 5 }) => (
+  <section className="py-12 px-4">
+    <div className="mx-auto max-w-5xl text-center">
+      {headerText && <h3 className="mb-2 text-lg font-semibold uppercase tracking-wider text-gray-400">{headerText}</h3>}
+      {subheading && <p className="mb-8 text-sm text-gray-500">{subheading}</p>}
+      {layout === 'marquee' ? (
+        <div className="overflow-hidden">
+          <div className="catalogue-marquee flex items-center gap-12">
+            {[...logos, ...logos].map((logo: any, i: number) => (
+              <LogoItem key={i} logo={logo} grayscale={grayscale} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className={`grid items-center justify-items-center gap-8 grid-cols-2 sm:grid-cols-3 ${columns >= 4 ? 'md:grid-cols-4' : ''} ${columns >= 5 ? 'lg:grid-cols-5' : ''} ${columns >= 6 ? 'xl:grid-cols-6' : ''}`}>
+          {logos.map((logo: any, i: number) => (
+            <LogoItem key={i} logo={logo} grayscale={grayscale} />
+          ))}
+        </div>
+      )}
+    </div>
+  </section>
+);
+
+const LogoItem: React.FC<{ logo: any; grayscale: boolean }> = ({ logo, grayscale }) => {
+  const img = logo.image ? (
+    <img src={logo.image} alt={logo.alt || ''} className={`h-10 w-auto object-contain transition ${grayscale ? 'grayscale hover:grayscale-0' : ''}`} />
+  ) : null;
+  if (logo.url && img) return <a href={logo.url} target="_blank" rel="noopener noreferrer">{img}</a>;
+  return img;
+};
+
+/* ─── Map Embed ────────────────────────────────────────────────────────── */
+
+const MapEmbedRenderer: React.FC<any> = ({ embedUrl, height = '400px', borderRadius = '8px', title }) => (
+  <section className="py-8 px-4">
+    <div className="mx-auto max-w-5xl">
+      {title && <h3 className="mb-4 text-xl font-semibold text-gray-800">{title}</h3>}
+      {embedUrl ? (
+        <iframe
+          src={embedUrl}
+          width="100%"
+          height={height}
+          style={{ border: 0, borderRadius }}
+          allowFullScreen
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          title={title || 'Map'}
+        />
+      ) : (
+        <div className="flex items-center justify-center rounded bg-gray-100 text-gray-400" style={{ height, borderRadius }}>
+          No map URL configured
+        </div>
+      )}
+    </div>
+  </section>
+);
+
+/* ─── Countdown Timer ──────────────────────────────────────────────────── */
+
+const CountdownTimerRenderer: React.FC<any> = ({ targetDate, heading, expiredMessage, backgroundColor = '#1E293B', textColor = '#FFFFFF', style = 'cards' }) => {
+  const [timeLeft, setTimeLeft] = React.useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const [expired, setExpired] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!targetDate || isNaN(new Date(targetDate).getTime())) return;
+    const tick = () => {
+      const diff = new Date(targetDate).getTime() - Date.now();
+      if (diff <= 0) { setExpired(true); return; }
+      setTimeLeft({
+        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
+        minutes: Math.floor((diff / (1000 * 60)) % 60),
+        seconds: Math.floor((diff / 1000) % 60),
+      });
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [targetDate]);
+
+  if (expired) {
+    return (
+      <section style={{ backgroundColor }} className="py-12 px-4 text-center">
+        <p className="text-xl font-semibold" style={{ color: textColor }}>{expiredMessage || 'The event has started!'}</p>
+      </section>
+    );
+  }
+
+  const units = [
+    { label: 'Days', value: timeLeft.days },
+    { label: 'Hours', value: timeLeft.hours },
+    { label: 'Mins', value: timeLeft.minutes },
+    { label: 'Secs', value: timeLeft.seconds },
+  ];
+
+  return (
+    <section style={{ backgroundColor }} className="py-12 px-4 text-center">
+      {heading && <h3 className="mb-8 text-xl font-bold" style={{ color: textColor }}>{heading}</h3>}
+      <div className="flex justify-center gap-4">
+        {units.map(({ label, value }) => (
+          <div key={label} className={style === 'cards' ? 'rounded-xl bg-white/10 px-6 py-4' : 'px-4'}>
+            <div className="text-4xl font-bold tabular-nums" style={{ color: textColor }}>
+              {String(value).padStart(2, '0')}
+            </div>
+            <div className="mt-1 text-xs uppercase tracking-wider" style={{ color: `${textColor}99` }}>
+              {label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+/* ─── Text Block ───────────────────────────────────────────────────────── */
+
+const TextBlockRenderer: React.FC<any> = ({ content = '', maxWidth = '800px', alignment = 'center' }) => (
+  <section className="py-8 px-4 sm:px-6 lg:px-8">
+    <div
+      className="catalogue-rich-text max-w-none"
+      style={{
+        maxWidth,
+        margin: alignment === 'center' ? '0 auto' : alignment === 'right' ? '0 0 0 auto' : undefined,
+      }}
+      dangerouslySetInnerHTML={{ __html: content }}
+    />
+  </section>
+);
+
+/* ─── Feature Grid ─────────────────────────────────────────────────────── */
+
+const FeatureGridRenderer: React.FC<any> = ({
+  headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor = '#FFFFFF',
+}) => {
+  const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
+  const cardClass =
+    style === 'cards' ? 'rounded-xl border border-gray-100 bg-white p-6 shadow-sm hover:shadow-md transition-shadow' :
+    style === 'bordered' ? 'rounded-xl border-2 border-gray-200 p-6' :
+    'p-6';
+
+  return (
+    <section style={{ backgroundColor }} className="py-16 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl">
+        {headerText && <h2 className="mb-2 text-center text-3xl font-bold text-gray-900">{headerText}</h2>}
+        {subheading && <p className="mb-10 text-center text-lg text-gray-500">{subheading}</p>}
+        <div
+          className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''}`}
+        >
+          {features.map((f: any, i: number) => (
+            <div key={i} className={`text-center ${cardClass}`}>
+              <div className={`mb-4 ${sizeMap[iconSize] || 'text-3xl'}`}>{f.image ? <img src={f.image} alt={f.title || ''} className="mx-auto h-12 w-12 object-contain" /> : (f.icon || '⭐')}</div>
+              <h4 className="mb-2 text-lg font-semibold text-gray-800">{f.title}</h4>
+              <p className="text-sm leading-relaxed text-gray-500">{f.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+/* ─── Image Block ──────────────────────────────────────────────────────── */
+
+const ImageBlockRenderer: React.FC<any> = ({ src, alt = '', caption, linkUrl, linkTarget = '_blank', alignment = 'center', maxWidth = '100%', borderRadius = '8px', aspectRatio = 'auto' }) => {
+  if (!src) return null;
+  const imgStyle: React.CSSProperties = { maxWidth, borderRadius, width: '100%', aspectRatio: aspectRatio !== 'auto' ? aspectRatio : undefined, objectFit: aspectRatio !== 'auto' ? 'cover' : undefined };
+  const img = <img src={src} alt={alt} style={imgStyle} className="h-auto" loading="lazy" />;
+  const wrapped = linkUrl ? <CatalogueLink to={linkUrl} target={linkTarget}>{img}</CatalogueLink> : img;
+
+  return (
+    <section className="py-6 px-4 sm:px-6 lg:px-8" style={{ textAlign: alignment as any }}>
+      <div style={{ display: 'inline-block', maxWidth }}>
+        {wrapped}
+        {caption && <p className="mt-3 text-sm text-gray-500">{caption}</p>}
+      </div>
+    </section>
+  );
+};
+
+/* ─── Button Block ─────────────────────────────────────────────────────── */
+
+const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target = '_self', variant = 'filled', size = 'large', alignment = 'center', backgroundColor = '', textColor = '', borderRadius = '8px', fullWidth = false }) => {
+  const bg = backgroundColor || 'var(--primary-500, #3B82F6)';
+  const fg = textColor || (variant === 'filled' ? '#FFFFFF' : bg);
+  const padding = size === 'small' ? '10px 24px' : size === 'large' ? '16px 40px' : '12px 32px';
+  const fontSize = size === 'small' ? '14px' : size === 'large' ? '18px' : '16px';
+
+  return (
+    <section className="py-8 px-4 sm:px-6 lg:px-8" style={{ textAlign: alignment as any }}>
+      <CatalogueLink
+        to={url || '#'}
+        target={target}
+        className={`inline-block font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] ${fullWidth ? 'w-full text-center' : ''}`}
+        style={{
+          padding,
+          fontSize,
+          backgroundColor: variant === 'filled' ? bg : 'transparent',
+          color: fg,
+          border: variant === 'outline' ? `2px solid ${bg}` : 'none',
+          borderRadius,
+          textDecoration: 'none',
+        }}
+      >
+        {text}
+      </CatalogueLink>
+    </section>
+  );
+};
+
+/* ─── Newsletter Signup ────────────────────────────────────────────────── */
+
+const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder = 'Enter your email', buttonText = 'Subscribe', layout = 'inline', backgroundColor = '#F8FAFC', successMessage }) => {
+  const [email, setEmail] = React.useState('');
+  const [submitted, setSubmitted] = React.useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (email) setSubmitted(true);
+  };
+
+  return (
+    <section style={{ backgroundColor }} className="py-14 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-lg text-center">
+        {heading && <h3 className="mb-2 text-2xl font-bold text-gray-900">{heading}</h3>}
+        {subheading && <p className="mb-6 text-gray-500">{subheading}</p>}
+        {submitted ? (
+          <p className="text-lg font-medium text-green-600">{successMessage || 'Thank you for subscribing!'}</p>
+        ) : (
+          <form onSubmit={handleSubmit} className={`flex ${layout === 'stacked' ? 'flex-col' : ''} gap-3`}>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={placeholder}
+              className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            />
+            <button
+              type="submit"
+              className="rounded-lg bg-blue-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-600 active:scale-[0.98]"
+              style={{ backgroundColor: 'var(--primary-500, #3B82F6)' }}
+            >
+              {buttonText}
+            </button>
+          </form>
+        )}
+      </div>
+    </section>
+  );
+};
+
+/* ─── Steps / Process ──────────────────────────────────────────────────── */
+
+const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 'horizontal', steps = [], connectorStyle = 'line', backgroundColor = '#FFFFFF', accentColor }) => {
+  const accent = accentColor || 'var(--primary-500, #3B82F6)';
+  const isHorizontal = layout !== 'vertical';
+
+  const connectorEl = (i: number) => {
+    if (i === steps.length - 1 || connectorStyle === 'none') return null;
+    if (isHorizontal) {
+      return (
+        <div className="hidden sm:flex flex-1 items-center px-2">
+          <div className="h-0.5 w-full" style={{
+            background: connectorStyle === 'dashed' ? `repeating-linear-gradient(to right, ${accent} 0, ${accent} 6px, transparent 6px, transparent 12px)` :
+                         connectorStyle === 'dots' ? `repeating-linear-gradient(to right, ${accent} 0, ${accent} 4px, transparent 4px, transparent 12px)` :
+                         accent,
+          }} />
+        </div>
+      );
+    }
+    return (
+      <div className="ml-5 flex justify-center" style={{ height: 24 }}>
+        <div className="w-0.5" style={{
+          height: '100%',
+          background: connectorStyle === 'dashed' ? `repeating-linear-gradient(to bottom, ${accent} 0, ${accent} 6px, transparent 6px, transparent 12px)` : accent,
+        }} />
+      </div>
+    );
+  };
+
+  return (
+    <section style={{ backgroundColor }} className="py-16 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-5xl">
+        {headerText && <h2 className="mb-2 text-center text-3xl font-bold text-gray-900">{headerText}</h2>}
+        {subheading && <p className="mb-10 text-center text-lg text-gray-500">{subheading}</p>}
+        <div className={isHorizontal ? 'flex flex-col sm:flex-row items-start justify-center' : 'flex flex-col'}>
+          {steps.map((step: any, i: number) => (
+            <React.Fragment key={i}>
+              <div className={`flex ${isHorizontal ? 'flex-1 flex-col items-center text-center' : 'items-start gap-4'}`}>
+                <div
+                  className="mb-3 flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-bold text-white shadow-md"
+                  style={{ backgroundColor: accent }}
+                >
+                  {step.icon || step.number || i + 1}
+                </div>
+                <div className={isHorizontal ? '' : 'pt-1'}>
+                  <h4 className="text-lg font-semibold text-gray-800">{step.title}</h4>
+                  <p className="mt-1 text-sm leading-relaxed text-gray-500">{step.description}</p>
+                </div>
+              </div>
+              {connectorEl(i)}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+/* ─── Component Style Wrapper with scroll animation ────────────────────── */
+
+const ComponentStyleWrapper: React.FC<{
+  component: any;
+  componentStyle: React.CSSProperties;
+  responsiveCSS: string;
+  hoverClass: string;
+  children: React.ReactNode;
+}> = ({ component, componentStyle, responsiveCSS, hoverClass, children }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  const entrance = component.style?.animation?.entrance;
+  const hasEntrance = entrance?.type && entrance.type !== 'none';
+  const hasOverlay = component.style?.backgroundImage && component.style?.backgroundOverlay;
+
+  useEffect(() => {
+    if (!hasEntrance || !ref.current) {
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [hasEntrance]);
+
+  const animationStyle: React.CSSProperties = hasEntrance
+    ? isVisible
+      ? {
+          animation: `catalogue-${entrance!.type} ${entrance!.duration ?? 600}ms ${entrance!.easing ?? 'ease-out'} ${entrance!.delay ?? 0}ms both`,
+        }
+      : { opacity: 0 }
+    : {};
+
+  return (
+    <div
+      ref={ref}
+      id={component.anchorId || undefined}
+      data-cid={component.id}
+      className={`${component.style?.customClass || ''} ${hoverClass}`}
+      style={{ ...componentStyle, ...animationStyle, position: hasOverlay ? 'relative' : undefined }}
+    >
+      {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
+      {hasOverlay && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundColor: component.style!.backgroundOverlay,
+            zIndex: 0,
+            borderRadius: componentStyle.borderRadius,
+          }}
+        />
+      )}
+      <div style={{ position: hasOverlay ? 'relative' : undefined, zIndex: hasOverlay ? 1 : undefined }}>
+        {children}
+      </div>
+    </div>
+  );
+};

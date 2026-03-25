@@ -1,0 +1,104 @@
+/* ─── Entrance Animations (triggered by IntersectionObserver) ─────────── */
+
+@keyframes catalogue-fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes catalogue-fadeInUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes catalogue-fadeInDown {
+    from { opacity: 0; transform: translateY(-30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes catalogue-fadeInLeft {
+    from { opacity: 0; transform: translateX(-30px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes catalogue-fadeInRight {
+    from { opacity: 0; transform: translateX(30px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes catalogue-scaleUp {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes catalogue-slideUp {
+    from { opacity: 0; transform: translateY(60px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Hover Effects ──────────────────────────────────────────────────── */
+
+.catalogue-hover-lift {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.catalogue-hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+.catalogue-hover-glow {
+    transition: box-shadow 0.3s ease;
+}
+.catalogue-hover-glow:hover {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3), 0 0 40px rgba(59, 130, 246, 0.1);
+}
+
+.catalogue-hover-scale {
+    transition: transform 0.3s ease;
+}
+.catalogue-hover-scale:hover {
+    transform: scale(1.02);
+}
+
+.catalogue-hover-brighten {
+    transition: filter 0.3s ease;
+}
+.catalogue-hover-brighten:hover {
+    filter: brightness(1.08);
+}
+
+/* ─── Logo Cloud Marquee ─────────────────────────────────────────────── */
+
+@keyframes catalogue-marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+
+.catalogue-marquee {
+    animation: catalogue-marquee 30s linear infinite;
+    width: max-content;
+}
+
+.catalogue-marquee:hover {
+    animation-play-state: paused;
+}
+
+/* ─── Rich Text Block Typography ─────────────────────────────────────── */
+
+.catalogue-rich-text {
+    color: #374151;
+    line-height: 1.75;
+}
+.catalogue-rich-text h1 { font-size: 2.25rem; font-weight: 800; margin: 0 0 0.75rem; color: #111827; line-height: 1.2; }
+.catalogue-rich-text h2 { font-size: 1.5rem; font-weight: 700; margin: 1.5rem 0 0.5rem; color: #111827; line-height: 1.3; }
+.catalogue-rich-text h3 { font-size: 1.25rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: #111827; line-height: 1.4; }
+.catalogue-rich-text p { margin: 0 0 1rem; }
+.catalogue-rich-text a { color: var(--primary-500, #3B82F6); text-decoration: underline; }
+.catalogue-rich-text a:hover { opacity: 0.8; }
+.catalogue-rich-text ul,
+.catalogue-rich-text ol { margin: 0 0 1rem; padding-left: 1.5rem; }
+.catalogue-rich-text li { margin-bottom: 0.25rem; }
+.catalogue-rich-text ul { list-style-type: disc; }
+.catalogue-rich-text ol { list-style-type: decimal; }
+.catalogue-rich-text strong { font-weight: 700; }
+.catalogue-rich-text em { font-style: italic; }
+.catalogue-rich-text blockquote { border-left: 4px solid #E5E7EB; padding-left: 1rem; margin: 1rem 0; color: #6B7280; font-style: italic; }

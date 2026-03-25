@@ -336,6 +336,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       className={`min-h-screen bg-white w-full pb-20 md:pb-0 md:pt-0${isDarkMode ? ' dark' : ''}`}
       data-catalogue-theme={themePreset}
       data-catalogue-radius={themeRadius}
+      data-heading-scale={catalogueData?.globalSettings?.theme?.headingScale || 'default'}
     >
       {/* Intro Page - Show first if enabled and not completed (hidden in preview mode) */}
       {showIntroPage && !isPreviewMode && catalogueData?.introPage && (
@@ -355,21 +356,23 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <>
           {/* Header from JSON globalSettings */}
           {(catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
-            <JsonRenderer
-              page={{
-                id: "header",
-                route: "header",
-                title: "Header",
-                components: [(catalogueData.globalSettings as any).layout.header]
-              }}
-              globalSettings={catalogueData.globalSettings}
-              instituteId={instituteId}
-              tagName={tagName}
-              catalogueData={catalogueData}
-              isPreviewMode={isPreviewMode}
-              selectedComponentId={selectedComponentId}
-              onComponentClick={handlePreviewComponentClick}
-            />
+            <div className={catalogueData.globalSettings.stickyHeader ? 'sticky top-0 z-50' : ''}>
+              <JsonRenderer
+                page={{
+                  id: "header",
+                  route: "header",
+                  title: "Header",
+                  components: [(catalogueData.globalSettings as any).layout.header]
+                }}
+                globalSettings={catalogueData.globalSettings}
+                instituteId={instituteId}
+                tagName={tagName}
+                catalogueData={catalogueData}
+                isPreviewMode={isPreviewMode}
+                selectedComponentId={selectedComponentId}
+                onComponentClick={handlePreviewComponentClick}
+              />
+            </div>
           )}
 
           {/* Header Section with Theme Colors - Only show if title exists in JSON */}
@@ -400,16 +403,17 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               return page.id === "home" || page.route === "homepage" || page.route === "/" || page.route === "";
             })
             .map((page) => (
-              <JsonRenderer
-                key={page.id}
-                page={page}
-                globalSettings={catalogueData.globalSettings}
-                instituteId={instituteId}
-                tagName={tagName}
-                isPreviewMode={isPreviewMode}
-                selectedComponentId={selectedComponentId}
-                onComponentClick={handlePreviewComponentClick}
-              />
+              <div key={page.id} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
+                <JsonRenderer
+                  page={page}
+                  globalSettings={catalogueData.globalSettings}
+                  instituteId={instituteId}
+                  tagName={tagName}
+                  isPreviewMode={isPreviewMode}
+                  selectedComponentId={selectedComponentId}
+                  onComponentClick={handlePreviewComponentClick}
+                />
+              </div>
             ))}
 
           {/* Footer from JSON globalSettings */}
@@ -496,6 +500,37 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Back to Top Button */}
+      {catalogueData?.globalSettings?.backToTop && !isPreviewMode && (
+        <BackToTopButton />
+      )}
     </div>
+  );
+};
+
+/* ─── Back to Top Button ───────────────────────────────────────────────── */
+
+const BackToTopButton = () => {
+  const [visible, setVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 400);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      className="fixed bottom-6 right-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-gray-800/80 text-white shadow-lg backdrop-blur transition-all hover:bg-gray-800 active:scale-95 md:bottom-8 md:right-8"
+      aria-label="Back to top"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m18 15-6-6-6 6" />
+      </svg>
+    </button>
   );
 };

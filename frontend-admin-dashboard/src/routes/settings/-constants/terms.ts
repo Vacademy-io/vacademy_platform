@@ -92,6 +92,7 @@ export const enum SettingsTabs {
     Payment = 'payment',
     Referral = 'referral',
     Course = 'course',
+    Assessment = 'assessment',
     Notification = 'notification',
     RoleDisplay = 'roleDisplay',
     StudentDisplay = 'studentDisplay',

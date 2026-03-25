@@ -867,7 +867,7 @@ public class ApplicantService {
 
                         // 2. Manage Parent User
                         // First check if parent exists via Mobile Number (similar to Admission logic)
-                        String parentMobile = getFormDataString(request.getFormData(), "parent_phone");
+                        String parentMobile = getPrimaryParentMobile(request.getFormData());
                         if (parentMobile != null && !parentMobile.isBlank()) {
                                 parentUser = authService.getUserByMobileNumber(parentMobile);
                         }
@@ -927,9 +927,9 @@ public class ApplicantService {
                                         .sourceType(sourceType)
                                         .sourceId(request.getSourceId())
                                         .enquiryId(null)
-                                        .parentName(getFormDataString(request.getFormData(), "parent_name"))
-                                        .parentEmail(getFormDataString(request.getFormData(), "parent_email"))
-                                        .parentMobile(getFormDataString(request.getFormData(), "parent_phone"))
+                                        .parentName(getPrimaryParentName(request.getFormData()))
+                                        .parentEmail(getPrimaryParentEmail(request.getFormData()))
+                                        .parentMobile(getPrimaryParentMobile(request.getFormData()))
                                         .overallStatus("ADMISSION".equals(workflowType) ? "ADMISSION" : "APPLICATION")
                                         .build();
                         audienceResponse = audienceResponseRepository.save(audienceResponse);
@@ -1131,7 +1131,7 @@ public class ApplicantService {
                                 student.setIdType("AADHAAR");
                         }
                         // Father details
-                        student.setFatherName(getFormDataString(formData, "fathers_name"));
+                        student.setFatherName(getFormDataString(formData, "father_name"));
                         student.setParentsMobileNumber(getFormDataString(formData, "father_mobile"));
                         student.setParentsEmail(getFormDataString(formData, "father_email"));
                         // student.setFatherAadhaar(getFormDataString(formData, "father_aadhaar"));
@@ -1140,7 +1140,7 @@ public class ApplicantService {
                         // student.setFatherOccupation(getFormDataString(formData,
                         // "father_occupation"));
                         // Mother details
-                        student.setMotherName(getFormDataString(formData, "mothers_name"));
+                        student.setMotherName(getFormDataString(formData, "mother_name"));
                         student.setParentToMotherMobileNumber(getFormDataString(formData, "mother_mobile"));
                         student.setParentsToMotherEmail(getFormDataString(formData, "mother_email"));
                         // student.setMotherAadhaar(getFormDataString(formData, "mother_aadhaar"));
@@ -1272,9 +1272,9 @@ public class ApplicantService {
          */
         private UserDTO createParentUser(ApplyRequestDTO request) {
                 UserDTO parentDTO = UserDTO.builder()
-                                .fullName(getFormDataString(request.getFormData(), "parent_name"))
-                                .mobileNumber(getFormDataString(request.getFormData(), "parent_phone"))
-                                .email(getFormDataString(request.getFormData(), "parent_email"))
+                                .fullName(getPrimaryParentName(request.getFormData()))
+                                .mobileNumber(getPrimaryParentMobile(request.getFormData()))
+                                .email(getPrimaryParentEmail(request.getFormData()))
                                 .isParent(true)
                                 .roles(List.of("PARENT"))
                                 .build();
@@ -2005,6 +2005,36 @@ public class ApplicantService {
                 Object value = formData.get(key);
                 return value != null ? value.toString() : null;
         }
+
+        private String firstNonBlank(String... values) {
+                if (values == null) return null;
+                for (String value : values) {
+                        if (value != null && !value.isBlank()) return value;
+                }
+                return null;
+        }
+
+        private String getPrimaryParentName(java.util.Map<String, Object> formData) {
+                return firstNonBlank(
+                                getFormDataString(formData, "parent_name"),
+                                getFormDataString(formData, "father_name"),
+                                getFormDataString(formData, "mother_name"));
+        }
+
+        private String getPrimaryParentMobile(java.util.Map<String, Object> formData) {
+                return firstNonBlank(
+                                getFormDataString(formData, "parent_phone"),
+                                getFormDataString(formData, "father_mobile"),
+                                getFormDataString(formData, "mother_mobile"));
+        }
+
+        private String getPrimaryParentEmail(java.util.Map<String, Object> formData) {
+                return firstNonBlank(
+                                getFormDataString(formData, "parent_email"),
+                                getFormDataString(formData, "father_email"),
+                                getFormDataString(formData, "mother_email"));
+        }
+
 
         /**
          * Get Parent with Children Details

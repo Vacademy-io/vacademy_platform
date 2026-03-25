@@ -8,6 +8,7 @@ import { X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { fetchEnquiryDetails } from '../../-services/applicant-services';
+import { AdmissionBulkImportDialog } from './AdmissionBulkImportDialog';
 
 export interface StudentSearchResult {
     id: string;
@@ -109,6 +110,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
     const sessions = useMemo(() => instituteDetails?.sessions ?? [], [instituteDetails]);
     const [selectedSessionId, setSelectedSessionId] = useState('');
+    const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
     const [initialLoadDone, setInitialLoadDone] = useState(false);
 
@@ -432,6 +434,14 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                         </svg>
                         Admission Form
                     </button>
+                    <MyButton
+                        buttonType="secondary"
+                        disabled={!selectedSessionId}
+                        onClick={() => setIsBulkImportOpen(true)}
+                        className="px-4 py-2"
+                    >
+                        Bulk Import
+                    </MyButton>
                 </div>
             </div>
 
@@ -925,6 +935,16 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                     </div>
                 </div>
             )}
+
+            <AdmissionBulkImportDialog
+                open={isBulkImportOpen}
+                onOpenChange={setIsBulkImportOpen}
+                sessionId={selectedSessionId}
+                onSuccess={() => {
+                    // Refresh current search results if user had already searched.
+                    handleSearch();
+                }}
+            />
         </div>
     );
 }

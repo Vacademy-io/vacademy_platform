@@ -91,8 +91,8 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                     </div>
                 ) : (
                     <>
-                    <ScrollArea className="max-h-[60vh]">
-                        <div className="space-y-6 pr-4">
+                        <ScrollArea className="max-h-[60vh]">
+                            <div className="space-y-6 pr-4">
                             {/* Invite Link Section */}
                             <div className="space-y-2">
                                 <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -257,15 +257,15 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
 
                             {/* Admins Section */}
                             <SubOrgAdminsSection subOrgId={subOrgId} />
-                        </div>
-                    </ScrollArea>
+                            </div>
+                        </ScrollArea>
 
-                    {/* Add User Section - outside ScrollArea so it is always visible */}
-                    <AddUserToSubOrgSection
-                        subOrgId={subOrgId}
-                        instituteId={instituteId || ''}
-                        scopedInvites={scopedInvites}
-                    />
+                        {/* Add User Section — outside ScrollArea so it's always visible */}
+                        <AddUserToSubOrgSection
+                            subOrgId={subOrgId}
+                            instituteId={instituteId || ''}
+                            scopedInvites={scopedInvites}
+                        />
                     </>
                 )}
             </DialogContent>

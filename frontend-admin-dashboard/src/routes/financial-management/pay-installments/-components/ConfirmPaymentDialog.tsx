@@ -15,6 +15,8 @@ interface ConfirmPaymentDialogProps {
     studentName: string;
     amount: number;
     installmentCount: number;
+    paymentMode?: string;
+    transactionId?: string;
     isSubmitting: boolean;
     onConfirm: () => void;
 }
@@ -25,6 +27,8 @@ export function ConfirmPaymentDialog({
     studentName,
     amount,
     installmentCount,
+    paymentMode,
+    transactionId,
     isSubmitting,
     onConfirm,
 }: ConfirmPaymentDialogProps) {
@@ -52,6 +56,22 @@ export function ConfirmPaymentDialog({
                                 {installmentCount}
                             </span>
                         </div>
+                        {paymentMode && (
+                            <div className="flex justify-between text-sm">
+                                <span className="text-gray-500">Payment Mode</span>
+                                <span className="font-semibold text-gray-800">
+                                    {paymentMode}
+                                </span>
+                            </div>
+                        )}
+                        {transactionId && (
+                            <div className="flex justify-between text-sm">
+                                <span className="text-gray-500">Transaction ID</span>
+                                <span className="font-semibold text-gray-800">
+                                    {transactionId}
+                                </span>
+                            </div>
+                        )}
                         <div className="flex justify-between text-sm">
                             <span className="text-gray-500">Amount</span>
                             <span className="font-bold text-lg text-blue-600">

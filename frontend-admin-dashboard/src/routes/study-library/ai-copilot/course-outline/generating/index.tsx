@@ -185,7 +185,7 @@ const SLIDE_ICON_MAP: Record<string, React.ReactNode> = {
     ),
     'ai-video-code': (
         <div className="flex items-center gap-1">
-            <Video className="size-4 text-purple-600" />
+            <Video className="size-4 text-blue-600" />
             <Code className="size-4 text-green-600" />
         </div>
     ),
@@ -550,6 +550,26 @@ export function RouteComponent() {
 
         const generateCourseOutline = async () => {
             try {
+                // Check if we're resuming from a saved draft
+                const resumeDraft = sessionStorage.getItem('resumeAiCourseDraft');
+                if (resumeDraft) {
+                    sessionStorage.removeItem('resumeAiCourseDraft');
+                    try {
+                        const draft = JSON.parse(resumeDraft);
+                        if (draft.slides?.length > 0) {
+                            setSlides(draft.slides);
+                            if (draft.courseMetadata) setCourseMetadata(draft.courseMetadata);
+                            if (draft.isContentGenerated) setIsContentGenerated(true);
+                            setIsGenerating(false);
+                            setGenerationProgress('');
+                            toast.success('Draft restored');
+                            return;
+                        }
+                    } catch {
+                        // Fall through to normal generation
+                    }
+                }
+
                 // Get courseConfig from sessionStorage (do NOT remove yet — only after success)
                 const courseConfigStr = sessionStorage.getItem('courseConfig');
                 if (!courseConfigStr) {
@@ -642,6 +662,13 @@ export function RouteComponent() {
                 // Append all requirements as comma-separated list
                 if (requirements.length > 0) {
                     userPrompt += ', ' + requirements.join(', ');
+                }
+
+                // Append reference URLs so the AI can use them as context
+                const refUrls = courseConfig.references?.urls?.filter((u: string) => u);
+                if (refUrls && refUrls.length > 0) {
+                    userPrompt += '\n\nYou can use the following reference URLs for context:\n' +
+                        refUrls.map((u: string) => `- ${u}`).join('\n');
                 }
 
                 // Debug: Log final user prompt
@@ -1513,18 +1540,25 @@ export function RouteComponent() {
     };
 
     const handleSaveToDrafts = () => {
-        // Save current course data to drafts
-        const courseData = {
-            sessions: sessionsWithProgress,
-            slides: slides,
+        // Save current course state so it can be resumed in the same view
+        const parsedConfig = JSON.parse(sessionStorage.getItem('courseConfig') || 'null');
+        const draftTitle =
+            courseMetadata?.courseTitle ||
+            parsedConfig?.courseGoal?.substring(0, 60) ||
+            sessionsWithProgress?.[0]?.sessionTitle ||
+            '';
+        const draftData = {
+            slides,
+            courseMetadata,
+            isContentGenerated,
+            draftTitle,
+            courseConfig: parsedConfig,
             timestamp: new Date().toISOString(),
         };
-        // Get existing drafts or initialize empty array
-        const existingDrafts = JSON.parse(localStorage.getItem('courseDrafts') || '[]');
-        existingDrafts.push(courseData);
-        localStorage.setItem('courseDrafts', JSON.stringify(existingDrafts));
+        localStorage.setItem('aiCourseDraft', JSON.stringify(draftData));
+        toast.success('Course draft saved');
         setBackToLibraryDialogOpen(false);
-        navigate({ to: '/study-library/ai-copilot/course-outline' });
+        navigate({ to: '/study-library/ai-copilot' });
     };
 
     // Countdown timer for estimated time
@@ -1551,7 +1585,7 @@ export function RouteComponent() {
         return (
             <LayoutContainer>
                 <Helmet>
-                    <title>Generating Course Outline...</title>
+                    <title>{`Generating ${getTerminology(ContentTerms.Course, SystemTerms.Course)} Outline...`}</title>
                 </Helmet>
                 <OutlineGeneratingLoader estimatedTimeRemaining={estimatedTimeRemaining} />
             </LayoutContainer>
@@ -1616,7 +1650,7 @@ export function RouteComponent() {
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Review Course Outline</title>
+                <title>{`Review ${getTerminology(ContentTerms.Course, SystemTerms.Course)} Outline`}</title>
                 <meta
                     name="description"
                     content="Review and refine your AI-generated course outline."
@@ -1637,7 +1671,7 @@ export function RouteComponent() {
                                 className="flex items-center gap-2 self-start text-sm font-medium text-neutral-600 transition-colors hover:text-indigo-600"
                             >
                                 <ArrowLeft className="size-4" />
-                                <span className="hidden sm:inline">Back to Create Course</span>
+                                <span className="hidden sm:inline">{`Back to Create ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`}</span>
                                 <span className="sm:hidden">Back</span>
                             </button>
 
@@ -1668,7 +1702,7 @@ export function RouteComponent() {
                                         ) : (
                                             <CheckCircle className="h-4 w-4 mr-1" />
                                         )}
-                                        {isAdmin ? 'Create Course' : 'Create Draft Course'}
+                                        {isAdmin ? `Create ${getTerminology(ContentTerms.Course, SystemTerms.Course)}` : `Create Draft ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`}
                                     </MyButton>
                                 ) : (
                                     <MyButton
@@ -1692,7 +1726,7 @@ export function RouteComponent() {
 
                         <div>
                             <h1 className="mb-2 text-xl font-semibold text-neutral-900 sm:text-2xl lg:text-3xl">
-                                Step 1: Review Your Course Outline
+                                Step 1: Review Your {getTerminology(ContentTerms.Course, SystemTerms.Course)} Outline
                             </h1>
                             <p className="text-sm text-gray-600 sm:text-base">
                                 Review the course outline, topics, and objectives generated for your
@@ -1714,7 +1748,7 @@ export function RouteComponent() {
                             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                 <h2 className="flex items-center gap-2 text-lg font-semibold text-neutral-900 sm:text-2xl">
                                     <Layers className="size-5 text-indigo-600 sm:size-6" />
-                                    {isContentGenerated ? 'Course Content' : 'Course Outline'}
+                                    {isContentGenerated ? `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Content` : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Outline`}
                                 </h2>
                                 <div className="flex gap-2">
                                     <MyButton

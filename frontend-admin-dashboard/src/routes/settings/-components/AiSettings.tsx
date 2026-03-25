@@ -238,6 +238,10 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const [videoTemplates, setVideoTemplates] = useState<VideoTemplate[]>([]);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
 
+    // AI Copilot (Course Creator) settings
+    const [courseCreatorName, setCourseCreatorName] = useState('');
+    const [isSavingCopilot, setIsSavingCopilot] = useState(false);
+
     const instituteId = getInstituteId();
 
     // Check if keys exist
@@ -318,6 +322,42 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
             console.error('Error fetching tutor settings:', error);
         }
     }, [instituteId]);
+
+    // Fetch AI Copilot settings
+    const fetchCopilotSettings = useCallback(async () => {
+        if (!instituteId) return;
+        try {
+            const response = await authenticatedAxiosInstance.get(GET_INSITITUTE_SETTINGS, {
+                params: { instituteId, settingKey: 'AI_COPILOT_SETTING' },
+            });
+            if (response.data?.data) {
+                const data = response.data.data;
+                setCourseCreatorName(data.course_creator_name || '');
+                // Cache in localStorage for fast access by AI copilot pages
+                localStorage.setItem('ai_copilot_setting', JSON.stringify(data));
+            }
+        } catch { /* no settings yet */ }
+    }, [instituteId]);
+
+    const handleSaveCopilotSettings = async () => {
+        if (!instituteId) return;
+        setIsSavingCopilot(true);
+        try {
+            const settingData = { course_creator_name: courseCreatorName.trim() || '' };
+            await authenticatedAxiosInstance.post(
+                `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`,
+                { setting_name: 'AI Copilot Configuration', setting_data: settingData },
+                { params: { instituteId, settingKey: 'AI_COPILOT_SETTING' } },
+            );
+            // Update localStorage cache
+            localStorage.setItem('ai_copilot_setting', JSON.stringify(settingData));
+            toast.success('AI Course Creator settings saved!');
+        } catch {
+            toast.error('Failed to save AI Course Creator settings');
+        } finally {
+            setIsSavingCopilot(false);
+        }
+    };
 
     // Fetch Institute AI Settings
     const fetchInstituteAiSettings = useCallback(async () => {
@@ -482,6 +522,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
             await Promise.all([
                 checkKeys(),
                 fetchTutorSettings(),
+                fetchCopilotSettings(),
                 fetchInstituteAiSettings(),
                 fetchVideoBranding(),
                 fetchVideoStyle(),
@@ -490,7 +531,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
             setIsLoading(false);
         };
         initialize();
-    }, [checkKeys, fetchTutorSettings, fetchInstituteAiSettings, fetchVideoBranding, fetchVideoStyle, fetchVideoTemplates]);
+    }, [checkKeys, fetchTutorSettings, fetchCopilotSettings, fetchInstituteAiSettings, fetchVideoBranding, fetchVideoStyle, fetchVideoTemplates]);
 
     // Fetch activity logs when page changes
     useEffect(() => {
@@ -1136,6 +1177,48 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                 </>
                             )}
                         </MyButton>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* AI Course Creator Configuration Card */}
+            <Card className="border-indigo-100 shadow-sm">
+                <CardHeader className="border-b border-indigo-50 bg-indigo-50/30">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="rounded-lg bg-indigo-500 p-2 text-white">
+                                <Sparkles className="size-5" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-xl">Course AI</CardTitle>
+                                <CardDescription>
+                                    Configure the AI-powered course creation tool name and branding
+                                </CardDescription>
+                            </div>
+                        </div>
+                        <MyButton
+                            buttonType="primary"
+                            scale="small"
+                            onClick={handleSaveCopilotSettings}
+                            disabled={isSavingCopilot}
+                        >
+                            <Save className="mr-1 size-4" />
+                            {isSavingCopilot ? 'Saving...' : 'Save'}
+                        </MyButton>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-4 pt-4">
+                    <div className="space-y-1.5">
+                        <Label>Product Name</Label>
+                        <Input
+                            value={courseCreatorName}
+                            onChange={(e) => setCourseCreatorName(e.target.value)}
+                            placeholder="e.g. CourseCrafter AI, CourseBot, AI Studio"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            This name appears as the heading and branding on the AI course creation screen.
+                            Leave empty to use the default "AI".
+                        </p>
                     </div>
                 </CardContent>
             </Card>

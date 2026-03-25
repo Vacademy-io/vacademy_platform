@@ -108,6 +108,8 @@ export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: Ses
 
             setCreationProgress('Course created successfully!');
             toast.success('Course created successfully!');
+            // Clear saved draft since course is now created
+            localStorage.removeItem('aiCourseDraft');
 
             // Navigate to the course details page
             console.log('[Course Creation] Navigating to course:', result.courseId);

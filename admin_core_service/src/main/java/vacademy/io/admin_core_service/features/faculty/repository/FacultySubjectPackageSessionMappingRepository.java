@@ -165,6 +165,7 @@ public interface FacultySubjectPackageSessionMappingRepository
             AND f.access_type = 'PACKAGE_SESSION'
             AND pi.institute_id = :instituteId
             AND f.status IN (:statusList)
+            AND ps.status IN (:statusList)
           UNION
           SELECT f.package_session_id AS ps_id
           FROM faculty_subject_package_session_mapping f
@@ -175,6 +176,7 @@ public interface FacultySubjectPackageSessionMappingRepository
             AND f.package_session_id IS NOT NULL
             AND pi.institute_id = :instituteId
             AND f.status IN (:statusList)
+            AND ps.status IN (:statusList)
       ) combined
       """, nativeQuery = true)
   List<String> findAccessIdsByUserIdAndInstituteId(

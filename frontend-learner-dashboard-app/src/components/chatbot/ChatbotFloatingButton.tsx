@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { MessageCircle, Sparkles, HelpCircle, BookOpen } from "lucide-react";
 import { useLocation } from "@tanstack/react-router";
+import { Capacitor } from "@capacitor/core";
 import { useChatbotContext } from "./useChatbotContext";
 import { cn } from "@/lib/utils";
 import { avatarUrl } from "@/services/chatbot-settings";
@@ -21,6 +22,7 @@ export const ChatbotFloatingButton = () => {
 
   // Move button higher on video/slide pages to avoid overlapping player controls
   const isOnVideoPage = location.pathname.includes("/slides") || location.pathname.includes("/content");
+  const isNativePlatform = Capacitor.getPlatform() === "android" || Capacitor.getPlatform() === "ios";
 
   const [isHovered, setIsHovered] = useState(false);
   const [activeMessageIndex, setActiveMessageIndex] = useState(0);
@@ -96,7 +98,8 @@ export const ChatbotFloatingButton = () => {
   return (
     <div className={cn(
       "fixed right-6 z-[990] flex flex-col items-end gap-3 pointer-events-none",
-      isOnVideoPage ? "bottom-20" : "bottom-6"
+      isOnVideoPage ? "bottom-20" : "bottom-6",
+      isNativePlatform && "mb-10"
     )}>
       
       {/* Long Prompt Bubble (appears above) */}

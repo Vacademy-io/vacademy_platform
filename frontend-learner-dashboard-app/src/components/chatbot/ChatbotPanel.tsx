@@ -17,6 +17,7 @@ import {
   Loader2,
   Mic,
 } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,6 +102,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   // Always use docked mode on desktop - the floating panel is no longer needed
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
   const shouldUseDockedMode = isDockedMode || isDesktop;
+  const isNativePlatform = Capacitor.getPlatform() === "android" || Capacitor.getPlatform() === "ios";
 
   // Panel dimensions and position
   const [panelSize, setPanelSize] = useState({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
@@ -381,7 +383,9 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
               style={
                 isFullScreen
-                  ? { left: 0, top: 0, right: 0, bottom: 0, width: "100%", height: "100%" }
+                  ? isNativePlatform
+                    ? { left: 0, right: 0, width: "100%", top: "2.5rem", bottom: "2.5rem" }
+                    : { left: 0, top: 0, right: 0, bottom: 0, width: "100%", height: "100%" }
                   : {
                       left: panelPosition.x,
                       top: panelPosition.y,
@@ -392,7 +396,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
               className={cn(
                 "fixed z-[10001] flex flex-col bg-background border border-border rounded-xl shadow-2xl overflow-hidden",
                 isDragging && "cursor-grabbing",
-                isFullScreen && "rounded-none",
+                isFullScreen && !isNativePlatform && "rounded-none",
                 isDragOver && "ring-2 ring-inset ring-primary/50"
               )}
               onDrop={handleFileDrop}

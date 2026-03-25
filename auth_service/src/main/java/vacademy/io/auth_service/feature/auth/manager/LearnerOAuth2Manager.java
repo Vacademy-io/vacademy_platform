@@ -1,6 +1,7 @@
 package vacademy.io.auth_service.feature.auth.manager;
 
 import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
+import vacademy.io.auth_service.feature.user.service.UserSessionService;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

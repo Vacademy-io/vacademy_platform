@@ -395,6 +395,17 @@ public class CustomOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
     private void redirectWithTokens(HttpServletResponse response, String redirectUrl, JwtResponseDto jwtResponseDto)
             throws IOException {
+        // Session limit exceeded — redirect with error so frontend can show the popup
+        if (jwtResponseDto.isSessionLimitExceeded()) {
+            log.info("Session limit exceeded during OAuth2 login. Redirecting with session_limit_exceeded flag.");
+            String separator = redirectUrl.contains("?") ? "&" : "?";
+            String limitRedirectUrl = String.format(
+                    "%s%ssession_limit_exceeded=true",
+                    redirectUrl, separator);
+            response.sendRedirect(limitRedirectUrl);
+            return;
+        }
+
         log.info("Redirecting after login success to base URL: {} (tokens omitted)", redirectUrl);
         String separator = redirectUrl.contains("?") ? "&" : "?";
         String tokenizedRedirectUrl = String.format(

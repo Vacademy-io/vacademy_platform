@@ -628,5 +628,5 @@ export const GET_CPO_FULL_DETAILS = (cpoId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${cpoId}/full`;
 
 // Offline Data Entry
-export const OFFLINE_CREATE_ATTEMPT = `${'http://localhost:8074'}/assessment-service/assessment/offline-entry/create-attempt`;
-export const OFFLINE_SUBMIT_RESPONSES = `${'http://localhost:8074'}/assessment-service/assessment/offline-entry/submit-responses`;
+export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;
+export const OFFLINE_SUBMIT_RESPONSES = `${BASE_URL}/assessment-service/assessment/offline-entry/submit-responses`;

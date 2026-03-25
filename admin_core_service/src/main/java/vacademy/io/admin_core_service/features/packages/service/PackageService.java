@@ -146,6 +146,8 @@ public class PackageService {
                     projection.getPackageSessionName(),
                     projection.getLevelId(),
                     projection.getLevelName(),
+                    projection.getSessionId(),
+                    projection.getSessionName(),
                     projection.getDripConditionJson(),
                     instructors,
                     projection.getLevelIds(),

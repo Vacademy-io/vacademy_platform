@@ -51,6 +51,10 @@ public interface PackageDetailProjection {
 
     String getLevelName();
 
+    String getSessionId();
+
+    String getSessionName();
+
     List<String> getFacultyUserIds();
 
     /** Package creator user id (for instructor fallback when no faculty mapped). */

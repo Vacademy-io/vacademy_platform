@@ -83,7 +83,7 @@ export const ADD_EMAIL_ASSET = `${SYSTEM_FILES_BASE}/add`;
 export const LIST_EMAIL_ASSETS = `${SYSTEM_FILES_BASE}/list`;
 export const GET_MY_FILES = `${SYSTEM_FILES_BASE}/my-files`;
 
-export const COURSE_CATALOG_URL = `${BASE_URL}/admin-core-service/packages/v1/search`;
+export const COURSE_CATALOG_URL = `http://localhost:8072/admin-core-service/packages/v1/search`;
 export const PACKAGE_AUTOCOMPLETE_URL = `${BASE_URL}/admin-core-service/packages/v1/autocomplete`;
 export const COURSE_CATALOG_TEACHER_URL = `${BASE_URL}/admin-core-service/v1/package/package-request/search`;
 export const GET_DASHBOARD_URL = `${BASE_URL}/admin-core-service/institute/v1/get-dashboard`;

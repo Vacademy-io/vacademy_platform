@@ -800,6 +800,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 l.id AS levelId,
                 l.level_name AS levelName,
 
+                ses.id AS sessionId,
+                ses.session_name AS sessionName,
+
                 ARRAY_REMOVE(
                     ARRAY_AGG(DISTINCT
                         CASE
@@ -816,6 +819,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
             JOIN level l ON l.id = ps.level_id
+            JOIN session ses ON ses.id = ps.session_id
             JOIN package_institute pi ON pi.package_id = p.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
@@ -908,14 +912,15 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                 p.course_depth, p.course_html_description, p.created_at,
-                ps.id, ps.name, l.id, l.level_name /* 3. Added Grouping by Session */
+                ps.id, ps.name, l.id, l.level_name, ses.id, ses.session_name
             """,
 
             countQuery = """
-                        SELECT COUNT(DISTINCT ps.id) /* 4. Count Sessions, not Packages */
+                        SELECT COUNT(DISTINCT ps.id)
                         FROM package p
                         JOIN package_session ps ON ps.package_id = p.id
                         JOIN level l ON l.id = ps.level_id
+                        JOIN session ses ON ses.id = ps.session_id
                         JOIN package_institute pi ON pi.package_id = p.id
                         LEFT JOIN faculty_subject_package_session_mapping fspm
                             ON fspm.package_session_id = ps.id
@@ -1020,6 +1025,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 l.id AS levelId,
                 l.level_name AS levelName,
 
+                ses.id AS sessionId,
+                ses.session_name AS sessionName,
+
                 ARRAY_REMOVE(
                     ARRAY_AGG(DISTINCT
                         CASE
@@ -1034,6 +1042,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
             JOIN level l ON l.id = ps.level_id
+            JOIN session ses ON ses.id = ps.session_id
             LEFT JOIN faculty_subject_package_session_mapping fspm ON fspm.package_session_id = ps.id
 
             WHERE p.id = :packageId
@@ -1047,7 +1056,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                 p.course_depth, p.course_html_description, p.created_at,
-                ps.id, ps.name, l.id, l.level_name
+                ps.id, ps.name, l.id, l.level_name, ses.id, ses.session_name
 
             ORDER BY p.created_at DESC
             LIMIT 1
@@ -1103,6 +1112,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     l.id AS levelId,
                     l.level_name AS levelName,
 
+                    ses.id AS sessionId,
+                    ses.session_name AS sessionName,
+
                     ARRAY_REMOVE(
                         ARRAY_AGG(DISTINCT
                             CASE
@@ -1120,6 +1132,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
                 JOIN level l ON l.id = ps.level_id
+                JOIN session ses ON ses.id = ps.session_id
                 JOIN package_institute pi ON pi.package_id = p.id
 
                 LEFT JOIN faculty_subject_package_session_mapping fspm
@@ -1211,14 +1224,15 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                     p.course_depth, p.course_html_description, p.created_at,
-                    ps.id, ps.name, l.id, l.level_name /* 3. Added Grouping by Session */
+                    ps.id, ps.name, l.id, l.level_name, ses.id, ses.session_name
             """,
 
             countQuery = """
-                    SELECT COUNT(DISTINCT ps.id) /* 4. Count Sessions, not Packages */
+                    SELECT COUNT(DISTINCT ps.id)
                     FROM package p
                     JOIN package_session ps ON ps.package_id = p.id
                     JOIN level l ON l.id = ps.level_id
+                    JOIN session ses ON ses.id = ps.session_id
                     JOIN package_institute pi ON pi.package_id = p.id
                     LEFT JOIN faculty_subject_package_session_mapping fspm
                         ON fspm.package_session_id = ps.id

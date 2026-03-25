@@ -1,155 +1,468 @@
-import { useState } from 'react';
-import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { MagnifyingGlass, BookOpen } from '@phosphor-icons/react';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { MagnifyingGlass, BookOpen, FunnelSimple, X, CaretDown } from '@phosphor-icons/react';
 import { SelectedPackageSession } from '../../../../-types/bulk-assign-types';
 import { cn } from '@/lib/utils';
+import { getAllCoursesWithFilters } from '@/routes/study-library/courses/-services/courses-services';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import type {
+    CourseItem,
+    AllCourseFilters,
+} from '@/routes/study-library/courses/-components/course-material';
 
 interface Props {
     selectedPackageSessions: SelectedPackageSession[];
     onSelectedPackageSessionsChange: (sessions: SelectedPackageSession[]) => void;
 }
 
+function useDebounce<T>(value: T, delay: number): T {
+    const [debounced, setDebounced] = useState(value);
+    useEffect(() => {
+        const t = setTimeout(() => setDebounced(value), delay);
+        return () => clearTimeout(t);
+    }, [value, delay]);
+    return debounced;
+}
+
+const BASE_FILTERS: AllCourseFilters = {
+    status: ['ACTIVE'],
+    level_ids: [],
+    tag: [],
+    faculty_ids: [],
+    search_by_name: '',
+    min_percentage_completed: 0,
+    max_percentage_completed: 0,
+    sort_columns: { created_at: 'DESC' },
+    package_ids: [],
+    package_session_ids: [],
+};
+
 export const Step2CourseSelector = ({
     selectedPackageSessions,
     onSelectedPackageSessionsChange,
 }: Props) => {
+    const instituteId = getCurrentInstituteId();
+
     const [searchQuery, setSearchQuery] = useState('');
-    const { getPackageWiseLevels } = useInstituteDetailsStore();
+    const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]);
+    const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([]);
+    const debouncedSearch = useDebounce(searchQuery, 400);
 
-    const packageGroups = getPackageWiseLevels();
+    // Unfiltered call to extract dropdown options (levels/sessions)
+    const { data: allData, isLoading: isAllLoading } = useQuery({
+        queryKey: ['STEP2_ALL_COURSES', instituteId],
+        queryFn: () => getAllCoursesWithFilters(0, 200, instituteId, BASE_FILTERS),
+        enabled: !!instituteId,
+        staleTime: 1000 * 60 * 5,
+    });
 
-    const filtered = packageGroups
-        .map((group) => ({
-            ...group,
-            level: group.level.filter((l) =>
-                searchQuery
-                    ? group.package_dto.package_name
-                          .toLowerCase()
-                          .includes(searchQuery.toLowerCase()) ||
-                      l.level_dto.level_name
-                          .toLowerCase()
-                          .includes(searchQuery.toLowerCase())
-                    : true
-            ),
-        }))
-        .filter((g) => g.level.length > 0);
+    // Build filter options from the unfiltered response
+    const { levelOptions, sessionOptions } = useMemo(() => {
+        const items: CourseItem[] = allData?.content ?? [];
+        const levelMap = new Map<string, string>();
+        const sessionMap = new Map<string, string>();
+        items.forEach((item) => {
+            if (item.level_id && item.level_name) levelMap.set(item.level_id, item.level_name);
+            if (item.session_id && item.session_name)
+                sessionMap.set(item.session_id, item.session_name);
+        });
+        return {
+            levelOptions: Array.from(levelMap, ([id, name]) => ({ id, name })),
+            sessionOptions: Array.from(sessionMap, ([id, name]) => ({ id, name })),
+        };
+    }, [allData]);
 
-    const isSelected = (packageSessionId: string) =>
-        selectedPackageSessions.some((s) => s.packageSessionId === packageSessionId);
+    // Build the filtered query
+    const filters: AllCourseFilters = useMemo(
+        () => ({
+            ...BASE_FILTERS,
+            search_by_name: debouncedSearch || '',
+            level_ids: selectedLevelIds,
+            // The search API doesn't have a direct session_ids filter in its DTO,
+            // but we can filter client-side after the response
+        }),
+        [debouncedSearch, selectedLevelIds]
+    );
 
-    const toggle = (
-        group: ReturnType<typeof getPackageWiseLevels>[number],
-        levelEntry: ReturnType<typeof getPackageWiseLevels>[number]['level'][number]
-    ) => {
-        const psId = levelEntry.package_session_id;
-        if (isSelected(psId)) {
-            onSelectedPackageSessionsChange(
-                selectedPackageSessions.filter((s) => s.packageSessionId !== psId)
-            );
-        } else {
-            const newSession: SelectedPackageSession = {
-                packageSessionId: psId,
-                courseName: group.package_dto.package_name,
-                sessionName: '', // resolved via store if needed
-                levelName: levelEntry.level_dto.level_name,
-                enrollInviteId: null,
-                accessDays: null,
-            };
-            onSelectedPackageSessionsChange([...selectedPackageSessions, newSession]);
-        }
+    const hasActiveSearch = !!debouncedSearch || selectedLevelIds.length > 0;
+
+    // Filtered call — only fires when there are active filters, otherwise use allData
+    const { data: filteredData, isLoading: isFilteredLoading } = useQuery({
+        queryKey: ['STEP2_FILTERED_COURSES', instituteId, filters],
+        queryFn: () => getAllCoursesWithFilters(0, 200, instituteId, filters),
+        enabled: !!instituteId && hasActiveSearch,
+        staleTime: 1000 * 30,
+    });
+
+    const rawItems: CourseItem[] = hasActiveSearch
+        ? (filteredData?.content ?? [])
+        : (allData?.content ?? []);
+
+    // Apply session filter client-side (the search API filters by level_ids but
+    // doesn't have a dedicated session_ids filter in the DTO)
+    const items = useMemo(() => {
+        if (selectedSessionIds.length === 0) return rawItems;
+        return rawItems.filter((item) => selectedSessionIds.includes(item.session_id));
+    }, [rawItems, selectedSessionIds]);
+
+    // Group by package for display
+    const groups = useMemo(() => {
+        const map: Record<string, { packageName: string; items: CourseItem[] }> = {};
+        items.forEach((item) => {
+            if (!map[item.id]) {
+                map[item.id] = { packageName: item.package_name, items: [] };
+            }
+            map[item.id]!.items.push(item);
+        });
+        return Object.entries(map).map(([pkgId, group]) => ({
+            id: pkgId,
+            packageName: group.packageName,
+            batches: group.items,
+        }));
+    }, [items]);
+
+    const isLoading = isAllLoading || (hasActiveSearch && isFilteredLoading);
+
+    const isSelected = useCallback(
+        (packageSessionId: string) =>
+            selectedPackageSessions.some((s) => s.packageSessionId === packageSessionId),
+        [selectedPackageSessions]
+    );
+
+    const toggle = useCallback(
+        (item: CourseItem) => {
+            const psId = item.package_session_id;
+            if (isSelected(psId)) {
+                onSelectedPackageSessionsChange(
+                    selectedPackageSessions.filter((s) => s.packageSessionId !== psId)
+                );
+            } else {
+                onSelectedPackageSessionsChange([
+                    ...selectedPackageSessions,
+                    {
+                        packageSessionId: psId,
+                        courseName: item.package_name,
+                        sessionName: item.session_name ?? '',
+                        levelName: item.level_name,
+                        enrollInviteId: null,
+                        accessDays: null,
+                    },
+                ]);
+            }
+        },
+        [isSelected, selectedPackageSessions, onSelectedPackageSessionsChange]
+    );
+
+    const activeFilterCount = selectedLevelIds.length + selectedSessionIds.length;
+
+    const clearFilters = () => {
+        setSelectedLevelIds([]);
+        setSelectedSessionIds([]);
     };
 
     return (
         <div className="flex flex-col gap-4 px-6 py-5">
             {/* Selection summary */}
             {selectedPackageSessions.length > 0 && (
-                <div className="rounded-lg border border-primary-200 bg-primary-50 px-4 py-2 text-sm text-primary-700">
+                <div className="flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2 text-sm text-primary-700">
                     <span className="font-semibold">{selectedPackageSessions.length}</span>{' '}
-                    course{selectedPackageSessions.length !== 1 ? 's' : ''} selected — students
-                    will be enrolled in all selected courses.
+                    batch{selectedPackageSessions.length !== 1 ? 'es' : ''} selected — students
+                    will be enrolled in all selected.
                 </div>
             )}
 
-            {/* Search */}
-            <div className="relative">
-                <MagnifyingGlass
-                    size={16}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
-                />
-                <Input
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search courses or levels…"
-                    className="pl-9"
-                />
+            {/* Search + Filter row */}
+            <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                    <MagnifyingGlass
+                        size={15}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                    />
+                    <Input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search courses, levels…"
+                        className="h-9 pl-9 text-sm"
+                    />
+                </div>
+
+                {/* Level filter */}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                                'h-9 gap-1.5 text-xs font-medium',
+                                selectedLevelIds.length > 0 &&
+                                    'border-primary-300 bg-primary-50 text-primary-700'
+                            )}
+                        >
+                            <FunnelSimple size={13} />
+                            Level
+                            {selectedLevelIds.length > 0 && (
+                                <Badge className="ml-0.5 h-4 min-w-4 rounded-full px-1 py-0 text-[10px] leading-none">
+                                    {selectedLevelIds.length}
+                                </Badge>
+                            )}
+                            <CaretDown size={11} className="text-neutral-400" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-60 w-48 overflow-y-auto">
+                        <DropdownMenuLabel className="text-xs text-neutral-500">
+                            Filter by Level
+                        </DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {isAllLoading ? (
+                            <div className="space-y-1 p-2">
+                                <Skeleton className="h-5 w-full" />
+                                <Skeleton className="h-5 w-3/4" />
+                            </div>
+                        ) : levelOptions.length === 0 ? (
+                            <p className="px-2 py-1 text-xs text-neutral-400">No levels found</p>
+                        ) : (
+                            levelOptions.map((lvl) => (
+                                <DropdownMenuCheckboxItem
+                                    key={lvl.id}
+                                    checked={selectedLevelIds.includes(lvl.id)}
+                                    onCheckedChange={(checked) =>
+                                        setSelectedLevelIds((prev) =>
+                                            checked
+                                                ? [...prev, lvl.id]
+                                                : prev.filter((id) => id !== lvl.id)
+                                        )
+                                    }
+                                    className="text-xs"
+                                >
+                                    {lvl.name}
+                                </DropdownMenuCheckboxItem>
+                            ))
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Session filter */}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                                'h-9 gap-1.5 text-xs font-medium',
+                                selectedSessionIds.length > 0 &&
+                                    'border-primary-300 bg-primary-50 text-primary-700'
+                            )}
+                        >
+                            <FunnelSimple size={13} />
+                            Session
+                            {selectedSessionIds.length > 0 && (
+                                <Badge className="ml-0.5 h-4 min-w-4 rounded-full px-1 py-0 text-[10px] leading-none">
+                                    {selectedSessionIds.length}
+                                </Badge>
+                            )}
+                            <CaretDown size={11} className="text-neutral-400" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-60 w-48 overflow-y-auto">
+                        <DropdownMenuLabel className="text-xs text-neutral-500">
+                            Filter by Session
+                        </DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {isAllLoading ? (
+                            <div className="space-y-1 p-2">
+                                <Skeleton className="h-5 w-full" />
+                                <Skeleton className="h-5 w-3/4" />
+                            </div>
+                        ) : sessionOptions.length === 0 ? (
+                            <p className="px-2 py-1 text-xs text-neutral-400">
+                                No sessions found
+                            </p>
+                        ) : (
+                            sessionOptions.map((ses) => (
+                                <DropdownMenuCheckboxItem
+                                    key={ses.id}
+                                    checked={selectedSessionIds.includes(ses.id)}
+                                    onCheckedChange={(checked) =>
+                                        setSelectedSessionIds((prev) =>
+                                            checked
+                                                ? [...prev, ses.id]
+                                                : prev.filter((id) => id !== ses.id)
+                                        )
+                                    }
+                                    className="text-xs"
+                                >
+                                    {ses.name}
+                                </DropdownMenuCheckboxItem>
+                            ))
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
 
-            {/* Course groups */}
-            <div className="flex flex-col gap-3">
-                {filtered.length === 0 && (
-                    <p className="text-center text-sm text-neutral-400 py-8">
-                        No courses found. Please add courses first.
-                    </p>
-                )}
-                {filtered.map((group) => (
-                    <div
-                        key={group.package_dto.id}
-                        className="rounded-lg border border-neutral-200 bg-white"
-                    >
-                        {/* Course header */}
-                        <div className="flex items-center gap-3 border-b border-neutral-100 px-4 py-3">
-                            <BookOpen size={18} className="text-primary-500" weight="duotone" />
-                            <span className="font-semibold text-neutral-800">
-                                {group.package_dto.package_name}
+            {/* Active filter chips */}
+            {activeFilterCount > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                    {selectedLevelIds.map((id) => {
+                        const lvl = levelOptions.find((l) => l.id === id);
+                        return (
+                            <span
+                                key={id}
+                                className="inline-flex items-center gap-1 rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700"
+                            >
+                                Level: {lvl?.name ?? id}
+                                <button
+                                    onClick={() =>
+                                        setSelectedLevelIds((prev) =>
+                                            prev.filter((x) => x !== id)
+                                        )
+                                    }
+                                    className="ml-0.5 rounded-full hover:text-primary-900"
+                                >
+                                    <X size={11} />
+                                </button>
                             </span>
+                        );
+                    })}
+                    {selectedSessionIds.map((id) => {
+                        const ses = sessionOptions.find((s) => s.id === id);
+                        return (
+                            <span
+                                key={id}
+                                className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700"
+                            >
+                                Session: {ses?.name ?? id}
+                                <button
+                                    onClick={() =>
+                                        setSelectedSessionIds((prev) =>
+                                            prev.filter((x) => x !== id)
+                                        )
+                                    }
+                                    className="ml-0.5 rounded-full hover:text-violet-900"
+                                >
+                                    <X size={11} />
+                                </button>
+                            </span>
+                        );
+                    })}
+                    <button
+                        onClick={clearFilters}
+                        className="text-xs text-neutral-400 underline-offset-2 hover:text-neutral-600 hover:underline"
+                    >
+                        Clear all
+                    </button>
+                </div>
+            )}
+
+            {/* Course list */}
+            <div className="flex flex-col gap-3">
+                {isLoading ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="rounded-lg border border-neutral-200 bg-white">
+                            <div className="flex items-center gap-3 border-b border-neutral-100 px-4 py-3">
+                                <Skeleton className="size-4 rounded" />
+                                <Skeleton className="h-4 w-40" />
+                            </div>
+                            <div className="space-y-2 px-4 py-3">
+                                <Skeleton className="h-9 w-full" />
+                                <Skeleton className="h-9 w-full" />
+                            </div>
                         </div>
-                        {/* Level rows */}
-                        <div className="flex flex-col divide-y divide-neutral-50">
-                            {group.level.map((levelEntry) => {
-                                const psId = levelEntry.package_session_id;
-                                const selected = isSelected(psId);
-                                return (
-                                    <button
-                                        key={psId}
-                                        onClick={() => toggle(group, levelEntry)}
-                                        className={cn(
-                                            'flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-primary-50',
-                                            selected && 'bg-primary-50'
-                                        )}
-                                    >
-                                        <Checkbox
-                                            checked={selected}
-                                            onCheckedChange={() => toggle(group, levelEntry)}
-                                            className="pointer-events-none"
-                                        />
-                                        <div className="flex-1">
-                                            <span className="font-medium text-neutral-700">
-                                                {levelEntry.level_dto.level_name}
-                                            </span>
-                                            {levelEntry.level_dto.duration_in_days && (
-                                                <span className="ml-2 text-xs text-neutral-400">
-                                                    • {levelEntry.level_dto.duration_in_days} days
-                                                </span>
-                                            )}
-                                        </div>
-                                        <span
+                    ))
+                ) : groups.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <BookOpen
+                            size={36}
+                            className="mb-3 text-neutral-300"
+                            weight="duotone"
+                        />
+                        <p className="text-sm font-medium text-neutral-500">No courses found</p>
+                        <p className="mt-1 text-xs text-neutral-400">
+                            Try adjusting your search or filters.
+                        </p>
+                    </div>
+                ) : (
+                    groups.map((group) => (
+                        <div
+                            key={group.id}
+                            className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm"
+                        >
+                            {/* Course header */}
+                            <div className="flex items-center gap-2.5 border-b border-neutral-100 bg-neutral-50 px-4 py-2.5">
+                                <BookOpen
+                                    size={15}
+                                    className="shrink-0 text-primary-500"
+                                    weight="duotone"
+                                />
+                                <span className="text-sm font-semibold leading-tight text-neutral-800">
+                                    {group.packageName}
+                                </span>
+                                <span className="ml-auto text-xs text-neutral-400">
+                                    {group.batches.length} batch
+                                    {group.batches.length !== 1 ? 'es' : ''}
+                                </span>
+                            </div>
+
+                            {/* Batch rows */}
+                            <div className="divide-y divide-neutral-50">
+                                {group.batches.map((batch) => {
+                                    const selected = isSelected(batch.package_session_id);
+                                    return (
+                                        <button
+                                            key={batch.package_session_id}
+                                            onClick={() => toggle(batch)}
                                             className={cn(
-                                                'text-xs font-medium',
-                                                selected
-                                                    ? 'text-primary-600'
-                                                    : 'text-neutral-400'
+                                                'flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-primary-50/60',
+                                                selected && 'bg-primary-50'
                                             )}
                                         >
-                                            {selected ? '✓ Selected' : 'Select'}
-                                        </span>
-                                    </button>
-                                );
-                            })}
+                                            <Checkbox
+                                                checked={selected}
+                                                onCheckedChange={() => toggle(batch)}
+                                                className="pointer-events-none shrink-0"
+                                            />
+                                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                                                <span className="truncate text-xs font-medium text-neutral-700">
+                                                    {batch.level_name}
+                                                </span>
+                                                {batch.session_name && (
+                                                    <>
+                                                        <span className="text-neutral-300">·</span>
+                                                        <span className="truncate text-xs text-neutral-500">
+                                                            {batch.session_name}
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </div>
+                                            <span
+                                                className={cn(
+                                                    'shrink-0 text-xs font-medium',
+                                                    selected
+                                                        ? 'text-primary-600'
+                                                        : 'text-neutral-300'
+                                                )}
+                                            >
+                                                {selected ? '✓' : '+'}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    ))
+                )}
             </div>
         </div>
     );

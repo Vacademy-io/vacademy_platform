@@ -31,6 +31,8 @@ public class PackageDetailDTO {
     private String packageSessionName;
     private String levelId;
     private String levelName;
+    private String sessionId;
+    private String sessionName;
     private String dripConditionJson;
     private List<UserDTO> instructors;
     private List<String> levelIds;

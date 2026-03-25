@@ -105,6 +105,8 @@ export interface CourseItem {
     package_session_id: string;
     level_id: string;
     level_name: string;
+    session_id: string;
+    session_name: string;
     instructors: CourseInstructor[];
 }
 

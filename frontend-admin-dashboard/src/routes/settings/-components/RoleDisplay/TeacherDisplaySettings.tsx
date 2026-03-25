@@ -19,6 +19,7 @@ import { TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
+import { ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
 import type {
     CourseListTabId,
     CourseDetailsTabId,
@@ -225,6 +226,61 @@ export default function TeacherDisplaySettings() {
                     (s) => s.id !== subId || !s.id.startsWith('custom-sub-')
                 );
                 return { ...t, subTabs: filtered };
+            }),
+        }));
+    };
+
+    const moveTab = (tabId: string, direction: 'up' | 'down') => {
+        updateSettings((prev) => {
+            const categoryTabs = prev.sidebar
+                .filter((t) => {
+                    const baseItem = SidebarItemsData.find((i) => i.id === t.id);
+                    const cat = baseItem?.category || 'CRM';
+                    return cat === activeCategory;
+                })
+                .sort((a, b) => a.order - b.order);
+
+            const idx = categoryTabs.findIndex((t) => t.id === tabId);
+            if (idx < 0) return prev;
+            const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+            if (swapIdx < 0 || swapIdx >= categoryTabs.length) return prev;
+
+            const currentTab = categoryTabs[idx]!;
+            const swapTab = categoryTabs[swapIdx]!;
+
+            return {
+                ...prev,
+                sidebar: prev.sidebar.map((t) => {
+                    if (t.id === currentTab.id) return { ...t, order: swapTab.order };
+                    if (t.id === swapTab.id) return { ...t, order: currentTab.order };
+                    return t;
+                }),
+            };
+        });
+    };
+
+    const moveSubTab = (parentId: string, subId: string, direction: 'up' | 'down') => {
+        updateSettings((prev) => ({
+            ...prev,
+            sidebar: prev.sidebar.map((t) => {
+                if (t.id !== parentId) return t;
+                const sorted = [...(t.subTabs || [])].sort((a, b) => a.order - b.order);
+                const idx = sorted.findIndex((s) => s.id === subId);
+                if (idx < 0) return t;
+                const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+                if (swapIdx < 0 || swapIdx >= sorted.length) return t;
+
+                const currentSub = sorted[idx]!;
+                const swapSub = sorted[swapIdx]!;
+
+                return {
+                    ...t,
+                    subTabs: (t.subTabs || []).map((s) => {
+                        if (s.id === currentSub.id) return { ...s, order: swapSub.order };
+                        if (s.id === swapSub.id) return { ...s, order: currentSub.order };
+                        return s;
+                    }),
+                };
             }),
         }));
     };
@@ -1008,340 +1064,355 @@ export default function TeacherDisplaySettings() {
                             <TabsTrigger value="AI">AI Tools</TabsTrigger>
                         </TabsList>
 
-                        {settings.sidebar
-                            .filter((tab) => {
-                                const baseItem = SidebarItemsData.find((i) => i.id === tab.id);
-                                const cat = baseItem?.category || 'CRM';
-                                return cat === activeCategory;
-                            })
-                            .sort((a, b) => a.order - b.order)
-                            .map((tab) => (
-                                <div key={tab.id} className="rounded border p-3">
-                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-5 md:items-center">
-                                        <div className="col-span-2">
-                                            <Label>Tab Name</Label>
-                                            <Input
-                                                value={tab.label || ''}
-                                                onChange={(e) =>
-                                                    updateSettings((prev) => ({
-                                                        ...prev,
-                                                        sidebar: prev.sidebar.map((t) =>
-                                                            t.id === tab.id
-                                                                ? { ...t, label: e.target.value }
-                                                                : t
-                                                        ),
-                                                    }))
-                                                }
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label>Order</Label>
-                                            <Input
-                                                type="number"
-                                                value={tab.order}
-                                                onChange={(e) =>
-                                                    updateSettings((prev) => ({
-                                                        ...prev,
-                                                        sidebar: prev.sidebar.map((t) =>
-                                                            t.id === tab.id
-                                                                ? {
-                                                                      ...t,
-                                                                      order: Number(e.target.value),
-                                                                  }
-                                                                : t
-                                                        ),
-                                                    }))
-                                                }
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label>Route</Label>
-                                            <Input
-                                                value={tab.route || ''}
-                                                onChange={(e) =>
-                                                    updateSettings((prev) => ({
-                                                        ...prev,
-                                                        sidebar: prev.sidebar.map((t) =>
-                                                            t.id === tab.id
-                                                                ? { ...t, route: e.target.value }
-                                                                : t
-                                                        ),
-                                                    }))
-                                                }
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-2 pt-6">
-                                            <Select
-                                                value={
-                                                    tab.visible === false
-                                                        ? 'hidden'
-                                                        : tab.locked
-                                                          ? 'locked'
-                                                          : 'visible'
-                                                }
-                                                onValueChange={(value) =>
-                                                    updateSettings((prev) => ({
-                                                        ...prev,
-                                                        sidebar: prev.sidebar.map((t) => {
-                                                            if (t.id !== tab.id) return t;
-                                                            if (value === 'hidden') {
-                                                                return {
-                                                                    ...t,
-                                                                    visible: false,
-                                                                    locked: false,
-                                                                };
-                                                            }
-                                                            if (value === 'locked') {
-                                                                return {
-                                                                    ...t,
-                                                                    visible: true,
-                                                                    locked: true,
-                                                                };
-                                                            }
-                                                            return {
-                                                                ...t,
-                                                                visible: true,
-                                                                locked: false,
-                                                            };
-                                                        }),
-                                                    }))
-                                                }
-                                            >
-                                                <SelectTrigger className="w-[100px]">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="visible">Visible</SelectItem>
-                                                    <SelectItem value="hidden">Hidden</SelectItem>
-                                                    <SelectItem value="locked">Locked</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        {tab.isCustom && (
-                                            <div className="pt-6">
-                                                <Button
-                                                    variant="destructive"
-                                                    onClick={() => removeCustomTab(tab.id)}
-                                                >
-                                                    Remove Tab
-                                                </Button>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="mt-3 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <Label>Sub Tabs</Label>
+                        {(() => {
+                            const categoryTabs = settings.sidebar
+                                .filter((tab) => {
+                                    const baseItem = SidebarItemsData.find((i) => i.id === tab.id);
+                                    const cat = baseItem?.category || 'CRM';
+                                    return cat === activeCategory;
+                                })
+                                .sort((a, b) => a.order - b.order);
+
+                            return categoryTabs.map((tab, tabIdx) => (
+                                <div key={tab.id} className="mb-3 rounded border p-3">
+                                    <div className="flex items-start gap-3">
+                                        {/* Move up/down buttons */}
+                                        <div className="flex flex-col items-center gap-1 pt-6">
+                                            <GripVertical className="h-4 w-4 text-muted-foreground mb-1" />
                                             <Button
-                                                variant="outline"
-                                                onClick={() => addSubTab(tab.id)}
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7"
+                                                disabled={tabIdx === 0}
+                                                onClick={() => moveTab(tab.id, 'up')}
                                             >
-                                                Add Sub Tab
+                                                <ArrowUp className="h-4 w-4" />
+                                            </Button>
+                                            <span className="text-xs text-muted-foreground font-medium">
+                                                {tabIdx + 1}
+                                            </span>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7"
+                                                disabled={tabIdx === categoryTabs.length - 1}
+                                                onClick={() => moveTab(tab.id, 'down')}
+                                            >
+                                                <ArrowDown className="h-4 w-4" />
                                             </Button>
                                         </div>
-                                        {(tab.subTabs || [])
-                                            .slice()
-                                            .sort((a, b) => a.order - b.order)
-                                            .map((sub) => (
-                                                <div
-                                                    key={sub.id}
-                                                    className="grid grid-cols-1 gap-3 rounded border p-3 md:grid-cols-5 md:items-center"
-                                                >
-                                                    <div className="col-span-2">
-                                                        <Input
-                                                            value={sub.label || ''}
-                                                            onChange={(e) =>
-                                                                updateSettings((prev) => ({
-                                                                    ...prev,
-                                                                    sidebar: prev.sidebar.map(
-                                                                        (t) =>
-                                                                            t.id === tab.id
-                                                                                ? {
-                                                                                      ...t,
-                                                                                      subTabs: (
-                                                                                          t.subTabs ||
-                                                                                          []
-                                                                                      ).map((s) =>
-                                                                                          s.id ===
-                                                                                          sub.id
-                                                                                              ? {
-                                                                                                    ...s,
-                                                                                                    label: e
-                                                                                                        .target
-                                                                                                        .value,
-                                                                                                }
-                                                                                              : s
-                                                                                      ),
-                                                                                  }
-                                                                                : t
-                                                                    ),
-                                                                }))
-                                                            }
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <Input
-                                                            type="number"
-                                                            value={sub.order}
-                                                            onChange={(e) =>
-                                                                updateSettings((prev) => ({
-                                                                    ...prev,
-                                                                    sidebar: prev.sidebar.map(
-                                                                        (t) =>
-                                                                            t.id === tab.id
-                                                                                ? {
-                                                                                      ...t,
-                                                                                      subTabs: (
-                                                                                          t.subTabs ||
-                                                                                          []
-                                                                                      ).map((s) =>
-                                                                                          s.id ===
-                                                                                          sub.id
-                                                                                              ? {
-                                                                                                    ...s,
-                                                                                                    order: Number(
-                                                                                                        e
-                                                                                                            .target
-                                                                                                            .value
-                                                                                                    ),
-                                                                                                }
-                                                                                              : s
-                                                                                      ),
-                                                                                  }
-                                                                                : t
-                                                                    ),
-                                                                }))
-                                                            }
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <Input
-                                                            value={sub.route}
-                                                            onChange={(e) =>
-                                                                updateSettings((prev) => ({
-                                                                    ...prev,
-                                                                    sidebar: prev.sidebar.map(
-                                                                        (t) =>
-                                                                            t.id === tab.id
-                                                                                ? {
-                                                                                      ...t,
-                                                                                      subTabs: (
-                                                                                          t.subTabs ||
-                                                                                          []
-                                                                                      ).map((s) =>
-                                                                                          s.id ===
-                                                                                          sub.id
-                                                                                              ? {
-                                                                                                    ...s,
-                                                                                                    route: e
-                                                                                                        .target
-                                                                                                        .value,
-                                                                                                }
-                                                                                              : s
-                                                                                      ),
-                                                                                  }
-                                                                                : t
-                                                                    ),
-                                                                }))
-                                                            }
-                                                        />
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Select
-                                                            value={
-                                                                sub.visible === false
-                                                                    ? 'hidden'
-                                                                    : sub.locked
-                                                                      ? 'locked'
-                                                                      : 'visible'
-                                                            }
-                                                            onValueChange={(value) =>
-                                                                updateSettings((prev) => ({
-                                                                    ...prev,
-                                                                    sidebar: prev.sidebar.map(
-                                                                        (t) =>
-                                                                            t.id === tab.id
-                                                                                ? {
-                                                                                      ...t,
-                                                                                      subTabs: (
-                                                                                          t.subTabs ||
-                                                                                          []
-                                                                                      ).map((s) => {
-                                                                                          if (
-                                                                                              s.id !==
-                                                                                              sub.id
-                                                                                          )
-                                                                                              return s;
-                                                                                          if (
-                                                                                              value ===
-                                                                                              'hidden'
-                                                                                          ) {
-                                                                                              return {
-                                                                                                  ...s,
-                                                                                                  visible:
-                                                                                                      false,
-                                                                                                  locked: false,
-                                                                                              };
-                                                                                          }
-                                                                                          if (
-                                                                                              value ===
-                                                                                              'locked'
-                                                                                          ) {
-                                                                                              return {
-                                                                                                  ...s,
-                                                                                                  visible:
-                                                                                                      true,
-                                                                                                  locked: true,
-                                                                                              };
-                                                                                          }
-                                                                                          return {
-                                                                                              ...s,
-                                                                                              visible:
-                                                                                                  true,
-                                                                                              locked: false,
-                                                                                          };
-                                                                                      }),
-                                                                                  }
-                                                                                : t
-                                                                    ),
-                                                                }))
-                                                            }
+
+                                        {/* Tab fields */}
+                                        <div className="flex-1">
+                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-4 md:items-center">
+                                                <div className="col-span-2">
+                                                    <Label>Tab Name</Label>
+                                                    <Input
+                                                        value={tab.label || ''}
+                                                        onChange={(e) =>
+                                                            updateSettings((prev) => ({
+                                                                ...prev,
+                                                                sidebar: prev.sidebar.map((t) =>
+                                                                    t.id === tab.id
+                                                                        ? { ...t, label: e.target.value }
+                                                                        : t
+                                                                ),
+                                                            }))
+                                                        }
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label>Route</Label>
+                                                    <Input
+                                                        value={tab.route || ''}
+                                                        onChange={(e) =>
+                                                            updateSettings((prev) => ({
+                                                                ...prev,
+                                                                sidebar: prev.sidebar.map((t) =>
+                                                                    t.id === tab.id
+                                                                        ? { ...t, route: e.target.value }
+                                                                        : t
+                                                                ),
+                                                            }))
+                                                        }
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-2 pt-6">
+                                                    <Select
+                                                        value={
+                                                            tab.visible === false
+                                                                ? 'hidden'
+                                                                : tab.locked
+                                                                  ? 'locked'
+                                                                  : 'visible'
+                                                        }
+                                                        onValueChange={(value) =>
+                                                            updateSettings((prev) => ({
+                                                                ...prev,
+                                                                sidebar: prev.sidebar.map((t) => {
+                                                                    if (t.id !== tab.id) return t;
+                                                                    if (value === 'hidden') {
+                                                                        return {
+                                                                            ...t,
+                                                                            visible: false,
+                                                                            locked: false,
+                                                                        };
+                                                                    }
+                                                                    if (value === 'locked') {
+                                                                        return {
+                                                                            ...t,
+                                                                            visible: true,
+                                                                            locked: true,
+                                                                        };
+                                                                    }
+                                                                    return {
+                                                                        ...t,
+                                                                        visible: true,
+                                                                        locked: false,
+                                                                    };
+                                                                }),
+                                                            }))
+                                                        }
+                                                    >
+                                                        <SelectTrigger className="w-[100px]">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="visible">Visible</SelectItem>
+                                                            <SelectItem value="hidden">Hidden</SelectItem>
+                                                            <SelectItem value="locked">Locked</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    {tab.isCustom && (
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            onClick={() => removeCustomTab(tab.id)}
                                                         >
-                                                            <SelectTrigger className="w-[100px]">
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="visible">
-                                                                    Visible
-                                                                </SelectItem>
-                                                                <SelectItem value="hidden">
-                                                                    Hidden
-                                                                </SelectItem>
-                                                                <SelectItem value="locked">
-                                                                    Locked
-                                                                </SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                    {sub.id.startsWith('custom-sub-') && (
-                                                        <div className="pt-2">
-                                                            <Button
-                                                                variant="destructive"
-                                                                onClick={() =>
-                                                                    removeCustomSubTab(
-                                                                        tab.id,
-                                                                        sub.id
-                                                                    )
-                                                                }
-                                                            >
-                                                                Remove
-                                                            </Button>
-                                                        </div>
+                                                            Remove
+                                                        </Button>
                                                     )}
                                                 </div>
-                                            ))}
+                                            </div>
+                                            <div className="mt-3 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <Label>Sub Tabs</Label>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => addSubTab(tab.id)}
+                                                    >
+                                                        Add Sub Tab
+                                                    </Button>
+                                                </div>
+                                                {(() => {
+                                                    const sortedSubs = (tab.subTabs || [])
+                                                        .slice()
+                                                        .sort((a, b) => a.order - b.order);
+
+                                                    return sortedSubs.map((sub, subIdx) => (
+                                                        <div
+                                                            key={sub.id}
+                                                            className="flex items-center gap-3 rounded border p-2"
+                                                        >
+                                                            {/* Sub-tab move buttons */}
+                                                            <div className="flex flex-col items-center gap-0.5">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-6 w-6"
+                                                                    disabled={subIdx === 0}
+                                                                    onClick={() =>
+                                                                        moveSubTab(tab.id, sub.id, 'up')
+                                                                    }
+                                                                >
+                                                                    <ArrowUp className="h-3 w-3" />
+                                                                </Button>
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {subIdx + 1}
+                                                                </span>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-6 w-6"
+                                                                    disabled={subIdx === sortedSubs.length - 1}
+                                                                    onClick={() =>
+                                                                        moveSubTab(tab.id, sub.id, 'down')
+                                                                    }
+                                                                >
+                                                                    <ArrowDown className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
+
+                                                            {/* Sub-tab fields */}
+                                                            <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-4 md:items-center">
+                                                                <div className="col-span-2">
+                                                                    <Input
+                                                                        value={sub.label || ''}
+                                                                        placeholder="Label"
+                                                                        onChange={(e) =>
+                                                                            updateSettings((prev) => ({
+                                                                                ...prev,
+                                                                                sidebar: prev.sidebar.map(
+                                                                                    (t) =>
+                                                                                        t.id === tab.id
+                                                                                            ? {
+                                                                                                  ...t,
+                                                                                                  subTabs: (
+                                                                                                      t.subTabs ||
+                                                                                                      []
+                                                                                                  ).map((s) =>
+                                                                                                      s.id ===
+                                                                                                      sub.id
+                                                                                                          ? {
+                                                                                                                ...s,
+                                                                                                                label: e
+                                                                                                                    .target
+                                                                                                                    .value,
+                                                                                                            }
+                                                                                                          : s
+                                                                                                  ),
+                                                                                              }
+                                                                                            : t
+                                                                                ),
+                                                                            }))
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <Input
+                                                                        value={sub.route}
+                                                                        placeholder="Route"
+                                                                        onChange={(e) =>
+                                                                            updateSettings((prev) => ({
+                                                                                ...prev,
+                                                                                sidebar: prev.sidebar.map(
+                                                                                    (t) =>
+                                                                                        t.id === tab.id
+                                                                                            ? {
+                                                                                                  ...t,
+                                                                                                  subTabs: (
+                                                                                                      t.subTabs ||
+                                                                                                      []
+                                                                                                  ).map((s) =>
+                                                                                                      s.id ===
+                                                                                                      sub.id
+                                                                                                          ? {
+                                                                                                                ...s,
+                                                                                                                route: e
+                                                                                                                    .target
+                                                                                                                    .value,
+                                                                                                            }
+                                                                                                          : s
+                                                                                                  ),
+                                                                                              }
+                                                                                            : t
+                                                                                ),
+                                                                            }))
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <Select
+                                                                        value={
+                                                                            sub.visible === false
+                                                                                ? 'hidden'
+                                                                                : sub.locked
+                                                                                  ? 'locked'
+                                                                                  : 'visible'
+                                                                        }
+                                                                        onValueChange={(value) =>
+                                                                            updateSettings((prev) => ({
+                                                                                ...prev,
+                                                                                sidebar: prev.sidebar.map(
+                                                                                    (t) =>
+                                                                                        t.id === tab.id
+                                                                                            ? {
+                                                                                                  ...t,
+                                                                                                  subTabs: (
+                                                                                                      t.subTabs ||
+                                                                                                      []
+                                                                                                  ).map((s) => {
+                                                                                                      if (
+                                                                                                          s.id !==
+                                                                                                          sub.id
+                                                                                                      )
+                                                                                                          return s;
+                                                                                                      if (
+                                                                                                          value ===
+                                                                                                          'hidden'
+                                                                                                      ) {
+                                                                                                          return {
+                                                                                                              ...s,
+                                                                                                              visible:
+                                                                                                                  false,
+                                                                                                              locked: false,
+                                                                                                          };
+                                                                                                      }
+                                                                                                      if (
+                                                                                                          value ===
+                                                                                                          'locked'
+                                                                                                      ) {
+                                                                                                          return {
+                                                                                                              ...s,
+                                                                                                              visible:
+                                                                                                                  true,
+                                                                                                              locked: true,
+                                                                                                          };
+                                                                                                      }
+                                                                                                      return {
+                                                                                                          ...s,
+                                                                                                          visible:
+                                                                                                              true,
+                                                                                                          locked: false,
+                                                                                                      };
+                                                                                                  }),
+                                                                                              }
+                                                                                            : t
+                                                                                ),
+                                                                            }))
+                                                                        }
+                                                                    >
+                                                                        <SelectTrigger className="w-[100px]">
+                                                                            <SelectValue />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="visible">
+                                                                                Visible
+                                                                            </SelectItem>
+                                                                            <SelectItem value="hidden">
+                                                                                Hidden
+                                                                            </SelectItem>
+                                                                            <SelectItem value="locked">
+                                                                                Locked
+                                                                            </SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                    {sub.id.startsWith('custom-sub-') && (
+                                                                        <Button
+                                                                            variant="destructive"
+                                                                            size="sm"
+                                                                            onClick={() =>
+                                                                                removeCustomSubTab(
+                                                                                    tab.id,
+                                                                                    sub.id
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            Remove
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ));
+                                                })()}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            ))}
+                            ));
+                        })()}
                     </Tabs>
                     {activeCategory === 'CRM' && (
                         <div className="pt-2">

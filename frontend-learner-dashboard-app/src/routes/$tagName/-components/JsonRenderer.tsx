@@ -286,7 +286,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
                 {rendered}
               </div>
               {isSelected && (
-                <div className="absolute top-0 left-0 z-50 bg-blue-500 text-white text-xs px-2 py-0.5 rounded-br-md font-medium select-none">
+                <div className="absolute top-0 left-0 z-50 bg-primary-500 text-white text-xs px-2 py-0.5 rounded-br-md font-medium select-none">
                   {component.type}
                 </div>
               )}
@@ -402,7 +402,7 @@ const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [
       <div className={`grid gap-6 ${plans.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
         {plans.map((plan: any, i: number) => (
           <div key={i} className={`relative flex flex-col rounded-2xl border-2 p-8 ${plan.highlighted ? 'border-primary-500 shadow-xl' : 'border-gray-200'}`}>
-            {plan.highlighted && <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-4 py-1 text-xs font-semibold text-white" style={{ backgroundColor: 'var(--primary-500, #3B82F6)' }}>Recommended</div>}
+            {plan.highlighted && <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-4 py-1 text-xs font-semibold text-white" style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}>Recommended</div>}
             <h3 className="text-xl font-bold text-gray-900">{plan.name}</h3>
             {plan.description && <p className="mt-1 text-sm text-gray-500">{plan.description}</p>}
             <div className="mt-4 flex items-baseline gap-1">
@@ -417,7 +417,7 @@ const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [
               ))}
             </ul>
             {plan.buttonText && (
-              <CatalogueLink to={plan.buttonTarget || '#'} className={`mt-8 block rounded-lg py-3 text-center font-semibold transition ${plan.highlighted ? 'text-white hover:opacity-90' : 'border border-gray-300 text-gray-900 hover:bg-gray-50'}`} style={plan.highlighted ? { backgroundColor: 'var(--primary-500, #3B82F6)' } : undefined}>
+              <CatalogueLink to={plan.buttonTarget || '#'} className={`mt-8 block rounded-lg py-3 text-center font-semibold transition ${plan.highlighted ? 'text-white hover:opacity-90' : 'border border-gray-300 text-gray-900 hover:bg-gray-50'}`} style={plan.highlighted ? { backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' } : undefined}>
                 {plan.buttonText}
               </CatalogueLink>
             )}
@@ -447,13 +447,13 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
               <div key={field.name}>
                 <label className="mb-1 block text-sm font-medium text-gray-700">{field.label}{field.required && <span className="ml-1 text-red-500">*</span>}</label>
                 {field.type === 'textarea' ? (
-                  <textarea required={field.required} rows={4} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none" />
+                  <textarea required={field.required} rows={4} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none" />
                 ) : (
-                  <input type={field.type} required={field.required} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none" />
+                  <input type={field.type} required={field.required} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none" />
                 )}
               </div>
             ))}
-            <button type="submit" className="w-full rounded-lg py-3 font-semibold text-white transition hover:opacity-90" style={{ backgroundColor: 'var(--primary-500, #3B82F6)' }}>
+            <button type="submit" className="w-full rounded-lg py-3 font-semibold text-white transition hover:opacity-90" style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}>
               {submitLabel}
             </button>
           </form>
@@ -474,12 +474,12 @@ const TeamSectionRenderer: React.FC<any> = ({ headerText, subheading, members = 
             {m.avatar ? (
               <img src={m.avatar} alt={m.name} className="mb-4 size-24 rounded-full object-cover shadow-md" />
             ) : (
-              <div className="mb-4 flex size-24 items-center justify-center rounded-full bg-blue-100 text-2xl font-bold text-blue-600">
+              <div className="mb-4 flex size-16 sm:size-20 items-center justify-center rounded-full bg-primary-100 text-2xl font-bold text-primary-600">
                 {m.name?.[0] || '?'}
               </div>
             )}
             <h3 className="text-lg font-semibold text-gray-900">{m.name}</h3>
-            <p className="text-sm font-medium text-blue-600">{m.role}</p>
+            <p className="text-sm font-medium text-primary-600">{m.role}</p>
             {m.bio && <p className="mt-2 text-sm text-gray-500">{m.bio}</p>}
           </div>
         ))}
@@ -498,7 +498,7 @@ const AnnouncementFeedRenderer: React.FC<any> = ({ headerText, subheading, annou
           <div key={i} className={`rounded-xl border border-gray-200 bg-white p-6 shadow-sm ${layout === 'list' ? 'flex items-start gap-4' : ''}`}>
             <div className="flex-1">
               <div className="mb-2 flex flex-wrap items-center gap-3">
-                {showTag && a.tag && <span className="rounded-full bg-blue-100 px-3 py-0.5 text-xs font-semibold text-blue-700">{a.tag}</span>}
+                {showTag && a.tag && <span className="rounded-full bg-primary-100 px-3 py-0.5 text-xs font-semibold text-primary-700">{a.tag}</span>}
                 {showDate && a.date && <span className="text-xs text-gray-400">{new Date(a.date).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}</span>}
               </div>
               <h3 className="text-base font-semibold text-gray-900">{a.title}</h3>
@@ -586,7 +586,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
         <div className="flex border-b border-gray-200">
           {items.map((item: any, i: number) => (
             <button key={i} onClick={() => setActiveTab(i)}
-              className={`px-5 py-3 text-sm font-medium transition-colors ${i === activeTab ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+              className={`px-5 py-3 text-sm font-medium transition-colors ${i === activeTab ? 'border-b-2 border-primary-500 text-primary-600' : 'text-gray-500 hover:text-gray-700'}`}>
               {item.title}
             </button>
           ))}
@@ -748,11 +748,17 @@ const FeatureGridRenderer: React.FC<any> = ({
         {headerText && <h2 className="mb-2 text-center text-3xl font-bold text-gray-900">{headerText}</h2>}
         {subheading && <p className="mb-10 text-center text-lg text-gray-500">{subheading}</p>}
         <div
-          className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''}`}
+          className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''} ${columns >= 5 ? '2xl:grid-cols-5' : ''}`}
         >
           {features.map((f: any, i: number) => (
             <div key={i} className={`text-center ${cardClass}`}>
-              <div className={`mb-4 ${sizeMap[iconSize] || 'text-3xl'}`}>{f.image ? <img src={f.image} alt={f.title || ''} className="mx-auto h-12 w-12 object-contain" /> : (f.icon || '⭐')}</div>
+              <div className="mb-4">
+                {f.image ? (
+                  <img src={f.image} alt={f.title || ''} className="mx-auto w-full max-w-[160px] h-auto rounded-lg object-cover" style={{ aspectRatio: '1/1' }} />
+                ) : (
+                  <span className={sizeMap[iconSize] || 'text-3xl'}>{f.icon || '⭐'}</span>
+                )}
+              </div>
               <h4 className="mb-2 text-lg font-semibold text-gray-800">{f.title}</h4>
               <p className="text-sm leading-relaxed text-gray-500">{f.description}</p>
             </div>
@@ -784,7 +790,7 @@ const ImageBlockRenderer: React.FC<any> = ({ src, alt = '', caption, linkUrl, li
 /* ─── Button Block ─────────────────────────────────────────────────────── */
 
 const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target = '_self', variant = 'filled', size = 'large', alignment = 'center', backgroundColor = '', textColor = '', borderRadius = '8px', fullWidth = false }) => {
-  const bg = backgroundColor || 'var(--primary-500, #3B82F6)';
+  const bg = backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))';
   const fg = textColor || (variant === 'filled' ? '#FFFFFF' : bg);
   const padding = size === 'small' ? '10px 24px' : size === 'large' ? '16px 40px' : '12px 32px';
   const fontSize = size === 'small' ? '14px' : size === 'large' ? '18px' : '16px';
@@ -837,12 +843,12 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={placeholder}
-              className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
             />
             <button
               type="submit"
-              className="rounded-lg bg-blue-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-600 active:scale-[0.98]"
-              style={{ backgroundColor: 'var(--primary-500, #3B82F6)' }}
+              className="rounded-lg px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 active:scale-[0.98]"
+              style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}
             >
               {buttonText}
             </button>
@@ -856,7 +862,7 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
 /* ─── Steps / Process ──────────────────────────────────────────────────── */
 
 const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 'horizontal', steps = [], connectorStyle = 'line', backgroundColor = '#FFFFFF', accentColor }) => {
-  const accent = accentColor || 'var(--primary-500, #3B82F6)';
+  const accent = accentColor || 'hsl(var(--primary-500, 217 91% 60%))';
   const isHorizontal = layout !== 'vertical';
 
   const connectorEl = (i: number) => {

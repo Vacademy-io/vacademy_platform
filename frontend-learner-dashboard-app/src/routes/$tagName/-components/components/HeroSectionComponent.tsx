@@ -165,7 +165,7 @@ const HeroSectionPlaceholder: React.FC<{
                   <button
                     onClick={() => handleButtonClick(left.button!)}
                     className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor || 'var(--primary-500, #3B82F6)' }}
+                    style={{ backgroundColor: left.button.backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))' }}
                   >
                     {left.button.text}
                   </button>
@@ -193,7 +193,7 @@ const HeroSectionPlaceholder: React.FC<{
                   <button
                     onClick={() => handleButtonClick(left.button!)}
                     className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor || 'var(--primary-500, #3B82F6)' }}
+                    style={{ backgroundColor: left.button.backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))' }}
                   >
                     {left.button.text}
                   </button>
@@ -320,7 +320,7 @@ const HeroSectionWithState: React.FC<{
                   <button
                     onClick={() => handleButtonClick(left.button!)}
                     className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor || 'var(--primary-500, #3B82F6)' }}
+                    style={{ backgroundColor: left.button.backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))' }}
                   >
                     {left.button.text}
                   </button>
@@ -362,7 +362,7 @@ const HeroSectionWithState: React.FC<{
                   <button
                     onClick={() => handleButtonClick(left.button!)}
                     className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor || 'var(--primary-500, #3B82F6)' }}
+                    style={{ backgroundColor: left.button.backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))' }}
                   >
                     {left.button.text}
                   </button>

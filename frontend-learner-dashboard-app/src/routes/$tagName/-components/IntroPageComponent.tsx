@@ -349,7 +349,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-2">
                             <div 
-                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              className="bg-primary-600 h-2 rounded-full transition-all duration-300"
                               style={{ width: `${(1 / leadCollectionSettings.fields.length) * 100}%` }}
                             ></div>
                           </div>
@@ -368,7 +368,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                             {field.type === 'text' || field.type === 'email' || field.type === 'tel' ? (
                               <input
                                 type={field.type}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                                 placeholder={`Enter ${field.label.toLowerCase()}`}
                               />
                             ) : field.type === 'chips' && field.options ? (
@@ -376,7 +376,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                                 {field.options.map((option: any, optionIndex: number) => (
                                   <button
                                     key={optionIndex}
-                                    className="px-4 py-2 border border-gray-300 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="px-4 py-2 border border-gray-300 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
                                   >
                                     {option.label}
                                   </button>
@@ -391,13 +391,13 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                       <div className="flex justify-end space-x-4 mt-8">
                         <button
                           onClick={handleLeadFormClose}
-                          className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
                         >
                           Cancel
                         </button>
                         <button
                           onClick={handleLeadFormSubmit}
-                          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
                         >
                           Submit
                         </button>
@@ -420,7 +420,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
               onClick={() => setCurrentImageIndex(index)}
               className={`w-3 h-3 rounded-full transition-colors duration-200 ${
                 index === currentImageIndex 
-                  ? (domainRouting.instituteThemeCode ? 'bg-[hsl(var(--primary))]' : 'bg-blue-600')
+                  ? 'bg-primary-600'
                   : 'bg-gray-400'
               }`}
               title={`Go to image ${index + 1}`}

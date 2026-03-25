@@ -90,10 +90,10 @@
           "rightSection3": {
             "title": "Connect",
             "links": [
-              { "label": "Facebook", "route": "https://www.facebook.com/aanandham" },
-              { "label": "Instagram", "route": "https://www.instagram.com/aanandham" },
-              { "label": "YouTube", "route": "https://www.youtube.com/@aanandham" },
-              { "label": "WhatsApp", "route": "https://wa.me/YOUR_PHONE_NUMBER" }
+              { "label": "Facebook", "route": "https://www.facebook.com/aanandham1" },
+              { "label": "Instagram", "route": "https://www.instagram.com/joyful.jayanthi/" },
+              { "label": "YouTube", "route": "https://www.youtube.com/@joyfuljayanthi" },
+              { "label": "WhatsApp", "route": "https://api.whatsapp.com/send/?phone=%2B447421386254&text&type=phone_number&app_absent=0" }
             ]
           },
           "bottomNote": "© 2025 Aanandham. All rights reserved."
@@ -125,9 +125,9 @@
               "description": "<p>Transform your life across five dimensions of wellness. Join thousands who have found balance, strength, and inner peace through our holistic programs.</p>",
               "button": {
                 "enabled": true,
-                "text": "Start Your Journey Now",
+                "text": "Start Your 7-Day Free Trial",
                 "action": "navigate",
-                "target": "courses"
+                "target": "https://me.aanandham.uk/learner-invitation-response?instituteId=bd9f2362-84d1-4e01-9762-a5196f9bac80&inviteCode=onpl3m"
               }
             },
             "right": {
@@ -181,9 +181,9 @@
             "headerText": "Our Impact",
             "description": "Helping people transform their lives, one session at a time.",
             "stats": [
-              { "label": "Sessions Led", "value": "5000+" },
-              { "label": "Workshops Conducted", "value": "200+" },
-              { "label": "Client Satisfaction", "value": "98%" }
+              { "label": "Workshops", "value": "3,500+" },
+              { "label": "Highly Effective Results", "value": "100+" },
+              { "label": "Practices", "value": "Best" }
             ],
             "style": "card",
             "styles": {
@@ -215,7 +215,7 @@
             "button": {
               "enabled": true,
               "text": "Join 7-Day Free Trial",
-              "target": "courses",
+              "target": "https://me.aanandham.uk/learner-invitation-response?instituteId=bd9f2362-84d1-4e01-9762-a5196f9bac80&inviteCode=onpl3m",
               "style": "primary"
             }
           },
@@ -251,11 +251,11 @@
             "subheading": "Our holistic approach addresses every aspect of your well-being.",
             "columns": 5,
             "features": [
-              { "icon": "💪", "title": "Physical Fitness", "description": "Build strength, flexibility, and vitality through yoga and movement." },
-              { "icon": "🧠", "title": "Mental Strength", "description": "Develop focus, clarity, and resilience for everyday challenges." },
-              { "icon": "💚", "title": "Emotional Wellness", "description": "Process emotions healthily and cultivate inner peace." },
-              { "icon": "🕊️", "title": "Spiritual Progress", "description": "Deepen your connection with yourself through meditation and reflection." },
-              { "icon": "🤝", "title": "Social Engagement", "description": "Build meaningful connections within a supportive community." }
+              { "image": "https://aanandham.uk/wp-content/uploads/2023/06/Screenshot-2023-06-01-153002-3.png", "title": "Physical Fitness", "description": "Build strength, flexibility, and vitality through yoga and movement." },
+              { "image": "https://aanandham.uk/wp-content/uploads/2023/06/Screenshot-2023-06-01-154450-2.png", "title": "Mental Strength", "description": "Develop focus, clarity, and resilience for everyday challenges." },
+              { "image": "https://aanandham.uk/wp-content/uploads/2023/06/2678-2.jpg", "title": "Emotional Wellness", "description": "Process emotions healthily and cultivate inner peace." },
+              { "image": "https://aanandham.uk/wp-content/uploads/2023/05/pexels-tran-le-tuan-10031164-scaled.jpg", "title": "Spiritual Progress", "description": "Deepen your connection with yourself through meditation and reflection." },
+              { "image": "https://aanandham.uk/wp-content/uploads/2023/05/pexels-kindel-media-7149181-scaled.jpg", "title": "Socially Active", "description": "Build meaningful connections within a supportive community." }
             ],
             "style": "cards",
             "iconSize": "large",
@@ -275,13 +275,12 @@
           "enabled": true,
           "anchorId": "services",
           "props": {
-            "headerText": "How We Help You",
-            "subheading": "",
-            "columns": 3,
+            "headerText": "Aanandham Provides Help In Different Areas",
+            "subheading": "One to one mentoring to group workshops",
+            "columns": 2,
             "features": [
-              { "image": "REPLACE_WITH_COACHING_IMAGE", "title": "Individual Coaching", "description": "Personalised one-on-one sessions tailored to your unique wellness goals." },
-              { "image": "REPLACE_WITH_MEDITATION_IMAGE", "title": "Group Meditation", "description": "Join our community sessions for collective healing and shared growth." },
-              { "image": "REPLACE_WITH_KNOWLEDGE_IMAGE", "title": "Knowledge Sharing", "description": "Educational workshops on nutrition, mindfulness, and holistic living." }
+              { "image": "https://aanandham.uk/wp-content/uploads/2023/05/u5ndc_700_webimageJB2.jpg", "title": "Individual Coaching and Mentoring", "description": "Works best to identify and discuss specific concerns without judgement in a confidential manner. Helps to set goals for achieving transformation by identifying the gaps and implementing necessary practices to help heal, grow and move towards a more productive, healthy, happier life." },
+              { "image": "https://aanandham.uk/wp-content/uploads/2023/06/WhatsApp-Image-2023-06-05-at-19.54.07-1.jpeg", "title": "Aanandhyana — Evening Meditation", "description": "Group meditation every evening from 8.30pm to 9pm UK time for a profound journey to dive deep into inner self for joy, connection, health, growth, clarity, stress relief and many more." }
             ],
             "style": "cards",
             "iconSize": "large",
@@ -312,7 +311,7 @@
                   "type": "imageBlock",
                   "enabled": true,
                   "props": {
-                    "src": "REPLACE_WITH_FOUNDER_PHOTO",
+                    "src": "https://aanandham.uk/wp-content/uploads/2023/06/WhatsApp-Image-2023-06-04-at-19.33.38.jpeg",
                     "alt": "Jayanthi Bommana — Founder of Aanandham",
                     "borderRadius": "16px",
                     "maxWidth": "100%",
@@ -327,7 +326,7 @@
                   "type": "textBlock",
                   "enabled": true,
                   "props": {
-                    "content": "<h2>Meet Your Guide</h2><h3>Jayanthi Bommana</h3><p>With years of dedicated practice and teaching experience, Jayanthi founded Aanandham to make holistic wellness accessible to everyone. Her journey from personal transformation to guiding thousands has been one of passion, perseverance, and purpose.</p><p>Known as \"Joyful Jayanthi\" on social media, she brings warmth, expertise, and genuine care to every session.</p>",
+                    "content": "<h2>Meet the Founder</h2><h3>Jayanthi Bommana</h3><p>I really appreciate you for being on this search of true happiness and feel blessed to be sharing this journey with you.</p><p>I love helping people gain health &amp; happiness naturally to live a joyful life through a holistic approach as everyone deserves it.</p><p>I always hope &amp; work to contribute my best to bring value, change &amp; transformation in people's life in every possible way I can. My primary method for achieving this goal is through Aanandham, where I assist individuals in resolving their life challenges in every area to live a contented and well-rounded life.</p><p>I refer to it as a holistic approach because it involves addressing all aspects of life, recognizing that they are interconnected rather than separate, and solving problems in each area to improve overall well-being.</p><p>I am a mother of two children, living joyfully along with my husband in the UK and have been involved in charity works relating to health and well-being for more than ten years.</p>",
                     "maxWidth": "100%",
                     "alignment": "left"
                   }
@@ -418,8 +417,8 @@
             "subheading": "Choose the plan that fits your wellness journey.",
             "plans": [
               {
-                "name": "9-Week Life Transformation",
-                "price": "Contact Us",
+                "name": "9-Week Life Transformation Program",
+                "price": "Book Call",
                 "period": "",
                 "description": "A comprehensive program covering detox, nutrition, yoga, emotional healing, and lifestyle redesign.",
                 "features": [
@@ -430,8 +429,8 @@
                   "Community support group"
                 ],
                 "highlighted": true,
-                "buttonText": "Learn More",
-                "buttonTarget": "courses"
+                "buttonText": "Book Call Now",
+                "buttonTarget": "https://calendly.com/jayanthib/30min?month=2023-06"
               },
               {
                 "name": "Happy Lifestyle Membership",
@@ -538,7 +537,7 @@
               "button": { "enabled": false, "text": "", "action": "navigate", "target": "" }
             },
             "right": {
-              "image": "REPLACE_WITH_FOUNDER_PORTRAIT",
+              "image": "https://aanandham.uk/wp-content/uploads/2023/06/WhatsApp-Image-2023-06-04-at-19.33.38.jpeg",
               "alt": "Jayanthi Bommana"
             },
             "styles": { "padding": "40px", "roundedEdges": true, "textAlign": "left" }
@@ -553,7 +552,7 @@
           "type": "textBlock",
           "enabled": true,
           "props": {
-            "content": "<h2>Our Journey</h2><p>Replace this with the founder's personal story — the journey from discovery to building Aanandham. Include key milestones, challenges overcome, and the vision that drives the organization forward.</p><p>Share how the holistic approach was developed and what makes Aanandham's methodology unique.</p>",
+            "content": "<h2>Our Journey</h2><p>Aanandham was born from Jayanthi's personal journey of transformation — a deep calling to help others discover holistic well-being after experiencing its profound impact firsthand.</p><p>What started as community yoga sessions grew into a comprehensive wellness platform, helping hundreds of people across the UK and beyond to heal holistically and live joyfully.</p><p>The holistic approach at Aanandham involves addressing all aspects of life — physical, mental, emotional, spiritual, and social — recognizing that they are interconnected rather than separate, and working on each area to improve overall well-being.</p>",
             "maxWidth": "800px",
             "alignment": "center"
           },
@@ -670,7 +669,7 @@
                   "type": "imageBlock",
                   "enabled": true,
                   "props": {
-                    "src": "REPLACE_WITH_9WEEK_PROGRAM_IMAGE",
+                    "src": "https://aanandham.uk/wp-content/uploads/2023/05/u5ndc_700_webimageJB2.jpg",
                     "alt": "9-Week Life Transformation Program",
                     "borderRadius": "12px",
                     "maxWidth": "100%",
@@ -712,8 +711,8 @@
             "layout": "centered",
             "button": {
               "enabled": true,
-              "text": "Enquire Now",
-              "target": "contact"
+              "text": "Book a Call",
+              "target": "https://calendly.com/jayanthib/30min?month=2023-06"
             }
           }
         },
@@ -952,7 +951,7 @@
             "subheading": "",
             "columns": 3,
             "features": [
-              { "icon": "📞", "title": "Phone", "description": "REPLACE_WITH_PHONE_NUMBER" },
+              { "icon": "📞", "title": "Phone", "description": "+44 7421 386254" },
               { "icon": "✉️", "title": "Email", "description": "support@aanandham.uk" },
               { "icon": "🌐", "title": "Website", "description": "aanandham.uk" }
             ],

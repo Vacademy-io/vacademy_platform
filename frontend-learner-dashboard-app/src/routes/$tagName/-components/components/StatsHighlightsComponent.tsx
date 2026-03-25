@@ -56,7 +56,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
       return (
         <div key={index} className={`text-center p-4 transition-all duration-200 ${hoverClass}`}>
           {bigValue && (
-            <div className="text-3xl sm:text-4xl font-bold mb-1" style={{ color: textColor || 'var(--primary-500, #3B82F6)' }}>
+            <div className="text-3xl sm:text-4xl font-bold mb-1" style={{ color: textColor || 'hsl(var(--primary-500, 217 91% 60%))' }}>
               {bigValue}
             </div>
           )}
@@ -70,9 +70,9 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
         <div key={index} className={`flex flex-col items-center text-center p-4 transition-all duration-200 ${hoverClass}`}>
           <div
             className="flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center rounded-full border-4 mb-3"
-            style={{ borderColor: textColor || 'var(--primary-500, #3B82F6)' }}
+            style={{ borderColor: textColor || 'hsl(var(--primary-500, 217 91% 60%))' }}
           >
-            <span className="text-2xl sm:text-3xl font-bold" style={{ color: textColor || 'var(--primary-500, #3B82F6)' }}>
+            <span className="text-2xl sm:text-3xl font-bold" style={{ color: textColor || 'hsl(var(--primary-500, 217 91% 60%))' }}>
               {bigValue || labelText}
             </span>
           </div>
@@ -85,7 +85,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
     return (
       <div key={index} className={`text-center p-5 sm:p-6 bg-white border border-gray-200 rounded-xl transition-all duration-200 ${hoverClass}`}>
         {bigValue && (
-          <div className="text-3xl sm:text-4xl font-bold mb-1" style={{ color: textColor || 'var(--primary-500, #3B82F6)' }}>
+          <div className="text-3xl sm:text-4xl font-bold mb-1" style={{ color: textColor || 'hsl(var(--primary-500, 217 91% 60%))' }}>
             {bigValue}
           </div>
         )}
@@ -117,7 +117,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
             {groups!.map((group, groupIndex) => (
               <div key={groupIndex} className="bg-white border border-gray-200 rounded-xl p-5 sm:p-8">
                 <div className="text-center mb-5">
-                  <h3 className="text-base sm:text-lg font-semibold" style={{ color: textColor || 'var(--primary-500, #3B82F6)' }}>
+                  <h3 className="text-base sm:text-lg font-semibold" style={{ color: textColor || 'hsl(var(--primary-500, 217 91% 60%))' }}>
                     {group.description}
                   </h3>
                 </div>

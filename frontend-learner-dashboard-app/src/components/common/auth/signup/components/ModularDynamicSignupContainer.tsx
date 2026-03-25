@@ -29,6 +29,11 @@ import { Preferences } from "@capacitor/preferences";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { setTokenInStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import {
+  getOAuthRedirectOrigin,
+  isNativeOAuthRequired,
+  openOAuthInSystemBrowser,
+} from "@/lib/auth/nativeOAuth";
 
 interface ModularDynamicSignupContainerProps {
   instituteId?: string;
@@ -353,7 +358,7 @@ export function ModularDynamicSignupContainer({
     );
   }
 
-  const handleOAuthSignUp = (provider: "google" | "github") => {
+  const handleOAuthSignUp = async (provider: "google" | "github") => {
     try {
       // Build state payload
       const currentPath = window.location.pathname;
@@ -371,8 +376,13 @@ export function ModularDynamicSignupContainer({
         studyLibraryUrl = "/study-library/courses";
       }
 
+      // Resolve the public-facing origin for OAuth redirect
+      const redirectOrigin = await getOAuthRedirectOrigin();
+
       const stateObj = {
-        from: `${window.location.origin}/oauth-popup-handler.html`,
+        from: isNativeOAuthRequired()
+          ? `${redirectOrigin}/login/oauth/learner`
+          : `${redirectOrigin}/oauth-popup-handler.html`,
         account_type: "signup",
         user_type: "learner",
         institute_id: instituteId,
@@ -386,7 +396,13 @@ export function ModularDynamicSignupContainer({
         base64State
       )}`;
 
-      // Open OAuth in popup window
+      if (isNativeOAuthRequired()) {
+        // Native: open in system browser via Capacitor Browser plugin
+        await openOAuthInSystemBrowser(signupUrl);
+        return;
+      }
+
+      // Web: open OAuth in popup window
       const popup = window.open(
         signupUrl,
         "oauth_popup",

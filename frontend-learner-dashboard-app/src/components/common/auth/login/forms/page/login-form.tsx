@@ -37,6 +37,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  getOAuthRedirectOrigin,
+  isNativeOAuthRequired,
+  openOAuthInSystemBrowser,
+} from "@/lib/auth/nativeOAuth";
 
 export const getFromStorage = async (key: string) => {
   const result = await Preferences.get({ key });
@@ -770,10 +775,13 @@ export function LoginForm({
     }
   };
 
-  const handleOAuthLogin = (provider: "google" | "github") => {
+  const handleOAuthLogin = async (provider: "google" | "github") => {
     try {
+      // Resolve the public-facing origin for OAuth redirect
+      const redirectOrigin = await getOAuthRedirectOrigin();
+
       const stateObj: Record<string, unknown> = {
-        from: `${window.location.origin}/login/oauth/learner`,
+        from: `${redirectOrigin}/login/oauth/learner`,
         account_type: "login",
         user_type: "learner",
         isModalLogin: false, // Flag to indicate this is a page login
@@ -788,7 +796,13 @@ export function LoginForm({
       const loginUrl = `${LOGIN_URL_GOOGLE_GITHUB}/${provider}?state=${encodeURIComponent(
         base64State,
       )}`;
-      window.location.href = loginUrl;
+
+      if (isNativeOAuthRequired()) {
+        // Native: open in system browser via Capacitor Browser plugin
+        await openOAuthInSystemBrowser(loginUrl);
+      } else {
+        window.location.href = loginUrl;
+      }
     } catch {
       toast.error("Failed to initiate login. Please try again.");
     }

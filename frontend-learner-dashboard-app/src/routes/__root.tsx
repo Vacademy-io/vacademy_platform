@@ -12,6 +12,7 @@ import {
 } from "@capawesome/capacitor-app-update";
 
 import { Capacitor } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { toast } from "sonner";
 import { useUpdate } from "@/stores/useUpdate";
 import { Preferences } from "@capacitor/preferences";
@@ -293,6 +294,85 @@ const RootComponent = () => {
     }
     // We intentionally skip deps here to avoid re-running in StrictMode
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Native OAuth deep-link listener (Android/iOS)
+  // When the system browser completes OAuth and redirects to our public URL,
+  // the deep link fires appUrlOpen with the tokens in the URL.
+  useEffect(() => {
+    const platform = Capacitor.getPlatform();
+    if (platform !== "android" && platform !== "ios") return;
+
+    let listenerHandle: { remove: () => void } | null = null;
+
+    const setup = async () => {
+      listenerHandle = await App.addListener("appUrlOpen", async (event) => {
+        console.log("[OAuth DeepLink] appUrlOpen:", event.url);
+        try {
+          const url = new URL(event.url);
+          const accessToken = url.searchParams.get("accessToken");
+          const refreshToken = url.searchParams.get("refreshToken");
+
+          if (accessToken && refreshToken) {
+            // Close the in-app browser that was opened for OAuth
+            try {
+              const { closeSystemBrowser } = await import(
+                "@/lib/auth/nativeOAuth"
+              );
+              await closeSystemBrowser();
+            } catch {
+              /* browser may already be closed */
+            }
+
+            // Perform full auth cycle (store tokens, fetch details)
+            const { performFullAuthCycle } = await import(
+              "@/services/auth-cycle-service"
+            );
+            const { getTokenDecodedData } = await import(
+              "@/lib/auth/sessionUtility"
+            );
+            const decoded = getTokenDecodedData(accessToken);
+            const instituteId =
+              decoded?.authorities &&
+              Object.keys(decoded.authorities)[0];
+
+            if (instituteId) {
+              await performFullAuthCycle(
+                { accessToken, refreshToken },
+                instituteId,
+              );
+              console.log(
+                "[OAuth DeepLink] Auth cycle complete, navigating to dashboard",
+              );
+              // Navigate to dashboard (use replace so back button doesn't go to login)
+              window.location.replace(
+                `${window.location.origin}/dashboard`,
+              );
+            } else {
+              console.warn(
+                "[OAuth DeepLink] Could not extract instituteId from token",
+              );
+              toast.error("Login failed. Please try again.");
+            }
+          } else if (url.searchParams.get("error")) {
+            // OAuth error or signup-needed scenario
+            const message =
+              url.searchParams.get("message") || "Authentication failed";
+            console.warn("[OAuth DeepLink] OAuth error:", message);
+            toast.error(message);
+          }
+        } catch (err) {
+          console.error("[OAuth DeepLink] Error processing deep link:", err);
+          toast.error("Login failed. Please try again.");
+        }
+      });
+    };
+
+    setup();
+
+    return () => {
+      if (listenerHandle) listenerHandle.remove();
+    };
   }, []);
 
   // Global OAuth completion listener (storage/BroadcastChannel) to redirect parent

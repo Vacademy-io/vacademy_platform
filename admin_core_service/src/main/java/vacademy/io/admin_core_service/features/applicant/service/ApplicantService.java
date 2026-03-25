@@ -1076,8 +1076,8 @@ public class ApplicantService {
                         student.setAddressLine(getFormDataString(formData, "address_line"));
                         student.setCity(getFormDataString(formData, "city"));
                         student.setPinCode(getFormDataString(formData, "pin_code"));
-                        student.setFatherName(getFormDataString(formData, "fathers_name"));
-                        student.setMotherName(getFormDataString(formData, "mothers_name"));
+                        student.setFatherName(getFormDataString(formData, "father_name"));
+                        student.setMotherName(getFormDataString(formData, "mother_name"));
 
                         // --- New Fields (V96) ---
                         student.setIdNumber(getFormDataString(formData, "id_number"));
@@ -1130,8 +1130,8 @@ public class ApplicantService {
                                 student.setIdNumber(studentAadhaar);
                                 student.setIdType("AADHAAR");
                         }
-                        // Father details (single flow compatibility key)
-                        student.setFatherName(getFormDataString(formData, "fathers_name"));
+                        // Father details
+                        student.setFatherName(getFormDataString(formData, "father_name"));
                         student.setParentsMobileNumber(getFormDataString(formData, "father_mobile"));
                         student.setParentsEmail(getFormDataString(formData, "father_email"));
                         // student.setFatherAadhaar(getFormDataString(formData, "father_aadhaar"));
@@ -1139,8 +1139,8 @@ public class ApplicantService {
                         // "father_qualification"));
                         // student.setFatherOccupation(getFormDataString(formData,
                         // "father_occupation"));
-                        // Mother details (single flow compatibility key)
-                        student.setMotherName(getFormDataString(formData, "mothers_name"));
+                        // Mother details
+                        student.setMotherName(getFormDataString(formData, "mother_name"));
                         student.setParentToMotherMobileNumber(getFormDataString(formData, "mother_mobile"));
                         student.setParentsToMotherEmail(getFormDataString(formData, "mother_email"));
                         // student.setMotherAadhaar(getFormDataString(formData, "mother_aadhaar"));
@@ -2018,9 +2018,7 @@ public class ApplicantService {
                 return firstNonBlank(
                                 getFormDataString(formData, "parent_name"),
                                 getFormDataString(formData, "father_name"),
-                                getFormDataString(formData, "fathers_name"),
-                                getFormDataString(formData, "mother_name"),
-                                getFormDataString(formData, "mothers_name"));
+                                getFormDataString(formData, "mother_name"));
         }
 
         private String getPrimaryParentMobile(java.util.Map<String, Object> formData) {

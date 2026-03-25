@@ -1,5 +1,5 @@
 {
-  "appId": "com.vacademy.io",
+  "appId": "com.ssdc.horizon.app",
   "productName": "SSDC Horizon",
   "directories": {
     "buildResources": "resources",
@@ -30,14 +30,14 @@
   "asarUnpack": [
     "**/*.node"
   ],
-  "compression": "store",
+  "compression": "normal",
   "nodeGypRebuild": false,
   "buildDependenciesFromSource": false,
   "npmRebuild": false,
-  "publish": { 
+  "publish": {
     "provider": "github",
     "owner": "Vacademy-io",
-    "repo": "electron-build-repo", 
+    "repo": "electron-build-repo",
     "private": false
   },
   "nsis": {
@@ -59,15 +59,14 @@
     "target": [
       {
         "target": "nsis",
-        "arch": ["x64", "ia32"]
+        "arch": ["x64"]
       },
       {
         "target": "portable",
-        "arch": ["x64", "ia32"]
+        "arch": ["x64"]
       }
     ],
     "icon": "assets/ssdc_horizon.ico",
-    "signingHashAlgorithms": ["sha256"],
     "verifyUpdateCodeSignature": false
   },
   "mac": {
@@ -76,4 +75,3 @@
     "icon": "assets/ssdc_horizon.icns"
   }
 }
-

@@ -33,6 +33,13 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "practice",
   },
 
+    // Enark Uplift Teacher Training Android app
+  "io.enarkuplift.app": {
+    appName: "Uplift Teacher Training",
+    domain: "enarkuplift.in",
+    subdomain: "training",
+  },
+
   // ============ Android app IDs ============
   // (must match applicationId in build.gradle)
 

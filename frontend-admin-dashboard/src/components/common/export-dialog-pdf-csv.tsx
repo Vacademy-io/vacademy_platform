@@ -23,7 +23,7 @@ const ExportDialogPDFCSV = ({
             <DialogTrigger>
                 <MyButton
                     type="button"
-                    scale="large"
+                    scale="small"
                     buttonType="secondary"
                     className="font-medium"
                 >
@@ -31,11 +31,11 @@ const ExportDialogPDFCSV = ({
                     Export
                 </MyButton>
             </DialogTrigger>
-            <DialogContent className="flex flex-col !p-0 w-[300px]">
+            <DialogContent className="flex w-[300px] flex-col !p-0">
                 <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
                     Export
                 </h1>
-                <div className="flex items-center justify-center p-4 gap-4">
+                <div className="flex items-center justify-center gap-4 p-4">
                     {isEnablePDF && (
                         <MyButton
                             type="button"

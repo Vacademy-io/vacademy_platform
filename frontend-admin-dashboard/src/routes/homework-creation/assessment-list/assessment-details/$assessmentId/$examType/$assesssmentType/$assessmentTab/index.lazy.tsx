@@ -12,7 +12,13 @@ import { useInstituteQuery } from '@/services/student-list-section/getInstituteD
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
-import { CaretLeft, CheckCircle, LockSimple, PauseCircle, PencilSimpleLine } from '@phosphor-icons/react';
+import {
+    CaretLeft,
+    CheckCircle,
+    LockSimple,
+    PauseCircle,
+    PencilSimpleLine,
+} from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { toast } from 'sonner';
@@ -128,20 +134,22 @@ const AssessmentDetailsComponent = () => {
                     <div className="flex items-center gap-4">
                         <h1 className="font-semibold">{assessmentDetails[0]?.saved_data.name}</h1>
                         <Badge
-                            className={`rounded-md border border-neutral-300 ${assessmentDetails[0]?.saved_data.assessment_visibility === 'PRIVATE'
+                            className={`rounded-md border border-neutral-300 ${
+                                assessmentDetails[0]?.saved_data.assessment_visibility === 'PRIVATE'
                                     ? 'bg-primary-50'
                                     : 'bg-info-50'
-                                } py-1.5 shadow-none`}
+                            } py-1.5 shadow-none`}
                         >
                             <LockSimple size={16} className="mr-2" />
                             {assessmentDetails[0]?.saved_data.assessment_visibility}
                         </Badge>
                         <Separator orientation="vertical" className="h-8 w-px bg-neutral-300" />
                         <Badge
-                            className={`rounded-md border ${assessmentDetails?.[0]?.status === 'COMPLETED'
+                            className={`rounded-md border ${
+                                assessmentDetails?.[0]?.status === 'COMPLETED'
                                     ? 'bg-success-50'
                                     : 'bg-neutral-100'
-                                } border-neutral-300 py-1.5 shadow-none`}
+                            } border-neutral-300 py-1.5 shadow-none`}
                         >
                             {assessmentDetails?.[0]?.status === 'COMPLETED' ? (
                                 <CheckCircle
@@ -181,7 +189,7 @@ const AssessmentDetailsComponent = () => {
                             )}
                         </Dialog>
                         <MyButton scale="large" onClick={handleExportAssessment} className="py-4">
-                            Offline Paper
+                            Export Offline
                         </MyButton>
                     </div>
                 </div>
@@ -191,14 +199,16 @@ const AssessmentDetailsComponent = () => {
                         <TabsList className="mb-2 mt-6 inline-flex h-auto justify-start gap-0 rounded-none border-b !bg-transparent p-0">
                             <TabsTrigger
                                 value="overview"
-                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${selectedTab === 'overview'
+                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                                    selectedTab === 'overview'
                                         ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                         : 'border-none bg-transparent'
-                                    }`}
+                                }`}
                             >
                                 <span
-                                    className={`${selectedTab === 'overview' ? 'text-primary-500' : ''
-                                        }`}
+                                    className={`${
+                                        selectedTab === 'overview' ? 'text-primary-500' : ''
+                                    }`}
                                 >
                                     Overview
                                 </span>
@@ -206,14 +216,16 @@ const AssessmentDetailsComponent = () => {
                             {assessmentTab !== 'upcomingTests' && (
                                 <TabsTrigger
                                     value="submissions"
-                                    className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${selectedTab === 'submissions'
+                                    className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                                        selectedTab === 'submissions'
                                             ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                             : 'border-none bg-transparent'
-                                        }`}
+                                    }`}
                                 >
                                     <span
-                                        className={`${selectedTab === 'submissions' ? 'text-primary-500' : ''
-                                            }`}
+                                        className={`${
+                                            selectedTab === 'submissions' ? 'text-primary-500' : ''
+                                        }`}
                                     >
                                         Submissions
                                     </span>
@@ -221,56 +233,64 @@ const AssessmentDetailsComponent = () => {
                             )}
                             <TabsTrigger
                                 value="basicInfo"
-                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${selectedTab === 'basicInfo'
+                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                                    selectedTab === 'basicInfo'
                                         ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                         : 'border-none bg-transparent'
-                                    }`}
+                                }`}
                             >
                                 <span
-                                    className={`${selectedTab === 'basicInfo' ? 'text-primary-500' : ''
-                                        }`}
+                                    className={`${
+                                        selectedTab === 'basicInfo' ? 'text-primary-500' : ''
+                                    }`}
                                 >
                                     Basic Info
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
                                 value="questions"
-                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${selectedTab === 'questions'
+                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                                    selectedTab === 'questions'
                                         ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                         : 'border-none bg-transparent'
-                                    }`}
+                                }`}
                             >
                                 <span
-                                    className={`${selectedTab === 'questions' ? 'text-primary-500' : ''
-                                        }`}
+                                    className={`${
+                                        selectedTab === 'questions' ? 'text-primary-500' : ''
+                                    }`}
                                 >
                                     Questions
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
                                 value="participants"
-                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${selectedTab === 'participants'
+                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                                    selectedTab === 'participants'
                                         ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                         : 'border-none bg-transparent'
-                                    }`}
+                                }`}
                             >
                                 <span
-                                    className={`${selectedTab === 'participants' ? 'text-primary-500' : ''
-                                        }`}
+                                    className={`${
+                                        selectedTab === 'participants' ? 'text-primary-500' : ''
+                                    }`}
                                 >
                                     Participants
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
                                 value="accessControl"
-                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${selectedTab === 'accessControl'
+                                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                                    selectedTab === 'accessControl'
                                         ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                         : 'border-none bg-transparent'
-                                    }`}
+                                }`}
                             >
                                 <span
-                                    className={`${selectedTab === 'accessControl' ? 'text-primary-500' : ''
-                                        }`}
+                                    className={`${
+                                        selectedTab === 'accessControl' ? 'text-primary-500' : ''
+                                    }`}
                                 >
                                     Access Control
                                 </span>

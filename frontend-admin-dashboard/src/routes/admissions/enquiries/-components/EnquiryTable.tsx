@@ -39,6 +39,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { ActivityLogDialog } from './enquiry-side-view/activity-log-dialog';
+import { EnquiryBulkImportDialog } from './EnquiryBulkImportDialog';
 
 // Helper function to generate key from name
 const generateKeyFromName = (name: string): string =>
@@ -131,6 +132,7 @@ const EnquiryTableInner = ({
     const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
     const [selectedActivityEnquiryId, setSelectedActivityEnquiryId] = useState<string | null>(null);
     const [bulkConversionStatus, setBulkConversionStatus] = useState<ConversionStatus | ''>('');
+    const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
     // Reset page and selected rows when enquiry or filters change
     useEffect(() => {
@@ -584,6 +586,15 @@ const EnquiryTableInner = ({
                 >
                     Add New Enquiry Response
                 </MyButton>
+                <MyButton buttonType="secondary" onClick={() => setIsBulkImportOpen(true)}>
+                    Bulk Import
+                </MyButton>
+                <EnquiryBulkImportDialog
+                    open={isBulkImportOpen}
+                    onOpenChange={setIsBulkImportOpen}
+                    audienceId={enquiryId}
+                    onSuccess={() => queryClient.invalidateQueries({ queryKey: ['enquiries'] })}
+                />
             </div>
         );
     }
@@ -604,6 +615,9 @@ const EnquiryTableInner = ({
                     )}
                 </div>
                 <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setIsBulkImportOpen(true)}>
+                        Bulk Import
+                    </Button>
                     <Button
                         variant="outline"
                         size="sm"
@@ -615,6 +629,13 @@ const EnquiryTableInner = ({
                     </Button>
                 </div>
             </div>
+
+            <EnquiryBulkImportDialog
+                open={isBulkImportOpen}
+                onOpenChange={setIsBulkImportOpen}
+                audienceId={enquiryId}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['enquiries'] })}
+            />
 
             <div className="rounded-md shadow-sm">
                 <MyTable<EnquiryTableRow>

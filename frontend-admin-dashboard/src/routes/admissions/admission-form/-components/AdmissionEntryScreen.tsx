@@ -8,6 +8,7 @@ import { X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { fetchEnquiryDetails } from '../../-services/applicant-services';
+import { AdmissionBulkImportDialog } from './AdmissionBulkImportDialog';
 
 export interface StudentSearchResult {
     id: string;
@@ -109,6 +110,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
     const sessions = useMemo(() => instituteDetails?.sessions ?? [], [instituteDetails]);
     const [selectedSessionId, setSelectedSessionId] = useState('');
+    const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
     const [initialLoadDone, setInitialLoadDone] = useState(false);
 
@@ -284,8 +286,9 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             }
 
             const item = results[0];
+            const resolvedApplicantId = item.applicant_id || item.application_id || null;
             const mapped: Partial<StudentSearchResult> = {
-                id: item.admission_id || item.application_id || '',
+                id: resolvedApplicantId || item.admission_id || '',
                 studentName: item.student_name || '',
                 gender: item.gender || '',
                 dob: item.date_of_birth ? new Date(item.date_of_birth).toISOString().split('T')[0] : '',
@@ -295,10 +298,10 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 address: '',
                 classVal: getDisplayClass(item),
                 sourceType: 'APPLICATION',
-                sourceId: item.admission_id || item.application_id || '',
+                sourceId: resolvedApplicantId || item.admission_id || '',
                 destinationPackageSessionId: item.destination_package_session_id || '',
                 enquiryId: null,
-                applicationId: item.admission_id || item.application_id || null,
+                applicationId: resolvedApplicantId,
             };
 
             setShowApplicationModal(false);
@@ -378,7 +381,10 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
     const handleSelectResult = (item: any) => {
         const sourceType = fromSource === 'From Enquiry' ? 'ENQUIRY' : 'APPLICATION';
-        const sourceId = item.admission_id || item.enquiry_id || item.application_id || item.id || '';
+        const sourceId =
+            sourceType === 'APPLICATION'
+                ? item.applicant_id || item.application_id || item.admission_id || item.id || ''
+                : item.enquiry_id || item.admission_id || item.id || '';
 
         const isEnquiry = sourceType === 'ENQUIRY' || item.status === 'ENQUIRY';
         const isApplication = sourceType === 'APPLICATION' || item.status === 'APPLICATION';
@@ -399,7 +405,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             sourceId,
             destinationPackageSessionId: item.destination_package_session_id || '',
             enquiryId: isEnquiry ? (item.enquiry_id || item.admission_id || null) : null,
-            applicationId: isApplication ? (item.application_id || item.admission_id || null) : null,
+            applicationId: isApplication ? (item.applicant_id || item.application_id || null) : null,
         }, selectedSessionId);
     };
 
@@ -432,6 +438,14 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                         </svg>
                         Admission Form
                     </button>
+                    <MyButton
+                        buttonType="secondary"
+                        disabled={!selectedSessionId}
+                        onClick={() => setIsBulkImportOpen(true)}
+                        className="px-4 py-2"
+                    >
+                        Bulk Import
+                    </MyButton>
                 </div>
             </div>
 
@@ -925,6 +939,16 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                     </div>
                 </div>
             )}
+
+            <AdmissionBulkImportDialog
+                open={isBulkImportOpen}
+                onOpenChange={setIsBulkImportOpen}
+                sessionId={selectedSessionId}
+                onSuccess={() => {
+                    // Refresh current search results if user had already searched.
+                    handleSearch();
+                }}
+            />
         </div>
     );
 }

@@ -384,11 +384,11 @@ public class PackageSessionService {
                     packageRepository.save(child);
                     keptChildIds.add(child.getId());
                 } else {
-                    PackageSession child = createChildPackageSession(parent, name);
+                    PackageSession child = createChildPackageSession(parent, name, instituteId);
                     keptChildIds.add(child.getId());
                 }
             } else {
-                PackageSession child = createChildPackageSession(parent, name);
+                PackageSession child = createChildPackageSession(parent, name, instituteId);
                 keptChildIds.add(child.getId());
             }
         }
@@ -409,7 +409,7 @@ public class PackageSessionService {
         }
     }
 
-    private PackageSession createChildPackageSession(PackageSession parent, String name) {
+    private PackageSession createChildPackageSession(PackageSession parent, String name, String instituteId) {
         PackageSession child = new PackageSession();
         child.setPackageEntity(parent.getPackageEntity());
         child.setLevel(parent.getLevel());
@@ -422,6 +422,8 @@ public class PackageSessionService {
         child.setName(name);
         child.setMaxSeats(parent.getMaxSeats());
         child.setAvailableSlots(parent.getAvailableSlots());
-        return packageRepository.save(child);
+        child = packageRepository.save(child);
+        defaultEnrollInviteService.createDefaultEnrollInvite(child, instituteId);
+        return child;
     }
 }

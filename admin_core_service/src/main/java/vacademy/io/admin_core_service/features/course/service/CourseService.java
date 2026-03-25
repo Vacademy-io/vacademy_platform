@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
+import vacademy.io.admin_core_service.features.enroll_invite.service.DefaultEnrollInviteService;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
@@ -55,6 +56,7 @@ public class CourseService {
     private final PackageService packageService;
     private final PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationToPaymentOptionRepository;
     private final vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository enrollInviteRepository;
+    private final DefaultEnrollInviteService defaultEnrollInviteService;
 
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
@@ -172,6 +174,7 @@ public class CourseService {
             child.setAvailableSlots(parent.getAvailableSlots());
 
             child = packageSessionRepository.save(child);
+            defaultEnrollInviteService.createDefaultEnrollInvite(child, instituteId);
             childIds.add(child.getId());
         });
 

@@ -2,9 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>aps-environment</key>
-    <string>development</string>
+	<key>aps-environment</key>
+	<string>development</string>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:ssdc.vacademy.io</string>
+		<string>applinks:7cs.vacademy.io</string>
+		<string>applinks:learner.vacademy.io</string>
+		<string>applinks:practice.ithinkersolympiad.com</string>
+		<string>applinks:fivesep.vacademy.io</string>
+		<string>applinks:shiksha-nation.vacademy.io</string>
+		<string>applinks:training.enarkuplift.in</string>
+	</array>
 </dict>
 </plist>
-
-

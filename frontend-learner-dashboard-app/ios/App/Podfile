@@ -40,6 +40,10 @@ target 'Five Sep' do
   capacitor_pods
 end
 
+target 'Uplift Teacher Training' do
+  capacitor_pods
+end
+
 post_install do |installer|
   assertDeploymentTarget(installer)
 end

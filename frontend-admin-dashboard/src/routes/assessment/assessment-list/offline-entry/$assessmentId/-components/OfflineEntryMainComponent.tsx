@@ -93,7 +93,7 @@ export const OfflineEntryMainComponent = () => {
     const currentQuestion = currentQuestions[currentQuestionIndex];
 
     const answeredCount = allQuestions.filter(
-        (q) => responses[q.question_id]?.selectedOptionIds?.length > 0
+        (q) => (responses[q.question_id]?.selectedOptionIds?.length ?? 0) > 0
     ).length;
     const unansweredCount = allQuestions.length - answeredCount;
 
@@ -179,14 +179,14 @@ export const OfflineEntryMainComponent = () => {
                         section_id: section.id,
                         question_id: q.question_id,
                         marks: responses[q.question_id]?.marks ?? 0,
-                        status: responses[q.question_id]?.marks > 0 ? 'CORRECT' : 'INCORRECT',
+                        status: (responses[q.question_id]?.marks ?? 0) > 0 ? 'CORRECT' : 'INCORRECT',
                     }))
             );
 
             if (directMarksQuestions.length > 0) {
                 await submitDirectMarks(
                     assessmentId,
-                    attemptResponse.attempt_id,
+                    attemptResponse?.attempt_id ?? '',
                     iId,
                     { request: directMarksQuestions }
                 );

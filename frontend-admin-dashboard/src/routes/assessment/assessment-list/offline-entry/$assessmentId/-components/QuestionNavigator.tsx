@@ -48,7 +48,7 @@ export const QuestionNavigator = ({
                 {questionsMap[currentSectionId]?.map(
                     (question: QuestionItem, index: number) => {
                         const hasResponse =
-                            responses[question.question_id]?.selectedOptionIds?.length > 0;
+                            (responses[question.question_id]?.selectedOptionIds?.length ?? 0) > 0;
                         const isCurrent =
                             currentSectionId === currentSectionId &&
                             currentQuestionIndex === index;

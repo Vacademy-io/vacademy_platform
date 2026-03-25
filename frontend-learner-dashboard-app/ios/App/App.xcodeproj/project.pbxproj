@@ -32,10 +32,29 @@
 		0E5CB23D2F0ABC0800089DAC /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		0E5CB23E2F0ABC0800089DAC /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		0E5CB23F2F0ABC0800089DAC /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		0EB0C0E82F73B79D003DA394 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		0EB0C0EC2F73B79D003DA394 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */; };
+		0EB0C0ED2F73B79D003DA394 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
+		0EB0C0EE2F73B79D003DA394 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		0EB0C0EF2F73B79D003DA394 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		0EB0C0F02F73B79D003DA394 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+		0EB0C0F12F73B79D003DA394 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+		0EB0C0F22F73B79D003DA394 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+		0EB0C0F32F73B79D003DA394 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		0EB0C0FB2F73B8AA003DA394 /* ShikshaNation-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EB0C0FA2F73B8AA003DA394 /* ShikshaNation-Info.plist */; };
 		0EFC07AD2F0BAA7600B3FC57 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
 		0EFC07AF2F0BAAB200B3FC57 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */; };
 		0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
+		1AAA00012F25A00000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		1AAA00022F25A00000000002 /* EnarkGoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */; };
+		1AAA00032F25A00000000003 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		1AAA00042F25A00000000004 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		1AAA00052F25A00000000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+		1AAA00062F25A00000000006 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+		1AAA00072F25A00000000007 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+		1AAA00082F25A00000000008 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		475FB3FCE38A042F08A9CFB1 /* Pods_Uplift_Teacher_Training.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
@@ -46,6 +65,7 @@
 		9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF80D54945E534E81704718B /* Pods_Five_Sep.framework */; };
 		9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
+		B6EF8EEE4CC97793718ECA52 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
 		C314EA5A6665CB1D512B6D35 /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 /* End PBXBuildFile section */
 
@@ -57,10 +77,16 @@
 		0E3507AF2F1C932000F1F9F9 /* SSDC-HORIZON-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "SSDC-HORIZON-Info.plist"; path = "/Users/neerajhariyale/development/frontend-learner-dashboard-app/ios/App/SSDC-HORIZON-Info.plist"; sourceTree = "<absolute>"; };
 		0E5CB2442F0ABC0800089DAC /* Five Sep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Five Sep.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "ithinkersByFiveSep-Info.plist"; path = "/Users/neerajhariyale/development/frontend-learner-dashboard-app/ios/App/ithinkersByFiveSep-Info.plist"; sourceTree = "<absolute>"; };
+		0EB0C0F82F73B79D003DA394 /* Shiksha Nation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shiksha Nation.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		0EB0C0F92F73B79D003DA394 /* SSDC Horizon copy2-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "SSDC Horizon copy2-Info.plist"; path = "/Users/neerajhariyale/development/Vacademy/vacademy_platform/frontend-learner-dashboard-app/ios/App/SSDC Horizon copy2-Info.plist"; sourceTree = "<absolute>"; };
+		0EB0C0FA2F73B8AA003DA394 /* ShikshaNation-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "ShikshaNation-Info.plist"; sourceTree = "<group>"; };
 		0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "../../../../Desktop/GoogleService-Info.plist"; sourceTree = "<group>"; };
+		1AAA00092F25A00000000009 /* Uplift Teacher Training.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Uplift Teacher Training.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		1AAA000A2F25A0000000000A /* Enark-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Enark-Info.plist"; sourceTree = "<group>"; };
+		1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "EnarkGoogleService-Info.plist"; sourceTree = "<group>"; };
 		25A963DCA873DEB99161804B /* Pods-the7cs.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-the7cs.debug.xcconfig"; path = "Pods/Target Support Files/Pods-the7cs/Pods-the7cs.debug.xcconfig"; sourceTree = "<group>"; };
+		287CCFB97247580E305FA222 /* Pods-SSDC Horizon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.debug.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.debug.xcconfig"; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
-		364227EFB287C39D41393156 /* Pods-SSDC Horizon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.debug.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.debug.xcconfig"; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -71,12 +97,15 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		54FDC0D1DF0A5F5687F4CCC5 /* Pods-Five Sep.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Five Sep.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Five Sep/Pods-Five Sep.debug.xcconfig"; sourceTree = "<group>"; };
 		7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SSDC_Horizon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		86003D6B1A377A8DB634EE53 /* Pods-SSDC Horizon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.release.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.release.xcconfig"; sourceTree = "<group>"; };
+		885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Uplift_Teacher_Training.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8B279DBAA24BE3BC1F188689 /* Pods-Five Sep.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Five Sep.release.xcconfig"; path = "Pods/Target Support Files/Pods-Five Sep/Pods-Five Sep.release.xcconfig"; sourceTree = "<group>"; };
 		9BF657DED25A2F36B05C0907 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		B313585718531D2F9A4F2BE7 /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 		D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_the7cs.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		E22ECBA0680AFBB3EF37826D /* Pods-Uplift Teacher Training.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Uplift Teacher Training.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Uplift Teacher Training/Pods-Uplift Teacher Training.debug.xcconfig"; sourceTree = "<group>"; };
+		E2668AC7D95201202741B1D6 /* Pods-Uplift Teacher Training.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Uplift Teacher Training.release.xcconfig"; path = "Pods/Target Support Files/Pods-Uplift Teacher Training/Pods-Uplift Teacher Training.release.xcconfig"; sourceTree = "<group>"; };
+		E6072116DBFDAD2CA617E513 /* Pods-SSDC Horizon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.release.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.release.xcconfig"; sourceTree = "<group>"; };
 		FF80D54945E534E81704718B /* Pods_Five_Sep.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Five_Sep.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -94,6 +123,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */,
+				B6EF8EEE4CC97793718ECA52 /* Pods_SSDC_Horizon.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -103,6 +133,21 @@
 			files = (
 				9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */,
 				9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0EB0C0E92F73B79D003DA394 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1AAA000B2F25A0000000000B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				475FB3FCE38A042F08A9CFB1 /* Pods_Uplift_Teacher_Training.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,6 +170,7 @@
 				7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */,
 				D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */,
 				FF80D54945E534E81704718B /* Pods_Five_Sep.framework */,
+				885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -132,6 +178,7 @@
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
+				0EB0C0FA2F73B8AA003DA394 /* ShikshaNation-Info.plist */,
 				0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
@@ -140,6 +187,9 @@
 				0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */,
 				0E35079A2F1C931700F1F9F9 /* the7cs-Info.plist */,
 				0E3507AF2F1C932000F1F9F9 /* SSDC-HORIZON-Info.plist */,
+				0EB0C0F92F73B79D003DA394 /* SSDC Horizon copy2-Info.plist */,
+				1AAA000A2F25A0000000000A /* Enark-Info.plist */,
+				1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */,
 			);
 			sourceTree = "<group>";
 		};
@@ -150,6 +200,8 @@
 				0E5CB2442F0ABC0800089DAC /* Five Sep.app */,
 				0E3507992F1C931700F1F9F9 /* the7cs.app */,
 				0E3507AE2F1C931F00F1F9F9 /* SSDC Horizon.app */,
+				0EB0C0F82F73B79D003DA394 /* Shiksha Nation.app */,
+				1AAA00092F25A00000000009 /* Uplift Teacher Training.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -176,10 +228,12 @@
 				9BF657DED25A2F36B05C0907 /* Pods-App.release.xcconfig */,
 				54FDC0D1DF0A5F5687F4CCC5 /* Pods-Five Sep.debug.xcconfig */,
 				8B279DBAA24BE3BC1F188689 /* Pods-Five Sep.release.xcconfig */,
-				364227EFB287C39D41393156 /* Pods-SSDC Horizon.debug.xcconfig */,
-				86003D6B1A377A8DB634EE53 /* Pods-SSDC Horizon.release.xcconfig */,
 				25A963DCA873DEB99161804B /* Pods-the7cs.debug.xcconfig */,
 				043931A970C72A57050EDC91 /* Pods-the7cs.release.xcconfig */,
+				287CCFB97247580E305FA222 /* Pods-SSDC Horizon.debug.xcconfig */,
+				E6072116DBFDAD2CA617E513 /* Pods-SSDC Horizon.release.xcconfig */,
+				E22ECBA0680AFBB3EF37826D /* Pods-Uplift Teacher Training.debug.xcconfig */,
+				E2668AC7D95201202741B1D6 /* Pods-Uplift Teacher Training.release.xcconfig */,
 			);
 			name = Pods;
 			sourceTree = "<group>";
@@ -244,6 +298,42 @@
 			productReference = 0E5CB2442F0ABC0800089DAC /* Five Sep.app */;
 			productType = "com.apple.product-type.application";
 		};
+		0EB0C0E52F73B79D003DA394 /* Shiksha Nation */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0EB0C0F52F73B79D003DA394 /* Build configuration list for PBXNativeTarget "Shiksha Nation" */;
+			buildPhases = (
+				0EB0C0E72F73B79D003DA394 /* Sources */,
+				0EB0C0E92F73B79D003DA394 /* Frameworks */,
+				0EB0C0EB2F73B79D003DA394 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Shiksha Nation";
+			productName = App;
+			productReference = 0EB0C0F82F73B79D003DA394 /* Shiksha Nation.app */;
+			productType = "com.apple.product-type.application";
+		};
+		1AAA000C2F25A0000000000C /* Uplift Teacher Training */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1AAA00182F25A00000000018 /* Build configuration list for PBXNativeTarget "Uplift Teacher Training" */;
+			buildPhases = (
+				DD1E0F5523C1D6F1F177BD07 /* [CP] Check Pods Manifest.lock */,
+				1AAA000D2F25A0000000000D /* Sources */,
+				1AAA000B2F25A0000000000B /* Frameworks */,
+				1AAA000E2F25A0000000000E /* Resources */,
+				E37DD8A5BF6C5E5C1BEB2616 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Uplift Teacher Training";
+			productName = App;
+			productReference = 1AAA00092F25A00000000009 /* Uplift Teacher Training.app */;
+			productType = "com.apple.product-type.application";
+		};
 		504EC3031FED79650016851F /* App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
@@ -281,6 +371,12 @@
 					0E5CB2332F0ABC0800089DAC = {
 						ProvisioningStyle = Automatic;
 					};
+					0EB0C0E52F73B79D003DA394 = {
+						ProvisioningStyle = Automatic;
+					};
+					1AAA000C2F25A0000000000C = {
+						ProvisioningStyle = Automatic;
+					};
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
@@ -305,6 +401,8 @@
 				0E5CB2332F0ABC0800089DAC /* Five Sep */,
 				0E3507862F1C931700F1F9F9 /* the7cs */,
 				0E35079B2F1C931F00F1F9F9 /* SSDC Horizon */,
+				0EB0C0E52F73B79D003DA394 /* Shiksha Nation */,
+				1AAA000C2F25A0000000000C /* Uplift Teacher Training */,
 			);
 		};
 /* End PBXProject section */
@@ -352,6 +450,36 @@
 				0E5CB23D2F0ABC0800089DAC /* capacitor.config.json in Resources */,
 				0E5CB23E2F0ABC0800089DAC /* Main.storyboard in Resources */,
 				0E5CB23F2F0ABC0800089DAC /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0EB0C0EB2F73B79D003DA394 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0EB0C0FB2F73B8AA003DA394 /* ShikshaNation-Info.plist in Resources */,
+				0EB0C0EC2F73B79D003DA394 /* GoogleService-Info.plist in Resources */,
+				0EB0C0ED2F73B79D003DA394 /* ithinkersByFiveSep-Info.plist in Resources */,
+				0EB0C0EE2F73B79D003DA394 /* LaunchScreen.storyboard in Resources */,
+				0EB0C0EF2F73B79D003DA394 /* public in Resources */,
+				0EB0C0F02F73B79D003DA394 /* Assets.xcassets in Resources */,
+				0EB0C0F12F73B79D003DA394 /* capacitor.config.json in Resources */,
+				0EB0C0F22F73B79D003DA394 /* Main.storyboard in Resources */,
+				0EB0C0F32F73B79D003DA394 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1AAA000E2F25A0000000000E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1AAA00022F25A00000000002 /* EnarkGoogleService-Info.plist in Resources */,
+				1AAA00032F25A00000000003 /* LaunchScreen.storyboard in Resources */,
+				1AAA00042F25A00000000004 /* public in Resources */,
+				1AAA00052F25A00000000005 /* Assets.xcassets in Resources */,
+				1AAA00062F25A00000000006 /* capacitor.config.json in Resources */,
+				1AAA00072F25A00000000007 /* Main.storyboard in Resources */,
+				1AAA00082F25A00000000008 /* config.xml in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -515,6 +643,43 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Five Sep/Pods-Five Sep-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		DD1E0F5523C1D6F1F177BD07 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-Uplift Teacher Training-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		E37DD8A5BF6C5E5C1BEB2616 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Uplift Teacher Training/Pods-Uplift Teacher Training-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -539,6 +704,22 @@
 			buildActionMask = 2147483647;
 			files = (
 				0E5CB2362F0ABC0800089DAC /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0EB0C0E72F73B79D003DA394 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0EB0C0E82F73B79D003DA394 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1AAA000D2F25A0000000000D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1AAA00012F25A00000000001 /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -619,7 +800,7 @@
 		};
 		0E3507AC2F1C931F00F1F9F9 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 364227EFB287C39D41393156 /* Pods-SSDC Horizon.debug.xcconfig */;
+			baseConfigurationReference = 287CCFB97247580E305FA222 /* Pods-SSDC Horizon.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = SSDCicon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
@@ -642,7 +823,7 @@
 		};
 		0E3507AD2F1C931F00F1F9F9 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 86003D6B1A377A8DB634EE53 /* Pods-SSDC Horizon.release.xcconfig */;
+			baseConfigurationReference = E6072116DBFDAD2CA617E513 /* Pods-SSDC Horizon.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = SSDCicon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
@@ -700,6 +881,98 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.fivesep.student.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		0EB0C0F62F73B79D003DA394 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7XKD5M7288;
+				INFOPLIST_FILE = "SSDC Horizon copy2-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanation.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		0EB0C0F72F73B79D003DA394 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7XKD5M7288;
+				INFOPLIST_FILE = "SSDC Horizon copy2-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanation.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		1AAA00152F25A00000000015 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = E22ECBA0680AFBB3EF37826D /* Pods-Uplift Teacher Training.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = EnarkIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "Enark-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Uplift Teacher Training";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = io.enarkuplift.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1AAA00162F25A00000000016 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = E2668AC7D95201202741B1D6 /* Pods-Uplift Teacher Training.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = EnarkIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "Enark-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Uplift Teacher Training";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.enarkuplift.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
@@ -883,6 +1156,24 @@
 			buildConfigurations = (
 				0E5CB2422F0ABC0800089DAC /* Debug */,
 				0E5CB2432F0ABC0800089DAC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0EB0C0F52F73B79D003DA394 /* Build configuration list for PBXNativeTarget "Shiksha Nation" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0EB0C0F62F73B79D003DA394 /* Debug */,
+				0EB0C0F72F73B79D003DA394 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1AAA00182F25A00000000018 /* Build configuration list for PBXNativeTarget "Uplift Teacher Training" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1AAA00152F25A00000000015 /* Debug */,
+				1AAA00162F25A00000000016 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

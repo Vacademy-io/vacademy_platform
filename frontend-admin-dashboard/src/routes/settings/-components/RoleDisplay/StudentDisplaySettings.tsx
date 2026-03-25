@@ -26,6 +26,7 @@ import {
     getStudentDisplaySettings,
     saveStudentDisplaySettings,
 } from '@/services/student-display-settings';
+import MaxActiveSessionsSetting from './MaxActiveSessionsSetting';
 
 export default function StudentDisplaySettings(): JSX.Element {
     const [settings, setSettings] = useState<StudentDisplaySettingsData | null>(null);
@@ -644,6 +645,8 @@ export default function StudentDisplaySettings(): JSX.Element {
                     </div>
                 </div>
             </Card>
+
+            <MaxActiveSessionsSetting />
 
             <Card>
                 <CardHeader>

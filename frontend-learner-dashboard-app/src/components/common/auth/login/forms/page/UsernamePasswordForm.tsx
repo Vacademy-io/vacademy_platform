@@ -7,7 +7,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { loginUser } from "@/components/common/auth/login/hooks/login-button";
+import { loginUser, SessionLimitError } from "@/components/common/auth/login/hooks/login-button";
+import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { motion } from "framer-motion";
@@ -56,6 +57,9 @@ export function UsernameLogin({
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [sessionLimitOpen, setSessionLimitOpen] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<any[]>([]);
+  const [pendingLoginValues, setPendingLoginValues] = useState<FormValues | null>(null);
   const { setInstituteId } = useInstituteFeatureStore();
   const domainRouting = useDomainRouting();
 
@@ -237,13 +241,30 @@ export function UsernameLogin({
         form.reset();
       }
     },
-    onError: () => {
+    onError: (error) => {
       setIsLoading(false);
-      toast.error(
-        "Login failed. Please check your username and password and try again.",
-      );
+      if (error instanceof SessionLimitError) {
+        setActiveSessions(error.activeSessions);
+        setPendingLoginValues(form.getValues());
+        setSessionLimitOpen(true);
+      } else {
+        toast.error(
+          "Login failed. Please check your username and password and try again.",
+        );
+      }
     },
   });
+
+  const handleSessionTerminated = () => {
+    // Session terminated, user can retry
+  };
+
+  const handleRetryLogin = () => {
+    setSessionLimitOpen(false);
+    if (pendingLoginValues) {
+      mutation.mutate(pendingLoginValues);
+    }
+  };
 
   function onSubmit(values: FormValues) {
     mutation.mutate(values);
@@ -482,6 +503,14 @@ export function UsernameLogin({
           );
         })()}
       </motion.div>
+
+      <SessionLimitDialog
+        open={sessionLimitOpen}
+        onOpenChange={setSessionLimitOpen}
+        activeSessions={activeSessions}
+        onSessionTerminated={handleSessionTerminated}
+        onRetryLogin={handleRetryLogin}
+      />
     </div>
   );
 }

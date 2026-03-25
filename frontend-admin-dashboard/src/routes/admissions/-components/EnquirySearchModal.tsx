@@ -101,6 +101,7 @@ export const EnquirySearchModal: React.FC<EnquirySearchModalProps> = ({
 
                 {/* Filters */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    {/* filter by name */}
                     <div>
                         <Label htmlFor="searchName">Student / Parent Name</Label>
                         <Input
@@ -113,6 +114,7 @@ export const EnquirySearchModal: React.FC<EnquirySearchModalProps> = ({
                             className="mt-1"
                         />
                     </div>
+                    {/* filter by phone number */}
                     <div>
                         <Label htmlFor="searchPhone">Phone Number</Label>
                         <Input
@@ -125,6 +127,7 @@ export const EnquirySearchModal: React.FC<EnquirySearchModalProps> = ({
                             className="mt-1"
                         />
                     </div>
+                    {/* filter by Enquiry tracking id */}
                     <div>
                         <Label htmlFor="searchTrackingId">Tracking ID</Label>
                         <Input
@@ -138,7 +141,7 @@ export const EnquirySearchModal: React.FC<EnquirySearchModalProps> = ({
                         />
                     </div>
                 </div>
-
+                {/* search button */}
                 <div className="flex justify-end mb-6">
                     <MyButton
                         buttonType="primary"

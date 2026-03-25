@@ -686,36 +686,67 @@ public class ApplicantService {
         }
 
         /**
-         * Search for enquiries returning a list handles combinations dynamically,
-         * scoped to the given institute for data isolation
+         * Search for enquiries using a UNION approach: all provided filters (name, phone, trackingId)
+         * are evaluated independently and results are merged with deduplication.
+         * e.g. searching with name="sanju" AND phone="9876" returns all enquiries matching EITHER filter.
+         *
+         * Institute isolation: all queries are scoped to the given instituteId via JOIN on Audience,
+         * so admins only see enquiries belonging to their institute.
+         *
+         * Child name matching: child (student) names are stored in the auth-service (users table),
+         * not on AudienceResponse. So we first match by parent_name in SQL, then do a second pass
+         * fetching all institute enquiries and filtering by child name in Java.
+         * This is less efficient but necessary due to cross-service DB separation.
          */
         public List<EnquiryDetailsResponseDTO> searchEnquiries(String instituteId, String name, String phone, String trackingId) {
-                List<AudienceResponse> audienceResponses = new java.util.ArrayList<>();
+                // LinkedHashMap keyed by AudienceResponse.id to deduplicate while preserving insertion order
+                java.util.LinkedHashMap<String, AudienceResponse> deduped = new java.util.LinkedHashMap<>();
 
-                // Depending on the filter provided, query the DB
+                // 1. Tracking ID: resolve short code -> Enquiry UUID -> AudienceResponse, scoped to institute
                 if (trackingId != null && !trackingId.trim().isEmpty()) {
-                        // Precise match for Tracking ID — resolve to enquiry UUID first, then scope by institute
                         Optional<vacademy.io.admin_core_service.features.enquiry.entity.Enquiry> enquiryOpt =
                                         enquiryRepository.findByEnquiryTrackingId(trackingId);
-                        enquiryOpt.ifPresent(enq -> {
-                                audienceResponseRepository
-                                                .findByInstituteIdAndEnquiryId(instituteId, enq.getId().toString())
-                                                .ifPresent(audienceResponses::add);
-                        });
-                } else if (phone != null && !phone.trim().isEmpty()) {
-                        // Exact match for phone (might return multiple for siblings), scoped to institute
-                        audienceResponses.addAll(
-                                        audienceResponseRepository.findByInstituteIdAndParentMobile(instituteId, phone));
-                } else if (name != null && !name.trim().isEmpty()) {
-                        // Partial match for parent name, scoped to institute
-                        audienceResponses.addAll(
-                                        audienceResponseRepository.findByInstituteIdAndParentNameContainingIgnoreCase(instituteId, name));
+                        enquiryOpt.ifPresent(enq -> audienceResponseRepository
+                                        .findByInstituteIdAndEnquiryId(instituteId, enq.getId().toString())
+                                        .ifPresent(ar -> deduped.put(ar.getId(), ar)));
                 }
 
-                // If no filters were provided, or nothing matched, we return empty list to protect DB
-                return audienceResponses.stream()
+                // 2. Phone: partial match (%phone%) on parent_mobile, scoped to institute
+                if (phone != null && !phone.trim().isEmpty()) {
+                        audienceResponseRepository.findByInstituteIdAndParentMobile(instituteId, phone)
+                                        .forEach(ar -> deduped.put(ar.getId(), ar));
+                }
+
+                // 3. Name: partial match (%name%) on parent_name, scoped to institute
+                if (name != null && !name.trim().isEmpty()) {
+                        audienceResponseRepository.findByInstituteIdAndParentNameContainingIgnoreCase(instituteId, name)
+                                        .forEach(ar -> deduped.put(ar.getId(), ar));
+                }
+
+                // Build DTOs — this calls auth-service to fetch child/parent user details
+                List<EnquiryDetailsResponseDTO> results = deduped.values().stream()
                                 .map(this::buildEnquiryDetailsResponse)
                                 .collect(java.util.stream.Collectors.toList());
+
+                // 4. Child name match: child names live in auth-service (users table, separate DB),
+                // so we can't JOIN in SQL. Instead, fetch all institute enquiries, build DTOs
+                // (which populates child.name via auth-service), and filter in Java.
+                // Already-matched records are excluded to avoid duplicates.
+                if (name != null && !name.trim().isEmpty()) {
+                        String lowerName = name.trim().toLowerCase();
+                        List<AudienceResponse> allInstituteResponses = audienceResponseRepository
+                                        .findAllLeadsForInstitute(instituteId, org.springframework.data.domain.Pageable.unpaged())
+                                        .getContent();
+                        List<EnquiryDetailsResponseDTO> childNameMatches = allInstituteResponses.stream()
+                                        .filter(ar -> !deduped.containsKey(ar.getId()))
+                                        .map(this::buildEnquiryDetailsResponse)
+                                        .filter(dto -> dto.getChild() != null && dto.getChild().getName() != null
+                                                        && dto.getChild().getName().toLowerCase().contains(lowerName))
+                                        .collect(java.util.stream.Collectors.toList());
+                        results.addAll(childNameMatches);
+                }
+
+                return results;
         }
 
         /**

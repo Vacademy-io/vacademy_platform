@@ -210,7 +210,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             SELECT ar FROM AudienceResponse ar
                             JOIN Audience a ON a.id = ar.audienceId
                             WHERE a.instituteId = :instituteId
-                            AND ar.parentMobile = :phone
+                            AND ar.parentMobile LIKE CONCAT('%', :phone, '%')
                             ORDER BY ar.submittedAt DESC
                         """)
         List<AudienceResponse> findByInstituteIdAndParentMobile(

@@ -169,9 +169,9 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemId: 'dashboard',
             },
             {
-                subItem: 'Admission Form',
-                subItemLink: '/admissions/admission-form',
-                subItemId: 'admission-form',
+                subItem: 'Admission List',
+                subItemLink: '/admissions/admission-list',
+                subItemId: 'admission-list',
             },
             {
                 subItem: 'Enquiries',

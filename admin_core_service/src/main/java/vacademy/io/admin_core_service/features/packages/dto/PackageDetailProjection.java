@@ -61,4 +61,6 @@ public interface PackageDetailProjection {
     Long getReadTimeInMinutes();
 
     String getPackageType();
+
+    Integer getValidityInDays();
 }

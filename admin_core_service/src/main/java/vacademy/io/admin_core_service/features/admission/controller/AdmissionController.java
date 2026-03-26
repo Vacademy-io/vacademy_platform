@@ -189,7 +189,7 @@ public class AdmissionController {
     /**
      * Paginated admission responses list for table view.
      * Mandatory: session_id (academic session.id).
-     * Optional: destination_package_session_id, created_from/to, from, search_by/search_text.
+     * Optional: destination_package_session_id, created_from/to, statuses, sources, search_by/search_text.
      */
     @PostMapping("/responses/list")
     public ResponseEntity<Page<AdmissionResponsesListItemDTO>> listAdmissionResponses(

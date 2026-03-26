@@ -54,6 +54,13 @@ public class LearnerPackageService {
                                 && learnerPackageFilterDTO.getType().equalsIgnoreCase("PROGRESS")) {
                         learnerPackageDetail = getInProgressLearnerPackageDetail(learnerPackageFilterDTO, instituteId,
                                         pageable, userId);
+                } else if (StringUtils.hasText(learnerPackageFilterDTO.getType())
+                                && learnerPackageFilterDTO.getType().equalsIgnoreCase("PAST")) {
+                        learnerPackageDetail = packageRepository.getPastLearnerPackages(
+                                        userId,
+                                        instituteId,
+                                        learnerPackageFilterDTO.getLevelIds(),
+                                        pageable);
                 } else {
                         learnerPackageDetail = getAllLearnerPackageDetail(learnerPackageFilterDTO, instituteId,
                                         pageable, userId);
@@ -235,7 +242,9 @@ public class LearnerPackageService {
                                         List.of(LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name()),
                                         List.of(StatusEnum.ACTIVE.name()),
                                         List.of(StatusEnum.ACTIVE.name()),
-                                        List.of(LearnerStatusEnum.ACTIVE.name()),
+                                        learnerPackageFilterDTO.getStatus() != null && !learnerPackageFilterDTO.getStatus().isEmpty()
+                                                        ? learnerPackageFilterDTO.getStatus()
+                                                        : List.of(LearnerStatusEnum.ACTIVE.name()),
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(),
@@ -256,7 +265,9 @@ public class LearnerPackageService {
                                         List.of(StatusEnum.ACTIVE.name()),
                                         learnerPackageFilterDTO.getTag(),
                                         List.of(StatusEnum.ACTIVE.name()),
-                                        List.of(LearnerStatusEnum.ACTIVE.name()),
+                                        learnerPackageFilterDTO.getStatus() != null && !learnerPackageFilterDTO.getStatus().isEmpty()
+                                                        ? learnerPackageFilterDTO.getStatus()
+                                                        : List.of(LearnerStatusEnum.ACTIVE.name()),
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(),

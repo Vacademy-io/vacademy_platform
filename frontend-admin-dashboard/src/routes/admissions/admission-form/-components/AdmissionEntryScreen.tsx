@@ -111,7 +111,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
     const navigateToForm = (data: Partial<StudentSearchResult> | null, sessionId?: string) => {
         if (onStartAdmission) {
-            onStartAdmission(data, sessionId);
+            navigateToForm(data, sessionId);
             return;
         }
         navigate({

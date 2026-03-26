@@ -247,3 +247,4 @@ export const GET_ACTIVE_SESSIONS = `${BASE_URL}/auth-service/learner/v1/session/
 export const TERMINATE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/logout`;
 export const TERMINATE_CURRENT_SESSION = `${BASE_URL}/auth-service/learner/v1/session/logout-current`;
 export const SELECT_INSTITUTE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/select-institute`;
+export const VALIDATE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/validate`;

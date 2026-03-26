@@ -135,6 +135,13 @@ public class LevelService {
         return "Levels deleted successfully";
     }
 
+    public List<LevelDTO> getLevelsByInstituteId(String instituteId) {
+        return levelRepository.findAllLevelsByInstituteId(instituteId)
+                .stream()
+                .map(LevelDTO::new)
+                .toList();
+    }
+
     private Date getStartDatePackageSessionDate(String packageId, String sessionId) {
         Optional<PackageSession> optionalPackageSession = packageSessionRepository.findLatestPackageSessionByPackageIdAndSessionId(packageId, sessionId);
         if (optionalPackageSession.isEmpty()) {

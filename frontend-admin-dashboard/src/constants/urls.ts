@@ -183,6 +183,7 @@ export const UPDATE_INVITE_PAYMENT_OPTION_URL = `${BASE_URL}/admin-core-service/
 export const ADD_LEVEL = `${BASE_URL}/admin-core-service/level/v1/add-level`;
 export const UPDATE_LEVEL = `${BASE_URL}/admin-core-service/level/v1/update-level`;
 export const DELETE_LEVEL = `${BASE_URL}/admin-core-service/level/v1/delete-level`;
+export const GET_LEVELS_BY_INSTITUTE = `${BASE_URL}/admin-core-service/level/v1/get-levels`;
 
 export const UPDATE_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/update-subject`;
 export const ADD_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/add-subject`;

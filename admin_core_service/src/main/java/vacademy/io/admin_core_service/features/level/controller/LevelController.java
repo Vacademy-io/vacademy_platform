@@ -16,6 +16,13 @@ import java.util.List;
 public class LevelController {
     private final LevelService levelService;
 
+    @GetMapping("/get-levels")
+    public ResponseEntity<List<LevelDTO>> getLevelsByInstitute(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(levelService.getLevelsByInstituteId(instituteId));
+    }
+
     @PostMapping("/add-level")
     public ResponseEntity<String> addLevel(@RequestBody AddLevelWithCourseDTO addLevelWithCourseDTO,
                                            @RequestAttribute("user") CustomUserDetails user,

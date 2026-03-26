@@ -38,7 +38,8 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
        void updateLastActivityTime(@Param("sessionToken") String sessionToken,
                      @Param("activityTime") LocalDateTime activityTime);
 
-       // End session
+       // End session by token (existing — used by UserActivityTrackingService and
+       // logout-by-token)
        @Modifying
        @Transactional
        @Query("UPDATE UserSession u SET u.isActive = false, u.logoutTime = :logoutTime WHERE u.sessionToken = :sessionToken")
@@ -100,6 +101,44 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
        Long findTotalActiveTimeByUserAndDateRange(@Param("userId") String userId,
                      @Param("startTime") LocalDateTime startTime,
                      @Param("endTime") LocalDateTime endTime);
+
+       // ── NEW: Session limit enforcement queries ─────────────────────────────────
+
+       /**
+        * Returns all active sessions for a specific user within a specific institute.
+        * Used by the session limit check before login.
+        */
+       @Query("SELECT u FROM UserSession u WHERE u.userId = :userId " +
+                     "AND u.instituteId = :instituteId AND u.isActive = true " +
+                     "ORDER BY u.lastActivityTime DESC")
+       List<UserSession> findActiveSessionsByUserIdAndInstituteId(
+                     @Param("userId") String userId,
+                     @Param("instituteId") String instituteId);
+
+       /**
+        * Ends a session by its UUID (row ID), not by token.
+        * Called from the popup "Log Out" button which passes session_id.
+        */
+       @Modifying
+       @Transactional
+       @Query("UPDATE UserSession u SET u.isActive = false, u.logoutTime = :logoutTime WHERE u.id = :sessionId")
+       void endSessionById(
+                     @Param("sessionId") String sessionId,
+                     @Param("logoutTime") LocalDateTime logoutTime);
+
+       /**
+        * Ends ALL active sessions for a user+institute.
+        * Called from the normal logout endpoint to clean up all sessions on user
+        * logout.
+        */
+       @Modifying
+       @Transactional
+       @Query("UPDATE UserSession u SET u.isActive = false, u.logoutTime = :logoutTime " +
+                     "WHERE u.userId = :userId AND u.instituteId = :instituteId AND u.isActive = true")
+       void endAllSessionsByUserIdAndInstituteId(
+                     @Param("userId") String userId,
+                     @Param("instituteId") String instituteId,
+                     @Param("logoutTime") LocalDateTime logoutTime);
 
        // ==================== Super Admin Queries ====================
 

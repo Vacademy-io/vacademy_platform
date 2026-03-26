@@ -52,8 +52,8 @@ public class TimezoneSettingService {
                 return getDefaultTimezoneSettings();
             }
 
-            // Step 4: Convert to Map<String, String>
-            Map<String, String> timezoneMap = new HashMap<>();
+            // Step 4: Convert to Map<String, String> — LinkedHashMap preserves JSON key order
+            Map<String, String> timezoneMap = new LinkedHashMap<>();
             if (timezoneNode.isObject()) {
                 timezoneNode.fields().forEachRemaining(entry -> {
                     String key = entry.getKey();
@@ -84,7 +84,7 @@ public class TimezoneSettingService {
      * Note: Europe/London automatically handles both GMT (winter) and BST (summer)
      */
     private Map<String, String> getDefaultTimezoneSettings() {
-        Map<String, String> defaultSettings = new HashMap<>();
+        Map<String, String> defaultSettings = new LinkedHashMap<>();
         defaultSettings.put("India", "Asia/Kolkata");
         defaultSettings.put("UK", "Europe/London");  // Handles both GMT and BST automatically
         return defaultSettings;
@@ -99,7 +99,7 @@ public class TimezoneSettingService {
      * @return Map of timezone labels to formatted date-time strings
      */
     public Map<String, String> formatDateTimeForAllTimezones(Date meetingDate, Date startTime, String instituteId, String sessionTimezone) {
-        Map<String, String> result = new HashMap<>();
+        Map<String, String> result = new LinkedHashMap<>();
         
         if (meetingDate == null || startTime == null) {
             return result;

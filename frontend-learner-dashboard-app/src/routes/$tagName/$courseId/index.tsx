@@ -14,12 +14,13 @@ export const Route = createFileRoute("/$tagName/$courseId/")({
     bannerImage: (search.bannerImage as string) || undefined,
     level: (search.level as string) || undefined,
     price: (search.price as string) || undefined,
+    available_slots: search.available_slots !== undefined ? Number(search.available_slots) : undefined,
   }),
 });
 
 function RouteComponent() {
   const { courseId, tagName } = Route.useParams() as { courseId: string; tagName: string };
-  const { enrollInviteId, packageSessionId, bannerImage, level, price } = Route.useSearch();
+  const { enrollInviteId, packageSessionId, bannerImage, level, price, available_slots } = Route.useSearch();
   const domainRouting = useDomainRouting();
   const [hasRetried, setHasRetried] = useState(false);
 
@@ -115,6 +116,7 @@ function RouteComponent() {
       bannerImage={bannerImage}
       level={level}
       price={price}
+      available_slots={available_slots}
     />
   );
 }

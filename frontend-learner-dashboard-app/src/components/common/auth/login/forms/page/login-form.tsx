@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate } from "@tanstack/react-router";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -800,6 +801,11 @@ export function LoginForm({
       if (isNativeOAuthRequired()) {
         // Native: open in system browser via Capacitor Browser plugin
         await openOAuthInSystemBrowser(loginUrl);
+      } else if (Capacitor.getPlatform() === "electron") {
+        // Electron: open in a popup window — Electron main process intercepts
+        // OAuth URLs, opens them in a managed child BrowserWindow, and passes
+        // tokens back via localStorage OAUTH_RESULT
+        window.open(loginUrl, "_blank");
       } else {
         window.location.href = loginUrl;
       }

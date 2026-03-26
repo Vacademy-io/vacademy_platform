@@ -39,6 +39,7 @@ export interface CoursePackage {
   level_ids: string[];
   read_time_in_minutes: number;
   drip_condition_json?: string | null; // JSON string containing drip conditions
+  validity_in_days?: number;
 }
 
 interface Pageable {

@@ -22,4 +22,6 @@ public class AuthRequestDto {
     private String email;
     private String otp;
     private String phoneNumber;
+    private String deviceType; // NEW: "WEB", "MOBILE", "TABLET" — optional, defaults to "WEB" in session
+                               // creation
 }

@@ -12,6 +12,23 @@ import electronServe from 'electron-serve';
 import windowStateKeeper from 'electron-window-state';
 import { join } from 'path';
 import notifier from 'node-notifier';
+import { readFileSync } from 'fs';
+
+// Read flavor from electron-flavor.json to determine branding
+const flavorBranding: Record<string, { appName: string; iconBase: string }> = {
+  ssdc: { appName: 'SSDC Horizon', iconBase: 'ssdc_horizon' },
+  shikshanation: { appName: 'Shiksha Nation', iconBase: 'shiksha_nation' },
+};
+let currentFlavor = 'ssdc';
+try {
+  // __dirname is build/src/ after tsc compiles; electron-flavor.json is at project root
+  const raw = readFileSync(join(__dirname, '..', '..', 'electron-flavor.json'), 'utf-8');
+  const parsed = JSON.parse(raw);
+  if (parsed?.flavor && flavorBranding[parsed.flavor]) {
+    currentFlavor = parsed.flavor;
+  }
+} catch {}
+const brandInfo = flavorBranding[currentFlavor];
 
 // Define components for a watcher to detect when the webapp is changed so we can reload in Dev mode.
 const reloadWatcher = {
@@ -190,7 +207,7 @@ export class ElectronCapacitorApp {
         // Windows doesn't support badge count in the same way
         // but we can update the window title to show unread count
         if (this.MainWindow) {
-          const baseTitle = 'SSDC Horizon';
+          const baseTitle = brandInfo.appName;
           const appVersion = app.getVersion();
           const title = count > 0 ? `${baseTitle} v${appVersion} (${count})` : `${baseTitle} v${appVersion}`;
           this.MainWindow.setTitle(title);
@@ -217,7 +234,7 @@ export class ElectronCapacitorApp {
 
   async init(): Promise<void> {
     const icon = nativeImage.createFromPath(
-      join(app.getAppPath(), 'assets', process.platform === 'win32' ? 'ssdc_horizon.ico' : 'ssdc_horizon.png')
+      join(app.getAppPath(), 'assets', process.platform === 'win32' ? `${brandInfo.iconBase}.ico` : `${brandInfo.iconBase}.png`)
     );
     this.mainWindowState = windowStateKeeper({
       defaultWidth: 1000,
@@ -232,7 +249,7 @@ export class ElectronCapacitorApp {
       show: false,
       x: this.mainWindowState.x,
       y: this.mainWindowState.y,
-      title: `SSDC Horizon v${appVersion}`,
+      title: `${brandInfo.appName} v${appVersion}`,
       width: this.mainWindowState.width,
       height: this.mainWindowState.height,
       webPreferences: {
@@ -284,7 +301,7 @@ export class ElectronCapacitorApp {
         }
       });
       // Set tooltip to display name
-      this.TrayIcon.setToolTip('SSDC Horizon');
+      this.TrayIcon.setToolTip(brandInfo.appName);
       this.TrayIcon.setContextMenu(Menu.buildFromTemplate(this.TrayMenuTemplate));
     }
 
@@ -309,9 +326,17 @@ export class ElectronCapacitorApp {
 
     // Security - open external URLs in system browser, allow internal navigation
     this.MainWindow.webContents.setWindowOpenHandler((details) => {
-      if (!details.url.includes(this.customScheme)) {
+      const url = details.url;
+
+      // OAuth URLs: open in a managed child BrowserWindow so we can intercept the token redirect
+      if (url.includes('/oauth2/authorization/') || url.includes('/auth/google') || url.includes('/auth/github')) {
+        this.openOAuthWindow(url);
+        return { action: 'deny' };
+      }
+
+      if (!url.includes(this.customScheme)) {
         // Open external URLs (BBB, Zoom, YouTube, etc.) in the default system browser
-        shell.openExternal(details.url);
+        shell.openExternal(url);
         return { action: 'deny' };
       } else {
         return { action: 'allow' };
@@ -341,6 +366,100 @@ export class ElectronCapacitorApp {
         CapElectronEventEmitter.emit('CAPELECTRON_DeeplinkListenerInitialized', '');
       }, 400);
     });
+  }
+
+  /**
+   * Opens an OAuth URL in a managed child BrowserWindow.
+   * Monitors the redirect for access/refresh tokens, passes them
+   * to the main window via executeJavaScript (localStorage), then closes.
+   */
+  private openOAuthWindow(url: string): void {
+    const oauthWindow = new BrowserWindow({
+      width: 600,
+      height: 700,
+      parent: this.MainWindow,
+      modal: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+
+    oauthWindow.loadURL(url);
+
+    // Monitor all navigation events for the OAuth callback with tokens
+    const checkForTokens = (_event: any, navUrl: string) => {
+      try {
+        const parsed = new URL(navUrl);
+        const accessToken = parsed.searchParams.get('accessToken');
+        const refreshToken = parsed.searchParams.get('refreshToken');
+        const error = parsed.searchParams.get('error');
+
+        if (accessToken && refreshToken) {
+          // Build token result and pass to main window
+          const result = {
+            type: 'oauth_success',
+            data: { accessToken, refreshToken },
+            ts: Date.now(),
+            isModalLogin: false,
+          };
+          const jsonStr = JSON.stringify(result);
+          // Write to localStorage and dispatch storage event so LoginForm picks it up
+          this.MainWindow.webContents.executeJavaScript(`
+            localStorage.setItem('OAUTH_RESULT', ${JSON.stringify(jsonStr)});
+            window.dispatchEvent(new StorageEvent('storage', {
+              key: 'OAUTH_RESULT',
+              newValue: ${JSON.stringify(jsonStr)},
+            }));
+          `);
+          oauthWindow.close();
+          return;
+        }
+
+        if (error === 'true') {
+          const signupData = parsed.searchParams.get('signupData');
+          const emailVerified = parsed.searchParams.get('emailVerified');
+          const state = parsed.searchParams.get('state');
+
+          let result: any;
+          if (signupData) {
+            let decodedSignupData = null;
+            try { decodedSignupData = JSON.parse(atob(signupData)); } catch { /* ignore */ }
+            result = {
+              type: 'oauth_signup_needed',
+              data: { signupData: decodedSignupData, state, emailVerified: emailVerified === 'true' },
+              ts: Date.now(),
+              isModalLogin: false,
+            };
+          } else {
+            result = {
+              type: 'oauth_error',
+              data: { message: 'We could not find a user for the credentials used. Please sign up or contact the administrator.' },
+              ts: Date.now(),
+              isModalLogin: false,
+            };
+          }
+          const jsonStr = JSON.stringify(result);
+          this.MainWindow.webContents.executeJavaScript(`
+            localStorage.setItem('OAUTH_RESULT', ${JSON.stringify(jsonStr)});
+            window.dispatchEvent(new StorageEvent('storage', {
+              key: 'OAUTH_RESULT',
+              newValue: ${JSON.stringify(jsonStr)},
+            }));
+          `);
+          oauthWindow.close();
+          return;
+        }
+      } catch {
+        // URL parsing failed — not a callback URL, let navigation continue
+      }
+    };
+
+    oauthWindow.webContents.on('will-redirect', checkForTokens);
+    oauthWindow.webContents.on('will-navigate', checkForTokens);
+
+    // Also check after page finishes loading (some OAuth flows don't trigger will-redirect)
+    oauthWindow.webContents.on('did-navigate', checkForTokens);
   }
 }
 

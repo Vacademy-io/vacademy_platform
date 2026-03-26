@@ -8,12 +8,14 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
-import vacademy.io.admin_core_service.features.live_session.constants.LiveClassEmailBody;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.ScheduleNotification;
 import vacademy.io.admin_core_service.features.live_session.enums.LiveClassAction;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationTypeEnum;
+import vacademy.io.admin_core_service.features.live_session.service.LiveClassTemplateService;
+import vacademy.io.admin_core_service.features.live_session.service.LiveClassTemplateService.ResolvedTemplate;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionParticipantRepository;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionParticipants;
@@ -54,6 +56,7 @@ public class LiveSessionNotificationProcessor {
     private final GetSessionByIdService getSessionByIdService;
     private final InstituteStudentRepository studentRepository;
     private final LiveSessionNotificationConfigRepository notificationConfigRepository;
+    private final LiveClassTemplateService liveClassTemplateService;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
@@ -212,9 +215,10 @@ public class LiveSessionNotificationProcessor {
     }
 
     private NotificationDTO buildOnLiveEmailNotification(LiveSession session, ScheduleNotification sn, SessionSchedule schedule, List<Object[]> rows) {
+        ResolvedTemplate template = liveClassTemplateService.resolveTemplate(session.getInstituteId(), NotificationEventType.LIVE_CLASS_ON_LIVE);
         NotificationDTO dto = new NotificationDTO();
-        dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
-        dto.setSubject("Your Live Session has started – Join now!");
+        dto.setBody(template.body());
+        dto.setSubject(template.subject());
         dto.setNotificationType("EMAIL");
         dto.setSource("ADMIN_CORE");
         dto.setSourceId(session.getId());
@@ -278,9 +282,10 @@ public class LiveSessionNotificationProcessor {
         return dto;
     }
     private NotificationDTO buildBeforeLiveEmailNotification(LiveSession session, ScheduleNotification sn, SessionSchedule schedule, List<Object[]> rows) {
+        ResolvedTemplate template = liveClassTemplateService.resolveTemplate(session.getInstituteId(), NotificationEventType.LIVE_CLASS_BEFORE_LIVE);
         NotificationDTO dto = new NotificationDTO();
-        dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
-        dto.setSubject("Get Ready! Your session begins shortly.");
+        dto.setBody(template.body());
+        dto.setSubject(template.subject());
         dto.setNotificationType("EMAIL");
         dto.setSource("ADMIN_CORE");
         dto.setSourceId(session.getId());
@@ -427,9 +432,10 @@ public class LiveSessionNotificationProcessor {
     }
 
     private NotificationDTO buildDeleteEmailNotification(LiveSession session, SessionSchedule schedule, List<Object[]> rows) {
+        ResolvedTemplate template = liveClassTemplateService.resolveTemplate(session.getInstituteId(), NotificationEventType.LIVE_CLASS_DELETE);
         NotificationDTO dto = new NotificationDTO();
-        dto.setBody(LiveClassEmailBody.Live_Class_Delete_Email_Body);
-        dto.setSubject("Live Class Cancelled - " + (session.getTitle() != null ? session.getTitle() : "Live Class"));
+        dto.setBody(template.body());
+        dto.setSubject(template.subject());
         dto.setNotificationType("EMAIL");
         dto.setSource("ADMIN_CORE");
         dto.setSourceId(session.getId());
@@ -584,9 +590,10 @@ public class LiveSessionNotificationProcessor {
      * Builds ON_CREATE email notification
      */
     private NotificationDTO buildOnCreateEmailNotification(LiveSession session, SessionSchedule schedule, List<Object[]> rows) {
+        ResolvedTemplate template = liveClassTemplateService.resolveTemplate(session.getInstituteId(), NotificationEventType.LIVE_CLASS_ON_CREATE);
         NotificationDTO dto = new NotificationDTO();
-        dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
-        dto.setSubject("New Live Class Created - " + (session.getTitle() != null ? session.getTitle() : "Live Class"));
+        dto.setBody(template.body());
+        dto.setSubject(template.subject());
         dto.setNotificationType("EMAIL");
         dto.setSource("ADMIN_CORE");
         dto.setSourceId(session.getId());

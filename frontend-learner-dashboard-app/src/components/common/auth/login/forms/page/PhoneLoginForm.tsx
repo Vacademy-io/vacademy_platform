@@ -30,6 +30,7 @@ import { REQUEST_WHATSAPP_OTP, VERIFY_WHATSAPP_OTP_LOGIN } from "@/constants/url
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
 
 const phoneSchema = z.object({
     phone: z.string().min(10, { message: "Invalid phone number" }),
@@ -69,6 +70,8 @@ export function PhoneLoginForm({
     const navigate = useNavigate();
     const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [sessionLimitOpen, setSessionLimitOpen] = useState(false);
+    const [activeSessions, setActiveSessions] = useState<any[]>([]);
     const domainRouting = useDomainRouting();
 
     const redirect = useRouterState({
@@ -157,6 +160,13 @@ export function PhoneLoginForm({
             axios.post(VERIFY_WHATSAPP_OTP_LOGIN, { phone_number: data.phone, otp: data.otp, institute_id: domainRouting.instituteId }),
         onSuccess: async (response) => {
             try {
+                // Check for session limit exceeded
+                if (response.data.session_limit_exceeded === true) {
+                    setActiveSessions(response.data.active_sessions || []);
+                    setSessionLimitOpen(true);
+                    return;
+                }
+
                 if (!response.data || !response.data.accessToken) {
                     toast.error("Logged in successfully, but missing session credentials.");
                     return;
@@ -238,6 +248,19 @@ export function PhoneLoginForm({
             setIsLoading(false);
         },
     });
+
+    const handleSessionTerminated = () => {
+        // Session was terminated
+    };
+
+    const handleRetryLogin = () => {
+        setSessionLimitOpen(false);
+        if (phoneDial) {
+            const otpValues = otpForm.getValues();
+            const otpString = Array.isArray(otpValues.otp) ? otpValues.otp.join("") : otpValues.otp;
+            verifyOtpMutation.mutate({ phone: phoneDial, otp: otpString });
+        }
+    };
 
     const onPhoneSubmit = (data: PhoneFormValues) => {
         // Clean numeric phone for DB query
@@ -646,6 +669,14 @@ export function PhoneLoginForm({
                     </motion.button>
                 </div>
             </motion.div>
+
+            <SessionLimitDialog
+                open={sessionLimitOpen}
+                onOpenChange={setSessionLimitOpen}
+                activeSessions={activeSessions}
+                onSessionTerminated={handleSessionTerminated}
+                onRetryLogin={handleRetryLogin}
+            />
         </div>
     );
 }

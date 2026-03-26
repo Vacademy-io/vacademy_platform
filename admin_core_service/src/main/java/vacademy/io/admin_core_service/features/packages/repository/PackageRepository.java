@@ -1530,7 +1530,25 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ) AS facultyUserIds,
 
                 /* CHANGED: Now returns only the current level ID in an array */
-                ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
+                ARRAY[CAST(MIN(l.id) AS text)] AS levelIds,
+
+                COALESCE((
+                    SELECT CAST(GREATEST(0, EXTRACT(DAY FROM
+                        COALESCE(up.end_date, up.start_date + pp.validity_in_days * INTERVAL '1 day', up.created_at + pp.validity_in_days * INTERVAL '1 day')
+                        - CURRENT_TIMESTAMP
+                    )) AS INTEGER)
+                    FROM user_plan up
+                    JOIN payment_plan pp ON pp.id = up.plan_id
+                    WHERE up.user_id = :userId
+                    AND up.payment_option_id IN (
+                        SELECT psli.payment_option_id
+                        FROM package_session_learner_invitation_to_payment_option psli
+                        WHERE psli.package_session_id = ps.id
+                    )
+                    AND up.status = 'ACTIVE'
+                    ORDER BY up.created_at DESC
+                    LIMIT 1
+                ), 0) AS validityInDays
 
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
@@ -1756,7 +1774,25 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ) AS facultyUserIds,
 
                 /* Returns only the current level ID in the array */
-                ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
+                ARRAY[CAST(MIN(l.id) AS text)] AS levelIds,
+
+                COALESCE((
+                    SELECT CAST(GREATEST(0, EXTRACT(DAY FROM
+                        COALESCE(up.end_date, up.start_date + pp.validity_in_days * INTERVAL '1 day', up.created_at + pp.validity_in_days * INTERVAL '1 day')
+                        - CURRENT_TIMESTAMP
+                    )) AS INTEGER)
+                    FROM user_plan up
+                    JOIN payment_plan pp ON pp.id = up.plan_id
+                    WHERE up.user_id = :userId
+                    AND up.payment_option_id IN (
+                        SELECT psli.payment_option_id
+                        FROM package_session_learner_invitation_to_payment_option psli
+                        WHERE psli.package_session_id = ps.id
+                    )
+                    AND up.status = 'ACTIVE'
+                    ORDER BY up.created_at DESC
+                    LIMIT 1
+                ), 0) AS validityInDays
 
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id

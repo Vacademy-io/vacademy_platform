@@ -1,14 +1,41 @@
 import type { CapacitorConfig } from "@capacitor/cli";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+// Flavor is written to electron-flavor.json by the build script.
+// Defaults to "ssdc" if the file doesn't exist.
+//
+// Supported flavors:
+//   ssdc           → SSDC Horizon
+//   shikshanation  → Shiksha Nation
+const flavors: Record<string, { appId: string; appName: string }> = {
+  ssdc: {
+    appId: "io.vacademy.student.app",
+    appName: "SSDC Horizon",
+  },
+  shikshanation: {
+    appId: "com.shikshanation.new.app",
+    appName: "Shiksha Nation",
+  },
+};
+
+let flavor = "ssdc";
+try {
+  // __dirname is build/ after tsc compiles; electron-flavor.json is at project root
+  const raw = readFileSync(join(__dirname, "..", "electron-flavor.json"), "utf-8");
+  const parsed = JSON.parse(raw);
+  if (parsed?.flavor && flavors[parsed.flavor]) {
+    flavor = parsed.flavor;
+  }
+} catch {
+  // File doesn't exist or is invalid — use default (ssdc)
+}
+
+const { appId, appName } = flavors[flavor];
 
 const config: CapacitorConfig = {
-  // server: {
-  //   url: "http://192.168.68.119:8100/",
-  //   cleartext: true,
-  // },
-
-  appId: "io.vacademy.student.app",
-  appName: "Vacademy Learner",
-  // appName: "SSDC Horizon",
+  appId,
+  appName,
   webDir: "dist",
   plugins: {
     PrivacyScreen: {

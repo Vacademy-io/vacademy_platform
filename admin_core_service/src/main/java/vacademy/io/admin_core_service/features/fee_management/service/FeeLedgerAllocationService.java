@@ -39,6 +39,24 @@ public class FeeLedgerAllocationService {
     @Lazy
     private SchoolFeeReceiptService schoolFeeReceiptService;
 
+    private BigDecimal computeAmountDue(StudentFeePayment bill) {
+        BigDecimal expected = bill.getAmountExpected() != null ? bill.getAmountExpected() : BigDecimal.ZERO;
+        BigDecimal discount = bill.getDiscountAmount() != null ? bill.getDiscountAmount() : BigDecimal.ZERO;
+        BigDecimal paid = bill.getAmountPaid() != null ? bill.getAmountPaid() : BigDecimal.ZERO;
+        return expected.subtract(discount).subtract(paid);
+    }
+
+    /**
+     * Treat a bill as "settled via discount" when:
+     * - discount_amount > 0
+     * - and remaining due <= 0
+     */
+    private boolean isDiscountSettled(StudentFeePayment bill) {
+        BigDecimal discount = bill.getDiscountAmount() != null ? bill.getDiscountAmount() : BigDecimal.ZERO;
+        if (discount.compareTo(BigDecimal.ZERO) <= 0) return false;
+        return computeAmountDue(bill).compareTo(BigDecimal.ZERO) <= 0;
+    }
+
     @Transactional
     public void allocatePayment(String paymentLogId, BigDecimal totalPaymentAmount, String userPlanId) {
         log.info("Starting ledger allocation for PaymentLog: {}, Amount: {}, UserPlan: {}", paymentLogId,
@@ -272,12 +290,24 @@ public class FeeLedgerAllocationService {
 
         // Generate receipt
         BigDecimal allocatedAmount = amount.subtract(remaining);
-        if (allocatedAmount.compareTo(BigDecimal.ZERO) > 0 && !ledgerEntries.isEmpty()) {
-            List<String> paidInstallmentIds = ledgerEntries.stream()
-                    .map(StudentFeeAllocationLedger::getStudentFeePaymentId)
-                    .distinct()
-                    .collect(Collectors.toList());
+        List<String> paidInstallmentIds = ledgerEntries.stream()
+                .map(StudentFeeAllocationLedger::getStudentFeePaymentId)
+                .distinct()
+                .collect(Collectors.toList());
 
+        // Include installments that are "settled via discount" even if allocation
+        // created no ledger rows for them.
+        for (StudentFeePayment bill : selectedBills) {
+            if (isDiscountSettled(bill) && !"PAID".equalsIgnoreCase(bill.getStatus())) {
+                bill.setStatus("PAID");
+                studentFeePaymentRepository.save(bill);
+                if (!paidInstallmentIds.contains(bill.getId())) {
+                    paidInstallmentIds.add(bill.getId());
+                }
+            }
+        }
+
+        if (!paidInstallmentIds.isEmpty()) {
             schoolFeeReceiptService.generateAndSendReceipt(
                     userId,
                     paymentLog.getId(),
@@ -386,25 +416,35 @@ public class FeeLedgerAllocationService {
 
         // Generate receipt and send email using SchoolFeeReceiptService
         BigDecimal allocatedAmount = amount.subtract(remaining);
-        if (allocatedAmount.compareTo(BigDecimal.ZERO) > 0) {
-            List<StudentFeeAllocationLedger> allocations = studentFeeAllocationLedgerRepository
-                    .findByPaymentLogId(paymentLog.getId());
+        List<StudentFeeAllocationLedger> allocations = studentFeeAllocationLedgerRepository
+                .findByPaymentLogId(paymentLog.getId());
 
-            if (!allocations.isEmpty()) {
-                List<String> paidInstallmentIds = allocations.stream()
-                        .map(StudentFeeAllocationLedger::getStudentFeePaymentId)
-                        .distinct()
-                        .collect(Collectors.toList());
+        List<String> paidInstallmentIds = allocations.stream()
+                .map(StudentFeeAllocationLedger::getStudentFeePaymentId)
+                .distinct()
+                .collect(Collectors.toList());
 
-                schoolFeeReceiptService.generateAndSendReceipt(
-                        userId,
-                        paymentLog.getId(),
-                        instituteId,
-                        allocatedAmount,
-                        paymentLog.getId(),
-                        "Cash",
-                        paidInstallmentIds);
+        // Include installments that are "settled via discount" even if allocation
+        // created no ledger rows for them.
+        for (StudentFeePayment bill : unpaidBills) {
+            if (isDiscountSettled(bill) && !"PAID".equalsIgnoreCase(bill.getStatus())) {
+                bill.setStatus("PAID");
+                studentFeePaymentRepository.save(bill);
+                if (!paidInstallmentIds.contains(bill.getId())) {
+                    paidInstallmentIds.add(bill.getId());
+                }
             }
+        }
+
+        if (!paidInstallmentIds.isEmpty()) {
+            schoolFeeReceiptService.generateAndSendReceipt(
+                    userId,
+                    paymentLog.getId(),
+                    instituteId,
+                    allocatedAmount,
+                    paymentLog.getId(),
+                    "Cash",
+                    paidInstallmentIds);
         }
     }
 }

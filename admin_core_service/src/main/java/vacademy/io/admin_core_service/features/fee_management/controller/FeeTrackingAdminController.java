@@ -7,6 +7,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.SelectiveAllocationRequest;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
@@ -18,10 +21,12 @@ import vacademy.io.admin_core_service.features.fee_management.dto.InstituteFeeTy
 import vacademy.io.admin_core_service.features.fee_management.dto.InvoiceReceiptDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.SetPriorityRequest;
 import vacademy.io.admin_core_service.features.fee_management.entity.InstituteFeeTypePriority;
+import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 import vacademy.io.admin_core_service.features.fee_management.enums.AllocationScope;
 import vacademy.io.admin_core_service.features.fee_management.repository.InstituteFeeTypePriorityRepository;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackingService;
+import vacademy.io.admin_core_service.features.fee_management.service.StudentFeeDiscountService;
 import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
@@ -29,6 +34,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -54,6 +60,9 @@ public class FeeTrackingAdminController {
 
     @Autowired
     private vacademy.io.admin_core_service.features.fee_management.service.SchoolFeeReceiptService schoolFeeReceiptService;
+
+    @Autowired
+    private StudentFeeDiscountService studentFeeDiscountService;
 
     @PostMapping("/{userId}/dues")
     public ResponseEntity<List<StudentFeePaymentDTO>> getStudentDues(
@@ -166,6 +175,44 @@ public class FeeTrackingAdminController {
                 userId, request.getInstituteId(), request.getStudentFeePaymentIds(),
                 request.getAmount(), request.getRemarks());
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Apply a manual, user-specific discount to a specific installment row.
+     *
+     * Constraints:
+     * - Updates `student_fee_payment.discount_amount` and optional `discount_reason`
+     * - Enforces that total discount (existing + delta) never exceeds `amount_expected`
+     * - If it covers remaining due, marks installment status as `PAID`
+     */
+    @PatchMapping("/discount/apply")
+    public ResponseEntity<?> applyManualDiscount(
+            @RequestBody ApplyManualDiscountRequest request,
+            @RequestAttribute("user") CustomUserDetails adminUser
+    ) {
+        StudentFeePayment updated = studentFeeDiscountService.applyManualDiscount(
+                request.getStudentFeePaymentId(),
+                request.getUserId(),
+                request.getDiscountAmount(),
+                request.getDiscountReason()
+        );
+
+        BigDecimal amountExpected = updated.getAmountExpected() != null ? updated.getAmountExpected() : BigDecimal.ZERO;
+        BigDecimal amountPaid = updated.getAmountPaid() != null ? updated.getAmountPaid() : BigDecimal.ZERO;
+        BigDecimal discount = updated.getDiscountAmount() != null ? updated.getDiscountAmount() : BigDecimal.ZERO;
+        BigDecimal amountDue = amountExpected.subtract(discount).subtract(amountPaid);
+
+        Map<String, Object> resp = new java.util.HashMap<>();
+        resp.put("student_fee_payment_id", updated.getId());
+        resp.put("user_id", updated.getUserId());
+        resp.put("discount_amount", discount);
+        if (updated.getDiscountReason() != null) {
+            resp.put("discount_reason", updated.getDiscountReason());
+        }
+        resp.put("status", updated.getStatus());
+        resp.put("amount_due", amountDue);
+
+        return ResponseEntity.ok(resp);
     }
 
     /**
@@ -353,6 +400,47 @@ public class FeeTrackingAdminController {
 
         public void setEndDueDate(LocalDate endDueDate) {
             this.endDueDate = endDueDate;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class ApplyManualDiscountRequest {
+        private String studentFeePaymentId;
+        private String userId;
+        private BigDecimal discountAmount;
+        private String discountReason;
+
+        public String getStudentFeePaymentId() {
+            return studentFeePaymentId;
+        }
+
+        public void setStudentFeePaymentId(String studentFeePaymentId) {
+            this.studentFeePaymentId = studentFeePaymentId;
+        }
+
+        public String getUserId() {
+            return userId;
+        }
+
+        public void setUserId(String userId) {
+            this.userId = userId;
+        }
+
+        public BigDecimal getDiscountAmount() {
+            return discountAmount;
+        }
+
+        public void setDiscountAmount(BigDecimal discountAmount) {
+            this.discountAmount = discountAmount;
+        }
+
+        public String getDiscountReason() {
+            return discountReason;
+        }
+
+        public void setDiscountReason(String discountReason) {
+            this.discountReason = discountReason;
         }
     }
 

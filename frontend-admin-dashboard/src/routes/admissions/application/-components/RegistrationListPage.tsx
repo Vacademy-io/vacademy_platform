@@ -16,8 +16,6 @@ import { ScheduleTestFilters } from '@/routes/evaluation/evaluations/-components
 import { MyFilterOption } from '@/types/assessments/my-filter';
 import {
     fetchApplicantList,
-    fetchEnquiryDetails,
-    fetchEnquiryDetailsByPhone,
     type Applicant,
 } from '../../-services/applicant-services';
 import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
@@ -101,7 +99,7 @@ function RegistrationListPageInner({
     // Modal states
     const [showRegistrationTypeModal, setShowRegistrationTypeModal] = useState(false);
     const [showEnquiryModal, setShowEnquiryModal] = useState(false);
-    const [isLoadingEnquiry, setIsLoadingEnquiry] = useState(false);
+
     const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
     // Debounce search query
@@ -192,34 +190,19 @@ function RegistrationListPageInner({
         setShowEnquiryModal(true);
     };
 
-    const handleSelectEnquiry = async (trackingId: string) => {
-        setIsLoadingEnquiry(true);
-        try {
-            const enquiryData = await fetchEnquiryDetails(trackingId);
-            
-            if (!enquiryData) {
-                toast.error('Enquiry not found');
-                return;
-            }
+    const handleSelectEnquiry = (enquiryData: any) => {
+        // Guard: should not reach here (button is disabled in modal), but double-check
+        if (enquiryData.overall_status === 'APPLICATION' || enquiryData.overall_status === 'ADMISSION') {
+            toast.warning('This enquiry has already been converted to an application.');
+            return;
+        }
 
-            // Guard: should not reach here (button is disabled in modal), but double-check
-            if (enquiryData.overall_status === 'APPLICATION' || enquiryData.overall_status === 'ADMISSION') {
-                toast.warning('This enquiry has already been converted to an application.');
-                return;
-            }
-
-            // Navigate to registration form with enquiry data
-            const encodedData = encodeURIComponent(JSON.stringify(enquiryData));
-            if (selectedSessionId) {
-                navigate({ to: `/admissions/application/new?sessionId=${selectedSessionId}&enquiryData=${encodedData}` });
-            } else {
-                navigate({ to: `/admissions/application/new?enquiryData=${encodedData}` });
-            }
-        } catch (error) {
-            console.error('Error fetching enquiry:', error);
-            toast.error('Failed to fetch enquiry details.');
-        } finally {
-            setIsLoadingEnquiry(false);
+        // Navigate to registration form with enquiry data from the search result (no extra API call)
+        const encodedData = encodeURIComponent(JSON.stringify(enquiryData));
+        if (selectedSessionId) {
+            navigate({ to: `/admissions/application/new?sessionId=${selectedSessionId}&enquiryData=${encodedData}` });
+        } else {
+            navigate({ to: `/admissions/application/new?enquiryData=${encodedData}` });
         }
     };
 

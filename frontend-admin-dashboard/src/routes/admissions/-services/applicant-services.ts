@@ -320,7 +320,7 @@ export const fetchEnquiryDetails = async (enquiryIdOrTrackingId: string): Promis
 };
 export const fetchEnquiryDetailsByPhone = async (phone: string): Promise<any> => {
     const response = await authenticatedAxiosInstance.get(
-        `http://localhost:8072/admin-core-service/applicant/v1/enquiry/details`,
+        `${BASE_URL}/admin-core-service/applicant/v1/enquiry/details`,
         {
             params: {
                 phone,
@@ -340,7 +340,7 @@ export const searchEnquiriesByFilter = async (params: {
     name?: string;
 }): Promise<any[]> => {
     const response = await authenticatedAxiosInstance.get(
-        `http://localhost:8072/admin-core-service/applicant/v1/enquiry/search`,
+        `${BASE_URL}/admin-core-service/applicant/v1/enquiry/search`,
         { params }
     );
     return response.data || [];

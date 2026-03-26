@@ -17,8 +17,9 @@ interface EnquirySearchModalProps {
     // RegistrationListPage passes onSelectForApplication only.
     // AdmissionEntryScreen passes onSelectForAdmission only.
     // Passing both shows both action columns simultaneously.
-    onSelectForApplication?: (enquiryIdOrTrackingId: string) => void;
-    onSelectForAdmission?: (enquiryIdOrTrackingId: string) => void;
+    // Callbacks receive the full search result object (no second API call needed).
+    onSelectForApplication?: (enquiryData: any) => void;
+    onSelectForAdmission?: (enquiryData: any) => void;
 }
 
 const STATUS_BADGE: Record<EnquiryStatus, { label: string; className: string }> = {
@@ -67,18 +68,13 @@ export const EnquirySearchModal: React.FC<EnquirySearchModalProps> = ({
         }
     };
 
-    const getIdToPass = (result: any) =>
-        // Prefer tracking_id (short code); fall back to enquiry_id (UUID).
-        // fetchEnquiryDetails auto-detects which param to use based on UUID regex.
-        result.tracking_id || result.enquiry_id;
-
     const handleSelectForApplication = (result: any) => {
-        onSelectForApplication?.(getIdToPass(result));
+        onSelectForApplication?.(result);
         onClose();
     };
 
     const handleSelectForAdmission = (result: any) => {
-        onSelectForAdmission?.(getIdToPass(result));
+        onSelectForAdmission?.(result);
         onClose();
     };
 

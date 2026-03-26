@@ -7,7 +7,6 @@ import { MyButton } from '@/components/design-system/button';
 import { X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { fetchEnquiryDetails, fetchEnquiryDetailsByPhone } from '../../-services/applicant-services';
 import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
 import { AdmissionBulkImportDialog } from './AdmissionBulkImportDialog';
 
@@ -195,44 +194,36 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         setShowApplicationModal(true);
     };
 
-    const handleSelectEnquiry = async (trackingId: string) => {
-        setIsLoadingLookup(true);
-        try {
-            const enquiryData = await fetchEnquiryDetails(trackingId);
+    const handleSelectEnquiry = (enquiryData: any) => {
+        const mapped: Partial<StudentSearchResult> = {
+            id: enquiryData.enquiry_id || '',
+            studentName: enquiryData.child?.name || '',
+            gender: enquiryData.child?.gender || '',
+            dob: enquiryData.child?.dob ? new Date(enquiryData.child.dob).toISOString().split('T')[0] : '',
+            mobile: enquiryData.parent?.phone || '',
+            email: enquiryData.parent?.email || '',
+            address: enquiryData.parent?.address_line || '',
+            parentName: enquiryData.parent?.name || '',
+            classVal: '',
+            sourceType: 'ENQUIRY',
+            sourceId: enquiryData.enquiry_id || '',
+            destinationPackageSessionId: '',
+            enquiryId: enquiryData.enquiry_id || null,
+            applicationId: null,
+        };
 
-            const mapped: Partial<StudentSearchResult> = {
-                id: enquiryData.enquiry_id || '',
-                studentName: enquiryData.child?.name || '',
-                gender: enquiryData.child?.gender || '',
-                dob: enquiryData.child?.dob ? new Date(enquiryData.child.dob).toISOString().split('T')[0] : '',
-                mobile: enquiryData.parent?.phone || '',
-                email: enquiryData.parent?.email || '',
-                address: enquiryData.parent?.address_line || '',
-                parentName: enquiryData.parent?.name || '',
-                classVal: '',
-                sourceType: 'ENQUIRY',
-                sourceId: enquiryData.enquiry_id || '',
-                destinationPackageSessionId: '',
-                enquiryId: enquiryData.enquiry_id || null,
-                applicationId: null,
-            };
-
-            const parentGender = enquiryData.parent?.gender;
-            if (parentGender === 'MALE') {
-                mapped.parentGender = 'father';
-                onStartAdmission(mapped, selectedSessionId);
-            } else if (parentGender === 'FEMALE') {
-                mapped.parentGender = 'mother';
-                onStartAdmission(mapped, selectedSessionId);
-            } else {
-                setPendingEnquiryMapped(mapped);
-                setShowParentTypeModal(true);
-            }
-        } catch (error) {
-            console.error('Error fetching enquiry:', error);
-            alert('Failed to fetch enquiry details.');
-        } finally {
-            setIsLoadingLookup(false);
+        // Auto-fill parent relation from enquiry data; show popup only if unknown
+        const relation = (enquiryData.parent_relation_with_child || '').toLowerCase();
+        if (relation === 'father') {
+            mapped.parentGender = 'father';
+            onStartAdmission(mapped, selectedSessionId);
+        } else if (relation === 'mother') {
+            mapped.parentGender = 'mother';
+            onStartAdmission(mapped, selectedSessionId);
+        } else {
+            // Relation unknown — ask admin to choose
+            setPendingEnquiryMapped(mapped);
+            setShowParentTypeModal(true);
         }
     };
 

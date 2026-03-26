@@ -10,7 +10,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, FloppyDisk, CheckCircle, Play, Wand } from '@phosphor-icons/react';
+import { ArrowLeft, FloppyDisk, CheckCircle, Play, MagicWand } from '@phosphor-icons/react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useSuspenseQuery } from '@tanstack/react-query';
@@ -207,7 +207,7 @@ function WorkflowBuilderInner() {
                         onClick={() => setWizardOpen(true)}
                         className="gap-1.5"
                     >
-                        <Wand size={14} />
+                        <MagicWand size={14} />
                         Wizard
                     </Button>
                     <TemplateGallery instituteId={instituteId} />

@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { ExecutionSummary } from '@/types/workflow/workflow-types';
-import { Activity, CheckCircle, XCircle, Clock } from '@phosphor-icons/react';
+import { Lightning, CheckCircle, XCircle, Clock } from '@phosphor-icons/react';
 
 interface Props {
     summary: ExecutionSummary;
@@ -18,7 +18,7 @@ export function ExecutionSummaryCards({ summary }: Props) {
             <Card>
                 <CardContent className="p-4">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                        <Activity size={16} />
+                        <Lightning size={16} />
                         Total Runs
                     </div>
                     <div className="text-2xl font-bold">{summary.total_executions}</div>

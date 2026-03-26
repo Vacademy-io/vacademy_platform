@@ -66,8 +66,9 @@ export function TemplateGallery({ instituteId }: TemplateGalleryProps) {
 
     // Group templates by category
     const grouped = (templates ?? []).reduce<Record<string, WorkflowTemplateItem[]>>((acc, t) => {
-        if (!acc[t.category]) acc[t.category] = [];
-        acc[t.category].push(t);
+        const cat = t.category ?? 'Other';
+        if (!acc[cat]) acc[cat] = [];
+        acc[cat]!.push(t);
         return acc;
     }, {});
 

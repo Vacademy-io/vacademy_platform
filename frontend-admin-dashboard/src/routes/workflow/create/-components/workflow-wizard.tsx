@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useQuery } from '@tanstack/react-query';
 import { getWorkflowTemplatesQuery } from '@/services/workflow-service';
-import { Wand, ArrowRight, ArrowLeft } from '@phosphor-icons/react';
+import { MagicWand, ArrowRight, ArrowLeft } from '@phosphor-icons/react';
 
 interface Props {
     open: boolean;
@@ -54,7 +54,7 @@ export function WorkflowWizard({ open, onOpenChange, instituteId, onApplyTemplat
             <DialogContent className="max-w-lg">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        <Wand size={20} />
+                        <MagicWand size={20} />
                         {step === 0 ? 'What would you like to automate?' : 'Choose a template'}
                     </DialogTitle>
                 </DialogHeader>

@@ -17,7 +17,7 @@ const statusConfig: Record<string, { color: string; icon: React.ReactNode; label
 
 export function ExecutionNodeLogCard({ log }: Props) {
     const [expanded, setExpanded] = useState(false);
-    const config = statusConfig[log.status] ?? statusConfig.RUNNING;
+    const config = (statusConfig[log.status] ?? statusConfig['RUNNING'])!;
 
     const formatDuration = (ms: number | null) => {
         if (!ms) return '-';

@@ -61,7 +61,7 @@ export function VariablePicker({ value, onChange, placeholder, nodeId }: Props) 
     const grouped = variables.reduce<Record<string, ContextVariableDTO[]>>((acc, v) => {
         const key = v.source_node_name ?? v.source_node_id;
         if (!acc[key]) acc[key] = [];
-        acc[key].push(v);
+        acc[key]!.push(v);
         return acc;
     }, {});
 

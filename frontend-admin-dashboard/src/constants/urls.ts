@@ -405,6 +405,9 @@ export const UPDATE_NAMING_SETTINGS = `${BASE_URL}/admin-core-service/institute/
 // Notification Service
 export const NOTIFICATION_SERVICE_BASE = `${BASE_URL}/notification-service/v1`;
 
+// Chatbot Flow Builder
+export const CHATBOT_FLOW_BASE = `${NOTIFICATION_SERVICE_BASE}/chatbot-flow`;
+
 // Notification Settings (Announcement / Institute Notification Settings)
 export const NOTIFICATION_SETTINGS_BASE = `${NOTIFICATION_SERVICE_BASE}/institute-settings`;
 export const GET_NOTIFICATION_SETTINGS_BY_INSTITUTE = `${NOTIFICATION_SETTINGS_BASE}/institute`;

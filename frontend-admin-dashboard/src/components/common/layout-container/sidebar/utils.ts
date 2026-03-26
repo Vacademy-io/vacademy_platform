@@ -287,6 +287,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemId: 'workflow-list',
             },
             {
+                subItem: 'Chatbot Flows',
+                subItemLink: '/automation/chatbot-flows',
+                subItemId: 'chatbot-flows',
+            },
+            {
                 subItem: 'Website Builder',
                 subItemLink: '/manage-pages',
                 subItemId: 'website-builder',

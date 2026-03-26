@@ -81,6 +81,7 @@ import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/eval
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
 import { Route as CommunityQuestionPaperIndexRouteImport } from "./routes/community/question-paper/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
+import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
 import { Route as AudienceManagerListIndexRouteImport } from "./routes/audience-manager/list/index"
 import { Route as AssessmentQuestionPapersIndexRouteImport } from "./routes/assessment/question-papers/index"
 import { Route as AssessmentEvaluationAiIndexRouteImport } from "./routes/assessment/evaluation-ai/index"
@@ -105,6 +106,8 @@ import { Route as PlanningPlanningLogIdRouteImport } from "./routes/planning/pla
 import { Route as PlanningActivityLogsLogIdRouteImport } from "./routes/planning/activity-logs/$logId"
 import { Route as ManagePagesEditorTagNameRouteImport } from "./routes/manage-pages/editor/$tagName"
 import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/redirect"
+import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
+import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
 import { Route as StudyLibraryVoltAddIndexRouteImport } from "./routes/study-library/volt/add/index"
 import { Route as StudyLibraryLiveSessionScheduleIndexRouteImport } from "./routes/study-library/live-session/schedule/index"
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from "./routes/study-library/courses/course-details/index"
@@ -705,6 +708,14 @@ const CertificateGenerationStudentDataIndexRoute =
       (d) => d.Route,
     ),
   )
+const AutomationChatbotFlowsIndexRoute =
+  AutomationChatbotFlowsIndexRouteImport.update({
+    id: "/automation/chatbot-flows/",
+    path: "/automation/chatbot-flows/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/automation/chatbot-flows/index.lazy").then((d) => d.Route),
+  )
 const AudienceManagerListIndexRoute =
   AudienceManagerListIndexRouteImport.update({
     id: "/audience-manager/list/",
@@ -889,6 +900,26 @@ const LoginOauthRedirectRoute = LoginOauthRedirectRouteImport.update({
   path: "/login/oauth/redirect",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AutomationChatbotFlowsFlowIdRoute =
+  AutomationChatbotFlowsFlowIdRouteImport.update({
+    id: "/automation/chatbot-flows/$flowId",
+    path: "/automation/chatbot-flows/$flowId",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/automation/chatbot-flows/$flowId.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const WorkflowWorkflowIdEditIndexRoute =
+  WorkflowWorkflowIdEditIndexRouteImport.update({
+    id: "/workflow/$workflowId/edit/",
+    path: "/workflow/$workflowId/edit/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/workflow/$workflowId/edit/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const StudyLibraryVoltAddIndexRoute =
   StudyLibraryVoltAddIndexRouteImport.update({
     id: "/study-library/volt/add/",
@@ -1291,6 +1322,7 @@ export interface FileRoutesByFullPath {
   "/signup/": typeof SignupIndexRoute
   "/study-library/": typeof StudyLibraryIndexRoute
   "/video-api-studio/": typeof VideoApiStudioIndexRoute
+  "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
   "/planning/activity-logs/$logId": typeof PlanningActivityLogsLogIdRoute
@@ -1315,6 +1347,7 @@ export interface FileRoutesByFullPath {
   "/assessment/evaluation-ai/": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
+  "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
@@ -1378,6 +1411,7 @@ export interface FileRoutesByFullPath {
   "/study-library/courses/course-details/": typeof StudyLibraryCoursesCourseDetailsIndexRoute
   "/study-library/live-session/schedule/": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
+  "/workflow/$workflowId/edit/": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
   "/assessment/create-assessment/$assessmentId/$examtype/": typeof AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute
@@ -1432,6 +1466,7 @@ export interface FileRoutesByTo {
   "/signup": typeof SignupIndexRoute
   "/study-library": typeof StudyLibraryIndexRoute
   "/video-api-studio": typeof VideoApiStudioIndexRoute
+  "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
   "/planning/activity-logs/$logId": typeof PlanningActivityLogsLogIdRoute
@@ -1456,6 +1491,7 @@ export interface FileRoutesByTo {
   "/assessment/evaluation-ai": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/list": typeof AudienceManagerListIndexRoute
+  "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
   "/community/question-paper": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId": typeof ContentContentIdIndexRoute
@@ -1519,6 +1555,7 @@ export interface FileRoutesByTo {
   "/study-library/courses/course-details": typeof StudyLibraryCoursesCourseDetailsIndexRoute
   "/study-library/live-session/schedule": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add": typeof StudyLibraryVoltAddIndexRoute
+  "/workflow/$workflowId/edit": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
   "/assessment/create-assessment/$assessmentId/$examtype": typeof AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute
@@ -1575,6 +1612,7 @@ export interface FileRoutesById {
   "/signup/": typeof SignupIndexRoute
   "/study-library/": typeof StudyLibraryIndexRoute
   "/video-api-studio/": typeof VideoApiStudioIndexRoute
+  "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
   "/planning/activity-logs/$logId": typeof PlanningActivityLogsLogIdRoute
@@ -1599,6 +1637,7 @@ export interface FileRoutesById {
   "/assessment/evaluation-ai/": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
+  "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
@@ -1662,6 +1701,7 @@ export interface FileRoutesById {
   "/study-library/courses/course-details/": typeof StudyLibraryCoursesCourseDetailsIndexRoute
   "/study-library/live-session/schedule/": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
+  "/workflow/$workflowId/edit/": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
   "/assessment/create-assessment/$assessmentId/$examtype/": typeof AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute
@@ -1719,6 +1759,7 @@ export interface FileRouteTypes {
     | "/signup/"
     | "/study-library/"
     | "/video-api-studio/"
+    | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-pages/editor/$tagName"
     | "/planning/activity-logs/$logId"
@@ -1743,6 +1784,7 @@ export interface FileRouteTypes {
     | "/assessment/evaluation-ai/"
     | "/assessment/question-papers/"
     | "/audience-manager/list/"
+    | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/community/question-paper/"
     | "/content/$contentId/"
@@ -1806,6 +1848,7 @@ export interface FileRouteTypes {
     | "/study-library/courses/course-details/"
     | "/study-library/live-session/schedule/"
     | "/study-library/volt/add/"
+    | "/workflow/$workflowId/edit/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId/"
     | "/assessment/create-assessment/$assessmentId/$examtype/"
@@ -1860,6 +1903,7 @@ export interface FileRouteTypes {
     | "/signup"
     | "/study-library"
     | "/video-api-studio"
+    | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-pages/editor/$tagName"
     | "/planning/activity-logs/$logId"
@@ -1884,6 +1928,7 @@ export interface FileRouteTypes {
     | "/assessment/evaluation-ai"
     | "/assessment/question-papers"
     | "/audience-manager/list"
+    | "/automation/chatbot-flows"
     | "/certificate-generation/student-data"
     | "/community/question-paper"
     | "/content/$contentId"
@@ -1947,6 +1992,7 @@ export interface FileRouteTypes {
     | "/study-library/courses/course-details"
     | "/study-library/live-session/schedule"
     | "/study-library/volt/add"
+    | "/workflow/$workflowId/edit"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId"
     | "/assessment/create-assessment/$assessmentId/$examtype"
@@ -2002,6 +2048,7 @@ export interface FileRouteTypes {
     | "/signup/"
     | "/study-library/"
     | "/video-api-studio/"
+    | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-pages/editor/$tagName"
     | "/planning/activity-logs/$logId"
@@ -2026,6 +2073,7 @@ export interface FileRouteTypes {
     | "/assessment/evaluation-ai/"
     | "/assessment/question-papers/"
     | "/audience-manager/list/"
+    | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/community/question-paper/"
     | "/content/$contentId/"
@@ -2089,6 +2137,7 @@ export interface FileRouteTypes {
     | "/study-library/courses/course-details/"
     | "/study-library/live-session/schedule/"
     | "/study-library/volt/add/"
+    | "/workflow/$workflowId/edit/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId/"
     | "/assessment/create-assessment/$assessmentId/$examtype/"
@@ -2144,6 +2193,7 @@ export interface RootRouteChildren {
   SignupIndexRoute: typeof SignupIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   VideoApiStudioIndexRoute: typeof VideoApiStudioIndexRoute
+  AutomationChatbotFlowsFlowIdRoute: typeof AutomationChatbotFlowsFlowIdRoute
   LoginOauthRedirectRoute: typeof LoginOauthRedirectRoute
   ManagePagesEditorTagNameRoute: typeof ManagePagesEditorTagNameRoute
   PlanningActivityLogsLogIdRoute: typeof PlanningActivityLogsLogIdRoute
@@ -2168,6 +2218,7 @@ export interface RootRouteChildren {
   AssessmentEvaluationAiIndexRoute: typeof AssessmentEvaluationAiIndexRoute
   AssessmentQuestionPapersIndexRoute: typeof AssessmentQuestionPapersIndexRoute
   AudienceManagerListIndexRoute: typeof AudienceManagerListIndexRoute
+  AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
   CommunityQuestionPaperIndexRoute: typeof CommunityQuestionPaperIndexRoute
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
@@ -2231,6 +2282,7 @@ export interface RootRouteChildren {
   StudyLibraryCoursesCourseDetailsIndexRoute: typeof StudyLibraryCoursesCourseDetailsIndexRoute
   StudyLibraryLiveSessionScheduleIndexRoute: typeof StudyLibraryLiveSessionScheduleIndexRoute
   StudyLibraryVoltAddIndexRoute: typeof StudyLibraryVoltAddIndexRoute
+  WorkflowWorkflowIdEditIndexRoute: typeof WorkflowWorkflowIdEditIndexRoute
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute: typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute: typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
   AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute: typeof AssessmentCreateAssessmentAssessmentIdExamtypeIndexRoute
@@ -2772,6 +2824,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CertificateGenerationStudentDataIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/automation/chatbot-flows/": {
+      id: "/automation/chatbot-flows/"
+      path: "/automation/chatbot-flows"
+      fullPath: "/automation/chatbot-flows/"
+      preLoaderRoute: typeof AutomationChatbotFlowsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/audience-manager/list/": {
       id: "/audience-manager/list/"
       path: "/audience-manager/list"
@@ -2938,6 +2997,20 @@ declare module "@tanstack/react-router" {
       path: "/login/oauth/redirect"
       fullPath: "/login/oauth/redirect"
       preLoaderRoute: typeof LoginOauthRedirectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/automation/chatbot-flows/$flowId": {
+      id: "/automation/chatbot-flows/$flowId"
+      path: "/automation/chatbot-flows/$flowId"
+      fullPath: "/automation/chatbot-flows/$flowId"
+      preLoaderRoute: typeof AutomationChatbotFlowsFlowIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/workflow/$workflowId/edit/": {
+      id: "/workflow/$workflowId/edit/"
+      path: "/workflow/$workflowId/edit"
+      fullPath: "/workflow/$workflowId/edit/"
+      preLoaderRoute: typeof WorkflowWorkflowIdEditIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/study-library/volt/add/": {
@@ -3282,6 +3355,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupIndexRoute: SignupIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   VideoApiStudioIndexRoute: VideoApiStudioIndexRoute,
+  AutomationChatbotFlowsFlowIdRoute: AutomationChatbotFlowsFlowIdRoute,
   LoginOauthRedirectRoute: LoginOauthRedirectRoute,
   ManagePagesEditorTagNameRoute: ManagePagesEditorTagNameRoute,
   PlanningActivityLogsLogIdRoute: PlanningActivityLogsLogIdRoute,
@@ -3308,6 +3382,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentEvaluationAiIndexRoute: AssessmentEvaluationAiIndexRoute,
   AssessmentQuestionPapersIndexRoute: AssessmentQuestionPapersIndexRoute,
   AudienceManagerListIndexRoute: AudienceManagerListIndexRoute,
+  AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
   CommunityQuestionPaperIndexRoute: CommunityQuestionPaperIndexRoute,
@@ -3391,6 +3466,7 @@ const rootRouteChildren: RootRouteChildren = {
   StudyLibraryLiveSessionScheduleIndexRoute:
     StudyLibraryLiveSessionScheduleIndexRoute,
   StudyLibraryVoltAddIndexRoute: StudyLibraryVoltAddIndexRoute,
+  WorkflowWorkflowIdEditIndexRoute: WorkflowWorkflowIdEditIndexRoute,
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute:
     StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute,
   AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute:

@@ -197,9 +197,15 @@ public class AuthManager {
                 throw new UsernameNotFoundException("invalid user request..!!");
             }
 
+            // Resolve instituteId from request or user's roles
+            String resolvedInstituteId = authRequestDTO.getInstituteId();
+            if (resolvedInstituteId == null || resolvedInstituteId.isBlank()) {
+                resolvedInstituteId = nonStudentRole.map(r -> r.getInstituteId()).orElse(null);
+            }
+
             // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
             Optional<List<vacademy.io.auth_service.feature.auth.dto.ActiveSessionDTO>> sessionCheck = userSessionService
-                    .checkSessionLimit(user.getId(), authRequestDTO.getInstituteId());
+                    .checkSessionLimit(user.getId(), resolvedInstituteId);
             if (sessionCheck.isPresent()) {
                 return JwtResponseDto.builder()
                         .sessionLimitExceeded(true)
@@ -217,7 +223,7 @@ public class AuthManager {
 
             // Register the new session (noop for institutes without limit configured)
             userSessionService.createSession(
-                    user.getId(), authRequestDTO.getInstituteId(),
+                    user.getId(), resolvedInstituteId,
                     accessToken, authRequestDTO.getDeviceType());
 
             return JwtResponseDto.builder()
@@ -348,9 +354,16 @@ public class AuthManager {
 
         refreshTokenService.deleteAllRefreshToken(user);
 
+        // Resolve instituteId from request or user's roles
+        String jwtInstituteId = authRequestDTO.getInstituteId();
+        if (jwtInstituteId == null || jwtInstituteId.isBlank()) {
+            List<vacademy.io.common.auth.entity.UserRole> userRoles = user.getRoles().stream().toList();
+            if (!userRoles.isEmpty()) jwtInstituteId = userRoles.get(0).getInstituteId();
+        }
+
         // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
         Optional<List<vacademy.io.auth_service.feature.auth.dto.ActiveSessionDTO>> sessionCheck = userSessionService
-                .checkSessionLimit(user.getId(), authRequestDTO.getInstituteId());
+                .checkSessionLimit(user.getId(), jwtInstituteId);
         if (sessionCheck.isPresent()) {
             return JwtResponseDto.builder()
                     .sessionLimitExceeded(true)
@@ -367,7 +380,7 @@ public class AuthManager {
 
         // Register the new session (noop for institutes without limit configured)
         userSessionService.createSession(
-                user.getId(), authRequestDTO.getInstituteId(),
+                user.getId(), jwtInstituteId,
                 accessToken, authRequestDTO.getDeviceType());
 
         return JwtResponseDto.builder()

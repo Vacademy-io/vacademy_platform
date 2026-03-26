@@ -1,7 +1,7 @@
 import axios, { type AxiosResponse } from "axios";
 import { Preferences as Storage } from "@capacitor/preferences";
 import { jwtDecode } from "jwt-decode";
-import { REFRESH_TOKEN_URL } from "@/constants/urls";
+import { REFRESH_TOKEN_URL, TERMINATE_CURRENT_SESSION } from "@/constants/urls";
 import { UnauthorizedResponse } from "@/constants/auth/unauthorizeresponse";
 import { IAccessToken, TokenKey, Tokens } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "../utils";
@@ -213,6 +213,18 @@ async function refreshTokens(
 
 // Remove tokens from storage and log out
 const removeTokensAndLogout = async (): Promise<void> => {
+  // Terminate the current session in backend BEFORE clearing tokens
+  try {
+    const token = await getTokenFromStorage(TokenKey.accessToken);
+    if (token) {
+      await axios.post(TERMINATE_CURRENT_SESSION, null, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+  } catch {
+    // Best-effort — don't block logout if session termination fails
+  }
+
   // Remove tokens from all storage locations
   await removeTokenFromStorage(TokenKey.accessToken);
   await removeTokenFromStorage(TokenKey.refreshToken);

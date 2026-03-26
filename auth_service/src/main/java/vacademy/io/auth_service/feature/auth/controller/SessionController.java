@@ -1,7 +1,9 @@
 package vacademy.io.auth_service.feature.auth.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.feature.auth.dto.ActiveSessionDTO;
 import vacademy.io.auth_service.feature.user.service.UserSessionService;
@@ -57,6 +59,23 @@ public class SessionController {
     public ResponseEntity<String> logoutSession(@RequestParam String sessionId) {
         userSessionService.terminateSession(sessionId);
         return ResponseEntity.ok("Session terminated. Please log in again.");
+    }
+
+    /**
+     * Terminates the CURRENT session using the JWT from Authorization header.
+     * Called by the normal learner logout flow.
+     *
+     * POST /auth-service/learner/v1/session/logout-current
+     * Header: Authorization: Bearer <access_token>
+     */
+    @PostMapping("/logout-current")
+    public ResponseEntity<String> logoutCurrentSession(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (StringUtils.hasText(authHeader) && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            userSessionService.terminateSessionByToken(token);
+        }
+        return ResponseEntity.ok("Session terminated.");
     }
 
     /**

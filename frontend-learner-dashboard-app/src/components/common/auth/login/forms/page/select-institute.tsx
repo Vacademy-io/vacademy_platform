@@ -21,7 +21,9 @@ import { TokenKey } from "@/constants/auth/tokens";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { INSTITUTE_DETAIL } from "@/constants/urls";
+import { INSTITUTE_DETAIL, SELECT_INSTITUTE_SESSION } from "@/constants/urls";
+import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
+import axios from "axios";
 
 import {
     Select,
@@ -55,6 +57,9 @@ export function InstituteSelection() {
     >([]);
     const [isLoadingInstitutes, setIsLoadingInstitutes] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [sessionLimitOpen, setSessionLimitOpen] = useState(false);
+    const [activeSessions, setActiveSessions] = useState<any[]>([]);
+    const [pendingInstituteId, setPendingInstituteId] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchInstitutes = async () => {
@@ -125,7 +130,28 @@ export function InstituteSelection() {
                 toast.error("User not found");
                 return;
             }
-            
+
+            // Session limit check for the selected institute
+            const accessToken = await getTokenFromStorage(TokenKey.accessToken);
+            try {
+                const sessionRes = await axios.post(SELECT_INSTITUTE_SESSION, {
+                    user_id: userId,
+                    institute_id: data.instituteId,
+                    access_token: accessToken,
+                    device_type: "WEB",
+                });
+                if (sessionRes.data.session_limit_exceeded === true) {
+                    setActiveSessions(sessionRes.data.active_sessions || []);
+                    setPendingInstituteId(data.instituteId);
+                    setSessionLimitOpen(true);
+                    setIsSubmitting(false);
+                    return;
+                }
+            } catch (err) {
+                // If session check fails, proceed anyway (don't block institute selection)
+                console.error("Session check failed:", err);
+            }
+
             // Step 1: Fetch and store InstituteDetails
             await fetchAndStoreInstituteDetails(data.instituteId, userId);
 
@@ -156,6 +182,17 @@ export function InstituteSelection() {
             toast.error("Submission failed");
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleSessionTerminated = () => {
+        // Session was terminated, user can retry
+    };
+
+    const handleRetryInstituteSelect = () => {
+        setSessionLimitOpen(false);
+        if (pendingInstituteId) {
+            onSubmit({ instituteId: pendingInstituteId });
         }
     };
 
@@ -356,6 +393,13 @@ export function InstituteSelection() {
                     </motion.div>
                 </div>
             </motion.div>
+            <SessionLimitDialog
+                open={sessionLimitOpen}
+                onOpenChange={setSessionLimitOpen}
+                activeSessions={activeSessions}
+                onSessionTerminated={handleSessionTerminated}
+                onRetryLogin={handleRetryInstituteSelect}
+            />
         </div>
     );
 }

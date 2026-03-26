@@ -58,4 +58,36 @@ public class SessionController {
         userSessionService.terminateSession(sessionId);
         return ResponseEntity.ok("Session terminated. Please log in again.");
     }
+
+    /**
+     * Called when a multi-institute user selects their institute.
+     * Checks session limit and creates the session if under limit.
+     *
+     * POST /auth-service/learner/v1/session/select-institute
+     * Body: { "user_id": "...", "institute_id": "...", "access_token": "...", "device_type": "WEB" }
+     *
+     * Returns 200 with { "session_limit_exceeded": false } if OK,
+     * or { "session_limit_exceeded": true, "active_sessions": [...] } if blocked.
+     */
+    @PostMapping("/select-institute")
+    public ResponseEntity<java.util.Map<String, Object>> selectInstitute(
+            @RequestBody java.util.Map<String, String> body) {
+        String userId = body.get("user_id");
+        String instituteId = body.get("institute_id");
+        String accessToken = body.get("access_token");
+        String deviceType = body.getOrDefault("device_type", "WEB");
+
+        java.util.Optional<java.util.List<ActiveSessionDTO>> sessionCheck =
+                userSessionService.checkSessionLimit(userId, instituteId);
+
+        if (sessionCheck.isPresent()) {
+            return ResponseEntity.ok(java.util.Map.of(
+                    "session_limit_exceeded", true,
+                    "active_sessions", sessionCheck.get()));
+        }
+
+        // Under limit — create the session
+        userSessionService.createSession(userId, instituteId, accessToken, deviceType);
+        return ResponseEntity.ok(java.util.Map.of("session_limit_exceeded", false));
+    }
 }

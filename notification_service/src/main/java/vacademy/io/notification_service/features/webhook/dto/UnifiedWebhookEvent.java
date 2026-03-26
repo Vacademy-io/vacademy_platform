@@ -87,6 +87,20 @@ public class UnifiedWebhookEvent {
      */
     private String businessChannelId;
 
+    // ===== Interactive reply fields (for chatbot flow engine) =====
+
+    /** Message type: text, button, interactive, image, etc. */
+    private String messageType;
+
+    /** Interactive button reply ID (from reply buttons) */
+    private String buttonId;
+
+    /** Template quick_reply button payload */
+    private String buttonPayload;
+
+    /** Interactive list reply row ID */
+    private String listReplyId;
+
     /**
      * Unified event types across all vendors
      */

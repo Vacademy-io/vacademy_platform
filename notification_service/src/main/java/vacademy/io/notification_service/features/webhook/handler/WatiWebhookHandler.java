@@ -104,9 +104,39 @@ public class WatiWebhookHandler implements VendorWebhookHandler {
         long timestampMs = root.path("timestamp").asLong();
         String senderName = root.path("senderName").asText(null);
         String messageId = root.path("id").asText(null);
+        String msgType = root.path("type").asText("text");
 
-        // All incoming messages are REPLY - action routing (via action_template_config)
-        // determines if it's verification, workflow trigger, etc.
+        // Extract interactive reply fields for chatbot flow engine
+        String buttonId = null;
+        String buttonPayload = null;
+        String listReplyId = null;
+
+        JsonNode interactiveReply = root.path("interactiveButtonReply");
+        if (!interactiveReply.isMissingNode() && interactiveReply.isObject()) {
+            buttonId = interactiveReply.path("id").asText(null);
+            // Use button title as message text if text is empty
+            if (messageText == null || messageText.isBlank()) {
+                messageText = interactiveReply.path("title").asText("");
+            }
+        }
+
+        JsonNode listReply = root.path("listReply");
+        if (!listReply.isMissingNode() && listReply.isObject()) {
+            listReplyId = listReply.path("id").asText(null);
+            if (messageText == null || messageText.isBlank()) {
+                messageText = listReply.path("title").asText("");
+            }
+        }
+
+        JsonNode btnReply = root.path("buttonReply");
+        if (!btnReply.isMissingNode() && btnReply.isObject()) {
+            buttonPayload = btnReply.path("id").asText(null);
+            if (messageText == null || messageText.isBlank()) {
+                messageText = btnReply.path("text").asText("");
+            }
+        }
+
+        // All incoming messages are REPLY - action routing determines next steps
         UnifiedWebhookEvent.EventType eventType = UnifiedWebhookEvent.EventType.REPLY;
 
         return UnifiedWebhookEvent.builder()
@@ -116,6 +146,10 @@ public class WatiWebhookHandler implements VendorWebhookHandler {
                 .externalMessageId(messageId)
                 .phoneNumber(whatsappNumber)
                 .messageText(messageText)
+                .messageType(msgType)
+                .buttonId(buttonId)
+                .buttonPayload(buttonPayload)
+                .listReplyId(listReplyId)
                 .senderName(senderName)
                 .timestamp(timestampMs > 0 ? Instant.ofEpochMilli(timestampMs) : Instant.now())
                 .rawPayload(rawPayload)

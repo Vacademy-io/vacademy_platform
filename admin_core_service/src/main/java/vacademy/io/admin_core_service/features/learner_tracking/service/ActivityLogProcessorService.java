@@ -159,7 +159,7 @@ public class ActivityLogProcessorService {
         }
 
         private void validateInsights(JsonNode insights) {
-                // Validate required fields
+                // Required LLM-generated fields
                 if (!insights.has("performance_analysis")) {
                         throw new RuntimeException("Missing performance_analysis in LLM response");
                 }
@@ -168,9 +168,6 @@ public class ActivityLogProcessorService {
                 }
                 if (!insights.has("strengths")) {
                         throw new RuntimeException("Missing strengths in LLM response");
-                }
-                if (!insights.has("areas_of_improvement")) {
-                        throw new RuntimeException("Missing areas_of_improvement in LLM response");
                 }
                 if (!insights.has("improvement_path")) {
                         throw new RuntimeException("Missing improvement_path in LLM response");

@@ -150,8 +150,7 @@ public class PackageService {
                     instructors,
                     projection.getLevelIds(),
                     projection.getReadTimeInMinutes(),
-                    projection.getPackageType(),
-                    null);
+                    projection.getPackageType());
         }).toList();
 
         return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
@@ -208,8 +207,7 @@ public class PackageService {
                 instructors,
                 projection.getLevelIds(),
                 projection.getReadTimeInMinutes(),
-                projection.getPackageType(),
-                null);
+                projection.getPackageType());
 
         return dto;
     }

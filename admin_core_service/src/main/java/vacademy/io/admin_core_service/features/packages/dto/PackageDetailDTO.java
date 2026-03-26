@@ -2,7 +2,6 @@ package vacademy.io.admin_core_service.features.packages.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -10,7 +9,6 @@ import vacademy.io.common.auth.dto.UserDTO;
 import java.util.List;
 
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
-@AllArgsConstructor
 @NoArgsConstructor
 @Data
 public class PackageDetailDTO {
@@ -39,4 +37,31 @@ public class PackageDetailDTO {
     private Long readTimeInMinutes;
     private String packageType;
     private Integer validityInDays;
+
+    public PackageDetailDTO(String id, String packageName, String thumbnailFileId, Boolean isCoursePublishedToCatalaouge, String coursePreviewImageMediaId, String courseBannerMediaId, String courseMediaId, String whyLearnHtml, String whoShouldLearnHtml, String aboutTheCourseHtml, String commaSeparetedTags, Integer courseDepth, String courseHtmlDescriptionHtml, Double percentageCompleted, Double rating, String packageSessionId, String packageSessionName, String levelId, String levelName, String dripConditionJson, List<UserDTO> instructors, List<String> levelIds, Long readTimeInMinutes, String packageType) {
+        this.id = id;
+        this.packageName = packageName;
+        this.thumbnailFileId = thumbnailFileId;
+        this.isCoursePublishedToCatalaouge = isCoursePublishedToCatalaouge;
+        this.coursePreviewImageMediaId = coursePreviewImageMediaId;
+        this.courseBannerMediaId = courseBannerMediaId;
+        this.courseMediaId = courseMediaId;
+        this.whyLearnHtml = whyLearnHtml;
+        this.whoShouldLearnHtml = whoShouldLearnHtml;
+        this.aboutTheCourseHtml = aboutTheCourseHtml;
+        this.commaSeparetedTags = commaSeparetedTags;
+        this.courseDepth = courseDepth;
+        this.courseHtmlDescriptionHtml = courseHtmlDescriptionHtml;
+        this.percentageCompleted = percentageCompleted;
+        this.rating = rating;
+        this.packageSessionId = packageSessionId;
+        this.packageSessionName = packageSessionName;
+        this.levelId = levelId;
+        this.levelName = levelName;
+        this.dripConditionJson = dripConditionJson;
+        this.instructors = instructors;
+        this.levelIds = levelIds;
+        this.readTimeInMinutes = readTimeInMinutes;
+        this.packageType = packageType;
+    }
 }

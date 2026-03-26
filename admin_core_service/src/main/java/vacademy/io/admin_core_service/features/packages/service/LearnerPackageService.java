@@ -91,7 +91,7 @@ public class LearnerPackageService {
                                         .map(userMap::get)
                                         .filter(Objects::nonNull)
                                         .collect(Collectors.toList());
-                        return new PackageDetailDTO(
+                        PackageDetailDTO dto = new PackageDetailDTO(
                                         projection.getId(),
                                         projection.getPackageName(),
                                         projection.getThumbnailFileId(),
@@ -115,8 +115,9 @@ public class LearnerPackageService {
                                         instructors,
                                         projection.getLevelIds(),
                                         projection.getReadTimeInMinutes(),
-                                        projection.getPackageType(),
-                                        projection.getValidityInDays());
+                                        projection.getPackageType());
+                        dto.setValidityInDays(projection.getValidityInDays());
+                        return dto;
                 }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
@@ -318,8 +319,8 @@ public class LearnerPackageService {
                                 instructors,
                                 projection.getLevelIds(),
                                 getReadTimeInMinutes(packageId),
-                                projection.getPackageType(),
-                                null);
+                                projection.getPackageType());
+                dto.setValidityInDays(projection.getValidityInDays());
 
                 return dto;
         }

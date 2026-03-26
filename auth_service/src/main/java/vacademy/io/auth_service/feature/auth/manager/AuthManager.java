@@ -93,6 +93,9 @@ public class AuthManager {
     @Autowired
     private InstituteSettingsService instituteSettingsService;
 
+    @Autowired
+    private vacademy.io.auth_service.feature.user.service.UserSessionService userSessionService;
+
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthManager.class);
 
     public JwtResponseDto registerRootUser(RegisterRequest registerRequest) {
@@ -194,12 +197,31 @@ public class AuthManager {
                 throw new UsernameNotFoundException("invalid user request..!!");
             }
 
+            // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
+            Optional<List<vacademy.io.auth_service.feature.auth.dto.ActiveSessionDTO>> sessionCheck = userSessionService
+                    .checkSessionLimit(user.getId(), authRequestDTO.getInstituteId());
+            if (sessionCheck.isPresent()) {
+                return JwtResponseDto.builder()
+                        .sessionLimitExceeded(true)
+                        .activeSessions(sessionCheck.get())
+                        .build();
+            }
+            // ── END SESSION LIMIT CHECK ──
+
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(authRequestDTO.getUserName(),
                     authRequestDTO.getClientName());
             List<String> userPermissions = userPermissionRepository.findByUserId(user.getId()).stream()
                     .map(UserPermission::getPermissionId).toList();
+
+            String accessToken = jwtService.generateToken(user, user.getRoles().stream().toList(), userPermissions);
+
+            // Register the new session (noop for institutes without limit configured)
+            userSessionService.createSession(
+                    user.getId(), authRequestDTO.getInstituteId(),
+                    accessToken, authRequestDTO.getDeviceType());
+
             return JwtResponseDto.builder()
-                    .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(), userPermissions))
+                    .accessToken(accessToken)
                     .refreshToken(refreshToken.getToken()).build();
 
         } else {
@@ -326,11 +348,30 @@ public class AuthManager {
 
         refreshTokenService.deleteAllRefreshToken(user);
 
+        // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
+        Optional<List<vacademy.io.auth_service.feature.auth.dto.ActiveSessionDTO>> sessionCheck = userSessionService
+                .checkSessionLimit(user.getId(), authRequestDTO.getInstituteId());
+        if (sessionCheck.isPresent()) {
+            return JwtResponseDto.builder()
+                    .sessionLimitExceeded(true)
+                    .activeSessions(sessionCheck.get())
+                    .build();
+        }
+        // ── END SESSION LIMIT CHECK ──
+
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(username, authRequestDTO.getClientName());
         List<String> userPermissions = userPermissionRepository.findByUserId(user.getId()).stream()
                 .map(UserPermission::getPermissionId).toList();
+
+        String accessToken = jwtService.generateToken(user, user.getRoles().stream().toList(), userPermissions);
+
+        // Register the new session (noop for institutes without limit configured)
+        userSessionService.createSession(
+                user.getId(), authRequestDTO.getInstituteId(),
+                accessToken, authRequestDTO.getDeviceType());
+
         return JwtResponseDto.builder()
-                .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(), userPermissions))
+                .accessToken(accessToken)
                 .refreshToken(refreshToken.getToken())
                 .build();
     }

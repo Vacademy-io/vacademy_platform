@@ -1,6 +1,7 @@
 package vacademy.io.auth_service.feature.auth.manager;
 
 import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
+import vacademy.io.auth_service.feature.user.service.UserSessionService;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +60,9 @@ public class LearnerOAuth2Manager {
     @Autowired
     private InstituteSettingsService instituteSettingsService;
 
+    @Autowired
+    private UserSessionService userSessionService;
+
     public JwtResponseDto loginUserByEmail(String fullName, String email, String instituteId) throws Exception {
         return loginUserByEmail(fullName, email, instituteId, null, null);
     }
@@ -115,6 +119,17 @@ public class LearnerOAuth2Manager {
                 }
             }
 
+            // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
+            Optional<java.util.List<vacademy.io.auth_service.feature.auth.dto.ActiveSessionDTO>> sessionCheck = userSessionService
+                    .checkSessionLimit(user.getId(), instituteId);
+            if (sessionCheck.isPresent()) {
+                return JwtResponseDto.builder()
+                        .sessionLimitExceeded(true)
+                        .activeSessions(sessionCheck.get())
+                        .build();
+            }
+            // ── END SESSION LIMIT CHECK ──
+
             log.info("Generating new access & refresh tokens for user {}", user.getUsername());
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), "oauth2-client");
             List<String> userPermissions = userPermissionRepository.findByUserId(user.getId())
@@ -123,8 +138,14 @@ public class LearnerOAuth2Manager {
                     .toList();
             log.debug("User permissions for {}: {}", user.getUsername(), userPermissions);
 
+            String accessToken = jwtService.generateToken(user, userRoles, userPermissions);
+
+            // Register the new session (noop for institutes without limit configured)
+            userSessionService.createSession(user.getId(), instituteId, accessToken, "WEB"); // Google login usually
+                                                                                             // from Web
+
             JwtResponseDto response = JwtResponseDto.builder()
-                    .accessToken(jwtService.generateToken(user, userRoles, userPermissions))
+                    .accessToken(accessToken)
                     .refreshToken(refreshToken.getToken())
                     .build();
 

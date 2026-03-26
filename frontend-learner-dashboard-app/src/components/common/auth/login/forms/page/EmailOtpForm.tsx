@@ -37,6 +37,7 @@ import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstitute
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { ENABLE_OTP_FOR_LOGIN_SIGNUP } from "@/constants/feature-flags";
+import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
 
 const emailSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
@@ -78,6 +79,8 @@ export function EmailLogin({
   const navigate = useNavigate();
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionLimitOpen, setSessionLimitOpen] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const domainRouting = useDomainRouting();
 
   const redirect = useRouterState({
@@ -182,6 +185,13 @@ export function EmailLogin({
       axios.post(LOGIN_OTP, data),
     onSuccess: async (response) => {
       try {
+        // Check for session limit exceeded
+        if (response.data.session_limit_exceeded === true) {
+          setActiveSessions(response.data.active_sessions || []);
+          setSessionLimitOpen(true);
+          return;
+        }
+
         // If onEmailVerificationSuccess callback is provided, use it for signup flow
         if (onEmailVerificationSuccess) {
           onEmailVerificationSuccess(email);
@@ -327,6 +337,20 @@ export function EmailLogin({
       setIsLoading(false);
     },
   });
+
+  const handleSessionTerminated = () => {
+    // Session was terminated
+  };
+
+  const handleRetryLogin = () => {
+    setSessionLimitOpen(false);
+    // Re-submit the OTP verification
+    if (email && otpForm.getValues()) {
+      const otpValues = otpForm.getValues();
+      const otpString = Array.isArray(otpValues.otp) ? otpValues.otp.join("") : otpValues.otp;
+      verifyOtpMutation.mutate({ email, otp: otpString });
+    }
+  };
 
   const onEmailSubmit = (data: EmailFormValues) => {
     setEmail(data.email);
@@ -809,6 +833,14 @@ export function EmailLogin({
           })()}
         </div>
       </motion.div>
+
+      <SessionLimitDialog
+        open={sessionLimitOpen}
+        onOpenChange={setSessionLimitOpen}
+        activeSessions={activeSessions}
+        onSessionTerminated={handleSessionTerminated}
+        onRetryLogin={handleRetryLogin}
+      />
     </div>
   );
 }

@@ -18,6 +18,16 @@ const loginResponseSchema = z.object({
     instituteId: z.string(),
 });
 
+// Custom error for session limit exceeded
+export class SessionLimitError extends Error {
+    activeSessions: any[];
+    constructor(activeSessions: any[]) {
+        super("Session limit exceeded");
+        this.name = "SessionLimitError";
+        this.activeSessions = activeSessions;
+    }
+}
+
 // Dummy login function
 async function loginUser(
     username: string,
@@ -27,7 +37,7 @@ async function loginUser(
     // Convert username and password to lowercase if flag is true
     const finalUsername = convertToLowercase === true ? username.toLowerCase() : username;
     const finalPassword = convertToLowercase === true ? password.toLowerCase() : password;
-    
+
     const response = await fetch(LOGIN_URL, {
         method: "POST",
         headers: {
@@ -46,6 +56,11 @@ async function loginUser(
     }
 
     const tokenData = await response.json();
+
+    // Check for session limit exceeded BEFORE storing tokens
+    if (tokenData.session_limit_exceeded === true) {
+        throw new SessionLimitError(tokenData.active_sessions || []);
+    }
 
     // --- BUG FIX: Save tokens and instituteId to storage ---
     try {

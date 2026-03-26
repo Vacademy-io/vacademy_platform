@@ -241,3 +241,7 @@ export const INITIATE_APPLICANT_PAYMENT_OPEN = (applicantId: string) =>
   `${BASE_URL}/admin-core-service/open/v1/applicant/${applicantId}/payment/initiate`;
 // AI service base url
 export const AI_SERVICE_URL = `${BASE_URL}/ai-service`;
+
+// Session management
+export const GET_ACTIVE_SESSIONS = `${BASE_URL}/auth-service/learner/v1/session/active`;
+export const TERMINATE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/logout`;

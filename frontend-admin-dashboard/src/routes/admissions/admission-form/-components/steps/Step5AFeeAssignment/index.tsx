@@ -248,6 +248,9 @@ export default function Step5AFeeAssignment({
                     <span>Total assigned: {formatCurrency(enrollSuccess.totalAmount)}</span>
                     <span>Payment mode: Offline</span>
                 </div>
+                <MyButton onClick={() => navigate({ to: '/admissions/admission-list' })}>
+                    Go to Admissions
+                </MyButton>
             </div>
         );
     }

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
@@ -31,7 +32,7 @@ export interface StudentSearchResult {
 }
 
 interface Props {
-    onStartAdmission: (data: Partial<StudentSearchResult> | null, sessionId?: string) => void;
+    onStartAdmission?: (data: Partial<StudentSearchResult> | null, sessionId?: string) => void;
 }
 
 const DATE_RANGES = [
@@ -106,7 +107,19 @@ const formatDate = (dateStr: string | null | undefined): string => {
 };
 
 export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
+    const navigate = useNavigate();
     const { instituteDetails, getDetailsFromPackageSessionId } = useInstituteDetailsStore();
+
+    const navigateToForm = (data: Partial<StudentSearchResult> | null, sessionId?: string) => {
+        if (onStartAdmission) {
+            navigateToForm(data, sessionId);
+            return;
+        }
+        navigate({
+            to: '/admissions/admission-form',
+            state: { studentData: data, sessionId } as any,
+        });
+    };
 
     const sessions = useMemo(() => instituteDetails?.sessions ?? [], [instituteDetails]);
     const [selectedSessionId, setSelectedSessionId] = useState('');
@@ -179,7 +192,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
 
     const handleNewAdmission = () => {
         setShowAdmissionTypeModal(false);
-        onStartAdmission({ id: '', studentName: '', mobile: '', classVal: '', dob: '', address: '', gender: '', enquiryId: null, applicationId: null }, selectedSessionId);
+        navigateToForm({ id: '', studentName: '', mobile: '', classVal: '', dob: '', address: '', gender: '', enquiryId: null, applicationId: null }, selectedSessionId);
     };
 
     const handleFromEnquiryOption = () => {
@@ -216,10 +229,10 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         const relation = (enquiryData.parent_relation_with_child || '').toLowerCase();
         if (relation === 'father') {
             mapped.parentGender = 'father';
-            onStartAdmission(mapped, selectedSessionId);
+            navigateToForm(mapped, selectedSessionId);
         } else if (relation === 'mother') {
             mapped.parentGender = 'mother';
-            onStartAdmission(mapped, selectedSessionId);
+            navigateToForm(mapped, selectedSessionId);
         } else {
             // Relation unknown — ask admin to choose
             setPendingEnquiryMapped(mapped);
@@ -232,7 +245,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         const mapped = { ...pendingEnquiryMapped, parentGender: type };
         setShowParentTypeModal(false);
         setPendingEnquiryMapped(null);
-        onStartAdmission(mapped, selectedSessionId);
+        navigateToForm(mapped, selectedSessionId);
     };
 
     const handleFetchApplication = async () => {
@@ -286,7 +299,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             };
 
             setShowApplicationModal(false);
-            onStartAdmission(mapped, selectedSessionId);
+            navigateToForm(mapped, selectedSessionId);
         } catch (error) {
             console.error('Error fetching application:', error);
             alert('Failed to fetch application details. Please check the ID or phone number.');
@@ -370,7 +383,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         const isEnquiry = sourceType === 'ENQUIRY' || item.status === 'ENQUIRY';
         const isApplication = sourceType === 'APPLICATION' || item.status === 'APPLICATION';
 
-        onStartAdmission({
+        navigateToForm({
             id: sourceId,
             studentName: item.student_name || '',
             parentName: item.parent_name || '',

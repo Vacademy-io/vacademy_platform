@@ -302,17 +302,50 @@ export const fetchPaymentOptionById = async (
 /**
  * Fetch enquiry details by tracking ID
  */
-export const fetchEnquiryDetails = async (enquiryTrackingId: string): Promise<any> => {
+export const fetchEnquiryDetails = async (enquiryIdOrTrackingId: string): Promise<any> => {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(enquiryIdOrTrackingId);
+    
+    const params: any = {};
+    if (isUuid) {
+        params.enquiryId = enquiryIdOrTrackingId;
+    } else {
+        params.enquiryTrackingId = enquiryIdOrTrackingId;
+    }
+
+    const response = await authenticatedAxiosInstance.get(
+        `${BASE_URL}/admin-core-service/applicant/v1/enquiry/details`,
+        { params }
+    );
+    return response.data;
+};
+export const fetchEnquiryDetailsByPhone = async (phone: string): Promise<any> => {
     const response = await authenticatedAxiosInstance.get(
         `${BASE_URL}/admin-core-service/applicant/v1/enquiry/details`,
         {
             params: {
-                enquiryTrackingId,
+                phone,
             },
         }
     );
     return response.data;
 };
+
+/**
+ * Search enquiries by tracking ID, phone, or name returning a list
+ */
+export const searchEnquiriesByFilter = async (params: {
+    instituteId: string;
+    enquiryTrackingId?: string;
+    phone?: string;
+    name?: string;
+}): Promise<any[]> => {
+    const response = await authenticatedAxiosInstance.get(
+        `${BASE_URL}/admin-core-service/applicant/v1/enquiry/search`,
+        { params }
+    );
+    return response.data || [];
+};
+
 
 /**
  * Initiate a manual payment for an applicant

@@ -16,9 +16,9 @@ import { ScheduleTestFilters } from '@/routes/evaluation/evaluations/-components
 import { MyFilterOption } from '@/types/assessments/my-filter';
 import {
     fetchApplicantList,
-    fetchEnquiryDetails,
     type Applicant,
 } from '../../-services/applicant-services';
+import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -99,9 +99,7 @@ function RegistrationListPageInner({
     // Modal states
     const [showRegistrationTypeModal, setShowRegistrationTypeModal] = useState(false);
     const [showEnquiryModal, setShowEnquiryModal] = useState(false);
-    const [enquiryTrackingId, setEnquiryTrackingId] = useState('');
-    const [enquiryPhone, setEnquiryPhone] = useState('');
-    const [isLoadingEnquiry, setIsLoadingEnquiry] = useState(false);
+
     const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
     // Debounce search query
@@ -192,36 +190,19 @@ function RegistrationListPageInner({
         setShowEnquiryModal(true);
     };
 
-    const handleFetchEnquiry = async () => {
-        if (!enquiryTrackingId.trim() && !enquiryPhone.trim()) {
-            toast.warning('Please enter either enquiry tracking ID or phone number');
+    const handleSelectEnquiry = (enquiryData: any) => {
+        // Guard: should not reach here (button is disabled in modal), but double-check
+        if (enquiryData.overall_status === 'APPLICATION' || enquiryData.overall_status === 'ADMISSION') {
+            toast.warning('This enquiry has already been converted to an application.');
             return;
         }
 
-        setIsLoadingEnquiry(true);
-        try {
-            const searchParam = enquiryTrackingId.trim() || enquiryPhone.trim();
-            const enquiryData = await fetchEnquiryDetails(searchParam);
-            console.log('Enquiry data:', enquiryData);
-
-            // Check if already applied
-            if (enquiryData.already_applied) {
-                toast.warning('This enquiry has already been converted to an application.');
-                setIsLoadingEnquiry(false);
-                return;
-            }
-
-            // Navigate to registration form with enquiry data
-            const encodedData = encodeURIComponent(JSON.stringify(enquiryData));
-            if (selectedSessionId) {
-                navigate({ to: `/admissions/application/new?sessionId=${selectedSessionId}&enquiryData=${encodedData}` });
-            } else {
-                navigate({ to: `/admissions/application/new?enquiryData=${encodedData}` });
-            }
-        } catch (error) {
-            console.error('Error fetching enquiry:', error);
-            toast.error('Failed to fetch enquiry details. Please check the tracking ID.');
-            setIsLoadingEnquiry(false);
+        // Navigate to registration form with enquiry data from the search result (no extra API call)
+        const encodedData = encodeURIComponent(JSON.stringify(enquiryData));
+        if (selectedSessionId) {
+            navigate({ to: `/admissions/application/new?sessionId=${selectedSessionId}&enquiryData=${encodedData}` });
+        } else {
+            navigate({ to: `/admissions/application/new?enquiryData=${encodedData}` });
         }
     };
 
@@ -471,90 +452,11 @@ function RegistrationListPageInner({
                 </div>
             )}
 
-            {/* Enquiry Tracking ID Modal */}
-            {showEnquiryModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-                        <div className="mb-4 flex items-center justify-between">
-                            <h2 className="text-lg font-semibold text-neutral-900">
-                                Enter Enquiry Details
-                            </h2>
-                            <button
-                                onClick={() => {
-                                    setShowEnquiryModal(false);
-                                    setEnquiryTrackingId('');
-                                    setEnquiryPhone('');
-                                }}
-                                className="text-neutral-400 hover:text-neutral-600"
-                            >
-                                <X className="size-5" />
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <Label htmlFor="enquiryTrackingId">Enquiry Tracking ID</Label>
-                                <Input
-                                    id="enquiryTrackingId"
-                                    type="text"
-                                    placeholder="e.g., A9KQ2"
-                                    value={enquiryTrackingId}
-                                    onChange={(e) => setEnquiryTrackingId(e.target.value)}
-                                    className="mt-1"
-                                />
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                                <div className="h-px flex-1 bg-neutral-200"></div>
-                                <span className="text-xs text-neutral-500">OR</span>
-                                <div className="h-px flex-1 bg-neutral-200"></div>
-                            </div>
-
-                            <div>
-                                <Label htmlFor="enquiryPhone">Phone Number</Label>
-                                <Input
-                                    id="enquiryPhone"
-                                    type="tel"
-                                    placeholder="e.g., 9876543210"
-                                    value={enquiryPhone}
-                                    onChange={(e) => setEnquiryPhone(e.target.value)}
-                                    className="mt-1"
-                                />
-                            </div>
-
-                            <p className="text-xs text-neutral-500">
-                                Enter either the tracking ID or phone number of the enquiry you want
-                                to convert to a registration
-                            </p>
-
-                            <div className="flex gap-3">
-                                <MyButton
-                                    buttonType="secondary"
-                                    onClick={() => {
-                                        setShowEnquiryModal(false);
-                                        setEnquiryTrackingId('');
-                                        setEnquiryPhone('');
-                                    }}
-                                    className="flex-1"
-                                >
-                                    Cancel
-                                </MyButton>
-                                <MyButton
-                                    buttonType="primary"
-                                    onClick={handleFetchEnquiry}
-                                    disabled={
-                                        isLoadingEnquiry ||
-                                        (!enquiryTrackingId.trim() && !enquiryPhone.trim())
-                                    }
-                                    className="flex-1"
-                                >
-                                    {isLoadingEnquiry ? 'Loading...' : 'Continue'}
-                                </MyButton>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <EnquirySearchModal
+                isOpen={showEnquiryModal}
+                onClose={() => setShowEnquiryModal(false)}
+                onSelectForApplication={handleSelectEnquiry}
+            />
 
             <ApplicationBulkImportDialog
                 open={isBulkImportOpen}

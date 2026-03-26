@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.live_session.entity.ScheduleNotif
 import vacademy.io.admin_core_service.features.live_session.enums.LiveClassAction;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationTypeEnum;
+import vacademy.io.admin_core_service.features.live_session.constants.LiveClassEmailBody;
 import vacademy.io.admin_core_service.features.live_session.service.LiveClassTemplateService;
 import vacademy.io.admin_core_service.features.live_session.service.LiveClassTemplateService.ResolvedTemplate;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;

@@ -32,6 +32,7 @@ export interface SubmitEnquiryRequest {
         checklist?: string;
         enquiry_status?: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'LOST' | 'NOT_ELIGIBLE';
         convertion_status?: string;
+        parent_relation_with_child?: 'FATHER' | 'MOTHER' | 'GUARDIAN';
         reference_source?: string;
         assigned_user_id?: boolean;
         assigned_visit_session_id?: boolean;
@@ -82,6 +83,7 @@ export interface BulkSubmitEnquiryRow {
     };
     enquiry: {
         enquiry_status: string;
+        parent_relation_with_child?: 'FATHER' | 'MOTHER' | 'GUARDIAN';
     };
 }
 

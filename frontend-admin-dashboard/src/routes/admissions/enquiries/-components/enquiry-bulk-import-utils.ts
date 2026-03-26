@@ -46,3 +46,14 @@ export const parseOptionalSourceType = (value: unknown): EnquirySourceType | und
     const normalized = String(value).trim().toUpperCase().replace(/\s+/g, '_');
     return SOURCE_NORMALIZATION_MAP[normalized];
 };
+
+export const parseOptionalParentRelationWithChild = (
+    value: unknown
+): 'FATHER' | 'MOTHER' | 'GUARDIAN' | undefined => {
+    if (!value) return undefined;
+    const normalized = String(value).trim().toUpperCase().replace(/\s+/g, '_');
+    if (normalized === 'FATHER') return 'FATHER';
+    if (normalized === 'MOTHER') return 'MOTHER';
+    if (normalized === 'GUARDIAN') return 'GUARDIAN';
+    return undefined;
+};

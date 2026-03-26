@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import Step1StudentDetails from './steps/Step1StudentDetails';
 import Step2PreviousSchool from './steps/Step2PreviousSchool';
 import Step3ParentDetails from './steps/Step3ParentDetails';
 import Step4AddressDetails from './steps/Step4AddressDetails';
 import Step5AFeeAssignment from './steps/Step5AFeeAssignment';
 import Step6Finish from './steps/Step6Finish';
-import AdmissionEntryScreen, { StudentSearchResult } from './AdmissionEntryScreen';
+import type { StudentSearchResult } from './AdmissionEntryScreen';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
@@ -120,7 +121,9 @@ const STEPS = [
 ];
 
 export default function AdmissionFormWizard() {
-    const [wizardStarted, setWizardStarted] = useState(false);
+    const navigate = useNavigate();
+    const routerState = useRouterState();
+    const locationState = routerState.location.state as any;
     const [currentStep, setCurrentStep] = useState(1);
     const [admissionId, setAdmissionId] = useState('');
     const [admissionSubmitResult, setAdmissionSubmitResult] =
@@ -128,7 +131,7 @@ export default function AdmissionFormWizard() {
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id || '';
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [selectedSessionId, setSelectedSessionId] = useState('');
+    const [selectedSessionId, setSelectedSessionId] = useState(locationState?.sessionId || '');
     const allBatches = instituteDetails?.batches_for_sessions ?? [];
 
     const packageSessionOptions = useMemo(() => {
@@ -243,10 +246,11 @@ export default function AdmissionFormWizard() {
     const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
     const goToStep = (stepId: number) => setCurrentStep(stepId);
 
-    const handleStartAdmission = (
-        data: Partial<StudentSearchResult> | null,
-        sessionId?: string
-    ) => {
+    // Pre-populate form from route state (passed from admission-list)
+    useEffect(() => {
+        const data = locationState?.studentData as Partial<StudentSearchResult> | null | undefined;
+        const sessionId = locationState?.sessionId as string | undefined;
+
         if (sessionId) {
             setSelectedSessionId(sessionId);
         }
@@ -288,8 +292,7 @@ export default function AdmissionFormWizard() {
         } else if (sessionId) {
             setFormData((prev) => ({ ...prev, sessionId }));
         }
-        setWizardStarted(true);
-    };
+    }, []); // Run once on mount
 
     const handleSubmitAdmission = async () => {
         if (!instituteId) {
@@ -396,18 +399,14 @@ export default function AdmissionFormWizard() {
         }
     };
 
-    if (!wizardStarted) {
-        return <AdmissionEntryScreen onStartAdmission={handleStartAdmission} />;
-    }
-
     return (
         <div className="flex h-full flex-col rounded-lg bg-gray-50/50 p-6 font-sans">
             <div className="mb-6 flex flex-col gap-2">
                 <h1 className="flex items-center gap-3 text-2xl font-bold text-gray-800">
                     <button
-                        onClick={() => setWizardStarted(false)}
+                        onClick={() => navigate({ to: '/admissions/admission-list' })}
                         className="rounded-md p-1 transition-colors hover:bg-gray-200"
-                        title="Back to Search"
+                        title="Back to Admission List"
                     >
                         <svg
                             className="h-5 w-5 text-gray-600"
@@ -502,32 +501,34 @@ export default function AdmissionFormWizard() {
                 )}
             </div>
 
-            {/* Footer Navigation */}
-            <div className="mt-6 flex justify-between rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
-                <MyButton
-                    onClick={prevStep}
-                    disabled={currentStep === 1}
-                    className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-                >
-                    Previous
-                </MyButton>
-
-                {currentStep === 5 ? (
+            {/* Footer Navigation - hidden on Fee Assignment step */}
+            {currentStep !== 6 && (
+                <div className="mt-6 flex justify-between rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
                     <MyButton
-                        onClick={handleSubmitAdmission}
-                        disabled={isSubmitting}
-                        className={`rounded-lg px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-colors ${
-                            isSubmitting
-                                ? 'cursor-not-allowed bg-green-400'
-                                : 'bg-green-600 hover:bg-green-700'
-                        }`}
+                        onClick={prevStep}
+                        disabled={currentStep === 1}
+                        className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
                     >
-                        {isSubmitting ? 'Submitting...' : 'Submit Admission'}
+                        Previous
                     </MyButton>
-                ) : (
-                    <MyButton onClick={nextStep}>Save & Next</MyButton>
-                )}
-            </div>
+
+                    {currentStep === 5 ? (
+                        <MyButton
+                            onClick={handleSubmitAdmission}
+                            disabled={isSubmitting}
+                            className={`rounded-lg px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-colors ${
+                                isSubmitting
+                                    ? 'cursor-not-allowed bg-green-400'
+                                    : 'bg-green-600 hover:bg-green-700'
+                            }`}
+                        >
+                            {isSubmitting ? 'Submitting...' : 'Submit Admission'}
+                        </MyButton>
+                    ) : (
+                        <MyButton onClick={nextStep}>Save & Next</MyButton>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

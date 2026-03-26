@@ -121,6 +121,17 @@ public class UserSessionService {
         log.info("Session {} terminated via popup", sessionId);
     }
 
+    /**
+     * Terminates a session by its JWT access token.
+     * Called by the normal logout flow — frontend sends its current JWT.
+     */
+    @Transactional
+    public void terminateSessionByToken(String accessToken) {
+        String sessionToken = generateSessionIdFromJwt(accessToken);
+        sessionRepository.endSession(sessionToken, LocalDateTime.now());
+        log.info("Session terminated by token");
+    }
+
     private String generateSessionIdFromJwt(String jwt) {
         return "jwt_session_" + Integer.toHexString(jwt.hashCode());
     }

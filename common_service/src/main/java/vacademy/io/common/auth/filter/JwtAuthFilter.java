@@ -22,10 +22,20 @@ import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.io.IOException;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @Slf4j
 public class JwtAuthFilter extends OncePerRequestFilter {
+
+    // ── Session-limit enforcement caches (no external dependency) ──
+    private record CacheEntry(boolean value, long expiresAt) {
+        boolean isExpired() { return System.currentTimeMillis() > expiresAt; }
+    }
+    private static final long INSTITUTE_LIMIT_TTL_MS = 60 * 60 * 1000L; // 1 hour
+    private static final long SESSION_ACTIVE_TTL_MS  = 10 * 60 * 1000L; // 10 minutes
+    private static final ConcurrentHashMap<String, CacheEntry> instituteHasLimitCache = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, CacheEntry> sessionActiveCache = new ConcurrentHashMap<>();
 
     @Autowired
     UserDetailsService userDetailsService;
@@ -41,6 +51,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Autowired(required = false)
     private UserService userService;
+
+    @Autowired(required = false)
+    private vacademy.io.common.auth.repository.UserSessionRepository userSessionRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -108,6 +121,23 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     if (userService != null) {
                         userService.updateLastLoginTimeForUser(userDetails.getUserId());
                     }
+
+                    // ── Session-limit enforcement ──
+                    if (instituteId != null && userSessionRepository != null) {
+                        try {
+                            if (isInstituteLimited(instituteId) && !isSessionStillActive(sessionToken)) {
+                                SecurityContextHolder.clearContext();
+                                response.setStatus(460);
+                                response.setContentType("application/json");
+                                response.getWriter().write(
+                                        "{\"error\":\"SESSION_TERMINATED\",\"message\":\"Your session has been terminated. Please log in again.\"}");
+                                return;
+                            }
+                        } catch (Exception e) {
+                            log.debug("Session-limit check failed (allowing request): {}", e.getMessage());
+                        }
+                    }
+
                     // Track successful JWT authentication activity
                     if (userActivityTrackingService != null) {
                         try {
@@ -162,6 +192,33 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // Generate a consistent session ID from the JWT token
         // Use the first part of the token to ensure consistency across requests
         return "jwt_session_" + Integer.toHexString(jwt.hashCode());
+    }
+
+    // ── Cache helpers for session-limit enforcement ──
+
+    private boolean isInstituteLimited(String instituteId) {
+        CacheEntry entry = instituteHasLimitCache.get(instituteId);
+        if (entry != null && !entry.isExpired()) return entry.value();
+        try {
+            boolean hasLimit = userSessionRepository.hasSessionLimitConfigured(instituteId);
+            instituteHasLimitCache.put(instituteId,
+                    new CacheEntry(hasLimit, System.currentTimeMillis() + INSTITUTE_LIMIT_TTL_MS));
+            return hasLimit;
+        } catch (Exception e) {
+            // institute_settings table doesn't exist in this service's DB — cache as "no limit"
+            instituteHasLimitCache.put(instituteId,
+                    new CacheEntry(false, System.currentTimeMillis() + INSTITUTE_LIMIT_TTL_MS));
+            return false;
+        }
+    }
+
+    private boolean isSessionStillActive(String sessionToken) {
+        CacheEntry entry = sessionActiveCache.get(sessionToken);
+        if (entry != null && !entry.isExpired()) return entry.value();
+        boolean active = userSessionRepository.isSessionActive(sessionToken);
+        sessionActiveCache.put(sessionToken,
+                new CacheEntry(active, System.currentTimeMillis() + SESSION_ACTIVE_TTL_MS));
+        return active;
     }
 
     /**

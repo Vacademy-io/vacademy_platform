@@ -307,14 +307,31 @@ public class LearnerAuthManager {
                 if (roles.isEmpty())
                         throw new UsernameNotFoundException("Invalid user request!");
 
-                // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
-                Optional<List<ActiveSessionDTO>> sessionCheck = userSessionService.checkSessionLimit(user.getId(),
-                                authRequestDTO.getInstituteId());
-                if (sessionCheck.isPresent()) {
-                        return JwtResponseDto.builder()
-                                        .sessionLimitExceeded(true)
-                                        .activeSessions(sessionCheck.get())
-                                        .build();
+                // Resolve instituteId: use request value, or single-institute fallback
+                String instituteId = authRequestDTO.getInstituteId();
+                if (instituteId == null || instituteId.isBlank()) {
+                        // Count distinct institutes from user roles
+                        java.util.Set<String> instituteIds = roles.stream()
+                                        .map(UserRole::getInstituteId)
+                                        .filter(id -> id != null && !id.isBlank())
+                                        .collect(java.util.stream.Collectors.toSet());
+                        if (instituteIds.size() == 1) {
+                                instituteId = instituteIds.iterator().next();
+                        }
+                        // If multiple institutes → instituteId stays null → skip session check
+                        // Session will be checked when user selects an institute
+                }
+
+                // ── SESSION LIMIT CHECK (skip for multi-institute — checked at institute selection) ──
+                if (instituteId != null) {
+                        Optional<List<ActiveSessionDTO>> sessionCheck = userSessionService.checkSessionLimit(
+                                        user.getId(), instituteId);
+                        if (sessionCheck.isPresent()) {
+                                return JwtResponseDto.builder()
+                                                .sessionLimitExceeded(true)
+                                                .activeSessions(sessionCheck.get())
+                                                .build();
+                        }
                 }
                 // ── END SESSION LIMIT CHECK ──
 
@@ -326,10 +343,12 @@ public class LearnerAuthManager {
 
                 String accessToken = jwtService.generateToken(user, user.getRoles().stream().toList(), permissions);
 
-                // Register the new session (noop for institutes without limit configured)
-                userSessionService.createSession(
-                                user.getId(), authRequestDTO.getInstituteId(),
-                                accessToken, authRequestDTO.getDeviceType());
+                // Register the new session (only for single-institute; multi-institute done at selection)
+                if (instituteId != null) {
+                        userSessionService.createSession(
+                                        user.getId(), instituteId,
+                                        accessToken, authRequestDTO.getDeviceType());
+                }
 
                 return JwtResponseDto.builder()
                                 .accessToken(accessToken)
@@ -409,9 +428,16 @@ public class LearnerAuthManager {
 
                 refreshTokenService.deleteAllRefreshToken(user);
 
+                // Resolve instituteId from request or user's roles
+                String otpInstituteId = authRequestDTO.getInstituteId();
+                if (otpInstituteId == null || otpInstituteId.isBlank()) {
+                        List<UserRole> userRoles = user.getRoles().stream().toList();
+                        if (!userRoles.isEmpty()) otpInstituteId = userRoles.get(0).getInstituteId();
+                }
+
                 // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
                 Optional<List<ActiveSessionDTO>> sessionCheck = userSessionService.checkSessionLimit(user.getId(),
-                                authRequestDTO.getInstituteId());
+                                otpInstituteId);
                 if (sessionCheck.isPresent()) {
                         return JwtResponseDto.builder()
                                         .sessionLimitExceeded(true)
@@ -429,7 +455,7 @@ public class LearnerAuthManager {
 
                 // Register the new session (noop for institutes without limit configured)
                 userSessionService.createSession(
-                                user.getId(), authRequestDTO.getInstituteId(),
+                                user.getId(), otpInstituteId,
                                 accessToken, authRequestDTO.getDeviceType());
 
                 return JwtResponseDto.builder()
@@ -496,9 +522,16 @@ public class LearnerAuthManager {
 
                 refreshTokenService.deleteAllRefreshToken(user);
 
+                // Resolve instituteId from request or user's roles
+                String tenDayInstituteId = authRequestDTO.getInstituteId();
+                if (tenDayInstituteId == null || tenDayInstituteId.isBlank()) {
+                        List<UserRole> userRoles = user.getRoles().stream().toList();
+                        if (!userRoles.isEmpty()) tenDayInstituteId = userRoles.get(0).getInstituteId();
+                }
+
                 // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
                 Optional<List<ActiveSessionDTO>> sessionCheck = userSessionService.checkSessionLimit(user.getId(),
-                                authRequestDTO.getInstituteId());
+                                tenDayInstituteId);
                 if (sessionCheck.isPresent()) {
                         return JwtResponseDto.builder()
                                         .sessionLimitExceeded(true)
@@ -516,7 +549,7 @@ public class LearnerAuthManager {
 
                 // Register the new session (noop for institutes without limit configured)
                 userSessionService.createSession(
-                                user.getId(), authRequestDTO.getInstituteId(),
+                                user.getId(), tenDayInstituteId,
                                 accessToken, authRequestDTO.getDeviceType());
 
                 return JwtResponseDto.builder()

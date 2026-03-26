@@ -1,10 +1,12 @@
 import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
 import axios from "axios";
-import { isTokenExpired, removeTokensAndLogout, getTokenFromStorage } from "./sessionUtility"; // Utility for JWT expiration checks
+import { isTokenExpired, removeTokensAndLogout, getTokenFromStorage } from "./sessionUtility";
 import { REFRESH_TOKEN_URL } from "@/constants/urls";
 import { maybeServeFromCache, maybeStoreInCache } from "@/lib/http/clientCache";
 import { toast } from "sonner";
+
+let isHandlingSessionTermination = false;
 
 const removeTokensAndInstituteId = async () => {
   await Preferences.remove({ key: TokenKey.accessToken });
@@ -153,6 +155,22 @@ authenticatedAxiosInstance.interceptors.response.use(
     const isPublicDomainRouting = requestUrl.includes(
       "/public/domain-routing/"
     );
+
+    // Handle session-terminated (460) — distinct from normal 401
+    if (
+      !isPublicDomainRouting &&
+      error.response &&
+      error.response.status === 460 &&
+      !isHandlingSessionTermination
+    ) {
+      isHandlingSessionTermination = true;
+      toast.error(
+        "Your session was terminated because another device logged in. Please log in again."
+      );
+      removeTokensAndLogout();
+      window.location.assign("/logout");
+      return Promise.reject(error);
+    }
 
     // Handle unauthorized errors (401)
     if (

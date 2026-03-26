@@ -176,4 +176,17 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
                      ORDER BY active_count DESC
                      """, nativeQuery = true)
        List<Object[]> getPerInstituteActiveCounts();
+
+       // ── Session-limit enforcement (used by JwtAuthFilter cache) ──
+
+       @Query(value = "SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END " +
+                     "FROM institute_settings " +
+                     "WHERE CAST(institute_id AS TEXT) = :instituteId " +
+                     "AND settings_json LIKE '%max_active_sessions%'", nativeQuery = true)
+       boolean hasSessionLimitConfigured(@Param("instituteId") String instituteId);
+
+       @Query(value = "SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END " +
+                     "FROM user_session " +
+                     "WHERE session_token = :sessionToken AND is_active = true", nativeQuery = true)
+       boolean isSessionActive(@Param("sessionToken") String sessionToken);
 }

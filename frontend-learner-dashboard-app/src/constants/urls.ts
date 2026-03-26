@@ -245,4 +245,5 @@ export const AI_SERVICE_URL = `${BASE_URL}/ai-service`;
 // Session management
 export const GET_ACTIVE_SESSIONS = `${BASE_URL}/auth-service/learner/v1/session/active`;
 export const TERMINATE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/logout`;
+export const TERMINATE_CURRENT_SESSION = `${BASE_URL}/auth-service/learner/v1/session/logout-current`;
 export const SELECT_INSTITUTE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/select-institute`;

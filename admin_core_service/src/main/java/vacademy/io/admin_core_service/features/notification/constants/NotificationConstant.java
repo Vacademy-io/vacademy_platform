@@ -7,4 +7,6 @@ public class NotificationConstant {
     public static final String SEND_WHATSAPP_TO_USER="/notification-service/whatsapp/v1/send-template-whatsapp";
     public static final String EMAIL_TO_USERS_MULTIPLE = "/notification-service/internal/common/v1/send-email-to-users/multiple";
     public static final String SEND_WHATSAPP_TO_USER_MULTIPLE="/notification-service/whatsapp/v1/send-template-whatsapp/multiple";
+    public static final String PUSH_NOTIFICATION_SEND = "/notification-service/push-notifications/internal/send-to-users";
+    public static final String SYSTEM_ALERT_SEND = "/notification-service/push-notifications/internal/send-system-alert";
 }

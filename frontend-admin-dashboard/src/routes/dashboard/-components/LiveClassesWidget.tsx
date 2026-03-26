@@ -128,7 +128,7 @@ const LiveClassesWidget: React.FC<LiveClassesWidgetProps> = ({ instituteId }) =>
         const csvData = tableAttendanceData.content.map((item) => ({
             index: item.index,
             username: item.username,
-            attendanceStatus: item.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent',
+            attendanceStatus: item.attendanceStatus === 'PRESENT' ? 'Present' : item.attendanceStatus === 'ABSENT' ? 'Absent' : 'Unmarked',
         }));
         const csv = Papa.unparse(csvData);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

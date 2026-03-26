@@ -132,7 +132,7 @@ public class IdempotencyService {
         }
 
         WorkflowExecution execution = executionOpt.get();
-        if (execution.getStatus().equals(WorkflowExecutionStatus.COMPLETED.name())) {
+        if (execution.getStatus() == WorkflowExecutionStatus.COMPLETED) {
             return execution;
         }
         execution.setStatus(WorkflowExecutionStatus.FAILED);

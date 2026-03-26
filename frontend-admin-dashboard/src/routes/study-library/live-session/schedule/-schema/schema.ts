@@ -168,6 +168,8 @@ export const addParticipantsSchema = z.object({
     notifyBy: z.object({
         mail: z.boolean(),
         whatsapp: z.boolean(),
+        push_notification: z.boolean(),
+        system_notification: z.boolean(),
     }),
     notifySettings: z.object({
         onCreate: z.boolean(),
@@ -180,6 +182,7 @@ export const addParticipantsSchema = z.object({
             )
             .optional(),
         onLive: z.boolean(),
+        onAttendance: z.boolean(),
     }),
     fields: z.array(
         z.object({

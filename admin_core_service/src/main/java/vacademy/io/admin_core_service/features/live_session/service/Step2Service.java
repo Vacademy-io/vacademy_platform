@@ -22,6 +22,7 @@ import vacademy.io.admin_core_service.features.notification_service.service.Noti
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 import java.util.List;
@@ -58,6 +59,9 @@ public class Step2Service {
 
     @Autowired
     private LiveSessionNotificationProcessor liveSessionNotificationProcessor;
+
+    @Autowired
+    private LiveSessionNotificationConfigRepository notificationConfigRepository;
 
     public Boolean step2AddService(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
         LiveSession session = getSessionOrThrow(request.getSessionId());
@@ -96,6 +100,11 @@ public class Step2Service {
                 // Handle ON_CREATE notification immediately
                 if (dto.getType() == NotificationTypeEnum.ON_CREATE && dto.getNotify()) {
                     liveSessionNotificationProcessor.sendOnCreateNotification(sessionId, schedules);
+                    continue;
+                }
+                // Handle ATTENDANCE — event-driven, not time-based
+                if (dto.getType() == NotificationTypeEnum.ATTENDANCE) {
+                    saveAttendanceNotificationConfig(sessionId, dto);
                     continue;
                 }
                 for (SessionSchedule schedule : schedules) {
@@ -195,21 +204,29 @@ public class Step2Service {
 
     private String resolveChannel(LiveSessionStep2RequestDTO.NotifyBy notifyBy) {
         if (notifyBy == null) {
-            return "EMAIL"; // Default fallback
-        }
-        
-        boolean mail = notifyBy.isMail();
-        boolean whatsapp = notifyBy.isWhatsapp();
-        
-        if (mail && whatsapp) {
-            return "BOTH";
-        } else if (whatsapp) {
-            return "WHATSAPP";
-        } else if (mail) {
             return "EMAIL";
-        } else {
-            return "EMAIL"; // Default fallback
         }
+        List<String> channels = new ArrayList<>();
+        if (notifyBy.isMail()) channels.add("EMAIL");
+        if (notifyBy.isWhatsapp()) channels.add("WHATSAPP");
+        if (notifyBy.isPushNotification()) channels.add("PUSH_NOTIFICATION");
+        if (notifyBy.isSystemNotification()) channels.add("SYSTEM_NOTIFICATION");
+        return channels.isEmpty() ? "EMAIL" : String.join(",", channels);
+    }
+
+    private void saveAttendanceNotificationConfig(String sessionId, LiveSessionStep2RequestDTO.NotificationActionDTO dto) {
+        String channels = resolveChannel(dto.getNotifyBy());
+        // Upsert: update if exists, create if not
+        LiveSessionNotificationConfig config = notificationConfigRepository
+                .findBySessionIdAndNotificationType(sessionId, NotificationTypeEnum.ATTENDANCE.name())
+                .orElse(LiveSessionNotificationConfig.builder()
+                        .id(UUID.randomUUID().toString())
+                        .sessionId(sessionId)
+                        .notificationType(NotificationTypeEnum.ATTENDANCE.name())
+                        .build());
+        config.setChannels(channels);
+        config.setEnabled(dto.getNotify());
+        notificationConfigRepository.save(config);
     }
 
     private void linkParticipants(LiveSessionStep2RequestDTO request) {

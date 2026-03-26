@@ -18,7 +18,7 @@ public class DedupeServiceImpl implements DedupeService {
     public boolean seen(String key) {
         if (key == null || key.isBlank())
             return false;
-        return repo.findAll().stream().anyMatch(r -> key.equals(r.getOperationKey()));
+        return repo.existsByOperationKey(key);
     }
 
     @Override

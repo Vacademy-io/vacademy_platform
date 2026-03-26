@@ -11,6 +11,7 @@ export interface AttendanceStats {
   totalClassDays: number;
   presentDays: number;
   absentDays: number;
+  unmarkedDays: number;
   totalSessions: number;
 }
 
@@ -29,6 +30,7 @@ export function computeAttendanceStats(
       totalClassDays: 0,
       presentDays: 0,
       absentDays: 0,
+      unmarkedDays: 0,
       totalSessions: schedules?.length ?? 0,
     };
   }
@@ -44,7 +46,7 @@ export function computeAttendanceStats(
   }
 
   // Compute per-day status
-  const dayStatuses: { date: string; present: boolean }[] = [];
+  const dayStatuses: { date: string; status: "PRESENT" | "ABSENT" | "UNMARKED" }[] = [];
 
   for (const [dateKey, daySchedules] of dayMap) {
     const dayDate = parseISO(dateKey);
@@ -54,23 +56,26 @@ export function computeAttendanceStats(
       (s) => s.attendanceStatus === "PRESENT"
     );
     const hasAnyPending = daySchedules.some((s) => !s.attendanceStatus);
+    const hasAnyUnmarked = daySchedules.some(
+      (s) => s.attendanceStatus === "UNMARKED"
+    );
 
-    let isPresent: boolean;
     if (hasAnyPresent) {
-      isPresent = true;
+      dayStatuses.push({ date: dateKey, status: "PRESENT" });
     } else if (hasAnyPending && !isDayInPast) {
       // Future/today with pending classes — skip from stats
       continue;
+    } else if (hasAnyUnmarked) {
+      dayStatuses.push({ date: dateKey, status: "UNMARKED" });
     } else {
-      isPresent = false;
+      dayStatuses.push({ date: dateKey, status: "ABSENT" });
     }
-
-    dayStatuses.push({ date: dateKey, present: isPresent });
   }
 
   const totalClassDays = dayStatuses.length;
-  const presentDays = dayStatuses.filter((d) => d.present).length;
-  const absentDays = totalClassDays - presentDays;
+  const presentDays = dayStatuses.filter((d) => d.status === "PRESENT").length;
+  const absentDays = dayStatuses.filter((d) => d.status === "ABSENT").length;
+  const unmarkedDays = dayStatuses.filter((d) => d.status === "UNMARKED").length;
   const attendancePercentage =
     totalClassDays > 0 ? Math.round((presentDays / totalClassDays) * 100) : 0;
 
@@ -80,7 +85,7 @@ export function computeAttendanceStats(
   );
   let currentStreak = 0;
   for (const day of sorted) {
-    if (day.present) {
+    if (day.status === "PRESENT") {
       currentStreak++;
     } else {
       break;
@@ -93,6 +98,7 @@ export function computeAttendanceStats(
     totalClassDays,
     presentDays,
     absentDays,
+    unmarkedDays,
     totalSessions: schedules.length,
   };
 }

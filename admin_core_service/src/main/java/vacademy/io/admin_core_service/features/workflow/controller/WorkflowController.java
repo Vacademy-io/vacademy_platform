@@ -1,15 +1,25 @@
 package vacademy.io.admin_core_service.features.workflow.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.workflow.dto.*;
+import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTemplate;
+import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTrigger;
+import vacademy.io.admin_core_service.features.workflow.repository.WorkflowTemplateRepository;
+import vacademy.io.admin_core_service.features.workflow.repository.WorkflowTriggerRepository;
+import vacademy.io.admin_core_service.features.workflow.service.AsyncWorkflowExecutor;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowBuilderService;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowContextSchemaService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowScheduleQueryService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowService;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowValidationService;
 import vacademy.io.common.auth.config.PageConstants;
 
-import java.util.List;
+import java.util.*;
 
 import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_NUMBER;
 
@@ -21,6 +31,14 @@ public class WorkflowController {
 
     private final WorkflowService workflowService;
     private final WorkflowScheduleQueryService workflowScheduleQueryService;
+    private final WorkflowBuilderService workflowBuilderService;
+    private final WorkflowValidationService workflowValidationService;
+    private final WorkflowEngineService workflowEngineService;
+    private final WorkflowTemplateRepository workflowTemplateRepository;
+    private final WorkflowTriggerRepository workflowTriggerRepository;
+    private final AsyncWorkflowExecutor asyncWorkflowExecutor;
+    private final WorkflowContextSchemaService workflowContextSchemaService;
+    private final ObjectMapper objectMapper;
 
     @GetMapping("/institute/{instituteId}")
     public ResponseEntity<List<WorkflowResponseDTO>> getActiveWorkflowsByInstituteId(
@@ -57,5 +75,163 @@ public class WorkflowController {
         PagedWorkflowsResponseDTO response = workflowService.getWorkflowsWithSchedulesPaged(filter, pageNo,
             pageSize);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/")
+    public ResponseEntity<WorkflowBuilderDTO> createWorkflow(
+            @RequestBody WorkflowBuilderDTO dto,
+            @RequestParam(value = "userId") String userId) {
+
+        log.info("Creating workflow '{}' for institute: {} by user: {}", dto.getName(), dto.getInstituteId(), userId);
+        WorkflowBuilderDTO result = workflowBuilderService.createWorkflow(dto, userId);
+        log.info("Created workflow with id: {}", result.getId());
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/{workflowId}/edit")
+    public ResponseEntity<WorkflowBuilderDTO> getWorkflowForEditing(
+            @PathVariable String workflowId) {
+
+        log.info("Fetching workflow for editing: {}", workflowId);
+        WorkflowBuilderDTO result = workflowBuilderService.getWorkflowForEditing(workflowId);
+        return ResponseEntity.ok(result);
+    }
+
+    @DeleteMapping("/{workflowId}")
+    public ResponseEntity<Void> deleteWorkflow(
+            @PathVariable String workflowId) {
+
+        log.info("Soft-deleting workflow: {}", workflowId);
+        workflowBuilderService.deleteWorkflow(workflowId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/validate")
+    public ResponseEntity<List<WorkflowValidationService.ValidationError>> validateWorkflow(
+            @RequestBody WorkflowBuilderDTO dto) {
+
+        log.info("Validating workflow: {}", dto.getName());
+        List<WorkflowValidationService.ValidationError> errors = workflowValidationService.validate(dto);
+        return ResponseEntity.ok(errors);
+    }
+
+    // =================== Test-Run Endpoint ===================
+
+    @PostMapping("/{workflowId}/test-run")
+    public ResponseEntity<Map<String, Object>> testRunWorkflow(
+            @PathVariable String workflowId,
+            @RequestBody(required = false) Map<String, Object> sampleContext) {
+
+        log.info("Test-running workflow: {} with dry-run mode", workflowId);
+        Map<String, Object> ctx = sampleContext != null ? new HashMap<>(sampleContext) : new HashMap<>();
+        ctx.put("dryRun", true);
+
+        Map<String, Object> result = workflowEngineService.run(workflowId, ctx);
+        return ResponseEntity.ok(result);
+    }
+
+    // =================== Template Endpoints ===================
+
+    @GetMapping("/templates")
+    public ResponseEntity<List<WorkflowTemplate>> listTemplates(
+            @RequestParam(value = "instituteId", required = false) String instituteId) {
+
+        log.info("Listing workflow templates for instituteId: {}", instituteId);
+
+        // Always include system templates
+        List<WorkflowTemplate> templates = new ArrayList<>(
+                workflowTemplateRepository.findByStatusAndIsSystemTrue("ACTIVE"));
+
+        // Also include institute-specific templates if instituteId is provided
+        if (instituteId != null && !instituteId.isBlank()) {
+            List<WorkflowTemplate> instituteTemplates =
+                    workflowTemplateRepository.findByStatusAndInstituteId("ACTIVE", instituteId);
+            templates.addAll(instituteTemplates);
+        }
+
+        return ResponseEntity.ok(templates);
+    }
+
+    @PostMapping("/templates/apply")
+    public ResponseEntity<WorkflowBuilderDTO> applyTemplate(
+            @RequestParam(value = "templateId") String templateId,
+            @RequestParam(value = "instituteId") String instituteId,
+            @RequestParam(value = "userId") String userId,
+            @RequestParam(value = "workflowName", required = false) String workflowName) {
+
+        log.info("Applying template {} for institute {} by user {}", templateId, instituteId, userId);
+
+        WorkflowTemplate template = workflowTemplateRepository.findById(UUID.fromString(templateId))
+                .orElseThrow(() -> new RuntimeException("Template not found: " + templateId));
+
+        try {
+            // Parse template_json into WorkflowBuilderDTO
+            WorkflowBuilderDTO dto = objectMapper.readValue(template.getTemplateJson(), WorkflowBuilderDTO.class);
+
+            // Override with caller-provided values
+            dto.setInstituteId(instituteId);
+            dto.setName(workflowName != null && !workflowName.isBlank() ? workflowName : template.getName());
+            dto.setDescription(template.getDescription());
+            dto.setStatus("DRAFT");
+
+            // Create the workflow via the builder service
+            WorkflowBuilderDTO result = workflowBuilderService.createWorkflow(dto, userId);
+            log.info("Created workflow {} from template {}", result.getId(), templateId);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Failed to apply template {}: {}", templateId, e.getMessage(), e);
+            throw new RuntimeException("Failed to apply workflow template: " + e.getMessage(), e);
+        }
+    }
+
+    // =================== Context Schema Endpoint ===================
+
+    @PostMapping("/context-schema")
+    public ResponseEntity<List<ContextVariableDTO>> getContextSchema(
+            @RequestBody ContextSchemaRequestDTO request) {
+
+        log.info("Getting context schema for target node: {}", request.getTargetNodeId());
+        List<ContextVariableDTO> variables = workflowContextSchemaService.getAvailableVariables(request);
+        return ResponseEntity.ok(variables);
+    }
+
+    // =================== Webhook Endpoint ===================
+
+    @PostMapping("/webhook/{webhookSlug}")
+    public ResponseEntity<Map<String, Object>> handleWebhook(
+            @PathVariable String webhookSlug,
+            @RequestHeader(value = "X-Webhook-Secret", required = false) String secret,
+            @RequestBody(required = false) Map<String, Object> payload) {
+
+        log.info("Webhook received for slug: {}", webhookSlug);
+
+        // Find trigger by webhook slug
+        WorkflowTrigger trigger = workflowTriggerRepository
+                .findByWebhookUrlSlugAndStatus(webhookSlug, "ACTIVE");
+
+        if (trigger == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // Validate secret
+        if (trigger.getWebhookSecret() != null && !trigger.getWebhookSecret().isBlank()) {
+            if (secret == null || !secret.equals(trigger.getWebhookSecret())) {
+                return ResponseEntity.status(403).body(Map.of("error", "Invalid webhook secret"));
+            }
+        }
+
+        // Execute workflow asynchronously — webhook callers should not wait
+        Map<String, Object> ctx = payload != null ? new HashMap<>(payload) : new HashMap<>();
+        ctx.put("webhookSlug", webhookSlug);
+        ctx.put("triggeredBy", "webhook");
+
+        String workflowId = trigger.getWorkflow().getId();
+        String idempotencyKey = "webhook-" + webhookSlug + "-" + System.currentTimeMillis();
+        asyncWorkflowExecutor.executeAsync(workflowId, idempotencyKey, ctx);
+        return ResponseEntity.accepted().body(Map.of(
+                "status", "accepted",
+                "workflowId", workflowId,
+                "idempotencyKey", idempotencyKey
+        ));
     }
 }

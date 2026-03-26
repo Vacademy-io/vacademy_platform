@@ -484,6 +484,8 @@ export const GET_ACTIVE_WORKFLOWS_BY_INSTITUTE = `${WORKFLOW_SERVICE_BASE}/insti
 export const GET_WORKFLOW_DIAGRAM = `${BASE_URL}/admin-core-service/v1/automations`;
 // Workflows with schedules (paginated list)
 export const LIST_WORKFLOWS_WITH_SCHEDULES = `${WORKFLOW_SERVICE_BASE}/institute/workflows-with-schedules/list`;
+export const WORKFLOW_EXECUTION_BASE = `${BASE_URL}/admin-core-service/v1/workflow-execution`;
+export const WORKFLOW_LOGS_BASE = `${BASE_URL}/admin-core-service/workflow/logs`;
 
 // User Plan URLs
 export const GET_USER_PLANS = `${BASE_URL}/admin-core-service/v1/user-plan/all`;

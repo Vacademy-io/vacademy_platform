@@ -7,6 +7,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 import vacademy.io.admin_core_service.features.workflow.dto.HttpRequestNodeConfigDTO;
@@ -21,7 +22,15 @@ public class ExternalHttpRequestStrategy implements HttpRequestStrategy {
 
     private final HttpHelperUtils httpHelperUtils;
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate = new RestTemplate();
+
+    private static RestTemplate createRestTemplateWithTimeout() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5_000);
+        factory.setReadTimeout(30_000);
+        return new RestTemplate(factory);
+    }
+
+    private final RestTemplate restTemplate = createRestTemplateWithTimeout();
 
     @Override
     public boolean canHandle(String requestType) {

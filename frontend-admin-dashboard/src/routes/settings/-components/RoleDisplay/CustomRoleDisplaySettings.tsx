@@ -232,6 +232,72 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
         }));
     };
 
+    // Generic move helper: swaps order of two adjacent items in a sorted list
+    const swapOrder = <T extends { order: number }>(
+        items: T[],
+        getId: (item: T) => string,
+        targetId: string,
+        direction: 'up' | 'down'
+    ): T[] => {
+        const sorted = [...items].sort((a, b) => a.order - b.order);
+        const idx = sorted.findIndex((item) => getId(item) === targetId);
+        if (idx < 0) return items;
+        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (swapIdx < 0 || swapIdx >= sorted.length) return items;
+        const current = sorted[idx]!;
+        const swap = sorted[swapIdx]!;
+        return items.map((item) => {
+            if (getId(item) === getId(current)) return { ...item, order: swap.order };
+            if (getId(item) === getId(swap)) return { ...item, order: current.order };
+            return item;
+        });
+    };
+
+    const moveCourseListTab = (id: string, direction: 'up' | 'down') => {
+        updateSettings((prev) => ({
+            ...prev,
+            courseList: {
+                ...prev.courseList,
+                tabs: swapOrder(prev.courseList?.tabs || [], (t) => t.id, id, direction),
+                defaultTab: prev.courseList?.defaultTab || 'AllCourses',
+            },
+        }));
+    };
+
+    const moveCourseDetailsTab = (id: string, direction: 'up' | 'down') => {
+        updateSettings((prev) => ({
+            ...prev,
+            courseDetails: {
+                ...prev.courseDetails,
+                tabs: swapOrder(prev.courseDetails?.tabs || [], (t) => t.id, id, direction),
+                defaultTab: prev.courseDetails?.defaultTab || 'OUTLINE',
+            },
+        }));
+    };
+
+    const moveSidebarCategory = (id: string, direction: 'up' | 'down') => {
+        updateSettings((prev) => {
+            const currentCats = prev.sidebarCategories || [
+                { id: 'CRM' as const, visible: true, default: true, order: 0 },
+                { id: 'LMS' as const, visible: true, default: false, order: 1 },
+                { id: 'AI' as const, visible: true, default: false, order: 2 },
+            ];
+            return {
+                ...prev,
+                sidebarCategories: swapOrder(currentCats, (c) => c.id, id, direction),
+            };
+        });
+    };
+
+    const moveWidget = (id: string, direction: 'up' | 'down') => {
+        updateSettings((prev) => ({
+            ...prev,
+            dashboard: {
+                widgets: swapOrder(prev.dashboard.widgets, (w) => w.id, id, direction),
+            },
+        }));
+    };
+
     const moveTab = (tabId: string, direction: 'up' | 'down') => {
         updateSettings((prev) => {
             const categoryTabs = prev.sidebar
@@ -552,102 +618,86 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                         Review is always visible for Teachers; Course Approval is hidden.
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                    {(
-                        [
+                <CardContent className="space-y-2">
+                    {(() => {
+                        const tabIds: CourseListTabId[] = [
                             'AllCourses',
                             'AuthoredCourses',
                             'CourseApproval',
                             'CourseInReview',
-                        ] as CourseListTabId[]
-                    ).map((id) => {
-                        const cfg = settings.courseList?.tabs.find((t) => t.id === id) || {
-                            id,
-                            order: 0,
-                            visible: true,
-                        };
-                        const isForcedVisible = id === 'CourseInReview';
-                        const isForcedHidden = id === 'CourseApproval';
-                        const disabledToggle = isForcedVisible || isForcedHidden;
-                        const enforcedVisible = isForcedVisible
-                            ? true
-                            : isForcedHidden
-                              ? false
-                              : cfg.visible;
-                        return (
-                            <div
-                                key={id}
-                                className="grid grid-cols-1 items-center gap-3 rounded border p-3 md:grid-cols-5"
-                            >
-                                <div className="col-span-2 text-sm font-medium">{id}</div>
-                                <div>
-                                    <Label>Order</Label>
-                                    <Input
-                                        type="number"
-                                        value={cfg.order}
-                                        onChange={(e) =>
-                                            updateSettings((prev) => ({
-                                                ...prev,
-                                                courseList: {
-                                                    tabs: (prev.courseList?.tabs || []).map((t) =>
-                                                        t.id === id
-                                                            ? {
-                                                                  ...t,
-                                                                  order: Number(e.target.value),
-                                                              }
-                                                            : t
-                                                    ),
-                                                    defaultTab:
-                                                        prev.courseList?.defaultTab ||
-                                                        'AuthoredCourses',
-                                                },
-                                            }))
-                                        }
-                                    />
-                                </div>
-                                <div className="flex items-center gap-2 pt-6">
-                                    <Switch
-                                        checked={enforcedVisible}
-                                        disabled={disabledToggle}
-                                        onCheckedChange={(checked) =>
-                                            updateSettings((prev) => ({
-                                                ...prev,
-                                                courseList: {
-                                                    tabs: (prev.courseList?.tabs || []).map((t) =>
-                                                        t.id === id ? { ...t, visible: checked } : t
-                                                    ),
-                                                    defaultTab:
-                                                        prev.courseList?.defaultTab ||
-                                                        'AuthoredCourses',
-                                                },
-                                            }))
-                                        }
-                                    />
-                                    <span className="text-sm">Visible</span>
-                                </div>
-                                <div className="pt-6">
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="radio"
-                                            name="custom-role-course-list-default"
-                                            checked={settings.courseList?.defaultTab === id}
-                                            onChange={() =>
+                        ];
+                        const sorted = tabIds
+                            .map((id) => settings.courseList?.tabs.find((t) => t.id === id) || { id, order: 0, visible: true })
+                            .sort((a, b) => a.order - b.order);
+
+                        return sorted.map((cfg, idx) => {
+                            const id = cfg.id;
+                            const isForcedVisible = id === 'CourseInReview';
+                            const isForcedHidden = id === 'CourseApproval';
+                            const disabledToggle = isForcedVisible || isForcedHidden;
+                            const enforcedVisible = isForcedVisible
+                                ? true
+                                : isForcedHidden
+                                  ? false
+                                  : cfg.visible;
+                            return (
+                                <div key={id} className="flex items-center gap-3 rounded border p-3">
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0}
+                                            onClick={() => moveCourseListTab(id, 'up')}>
+                                            <ArrowUp className="h-3 w-3" />
+                                        </Button>
+                                        <span className="text-xs text-muted-foreground">{idx + 1}</span>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === sorted.length - 1}
+                                            onClick={() => moveCourseListTab(id, 'down')}>
+                                            <ArrowDown className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                    <div className="flex-1 text-sm font-medium">{id}</div>
+                                    <div className="flex items-center gap-2">
+                                        <Switch
+                                            checked={enforcedVisible}
+                                            disabled={disabledToggle}
+                                            onCheckedChange={(checked) =>
                                                 updateSettings((prev) => ({
                                                     ...prev,
                                                     courseList: {
-                                                        tabs: prev.courseList?.tabs || [],
-                                                        defaultTab: id,
+                                                        tabs: (prev.courseList?.tabs || []).map((t) =>
+                                                            t.id === id ? { ...t, visible: checked } : t
+                                                        ),
+                                                        defaultTab:
+                                                            prev.courseList?.defaultTab ||
+                                                            'AuthoredCourses',
                                                     },
                                                 }))
                                             }
-                                            disabled={isForcedHidden}
                                         />
-                                        Default
-                                    </label>
+                                        <span className="text-sm">Visible</span>
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="radio"
+                                                name="custom-role-course-list-default"
+                                                checked={settings.courseList?.defaultTab === id}
+                                                onChange={() =>
+                                                    updateSettings((prev) => ({
+                                                        ...prev,
+                                                        courseList: {
+                                                            tabs: prev.courseList?.tabs || [],
+                                                            defaultTab: id,
+                                                        },
+                                                    }))
+                                                }
+                                                disabled={isForcedHidden}
+                                            />
+                                            Default
+                                        </label>
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        });
+                    })()}
                 </CardContent>
             </Card>
 
@@ -658,9 +708,9 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                         Choose which tabs are visible and set the default tab.
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                    {(
-                        [
+                <CardContent className="space-y-2">
+                    {(() => {
+                        const tabIds: CourseDetailsTabId[] = [
                             'OUTLINE',
                             'CONTENT_STRUCTURE',
                             'LEARNER',
@@ -668,113 +718,94 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             'ASSESSMENT',
                             'PLANNING',
                             'ACTIVITY',
-                        ] as CourseDetailsTabId[]
-                    ).map((id) => {
-                        const cfg = settings.courseDetails?.tabs.find((t) => t.id === id) || {
-                            id,
-                            order: 0,
-                            visible: true,
-                        };
-                        return (
-                            <div
-                                key={id}
-                                className="grid grid-cols-1 items-center gap-3 rounded border p-3 md:grid-cols-5"
-                            >
-                                <div className="col-span-2 text-sm font-medium">
-                                    {id.replace('_', ' ')}
-                                </div>
-                                <div>
-                                    <Label>Order</Label>
-                                    <Input
-                                        type="number"
-                                        value={cfg.order}
-                                        onChange={(e) =>
-                                            updateSettings((prev) => ({
-                                                ...prev,
-                                                courseDetails: {
-                                                    tabs: (prev.courseDetails?.tabs || []).map(
-                                                        (t) =>
-                                                            t.id === id
-                                                                ? {
-                                                                      ...t,
-                                                                      order: Number(e.target.value),
-                                                                  }
-                                                                : t
-                                                    ),
-                                                    defaultTab:
-                                                        prev.courseDetails?.defaultTab ||
-                                                        'CONTENT_STRUCTURE',
-                                                },
-                                            }))
-                                        }
-                                    />
-                                </div>
-                                <div className="flex items-center gap-2 pt-6">
-                                    <Switch
-                                        checked={cfg.visible}
-                                        onCheckedChange={(checked) =>
-                                            updateSettings((prev) => {
-                                                const prevTabs = prev.courseDetails?.tabs || [];
-                                                const exists = prevTabs.some((t) => t.id === id);
-                                                const orderForId: Record<string, number> = {
-                                                    OUTLINE: 1,
-                                                    CONTENT_STRUCTURE: 2,
-                                                    LEARNER: 3,
-                                                    TEACHER: 4,
-                                                    ASSESSMENT: 5,
-                                                    PLANNING: 6,
-                                                    ACTIVITY: 7,
-                                                };
-                                                const tabs = exists
-                                                    ? prevTabs.map((t) =>
-                                                          t.id === id
-                                                              ? { ...t, visible: checked }
-                                                              : t
-                                                      )
-                                                    : [
-                                                          ...prevTabs,
-                                                          {
-                                                              id,
-                                                              order: orderForId[id] ?? 99,
-                                                              visible: checked,
-                                                          },
-                                                      ];
-                                                return {
-                                                    ...prev,
-                                                    courseDetails: {
-                                                        tabs,
-                                                        defaultTab:
-                                                            prev.courseDetails?.defaultTab ||
-                                                            'CONTENT_STRUCTURE',
-                                                    },
-                                                };
-                                            })
-                                        }
-                                    />
-                                    <span className="text-sm">Visible</span>
-                                </div>
-                                <div className="pt-6">
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="radio"
-                                            name="custom-role-course-details-default"
-                                            checked={settings.courseDetails?.defaultTab === id}
-                                            onChange={() =>
-                                                updateSettings((prev) => ({
-                                                    ...prev,
-                                                    courseDetails: {
-                                                        tabs: prev.courseDetails?.tabs || [],
-                                                        defaultTab: id,
-                                                    },
-                                                }))
+                        ];
+                        const sorted = tabIds
+                            .map((id) => settings.courseDetails?.tabs.find((t) => t.id === id) || { id, order: 0, visible: true })
+                            .sort((a, b) => a.order - b.order);
+
+                        return sorted.map((cfg, idx) => {
+                            const id = cfg.id;
+                            return (
+                                <div key={id} className="flex items-center gap-3 rounded border p-3">
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0}
+                                            onClick={() => moveCourseDetailsTab(id, 'up')}>
+                                            <ArrowUp className="h-3 w-3" />
+                                        </Button>
+                                        <span className="text-xs text-muted-foreground">{idx + 1}</span>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === sorted.length - 1}
+                                            onClick={() => moveCourseDetailsTab(id, 'down')}>
+                                            <ArrowDown className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                    <div className="flex-1 text-sm font-medium">{id.replace('_', ' ')}</div>
+                                    <div className="flex items-center gap-2">
+                                        <Switch
+                                            checked={cfg.visible}
+                                            onCheckedChange={(checked) =>
+                                                updateSettings((prev) => {
+                                                    const prevTabs = prev.courseDetails?.tabs || [];
+                                                    const exists = prevTabs.some((t) => t.id === id);
+                                                    const orderForId: Record<string, number> = {
+                                                        OUTLINE: 1,
+                                                        CONTENT_STRUCTURE: 2,
+                                                        LEARNER: 3,
+                                                        TEACHER: 4,
+                                                        ASSESSMENT: 5,
+                                                        PLANNING: 6,
+                                                        ACTIVITY: 7,
+                                                    };
+                                                    const tabs = exists
+                                                        ? prevTabs.map((t) =>
+                                                              t.id === id
+                                                                  ? { ...t, visible: checked }
+                                                                  : t
+                                                          )
+                                                        : [
+                                                              ...prevTabs,
+                                                              {
+                                                                  id,
+                                                                  order: orderForId[id] ?? 99,
+                                                                  visible: checked,
+                                                              },
+                                                          ];
+                                                    return {
+                                                        ...prev,
+                                                        courseDetails: {
+                                                            tabs,
+                                                            defaultTab:
+                                                                prev.courseDetails?.defaultTab ||
+                                                                'CONTENT_STRUCTURE',
+                                                        },
+                                                    };
+                                                })
                                             }
                                         />
-                                        Default
-                                    </label>
+                                        <span className="text-sm">Visible</span>
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="radio"
+                                                name="custom-role-course-details-default"
+                                                checked={settings.courseDetails?.defaultTab === id}
+                                                onChange={() =>
+                                                    updateSettings((prev) => ({
+                                                        ...prev,
+                                                        courseDetails: {
+                                                            tabs: prev.courseDetails?.tabs || [],
+                                                            defaultTab: id,
+                                                        },
+                                                    }))
+                                                }
+                                            />
+                                            Default
+                                        </label>
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        });
+                    })()}
                 </CardContent>
             </Card>
 
@@ -839,82 +870,34 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                         Configure visibility, order, and default category for the sidebar.
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                    {(['CRM', 'LMS', 'AI'] as const).map((id) => {
+                <CardContent className="space-y-2">
+                    {(() => {
                         const categories = settings.sidebarCategories || [
-                            { id: 'CRM', visible: true, default: true, order: 0 },
-                            { id: 'LMS', visible: true, default: false, order: 1 },
-                            { id: 'AI', visible: true, default: false, order: 2 },
+                            { id: 'CRM' as const, visible: true, default: true, order: 0 },
+                            { id: 'LMS' as const, visible: true, default: false, order: 1 },
+                            { id: 'AI' as const, visible: true, default: false, order: 2 },
                         ];
-                        const cfg = categories.find((c) => c.id === id) || {
-                            id,
-                            visible: true,
-                            default: id === 'CRM',
-                            order: 0,
-                        };
+                        const sorted = [...categories].sort((a, b) => a.order - b.order);
 
-                        return (
-                            <div
-                                key={id}
-                                className="grid grid-cols-1 items-center gap-3 rounded border p-3 md:grid-cols-5"
-                            >
-                                <div className="col-span-2 text-sm font-medium">
-                                    {id === 'AI' ? 'AI Tools' : id}
-                                </div>
-                                <div>
-                                    <Label>Order</Label>
-                                    <Input
-                                        type="number"
-                                        value={cfg.order ?? 0}
-                                        onChange={(e) => {
-                                            const newOrder = Number(e.target.value);
-                                            updateSettings((prev) => {
-                                                const currentCats = prev.sidebarCategories || [
-                                                    {
-                                                        id: 'CRM',
-                                                        visible: true,
-                                                        default: true,
-                                                        order: 0,
-                                                    },
-                                                    {
-                                                        id: 'LMS',
-                                                        visible: true,
-                                                        default: false,
-                                                        order: 1,
-                                                    },
-                                                    {
-                                                        id: 'AI',
-                                                        visible: true,
-                                                        default: false,
-                                                        order: 2,
-                                                    },
-                                                ];
-                                                // Ensure all likely categories exist in array if not present
-                                                const baseIds = ['CRM', 'LMS', 'AI'] as const;
-                                                let newCats = [...currentCats];
-
-                                                // If currentCats is missing some IDs, add them
-                                                baseIds.forEach((bid) => {
-                                                    if (!newCats.find((c) => c.id === bid)) {
-                                                        newCats.push({
-                                                            id: bid,
-                                                            visible: true,
-                                                            default: bid === 'CRM',
-                                                            order: 0,
-                                                        });
-                                                    }
-                                                });
-
-                                                newCats = newCats.map((c) =>
-                                                    c.id === id ? { ...c, order: newOrder } : c
-                                                );
-
-                                                return { ...prev, sidebarCategories: newCats };
-                                            });
-                                        }}
-                                    />
-                                </div>
-                                <div className="flex items-center gap-2 pt-6">
+                        return sorted.map((cfg, idx) => {
+                            const id = cfg.id;
+                            return (
+                                <div key={id} className="flex items-center gap-3 rounded border p-3">
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0}
+                                            onClick={() => moveSidebarCategory(id, 'up')}>
+                                            <ArrowUp className="h-3 w-3" />
+                                        </Button>
+                                        <span className="text-xs text-muted-foreground">{idx + 1}</span>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === sorted.length - 1}
+                                            onClick={() => moveSidebarCategory(id, 'down')}>
+                                            <ArrowDown className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                    <div className="flex-1 text-sm font-medium">
+                                        {id === 'AI' ? 'AI Tools' : id}
+                                    </div>
+                                    <div className="flex items-center gap-2">
                                     <Select
                                         value={
                                             cfg.visible === false
@@ -989,63 +972,64 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                             <SelectItem value="locked">Locked</SelectItem>
                                         </SelectContent>
                                     </Select>
-                                </div>
-                                <div className="pt-6">
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="radio"
-                                            name="sidebar-category-default"
-                                            checked={cfg.default}
-                                            onChange={() => {
-                                                updateSettings((prev) => {
-                                                    const currentCats = prev.sidebarCategories || [
-                                                        {
-                                                            id: 'CRM',
-                                                            visible: true,
-                                                            default: true,
-                                                            order: 0,
-                                                        },
-                                                        {
-                                                            id: 'LMS',
-                                                            visible: true,
-                                                            default: false,
-                                                            order: 1,
-                                                        },
-                                                        {
-                                                            id: 'AI',
-                                                            visible: true,
-                                                            default: false,
-                                                            order: 2,
-                                                        },
-                                                    ];
-                                                    const baseIds = ['CRM', 'LMS', 'AI'] as const;
-                                                    let newCats = [...currentCats];
-                                                    baseIds.forEach((bid) => {
-                                                        if (!newCats.find((c) => c.id === bid)) {
-                                                            newCats.push({
-                                                                id: bid,
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="radio"
+                                                name="sidebar-category-default"
+                                                checked={cfg.default}
+                                                onChange={() => {
+                                                    updateSettings((prev) => {
+                                                        const currentCats = prev.sidebarCategories || [
+                                                            {
+                                                                id: 'CRM' as const,
                                                                 visible: true,
-                                                                default: bid === 'CRM',
+                                                                default: true,
                                                                 order: 0,
-                                                            });
-                                                        }
-                                                    });
+                                                            },
+                                                            {
+                                                                id: 'LMS' as const,
+                                                                visible: true,
+                                                                default: false,
+                                                                order: 1,
+                                                            },
+                                                            {
+                                                                id: 'AI' as const,
+                                                                visible: true,
+                                                                default: false,
+                                                                order: 2,
+                                                            },
+                                                        ];
+                                                        const baseIds = ['CRM', 'LMS', 'AI'] as const;
+                                                        let newCats = [...currentCats];
+                                                        baseIds.forEach((bid) => {
+                                                            if (!newCats.find((c) => c.id === bid)) {
+                                                                newCats.push({
+                                                                    id: bid,
+                                                                    visible: true,
+                                                                    default: bid === 'CRM',
+                                                                    order: 0,
+                                                                });
+                                                            }
+                                                        });
 
-                                                    // Set only one default
-                                                    newCats = newCats.map((c) => ({
-                                                        ...c,
-                                                        default: c.id === id,
-                                                    }));
-                                                    return { ...prev, sidebarCategories: newCats };
-                                                });
-                                            }}
-                                        />
-                                        Default
-                                    </label>
+                                                        // Set only one default
+                                                        newCats = newCats.map((c) => ({
+                                                            ...c,
+                                                            default: c.id === id,
+                                                        }));
+                                                        return { ...prev, sidebarCategories: newCats };
+                                                    });
+                                                }}
+                                            />
+                                            Default
+                                        </label>
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        });
+                    })()}
                 </CardContent>
             </Card>
             <Card>
@@ -1681,38 +1665,26 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    {settings.dashboard.widgets
-                        .slice()
-                        .sort((a, b) => a.order - b.order)
-                        .map((w) => (
-                            <div
-                                key={w.id}
-                                className="grid grid-cols-1 items-center gap-3 rounded border p-3 md:grid-cols-4"
-                            >
-                                <div className="text-sm font-medium">{w.id}</div>
-                                <div>
-                                    <Label>Order</Label>
-                                    <Input
-                                        type="number"
-                                        value={w.order}
-                                        onChange={(e) =>
-                                            updateSettings((prev) => ({
-                                                ...prev,
-                                                dashboard: {
-                                                    widgets: prev.dashboard.widgets.map((x) =>
-                                                        x.id === w.id
-                                                            ? {
-                                                                  ...x,
-                                                                  order: Number(e.target.value),
-                                                              }
-                                                            : x
-                                                    ),
-                                                },
-                                            }))
-                                        }
-                                    />
+                    {(() => {
+                        const sorted = settings.dashboard.widgets
+                            .slice()
+                            .sort((a, b) => a.order - b.order);
+
+                        return sorted.map((w, idx) => (
+                            <div key={w.id} className="flex items-center gap-3 rounded border p-3">
+                                <div className="flex flex-col items-center gap-0.5">
+                                    <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0}
+                                        onClick={() => moveWidget(w.id, 'up')}>
+                                        <ArrowUp className="h-3 w-3" />
+                                    </Button>
+                                    <span className="text-xs text-muted-foreground">{idx + 1}</span>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === sorted.length - 1}
+                                        onClick={() => moveWidget(w.id, 'down')}>
+                                        <ArrowDown className="h-3 w-3" />
+                                    </Button>
                                 </div>
-                                <div className="flex items-center gap-2 pt-6">
+                                <div className="flex-1 text-sm font-medium">{w.id}</div>
+                                <div className="flex items-center gap-2">
                                     <Switch
                                         checked={w.visible}
                                         onCheckedChange={(checked) =>
@@ -1731,7 +1703,8 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                     <span className="text-sm">Visible</span>
                                 </div>
                             </div>
-                        ))}
+                        ));
+                    })()}
                 </CardContent>
             </Card>
 

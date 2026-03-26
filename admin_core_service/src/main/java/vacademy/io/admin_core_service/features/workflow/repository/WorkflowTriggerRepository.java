@@ -8,6 +8,9 @@ import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTrigger;
 import java.util.List;
 
 public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger,String> {
+    @Query("SELECT w FROM WorkflowTrigger w WHERE w.workflow.id = :workflowId")
+    List<WorkflowTrigger> findByWorkflowId(@Param("workflowId") String workflowId);
+
     @Query("SELECT w FROM WorkflowTrigger w WHERE w.instituteId = :instituteId AND w.status IN :statuses AND w.triggerEventName IN :triggerEvents")
     List<WorkflowTrigger> findByInstituteIdAndStatusInAndTriggerEventNameIn(
             String  instituteId,
@@ -28,4 +31,7 @@ public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger
         @Param("eventType") String eventType,
         @Param("statuses") List<String> statuses
     );
+
+    @Query("SELECT w FROM WorkflowTrigger w WHERE w.webhookUrlSlug = :slug AND w.status = :status")
+    WorkflowTrigger findByWebhookUrlSlugAndStatus(@Param("slug") String slug, @Param("status") String status);
 }

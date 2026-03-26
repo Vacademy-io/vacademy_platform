@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, Fragment } from 'react';
 import {
     CheckCircle,
     XCircle,
+    MinusCircle,
     CaretDown,
     CaretUp,
     Clock,
@@ -104,22 +105,29 @@ export function AttendanceMarkingTable({
 
     const dirtyCount = Object.keys(statusOverrides).length;
 
+    const getOriginalStatus = useCallback(
+        (student: LiveSessionReport) => {
+            const raw = student.attendanceStatus?.toUpperCase();
+            if (raw === 'PRESENT') return 'PRESENT';
+            if (raw === 'ABSENT') return 'ABSENT';
+            return 'UNMARKED';
+        },
+        []
+    );
+
     const getStatus = useCallback(
         (student: LiveSessionReport) => {
             if (statusOverrides[student.studentId] !== undefined) {
                 return statusOverrides[student.studentId];
             }
-            return student.attendanceStatus?.toUpperCase() === 'PRESENT' ? 'PRESENT' : 'ABSENT';
+            return getOriginalStatus(student);
         },
-        [statusOverrides]
+        [statusOverrides, getOriginalStatus]
     );
 
-    const toggleStatus = useCallback(
-        (student: LiveSessionReport) => {
-            const currentStatus = getStatus(student);
-            const originalStatus =
-                student.attendanceStatus?.toUpperCase() === 'PRESENT' ? 'PRESENT' : 'ABSENT';
-            const newStatus = currentStatus === 'PRESENT' ? 'ABSENT' : 'PRESENT';
+    const setStudentStatus = useCallback(
+        (student: LiveSessionReport, newStatus: string) => {
+            const originalStatus = getOriginalStatus(student);
 
             setStatusOverrides((prev) => {
                 const next = { ...prev };
@@ -131,7 +139,7 @@ export function AttendanceMarkingTable({
                 return next;
             });
         },
-        [getStatus]
+        [getOriginalStatus]
     );
 
     const toggleExpand = useCallback((studentId: string) => {
@@ -168,8 +176,9 @@ export function AttendanceMarkingTable({
 
             switch (sortField) {
                 case 'status': {
-                    aVal = getStatus(a) === 'PRESENT' ? 1 : 0;
-                    bVal = getStatus(b) === 'PRESENT' ? 1 : 0;
+                    const statusOrder: Record<string, number> = { PRESENT: 2, ABSENT: 1, UNMARKED: 0 };
+                    aVal = statusOrder[getStatus(a)] ?? 0;
+                    bVal = statusOrder[getStatus(b)] ?? 0;
                     break;
                 }
                 case 'duration': {
@@ -192,15 +201,17 @@ export function AttendanceMarkingTable({
         return sorted;
     }, [data, sortField, sortDir, getStatus]);
 
-    const { presentCount, absentCount } = useMemo(() => {
+    const { presentCount, absentCount, unmarkedCount } = useMemo(() => {
         let present = 0;
         let absent = 0;
+        let unmarked = 0;
         for (const s of data) {
             const status = getStatus(s);
             if (status === 'PRESENT') present++;
-            else absent++;
+            else if (status === 'ABSENT') absent++;
+            else unmarked++;
         }
-        return { presentCount: present, absentCount: absent };
+        return { presentCount: present, absentCount: absent, unmarkedCount: unmarked };
     }, [data, getStatus]);
 
     const handleSave = async () => {
@@ -239,7 +250,7 @@ export function AttendanceMarkingTable({
                 '#': idx + 1,
                 'Name': item.fullName,
                 'Email': item.email || '',
-                'Status': getStatus(item) === 'PRESENT' ? 'Present' : 'Absent',
+                'Status': getStatus(item) === 'PRESENT' ? 'Present' : getStatus(item) === 'ABSENT' ? 'Absent' : 'Unmarked',
                 'Mode': item.statusType || '',
                 'Duration (min)': duration,
                 'Active Points': activePoints,
@@ -295,6 +306,10 @@ export function AttendanceMarkingTable({
                     <span className="flex items-center gap-1 text-red-500">
                         <span className="h-2 w-2 rounded-full bg-red-500" />
                         Absent: {absentCount}
+                    </span>
+                    <span className="flex items-center gap-1 text-gray-400">
+                        <span className="h-2 w-2 rounded-full bg-gray-300" />
+                        Unmarked: {unmarkedCount}
                     </span>
                     <span className="text-gray-500">Total: {data.length}</span>
                 </div>
@@ -366,22 +381,35 @@ export function AttendanceMarkingTable({
                                         <td className="px-3 py-2 text-gray-500">{index + 1}</td>
                                         <td className="px-3 py-2 font-medium">{student.fullName}</td>
                                         <td className="px-3 py-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => toggleStatus(student)}
-                                                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                                                    isPresent
-                                                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                                        : 'bg-red-100 text-red-700 hover:bg-red-200'
-                                                }`}
-                                            >
-                                                {isPresent ? (
-                                                    <CheckCircle size={16} weight="fill" />
-                                                ) : (
-                                                    <XCircle size={16} weight="fill" />
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setStudentStatus(student, status === 'PRESENT' ? 'UNMARKED' : 'PRESENT')}
+                                                    className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                                                        status === 'PRESENT'
+                                                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                            : 'bg-gray-50 text-gray-400 hover:bg-green-50 hover:text-green-600'
+                                                    }`}
+                                                >
+                                                    <CheckCircle size={14} weight={status === 'PRESENT' ? 'fill' : 'regular'} />
+                                                    P
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setStudentStatus(student, status === 'ABSENT' ? 'UNMARKED' : 'ABSENT')}
+                                                    className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                                                        status === 'ABSENT'
+                                                            ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                                            : 'bg-gray-50 text-gray-400 hover:bg-red-50 hover:text-red-600'
+                                                    }`}
+                                                >
+                                                    <XCircle size={14} weight={status === 'ABSENT' ? 'fill' : 'regular'} />
+                                                    A
+                                                </button>
+                                                {status === 'UNMARKED' && (
+                                                    <span className="ml-1 text-[10px] text-gray-400">Unmarked</span>
                                                 )}
-                                                {isPresent ? 'Present' : 'Absent'}
-                                            </button>
+                                            </div>
                                         </td>
                                         <td className="px-3 py-2 text-gray-500">{student.email}</td>
                                         <td className="px-3 py-2 text-gray-600">

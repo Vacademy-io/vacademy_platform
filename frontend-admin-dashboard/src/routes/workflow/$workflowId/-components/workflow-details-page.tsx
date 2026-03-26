@@ -1,15 +1,17 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { getWorkflowDiagramQuery, getActiveWorkflowsQuery } from '@/services/workflow-service';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-// import { WorkflowDiagramViewer } from './workflow-diagram-viewer';
 import { WorkflowDiagramSimple } from './workflow-diagram-simple';
+import { ExecutionHistoryTab } from './execution-history-tab';
+import { ExecutionFlowViewer } from './execution-flow-viewer';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Calendar, Clock } from '@phosphor-icons/react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -19,6 +21,8 @@ interface WorkflowDetailsPageProps {
 export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
     const navigate = useNavigate();
     const { setNavHeading } = useNavHeadingStore();
+    const [activeTab, setActiveTab] = useState('diagram');
+    const [debugExecutionId, setDebugExecutionId] = useState<string | null>(null);
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
     const { data: workflows } = useSuspenseQuery(
         getActiveWorkflowsQuery(instituteDetails?.id || '')
@@ -137,8 +141,44 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                 </div>
             </div>
 
-            {/* Workflow Diagram */}
-            <WorkflowDiagramSimple diagram={diagram} instituteId={instituteDetails?.id} />
+            {/* Tabs: Diagram / Executions / Debug */}
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="mb-4">
+                    <TabsTrigger value="diagram">Diagram</TabsTrigger>
+                    <TabsTrigger value="executions">Executions</TabsTrigger>
+                    <TabsTrigger value="debug" disabled={!debugExecutionId}>
+                        Debug {debugExecutionId ? '' : '(select an execution)'}
+                    </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="diagram">
+                    <WorkflowDiagramSimple diagram={diagram} instituteId={instituteDetails?.id} />
+                </TabsContent>
+
+                <TabsContent value="executions">
+                    <ExecutionHistoryTab
+                        workflowId={workflowId}
+                        instituteId={instituteDetails?.id || ''}
+                        onViewOnDiagram={(executionId) => {
+                            setDebugExecutionId(executionId);
+                            setActiveTab('debug');
+                        }}
+                    />
+                </TabsContent>
+
+                <TabsContent value="debug">
+                    {debugExecutionId ? (
+                        <ExecutionFlowViewer
+                            workflowId={workflowId}
+                            executionId={debugExecutionId}
+                        />
+                    ) : (
+                        <div className="flex items-center justify-center h-64 text-muted-foreground">
+                            Select an execution from the Executions tab to debug it.
+                        </div>
+                    )}
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

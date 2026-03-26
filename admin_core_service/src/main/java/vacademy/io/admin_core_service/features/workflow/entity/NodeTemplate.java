@@ -38,6 +38,9 @@ public class NodeTemplate {
     @Column(name = "config_json", columnDefinition = "TEXT", nullable = false)
     private String configJson; // store JSON string; parsing handled in service
 
+    @Column(name = "retry_config", columnDefinition = "TEXT")
+    private String retryConfig; // JSON: {"maxRetries": 3, "backoffMs": 1000, "backoffMultiplier": 2}
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

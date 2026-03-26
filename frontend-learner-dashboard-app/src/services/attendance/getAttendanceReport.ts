@@ -10,7 +10,7 @@ export interface AttendanceReportParams {
 
 export interface ScheduleItem {
   accessLevel: "private" | "public";
-  attendanceStatus: "PRESENT" | "ABSENT" | null;
+  attendanceStatus: "PRESENT" | "ABSENT" | "UNMARKED" | null;
   lastEntryTime: string;
   meetingDate: string;
   scheduleId: string;

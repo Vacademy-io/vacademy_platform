@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { AutomationDiagram, NodeType, WorkflowNode } from '@/types/workflow/workflow-types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -189,18 +189,6 @@ export function WorkflowDiagramSimple({
         enabled: Boolean(instituteId && workflowId && appliedStart && appliedEnd),
         staleTime: 60_000,
     });
-
-    // Debug: Log edge information
-    useEffect(() => {
-        console.log('📊 Workflow Diagram Debug:');
-        console.log(`Total Nodes: ${diagram.nodes.length}`);
-        console.log(`Total Edges: ${diagram.edges.length}`);
-        console.log('Edges:', diagram.edges);
-        console.log(
-            'Nodes:',
-            diagram.nodes.map((n) => ({ id: n.id, title: n.title }))
-        );
-    }, [diagram]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         if (e.button === 0) {
@@ -621,16 +609,6 @@ export function WorkflowDiagramSimple({
                     </div>
                 )}
             </div>
-
-            {/* Debug Info - Remove this after testing */}
-            {process.env.NODE_ENV === 'development' && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                    <p className="font-mono text-xs text-blue-900">
-                        <strong>Debug:</strong> Rendering {diagram.edges.length} edges. Open console
-                        to see edge details.
-                    </p>
-                </div>
-            )}
 
             {/* Node Details Modal */}
             <Dialog open={!!selectedNode} onOpenChange={() => setSelectedNode(null)}>

@@ -1,5 +1,5 @@
 import { ColumnDef } from '@tanstack/react-table';
-import { CheckCircle, XCircle } from '@phosphor-icons/react';
+import { CheckCircle, XCircle, MinusCircle } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 
 export interface AttendanceReportTableData {
@@ -75,10 +75,18 @@ export const attendanceReportColumnsWithCheckbox = (
                     </div>
                 );
             }
+            if (status === 'ABSENT') {
+                return (
+                    <div className="flex items-center gap-2 text-danger-600">
+                        <XCircle size={20} weight="fill" />
+                        <span>Absent</span>
+                    </div>
+                );
+            }
             return (
-                <div className="flex items-center gap-2 text-gray-500">
-                    <XCircle size={20} weight="fill" />
-                    <span>Absent</span>
+                <div className="flex items-center gap-2 text-gray-400">
+                    <MinusCircle size={20} weight="fill" />
+                    <span>Unmarked</span>
                 </div>
             );
         },

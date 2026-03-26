@@ -155,6 +155,8 @@ export interface NotificationAction {
     notifyBy: {
         mail: boolean;
         whatsapp: boolean;
+        push_notification?: boolean;
+        system_notification?: boolean;
     };
     notify: boolean;
     time: string | null;

@@ -164,4 +164,53 @@ public class NotificationService {
                 requests);
         return response.getBody();
     }
+
+    public void sendPushNotificationToUsers(String instituteId, List<String> userIds, String title, String body, Map<String, String> data) {
+        String url = NotificationConstant.PUSH_NOTIFICATION_SEND + "?instituteId=" + instituteId;
+        Map<String, Object> requestBody = Map.of(
+                "institute_id", instituteId,
+                "user_ids", userIds,
+                "title", title,
+                "body", body,
+                "data", data != null ? data : Map.of()
+        );
+        try {
+            internalClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    notificationServerBaseUrl,
+                    url,
+                    requestBody);
+        } catch (Exception e) {
+            SentryLogger.logError(e, "Failed to send push notification", Map.of(
+                    "notification.type", "PUSH_NOTIFICATION",
+                    "institute.id", instituteId,
+                    "user.count", String.valueOf(userIds.size()),
+                    "operation", "sendPushNotificationToUsers"));
+        }
+    }
+
+    public void sendSystemAlertToUsers(String instituteId, List<String> userIds, String title, String body) {
+        String url = NotificationConstant.SYSTEM_ALERT_SEND + "?instituteId=" + instituteId;
+        Map<String, Object> requestBody = Map.of(
+                "institute_id", instituteId,
+                "user_ids", userIds,
+                "title", title,
+                "body", body
+        );
+        try {
+            internalClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    notificationServerBaseUrl,
+                    url,
+                    requestBody);
+        } catch (Exception e) {
+            SentryLogger.logError(e, "Failed to send system alert", Map.of(
+                    "notification.type", "SYSTEM_ALERT",
+                    "institute.id", instituteId,
+                    "user.count", String.valueOf(userIds.size()),
+                    "operation", "sendSystemAlertToUsers"));
+        }
+    }
 }

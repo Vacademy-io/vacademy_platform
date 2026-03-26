@@ -61,17 +61,19 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
     const attendanceSummary = useMemo(() => {
         if (!reportResponse) {
-            return { present: 0, absent: 0, total: 0 };
+            return { present: 0, absent: 0, unmarked: 0, total: 0 };
         }
         const present = reportResponse.filter((r) => r.attendanceStatus === 'PRESENT').length;
+        const absent = reportResponse.filter((r) => r.attendanceStatus === 'ABSENT').length;
         const total = reportResponse.length;
-        const absent = total - present;
-        return { present, absent, total };
+        const unmarked = total - present - absent;
+        return { present, absent, unmarked, total };
     }, [reportResponse]);
 
     const pieChartData = [
         { name: 'Present', value: attendanceSummary.present },
         { name: 'Absent', value: attendanceSummary.absent },
+        { name: 'Unmarked', value: attendanceSummary.unmarked },
     ];
 
     const convertToReportTableData = (data: LiveSessionReport[]): AttendanceReportTableData[] => {
@@ -131,7 +133,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                 '#': idx + 1,
                 'Name': item.fullName,
                 'Email': item.email || '',
-                'Status': item.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent',
+                'Status': item.attendanceStatus === 'PRESENT' ? 'Present' : item.attendanceStatus === 'ABSENT' ? 'Absent' : 'Unmarked',
                 'Mode': item.statusType || '',
                 'Duration (min)': duration,
                 'Active Points': activePoints,

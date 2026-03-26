@@ -135,7 +135,7 @@ export const onRequest: PagesFunction = async (context) => {
 
   const title = escapeHtml(branding.tabText || branding.instituteName || "");
   const description = escapeHtml(
-    `${branding.instituteName} — Learning Platform`
+    `${branding.instituteName}`
   );
 
   // Resolve logo URL from fileId

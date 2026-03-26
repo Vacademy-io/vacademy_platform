@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.MarkAttendanceRe
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs;
 import vacademy.io.admin_core_service.features.live_session.enums.SessionLog;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository;
+import vacademy.io.admin_core_service.features.live_session.scheduler.LiveSessionNotificationProcessor;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.sql.Timestamp;
@@ -19,6 +20,9 @@ public class LIveSessionAttendanceService {
 
     @Autowired
     private LiveSessionLogsRepository liveSessionLogRepository;
+
+    @Autowired
+    private LiveSessionNotificationProcessor notificationProcessor;
 
     public void markAttendance(MarkAttendanceRequestDTO request , CustomUserDetails user) {
         String userId = request.getUserSourceId().isEmpty() ? user.getUserId() : request.getUserSourceId();
@@ -54,6 +58,9 @@ public class LIveSessionAttendanceService {
 
             liveSessionLogRepository.save(log);
         }
+
+        // Send attendance notification to learner
+        notificationProcessor.sendAttendanceNotification(request.getSessionId(), userId, "PRESENT");
     }
     public void markGuestAttendance(MarkAttendanceRequestDTO request ) {
         // Check if attendance record already exists for this schedule and user
@@ -162,6 +169,10 @@ public class LIveSessionAttendanceService {
                 liveSessionLogRepository.save(log);
                 created++;
             }
+
+            // Send attendance notification to learner
+            notificationProcessor.sendAttendanceNotification(
+                    request.getSessionId(), entry.getUserSourceId(), entry.getStatus());
         }
 
         return Map.of("updated", updated, "created", created);

@@ -42,6 +42,7 @@ import { Route as AiCenterIndexRouteImport } from "./routes/ai-center/index"
 import { Route as AdmissionsIndexRouteImport } from "./routes/admissions/index"
 import { Route as AdminPackageManagementIndexRouteImport } from "./routes/admin-package-management/index"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
+import { Route as WorkflowCreateIndexRouteImport } from "./routes/workflow/create/index"
 import { Route as WorkflowWorkflowIdIndexRouteImport } from "./routes/workflow/$workflowId/index"
 import { Route as VideoApiStudioConsoleIndexRouteImport } from "./routes/video-api-studio/console/index"
 import { Route as UserTagsLinkIndexRouteImport } from "./routes/user-tags/link/index"
@@ -378,6 +379,13 @@ const WorkflowListIndexRoute = WorkflowListIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/workflow/list/index.lazy").then((d) => d.Route),
+)
+const WorkflowCreateIndexRoute = WorkflowCreateIndexRouteImport.update({
+  id: "/workflow/create/",
+  path: "/workflow/create/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/workflow/create/index.lazy").then((d) => d.Route),
 )
 const WorkflowWorkflowIdIndexRoute = WorkflowWorkflowIdIndexRouteImport.update({
   id: "/workflow/$workflowId/",
@@ -1333,6 +1341,7 @@ export interface FileRoutesByFullPath {
   "/user-tags/link/": typeof UserTagsLinkIndexRoute
   "/video-api-studio/console/": typeof VideoApiStudioConsoleIndexRoute
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
+  "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new/": typeof AdmissionsApplicationNewIndexRoute
@@ -1472,6 +1481,7 @@ export interface FileRoutesByTo {
   "/user-tags/link": typeof UserTagsLinkIndexRoute
   "/video-api-studio/console": typeof VideoApiStudioConsoleIndexRoute
   "/workflow/$workflowId": typeof WorkflowWorkflowIdIndexRoute
+  "/workflow/create": typeof WorkflowCreateIndexRoute
   "/workflow/list": typeof WorkflowListIndexRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new": typeof AdmissionsApplicationNewIndexRoute
@@ -1613,6 +1623,7 @@ export interface FileRoutesById {
   "/user-tags/link/": typeof UserTagsLinkIndexRoute
   "/video-api-studio/console/": typeof VideoApiStudioConsoleIndexRoute
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
+  "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new/": typeof AdmissionsApplicationNewIndexRoute
@@ -1755,6 +1766,7 @@ export interface FileRouteTypes {
     | "/user-tags/link/"
     | "/video-api-studio/console/"
     | "/workflow/$workflowId/"
+    | "/workflow/create/"
     | "/workflow/list/"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new/"
@@ -1894,6 +1906,7 @@ export interface FileRouteTypes {
     | "/user-tags/link"
     | "/video-api-studio/console"
     | "/workflow/$workflowId"
+    | "/workflow/create"
     | "/workflow/list"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new"
@@ -2034,6 +2047,7 @@ export interface FileRouteTypes {
     | "/user-tags/link/"
     | "/video-api-studio/console/"
     | "/workflow/$workflowId/"
+    | "/workflow/create/"
     | "/workflow/list/"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new/"
@@ -2174,6 +2188,7 @@ export interface RootRouteChildren {
   UserTagsLinkIndexRoute: typeof UserTagsLinkIndexRoute
   VideoApiStudioConsoleIndexRoute: typeof VideoApiStudioConsoleIndexRoute
   WorkflowWorkflowIdIndexRoute: typeof WorkflowWorkflowIdIndexRoute
+  WorkflowCreateIndexRoute: typeof WorkflowCreateIndexRoute
   WorkflowListIndexRoute: typeof WorkflowListIndexRoute
   StudyLibraryLiveSessionViewSessionIdRoute: typeof StudyLibraryLiveSessionViewSessionIdRoute
   AdmissionsApplicationNewIndexRoute: typeof AdmissionsApplicationNewIndexRoute
@@ -2464,6 +2479,13 @@ declare module "@tanstack/react-router" {
       path: "/workflow/list"
       fullPath: "/workflow/list/"
       preLoaderRoute: typeof WorkflowListIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/workflow/create/": {
+      id: "/workflow/create/"
+      path: "/workflow/create"
+      fullPath: "/workflow/create/"
+      preLoaderRoute: typeof WorkflowCreateIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/workflow/$workflowId/": {
@@ -3305,6 +3327,7 @@ const rootRouteChildren: RootRouteChildren = {
   UserTagsLinkIndexRoute: UserTagsLinkIndexRoute,
   VideoApiStudioConsoleIndexRoute: VideoApiStudioConsoleIndexRoute,
   WorkflowWorkflowIdIndexRoute: WorkflowWorkflowIdIndexRoute,
+  WorkflowCreateIndexRoute: WorkflowCreateIndexRoute,
   WorkflowListIndexRoute: WorkflowListIndexRoute,
   StudyLibraryLiveSessionViewSessionIdRoute:
     StudyLibraryLiveSessionViewSessionIdRoute,

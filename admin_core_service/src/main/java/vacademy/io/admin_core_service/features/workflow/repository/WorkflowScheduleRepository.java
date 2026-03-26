@@ -31,6 +31,8 @@ public interface WorkflowScheduleRepository extends JpaRepository<WorkflowSchedu
          */
         List<WorkflowSchedule> findByWorkflowId(String workflowId);
 
+        List<WorkflowSchedule> findByWorkflowIdAndStatus(String workflowId, String status);
+
         /**
          * Find schedules by schedule type
          */

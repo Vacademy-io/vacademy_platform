@@ -6,8 +6,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.workflow.dto.PagedWorkflowExecutionResponseDTO;
 import vacademy.io.admin_core_service.features.workflow.dto.WorkflowExecutionFilterDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.WorkflowExecutionSummaryDTO;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowExecutionService;
 import vacademy.io.common.auth.config.PageConstants;
+
+import java.time.Instant;
 
 import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_NUMBER;
 
@@ -35,5 +38,16 @@ public class WorkflowExecutionController {
                 response.getContent().size(), response.getTotalElements());
 
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/summary")
+    public ResponseEntity<WorkflowExecutionSummaryDTO> getExecutionSummary(
+            @RequestParam("workflowId") String workflowId,
+            @RequestParam(value = "startDate", required = false) Instant startDate,
+            @RequestParam(value = "endDate", required = false) Instant endDate) {
+
+        log.info("Getting execution summary for workflowId: {}", workflowId);
+        WorkflowExecutionSummaryDTO summary = workflowExecutionService.getExecutionSummary(workflowId, startDate, endDate);
+        return ResponseEntity.ok(summary);
     }
 }

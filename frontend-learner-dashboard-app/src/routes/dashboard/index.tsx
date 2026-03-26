@@ -42,6 +42,7 @@ import {
   Bell,
   CheckCircle,
   XCircle,
+  MinusCircle,
   Hourglass,
   TrendUp,
 } from "@phosphor-icons/react";
@@ -746,6 +747,10 @@ export function DashboardComponent() {
                             case "ABSENT":
                               Icon = XCircle;
                               colorClass = "text-red-500";
+                              break;
+                            case "UNMARKED":
+                              Icon = MinusCircle;
+                              colorClass = "text-gray-400";
                               break;
                             case "PENDING":
                               Icon = Hourglass;

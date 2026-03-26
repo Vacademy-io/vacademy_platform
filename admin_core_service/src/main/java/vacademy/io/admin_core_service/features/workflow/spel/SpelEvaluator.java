@@ -6,7 +6,8 @@ import org.springframework.expression.ExpressionParser;
 import org.springframework.expression.spel.SpelEvaluationException;
 import org.springframework.expression.spel.SpelParseException;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
-import org.springframework.expression.spel.support.StandardEvaluationContext;
+import org.springframework.expression.EvaluationContext;
+import org.springframework.expression.spel.support.SimpleEvaluationContext;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -35,7 +36,11 @@ public class SpelEvaluator {
         String exprStr = expressionString.trim();
 
         ExpressionParser parser = new SpelExpressionParser();
-        StandardEvaluationContext context = new StandardEvaluationContext();
+        EvaluationContext context = SimpleEvaluationContext
+                .forReadOnlyDataBinding()
+                .withInstanceMethods()
+                .withRootObject(contextVars)
+                .build();
         context.setVariable("ctx", contextVars);
 
         try {
@@ -44,7 +49,6 @@ public class SpelEvaluator {
             log.debug("Successfully evaluated SpEL expression: {}", exprStr);
             return result;
         } catch (SpelEvaluationException e) {
-            e.printStackTrace();
             log.error("SpEL evaluation failed for expression: '{}'. Context keys: {}. Error: {}",
                     exprStr, contextVars != null ? contextVars.keySet() : "null", e.getMessage());
 
@@ -55,7 +59,6 @@ public class SpelEvaluator {
                     contextVars,
                     e);
         } catch (SpelParseException e) {
-            e.printStackTrace();
             log.error("SpEL parse failed for expression: '{}'. Error: {}", exprStr, e.getMessage());
 
             throw new SpelEvaluationError(
@@ -64,7 +67,6 @@ public class SpelEvaluator {
                     contextVars,
                     e);
         } catch (Exception e) {
-            e.printStackTrace();
             log.error("Unexpected error evaluating SpEL expression: '{}'. Error: {}", exprStr, e.getMessage(), e);
 
             throw new SpelEvaluationError(

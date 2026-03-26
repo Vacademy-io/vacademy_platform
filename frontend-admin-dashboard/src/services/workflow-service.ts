@@ -1,10 +1,19 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_WORKFLOW_DIAGRAM, LIST_WORKFLOWS_WITH_SCHEDULES } from '@/constants/urls';
+import {
+    BASE_URL,
+    GET_WORKFLOW_DIAGRAM,
+    LIST_WORKFLOWS_WITH_SCHEDULES,
+    WORKFLOW_SERVICE_BASE,
+} from '@/constants/urls';
 import {
     Workflow,
     AutomationDiagram,
     WorkflowSchedule,
     WorkflowTrigger,
+    WorkflowBuilderDTO,
+    ValidationError,
+    WorkflowExecutionLogDTO,
+    ExecutionSummary,
 } from '@/types/workflow/workflow-types';
 import { queryOptions } from '@tanstack/react-query';
 
@@ -167,3 +176,167 @@ export const getWorkflowDiagramQuery = (workflowId: string) =>
         staleTime: 300000, // 5 minutes
         enabled: !!workflowId,
     });
+
+// Builder API functions
+export const createWorkflow = async (
+    dto: WorkflowBuilderDTO,
+    userId: string
+): Promise<WorkflowBuilderDTO> => {
+    const response = await authenticatedAxiosInstance<WorkflowBuilderDTO>({
+        method: 'POST',
+        url: `${WORKFLOW_SERVICE_BASE}`,
+        params: { userId },
+        data: dto,
+    });
+    return response.data;
+};
+
+export const getWorkflowForEditing = async (
+    workflowId: string
+): Promise<WorkflowBuilderDTO> => {
+    const response = await authenticatedAxiosInstance<WorkflowBuilderDTO>({
+        method: 'GET',
+        url: `${WORKFLOW_SERVICE_BASE}/${workflowId}/edit`,
+    });
+    return response.data;
+};
+
+export const deleteWorkflow = async (workflowId: string): Promise<void> => {
+    await authenticatedAxiosInstance({
+        method: 'DELETE',
+        url: `${WORKFLOW_SERVICE_BASE}/${workflowId}`,
+    });
+};
+
+export const validateWorkflow = async (
+    dto: WorkflowBuilderDTO
+): Promise<ValidationError[]> => {
+    const response = await authenticatedAxiosInstance<ValidationError[]>({
+        method: 'POST',
+        url: `${WORKFLOW_SERVICE_BASE}/validate`,
+        data: dto,
+    });
+    return response.data;
+};
+
+export const testRunWorkflow = async (
+    workflowId: string,
+    sampleContext?: Record<string, unknown>
+): Promise<Record<string, unknown>> => {
+    const response = await authenticatedAxiosInstance<Record<string, unknown>>({
+        method: 'POST',
+        url: `${WORKFLOW_SERVICE_BASE}/${workflowId}/test-run`,
+        data: sampleContext ?? {},
+    });
+    return response.data;
+};
+
+export interface WorkflowTemplateItem {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    template_json: string;
+    is_system: boolean;
+}
+
+export const fetchWorkflowTemplates = async (instituteId: string): Promise<WorkflowTemplateItem[]> => {
+    const response = await authenticatedAxiosInstance<WorkflowTemplateItem[]>({
+        method: 'GET',
+        url: `${WORKFLOW_SERVICE_BASE}/templates`,
+        params: { instituteId },
+    });
+    return response.data;
+};
+
+export const getWorkflowTemplatesQuery = (instituteId: string) =>
+    queryOptions({
+        queryKey: ['GET_WORKFLOW_TEMPLATES', instituteId],
+        queryFn: () => fetchWorkflowTemplates(instituteId),
+        staleTime: 600000, // 10 minutes (templates don't change often)
+        enabled: !!instituteId,
+    });
+
+export const applyWorkflowTemplate = async (
+    templateId: string,
+    instituteId: string,
+    userId: string,
+    workflowName?: string
+): Promise<WorkflowBuilderDTO> => {
+    const response = await authenticatedAxiosInstance<WorkflowBuilderDTO>({
+        method: 'POST',
+        url: `${WORKFLOW_SERVICE_BASE}/templates/apply`,
+        params: { templateId, instituteId, userId, workflowName },
+    });
+    return response.data;
+};
+
+// Execution logs
+export async function fetchExecutionLogs(executionId: string): Promise<WorkflowExecutionLogDTO[]> {
+    const response = await authenticatedAxiosInstance.get(
+        `${BASE_URL}/admin-core-service/workflow/logs/execution/${executionId}`
+    );
+    return response.data;
+}
+
+export function getExecutionLogsQuery(executionId: string) {
+    return queryOptions({
+        queryKey: ['EXECUTION_LOGS', executionId],
+        queryFn: () => fetchExecutionLogs(executionId),
+        staleTime: 60_000,
+        enabled: !!executionId,
+    });
+}
+
+// Execution summary
+export async function fetchExecutionSummary(
+    workflowId: string,
+    startDate?: string,
+    endDate?: string
+): Promise<ExecutionSummary> {
+    const params = new URLSearchParams({ workflowId });
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    const response = await authenticatedAxiosInstance.get(
+        `${BASE_URL}/admin-core-service/v1/workflow-execution/summary?${params.toString()}`
+    );
+    return response.data;
+}
+
+export function getExecutionSummaryQuery(workflowId: string, startDate?: string, endDate?: string) {
+    return queryOptions({
+        queryKey: ['EXECUTION_SUMMARY', workflowId, startDate, endDate],
+        queryFn: () => fetchExecutionSummary(workflowId, startDate, endDate),
+        staleTime: 60_000,
+        enabled: !!workflowId,
+    });
+}
+
+// Context schema for variable picker
+export interface ContextVariableDTO {
+    key: string;
+    type: string;
+    source_node_id: string;
+    source_node_name: string;
+    source_node_type: string;
+    description: string;
+    spel_expression: string;
+}
+
+export interface ContextSchemaRequest {
+    target_node_id: string;
+    upstream_nodes: Array<{
+        node_id: string;
+        node_name: string;
+        node_type: string;
+        config: Record<string, unknown>;
+    }>;
+}
+
+export async function fetchContextSchema(request: ContextSchemaRequest): Promise<ContextVariableDTO[]> {
+    const response = await authenticatedAxiosInstance.post(
+        `${WORKFLOW_SERVICE_BASE}/context-schema`,
+        request
+    );
+    return response.data;
+}

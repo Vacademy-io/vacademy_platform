@@ -28,11 +28,14 @@ import vacademy.io.admin_core_service.features.domain_routing.repository.Institu
 import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
 import vacademy.io.admin_core_service.features.live_session.service.TimezoneSettingService;
 import vacademy.io.admin_core_service.features.live_session.service.GetSessionByIdService;
+import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionNotificationConfig;
+import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionNotificationConfigRepository;
 
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -50,6 +53,7 @@ public class LiveSessionNotificationProcessor {
     private final TimezoneSettingService timezoneSettingService;
     private final GetSessionByIdService getSessionByIdService;
     private final InstituteStudentRepository studentRepository;
+    private final LiveSessionNotificationConfigRepository notificationConfigRepository;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
@@ -109,15 +113,43 @@ public class LiveSessionNotificationProcessor {
                 List<Object[]> rows = getStudentsForNotification(participants, session.getInstituteId());
 
                 if (!rows.isEmpty()) {
+                    Set<String> channels = parseChannels(sn.getChannel());
+                    String sessionTitle = session.getTitle() != null ? session.getTitle() : "Live Class";
 
-                    if (sn.getType().equals(NotificationTypeEnum.BEFORE_LIVE.name())) {
-                        NotificationDTO notification = buildBeforeLiveEmailNotification(session, sn, schedule, rows);
-                        notificationService.sendEmailToUsers(notification, session.getInstituteId());
-                    }
+                    // Email notifications (existing behavior)
+                    if (channels.contains("EMAIL")) {
+                        if (sn.getType().equals(NotificationTypeEnum.BEFORE_LIVE.name())) {
+                            NotificationDTO notification = buildBeforeLiveEmailNotification(session, sn, schedule, rows);
+                            notificationService.sendEmailToUsers(notification, session.getInstituteId());
+                        }
                         if (sn.getType().equals(NotificationTypeEnum.ON_LIVE.name())) {
                             NotificationDTO notification = buildOnLiveEmailNotification(session, sn, schedule, rows);
                             notificationService.sendEmailToUsers(notification, session.getInstituteId());
                         }
+                    }
+
+                    // Push notifications
+                    if (channels.contains("PUSH_NOTIFICATION")) {
+                        List<String> userIds = extractUserIds(rows);
+                        String pushTitle = sn.getType().equals(NotificationTypeEnum.ON_LIVE.name())
+                                ? "Live Class Started" : "Live Class Starting Soon";
+                        String pushBody = sessionTitle + (sn.getType().equals(NotificationTypeEnum.ON_LIVE.name())
+                                ? " has started – Join now!" : " begins shortly. Get ready!");
+                        notificationService.sendPushNotificationToUsers(
+                                session.getInstituteId(), userIds, pushTitle, pushBody,
+                                Map.of("sessionId", session.getId(), "type", "LIVE_CLASS"));
+                    }
+
+                    // System notifications (SSE)
+                    if (channels.contains("SYSTEM_NOTIFICATION")) {
+                        List<String> userIds = extractUserIds(rows);
+                        String alertTitle = sn.getType().equals(NotificationTypeEnum.ON_LIVE.name())
+                                ? "Live Class Started" : "Live Class Starting Soon";
+                        String alertBody = sessionTitle + (sn.getType().equals(NotificationTypeEnum.ON_LIVE.name())
+                                ? " has started – Join now!" : " begins shortly.");
+                        notificationService.sendSystemAlertToUsers(
+                                session.getInstituteId(), userIds, alertTitle, alertBody);
+                    }
                 }
 
                 scheduleNotificationRepository.updateStatus(sn.getId(), NotificationStatusEnum.SENT.name());
@@ -653,6 +685,87 @@ public class LiveSessionNotificationProcessor {
         } catch (Exception e) {
             System.out.println("Error building live class URL for session " + sessionId + ": " + e.getMessage());
             return "#";
+        }
+    }
+
+    private Set<String> parseChannels(String channel) {
+        if (channel == null || channel.isBlank()) return Set.of("EMAIL");
+        if ("BOTH".equals(channel)) return Set.of("EMAIL", "WHATSAPP");
+        return Arrays.stream(channel.split(",")).map(String::trim).collect(Collectors.toSet());
+    }
+
+    private List<String> extractUserIds(List<Object[]> rows) {
+        Set<String> userIds = new LinkedHashSet<>();
+        for (Object[] r : rows) {
+            String userId = r.length >= 7 ? (String) r[1] : (String) r[0];
+            if (userId != null) userIds.add(userId);
+        }
+        return new ArrayList<>(userIds);
+    }
+
+    /**
+     * Sends attendance notification to a specific student when marked present/absent.
+     * Checks LiveSessionNotificationConfig for ATTENDANCE type.
+     */
+    public void sendAttendanceNotification(String sessionId, String userId, String status) {
+        try {
+            Optional<LiveSessionNotificationConfig> configOpt = notificationConfigRepository
+                    .findBySessionIdAndNotificationType(sessionId, NotificationTypeEnum.ATTENDANCE.name());
+            if (configOpt.isEmpty() || !Boolean.TRUE.equals(configOpt.get().getEnabled())) {
+                return;
+            }
+
+            LiveSessionNotificationConfig config = configOpt.get();
+            Set<String> channels = parseChannels(config.getChannels());
+
+            Optional<LiveSession> sessionOpt = liveSessionRepository.findById(sessionId);
+            if (sessionOpt.isEmpty()) return;
+            LiveSession session = sessionOpt.get();
+
+            String sessionTitle = session.getTitle() != null ? session.getTitle() : "Live Class";
+            String title = "Attendance Marked: " + status;
+            String body = "You have been marked as " + status + " for " + sessionTitle;
+
+            if (channels.contains("PUSH_NOTIFICATION")) {
+                notificationService.sendPushNotificationToUsers(
+                        session.getInstituteId(), List.of(userId), title, body,
+                        Map.of("sessionId", sessionId, "type", "ATTENDANCE", "status", status));
+            }
+            if (channels.contains("SYSTEM_NOTIFICATION")) {
+                notificationService.sendSystemAlertToUsers(
+                        session.getInstituteId(), List.of(userId), title, body);
+            }
+            if (channels.contains("EMAIL")) {
+                // Build a simple email notification for the student
+                Student student = studentRepository.findTopByUserId(userId).orElse(null);
+                if (student != null && student.getEmail() != null) {
+                    NotificationDTO dto = new NotificationDTO();
+                    dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
+                    dto.setSubject(title + " - " + sessionTitle);
+                    dto.setNotificationType("EMAIL");
+                    dto.setSource("ADMIN_CORE");
+                    dto.setSourceId(sessionId);
+
+                    NotificationToUserDTO u = new NotificationToUserDTO();
+                    Map<String, String> placeholders = new HashMap<>();
+                    placeholders.put("NAME", student.getFullName() != null ? student.getFullName() : "Student");
+                    placeholders.put("SESSION_TITLE", sessionTitle);
+                    placeholders.put("ACTION", "Attendance: " + status);
+                    placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+                    placeholders.put("LINK", "#");
+                    placeholders.put("ALL_TIMEZONE_TIMES", "");
+                    placeholders.put("DATE", "");
+                    placeholders.put("TIME", "");
+                    u.setPlaceholders(placeholders);
+                    u.setUserId(userId);
+                    u.setChannelId(student.getEmail());
+
+                    dto.setUsers(List.of(u));
+                    notificationService.sendEmailToUsers(dto, session.getInstituteId());
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Error sending attendance notification for session " + sessionId + ", user " + userId + ": " + e.getMessage());
         }
     }
 

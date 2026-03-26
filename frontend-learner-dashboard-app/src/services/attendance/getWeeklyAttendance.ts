@@ -16,7 +16,7 @@ import {
 export interface WeeklyAttendanceDay {
   day: string;
   dayName: string;
-  status: "PRESENT" | "ABSENT" | "PENDING" | "NO_CLASS";
+  status: "PRESENT" | "ABSENT" | "UNMARKED" | "PENDING" | "NO_CLASS";
   date: Date;
   hasClass: boolean;
 }
@@ -76,6 +76,9 @@ export const useWeeklyAttendanceQuery = () => {
             const hasAnyAbsent = daySchedules.some(
               (schedule) => schedule.attendanceStatus === "ABSENT"
             );
+            const hasAnyUnmarked = daySchedules.some(
+              (schedule) => schedule.attendanceStatus === "UNMARKED"
+            );
             const hasAnyPending = daySchedules.some(
               (schedule) => !schedule.attendanceStatus
             );
@@ -83,13 +86,17 @@ export const useWeeklyAttendanceQuery = () => {
             if (hasAnyPresent) {
               // If present in any class, mark the day as present
               status = "PRESENT";
-            } else if (hasAnyAbsent && !hasAnyPending) {
-              // If absent from all classes and no pending classes
+            } else if (hasAnyAbsent && !hasAnyPending && !hasAnyUnmarked) {
+              // If explicitly absent from all classes
               status = "ABSENT";
+            } else if (hasAnyUnmarked && !hasAnyPending) {
+              // Has unmarked classes but no pending — show as unmarked
+              status = "UNMARKED";
             } else {
-              // Has pending classes or mix of absent and pending
+              // Has pending classes or mix
               if (isDayInPast) {
-                status = "ABSENT";
+                // Past day: if any are unmarked, show unmarked; else absent
+                status = hasAnyUnmarked ? "UNMARKED" : "ABSENT";
               } else {
                 status = "PENDING";
               }

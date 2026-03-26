@@ -304,10 +304,12 @@ function RouteComponent() {
                       className={`rounded-full px-3 py-0.5 text-[10px] font-medium ${
                         cls.attendanceStatus === "PRESENT"
                           ? "bg-success-50 text-success-600"
-                          : "bg-danger-100 text-danger-600"
+                          : cls.attendanceStatus === "ABSENT"
+                            ? "bg-danger-100 text-danger-600"
+                            : "bg-slate-100 text-slate-500"
                       }`}
                     >
-                      {cls.attendanceStatus}
+                      {cls.attendanceStatus === "UNMARKED" ? "Unmarked" : cls.attendanceStatus}
                     </span>
                   </div>
                 </div>
@@ -393,10 +395,12 @@ function RouteComponent() {
                           className={`rounded-full px-3 py-0.5 text-xs font-medium ${
                             cls.attendanceStatus === "PRESENT"
                               ? "bg-success-50 text-success-600"
-                              : "bg-danger-100 text-danger-600"
+                              : cls.attendanceStatus === "ABSENT"
+                                ? "bg-danger-100 text-danger-600"
+                                : "bg-slate-100 text-slate-500"
                           }`}
                         >
-                          {cls.attendanceStatus}
+                          {cls.attendanceStatus === "UNMARKED" ? "Unmarked" : cls.attendanceStatus}
                         </span>
                       </td>
                     </tr>

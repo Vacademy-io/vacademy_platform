@@ -272,7 +272,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ls.subject AS subject,
         ls.status AS sessionStatus,
         ls.access_level AS accessLevel,
-        COALESCE(lsl.status, 'ABSENT') AS attendanceStatus
+        COALESCE(lsl.status, 'UNMARKED') AS attendanceStatus
     FROM live_session_participants lsp
     JOIN session_schedules ss ON ss.session_id = lsp.session_id
     JOIN live_session ls ON ls.id = lsp.session_id AND ls.status = 'LIVE'

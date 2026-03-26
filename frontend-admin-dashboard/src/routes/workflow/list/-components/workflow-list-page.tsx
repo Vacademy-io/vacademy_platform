@@ -10,8 +10,10 @@ import { MagnifyingGlass } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Plus } from '@phosphor-icons/react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
+import { useNavigate } from '@tanstack/react-router';
 
 export function WorkflowListPage() {
+    const navigate = useNavigate();
     const { setNavHeading } = useNavHeadingStore();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
     const {
@@ -85,8 +87,7 @@ export function WorkflowListPage() {
                     </div>
                     <Button
                         onClick={() => {
-                            // Navigate to create workflow page when implemented
-                            console.log('Create workflow clicked');
+                            navigate({ to: '/workflow/create' });
                         }}
                         className="flex items-center gap-2"
                     >
@@ -156,8 +157,7 @@ export function WorkflowListPage() {
                         {!searchTerm && !selectedType && (
                             <Button
                                 onClick={() => {
-                                    // Navigate to create workflow page when implemented
-                                    console.log('Create workflow clicked');
+                                    navigate({ to: '/workflow/create' });
                                 }}
                                 className="mt-4"
                             >

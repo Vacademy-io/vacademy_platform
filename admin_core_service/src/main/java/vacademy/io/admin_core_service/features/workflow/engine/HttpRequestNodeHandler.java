@@ -41,6 +41,17 @@ public class HttpRequestNodeHandler implements NodeHandler {
             Map<String, NodeTemplate> nodeTemplates, int countProcessed) {
         log.info("HttpRequestNodeHandler invoked.");
 
+        // Dry-run check: skip actual HTTP calls but log the intent
+        Boolean dryRun = (Boolean) context.getOrDefault("dryRun", false);
+        if (Boolean.TRUE.equals(dryRun)) {
+            log.info("[DRY RUN] HttpRequestNodeHandler - skipping actual HTTP request. Config: {}", nodeConfigJson);
+            Map<String, Object> dryRunResult = new HashMap<>();
+            dryRunResult.put("dryRun", true);
+            dryRunResult.put("skipped", "http_request");
+            dryRunResult.put("details", "HTTP request skipped in dry-run mode. Config: " + nodeConfigJson);
+            return dryRunResult;
+        }
+
         String workflowExecutionId = (String) context.get("executionId");
         String nodeId = (String) context.get("currentNodeId");
 

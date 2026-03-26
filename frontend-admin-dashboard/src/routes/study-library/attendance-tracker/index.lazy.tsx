@@ -57,7 +57,7 @@ interface ClassAttendanceItem {
     className: string;
     date: string;
     time: string;
-    status: 'Present' | 'Absent';
+    status: 'Present' | 'Absent' | 'Unmarked';
 }
 
 type ClassAttendanceData = {
@@ -639,7 +639,7 @@ const AttendanceModal = ({
                         className: s.sessionTitle,
                         date: s.meetingDate,
                         time: s.startTime,
-                        status: s.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent',
+                        status: s.attendanceStatus === 'PRESENT' ? 'Present' : s.attendanceStatus === 'ABSENT' ? 'Absent' : 'Unmarked',
                     })
                 );
 
@@ -700,7 +700,9 @@ const AttendanceModal = ({
                                         <div
                                             className={`rounded-full px-3 py-1 text-xs font-medium ${classItem.status === 'Present'
                                                     ? 'bg-success-50 text-success-600'
-                                                    : 'bg-danger-100 text-danger-600'
+                                                    : classItem.status === 'Absent'
+                                                        ? 'bg-danger-100 text-danger-600'
+                                                        : 'bg-gray-100 text-gray-500'
                                                 }`}
                                         >
                                             {classItem.status}
@@ -865,7 +867,7 @@ function RouteComponent() {
                         className: sess.title,
                         date: sess.meetingDate,
                         time: sess.startTime,
-                        status: sess.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent',
+                        status: sess.attendanceStatus === 'PRESENT' ? 'Present' : sess.attendanceStatus === 'ABSENT' ? 'Absent' : 'Unmarked',
                     }));
 
                     return {

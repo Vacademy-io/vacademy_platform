@@ -303,8 +303,8 @@ public class AttendanceReportService {
                 
                 // Check if student attended any session on this date
                 boolean attendedThisDate = dateSessions.stream()
-                        .anyMatch(session -> session.getAttendanceStatus() != null);
-                
+                        .anyMatch(session -> "PRESENT".equals(session.getAttendanceStatus()));
+
                 // If attended any schedule, mark all schedules for that date as attended
                 if (attendedThisDate) {
                     attendedUnits += scheduleCount;
@@ -313,8 +313,8 @@ public class AttendanceReportService {
                 // If all sessions have daily_attendance = false, count each session individually
                 for (AttendanceDetailsDTO session : dateSessions) {
                     totalAttendanceUnits += 1;
-                    
-                    if (session.getAttendanceStatus() != null) {
+
+                    if ("PRESENT".equals(session.getAttendanceStatus())) {
                         attendedUnits += 1;
                     }
                 }

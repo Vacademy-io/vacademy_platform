@@ -31,6 +31,13 @@ public class WorkflowEngineService {
 
     public Map<String, Object> run(String workflowId, Map<String, Object> seedContext) {
         try {
+            // Check for dry-run mode from seedContext
+            boolean dryRun = false;
+            if (seedContext != null && Boolean.TRUE.equals(seedContext.get("dryRun"))) {
+                dryRun = true;
+                log.info("========== DRY RUN MODE ========== Workflow: {}", workflowId);
+            }
+
             Workflow wf = workflowRepository.findById(workflowId).orElseThrow();
             List<WorkflowNodeMapping> mappings = mappingRepository.findByWorkflowIdOrderByNodeOrderAsc(workflowId);
 
@@ -49,6 +56,11 @@ public class WorkflowEngineService {
             }
             ctx.put("workflowId", workflowId);
             ctx.put("instituteId", wf.getInstituteId());
+
+            // Propagate dryRun flag into context so all handlers can read it
+            if (dryRun) {
+                ctx.put("dryRun", true);
+            }
 
             // Index by node ID for routing convenience
             Map<String, WorkflowNodeMapping> byNodeId = new HashMap<>();
@@ -70,25 +82,27 @@ public class WorkflowEngineService {
 
             // Use Stack for routing calculation instead of relying on node order
             Stack<String> nodeExecutionStack = new Stack<>();
-            Set<String> visitedNodes = new HashSet<>();
+            Map<String, Integer> nodeVisitCount = new HashMap<>();
+            int maxVisitsPerNode = 3; // Allow re-execution in diamond DAGs, but cap to prevent infinite loops
 
             // Push start node to stack
             nodeExecutionStack.push(startNode.getNodeTemplateId());
             log.info("Starting workflow execution with start node: {}", startNode.getNodeTemplateId());
 
             int guard = 0; // prevent infinite loops
-            while (!nodeExecutionStack.isEmpty() && guard++ < 500) {
+            while (!nodeExecutionStack.isEmpty() && guard++ < 100) {
                 String currentNodeId = nodeExecutionStack.pop();
                 log.info("Processing node ID: {} (stack size: {}, guard: {})", currentNodeId, nodeExecutionStack.size(),
                         guard);
 
-                // Check if we've already visited this node to prevent infinite loops
-                if (visitedNodes.contains(currentNodeId)) {
-                    log.warn("Node {} already visited, skipping to prevent infinite loop", currentNodeId);
+                // Allow re-execution up to maxVisitsPerNode times (supports diamond DAG patterns)
+                int visits = nodeVisitCount.getOrDefault(currentNodeId, 0);
+                if (visits >= maxVisitsPerNode) {
+                    log.warn("Node {} already visited {} times, skipping to prevent infinite loop", currentNodeId, visits);
                     continue;
                 }
 
-                visitedNodes.add(currentNodeId);
+                nodeVisitCount.put(currentNodeId, visits + 1);
 
                 WorkflowNodeMapping current = byNodeId.get(currentNodeId);
                 if (current == null) {
@@ -111,18 +125,48 @@ public class WorkflowEngineService {
                 // Use registry for O(1) lookup
                 NodeHandler handler = nodeHandlerRegistry.getHandler(nodeType);
                 if (handler != null) {
-                    try {
-                        log.info("Executing handler: {} for node: {}", handler.getClass().getSimpleName(),
-                                current.getId());
-                        ctx.put("currentNodeId", currentNodeId);
-                        Map<String, Object> changes = handler.handle(ctx, effectiveConfig, templateById, guard);
-                        if (changes != null && !changes.isEmpty()) {
-                            ctx.putAll(changes);
-                            log.info("Node {} updated context with: {}", current.getId(), changes.keySet());
+                    log.info("Executing handler: {} for node: {}", handler.getClass().getSimpleName(),
+                            current.getId());
+
+                    // Parse retry config
+                    int maxRetries = 0;
+                    long backoffMs = 1000;
+                    double backoffMultiplier = 2.0;
+                    if (tmpl.getRetryConfig() != null && !tmpl.getRetryConfig().isBlank()) {
+                        try {
+                            JsonNode retryJson = objectMapper.readTree(tmpl.getRetryConfig());
+                            maxRetries = retryJson.path("maxRetries").asInt(0);
+                            backoffMs = retryJson.path("backoffMs").asLong(1000);
+                            backoffMultiplier = retryJson.path("backoffMultiplier").asDouble(2.0);
+                        } catch (Exception e) {
+                            log.warn("Failed to parse retry config for node: {}", current.getId());
                         }
-                    } catch (Exception e) {
-                        log.error("Error executing node: {}", current.getId(), e);
-                        // Continue with next node instead of breaking
+                    }
+
+                    // Execute with retry
+                    Exception lastError = null;
+                    for (int attempt = 0; attempt <= maxRetries; attempt++) {
+                        try {
+                            if (attempt > 0) {
+                                long sleepMs = (long)(backoffMs * Math.pow(backoffMultiplier, attempt - 1));
+                                log.info("Retry attempt {} for node {} (waiting {}ms)", attempt, current.getId(), sleepMs);
+                                Thread.sleep(sleepMs);
+                            }
+                            ctx.put("currentNodeId", currentNodeId);
+                            Map<String, Object> changes = handler.handle(ctx, effectiveConfig, templateById, guard);
+                            if (changes != null && !changes.isEmpty()) {
+                                ctx.putAll(changes);
+                                log.info("Node {} updated context with: {}", current.getId(), changes.keySet());
+                            }
+                            lastError = null;
+                            break; // Success
+                        } catch (Exception e) {
+                            lastError = e;
+                            log.warn("Node {} attempt {} failed: {}", current.getId(), attempt + 1, e.getMessage());
+                        }
+                    }
+                    if (lastError != null) {
+                        log.error("Node {} failed after {} retries", current.getId(), maxRetries + 1, lastError);
                     }
                 } else {
                     log.warn("No handler found for node type: {}", nodeType);
@@ -166,7 +210,7 @@ public class WorkflowEngineService {
                 }
             }
 
-            if (guard >= 500) {
+            if (guard >= 100) {
                 log.warn("Workflow execution stopped due to loop guard limit: {}", workflowId);
             }
 

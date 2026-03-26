@@ -228,14 +228,17 @@ export default function ScheduleStep2() {
             selectedLearners: [],
             joinLink: '',
             notifyBy: {
-                mail: true,
-                whatsapp: true,
+                mail: false,
+                whatsapp: false,
+                push_notification: false,
+                system_notification: false,
             },
             notifySettings: {
-                onCreate: true,
-                beforeLive: true,
+                onCreate: false,
+                beforeLive: false,
                 beforeLiveTime: [],
                 onLive: true,
+                onAttendance: false,
             },
             fields: [],
         },
@@ -264,10 +267,13 @@ export default function ScheduleStep2() {
             beforeLive: false,
             beforeLiveTime: [] as { time: string }[],
             onLive: false,
+            onAttendance: false,
         };
 
         let mail = false;
         let whatsapp = false;
+        let push_notification = false;
+        let system_notification = false;
 
         sessionDetails.notifications?.addedNotificationActions.forEach((action) => {
             const { type, notify, notifyBy, time } = action;
@@ -281,15 +287,19 @@ export default function ScheduleStep2() {
                 if (time) {
                     defaultNotifySettings.beforeLiveTime = [{ time }];
                 }
+            } else if (type === 'ATTENDANCE') {
+                defaultNotifySettings.onAttendance = notify;
             }
 
-            // Merge mail & whatsapp flags
+            // Merge channel flags
             mail = mail || notifyBy.mail;
             whatsapp = whatsapp || notifyBy.whatsapp;
+            push_notification = push_notification || (notifyBy as any).push_notification || false;
+            system_notification = system_notification || (notifyBy as any).system_notification || false;
         });
 
         form.setValue('notifySettings', defaultNotifySettings);
-        form.setValue('notifyBy', { mail, whatsapp });
+        form.setValue('notifyBy', { mail, whatsapp, push_notification, system_notification });
 
         // Load previously selected levels for both PRIVATE and PUBLIC sessions
         if (
@@ -868,6 +878,48 @@ export default function ScheduleStep2() {
                                     </FormItem>
                                 )}
                             />
+                            <FormField
+                                control={control}
+                                name={`notifyBy.push_notification`}
+                                render={({ field }) => (
+                                    <FormItem className="flex items-end gap-2">
+                                        <FormControl>
+                                            <Checkbox
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
+                                                    ? 'border-none bg-primary-500 text-white'
+                                                    : ''
+                                                    }`}
+                                            />
+                                        </FormControl>
+                                        <FormLabel className="!mb-[3px] font-thin">
+                                            Notify Via Push Notification
+                                        </FormLabel>
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={control}
+                                name={`notifyBy.system_notification`}
+                                render={({ field }) => (
+                                    <FormItem className="flex items-end gap-2">
+                                        <FormControl>
+                                            <Checkbox
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
+                                                    ? 'border-none bg-primary-500 text-white'
+                                                    : ''
+                                                    }`}
+                                            />
+                                        </FormControl>
+                                        <FormLabel className="!mb-[3px] font-thin">
+                                            Notify Via System Notification
+                                        </FormLabel>
+                                    </FormItem>
+                                )}
+                            />
                         </div>
 
                         <div className="font-bold">Notify Participants</div>
@@ -943,13 +995,35 @@ export default function ScheduleStep2() {
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
                                                 className={`size-5 rounded-sm border-2 shadow-none ${field.value
-                                                    ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
-                                                    : '' // Default styles when unchecked
+                                                    ? 'border-none bg-primary-500 text-white'
+                                                    : ''
                                                     }`}
                                             />
                                         </FormControl>
                                         <FormLabel className="!mb-[3px] font-thin">
                                             When class goes live
+                                        </FormLabel>
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={control}
+                                name={`notifySettings.onAttendance`}
+                                render={({ field }) => (
+                                    <FormItem className="flex items-end gap-2">
+                                        <FormControl>
+                                            <Checkbox
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
+                                                    ? 'border-none bg-primary-500 text-white'
+                                                    : ''
+                                                    }`}
+                                            />
+                                        </FormControl>
+                                        <FormLabel className="!mb-[3px] font-thin">
+                                            When attendance is marked (present/absent)
                                         </FormLabel>
                                     </FormItem>
                                 )}

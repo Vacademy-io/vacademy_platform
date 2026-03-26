@@ -239,7 +239,7 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                 '#': idx + 1,
                 'Name': item.fullName,
                 'Email': item.email || '',
-                'Status': item.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent',
+                'Status': item.attendanceStatus === 'PRESENT' ? 'Present' : item.attendanceStatus === 'ABSENT' ? 'Absent' : 'Unmarked',
                 'Mode': item.statusType || '',
                 'Duration (min)': duration,
                 'Active Points': activePoints,

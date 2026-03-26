@@ -40,16 +40,19 @@ public class LiveSessionStep2RequestDTO {
     @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class NotificationActionDTO {
         private String id; // required for update/delete
-        private NotificationTypeEnum type; // ENUM: ON_CREATE, ON_LIVE, BEFORE_LIVE
+        private NotificationTypeEnum type; // ENUM: ON_CREATE, ON_LIVE, BEFORE_LIVE, ATTENDANCE
         private NotifyBy notifyBy;
         private String time; // used only if type == BEFORE_LIVE
         private Boolean notify;
     }
 
     @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class NotifyBy {
         private boolean mail;
         private boolean whatsapp;
+        private boolean pushNotification;
+        private boolean systemNotification;
     }
 
     @Data

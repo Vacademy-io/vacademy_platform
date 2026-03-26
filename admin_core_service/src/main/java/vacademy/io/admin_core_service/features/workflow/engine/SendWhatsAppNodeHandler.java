@@ -23,6 +23,8 @@ import vacademy.io.admin_core_service.features.workflow.enums.NodeType;
 import vacademy.io.admin_core_service.features.workflow.dto.execution_log.WhatsAppExecutionDetails;
 import vacademy.io.common.logging.SentryLogger;
 
+import vacademy.io.admin_core_service.features.workflow.service.NotificationRateLimitService;
+
 import java.util.*;
 
 @Slf4j
@@ -35,9 +37,10 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
     private final NotificationService notificationService;
     private final TemplateRepository templateRepository;
     private final WorkflowExecutionLogger executionLogger;
+    private final NotificationRateLimitService rateLimitService;
 
     // Cache for templates (InstituteID:TemplateName -> Template)
-    private final Map<String, Template> templateCache = new HashMap<>();
+    private final Map<String, Template> templateCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
     public boolean supports(String nodeType) {
@@ -51,6 +54,17 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             int countProcessed) {
 
         log.info("SendWhatsAppNodeHandler.handle() invoked.");
+
+        // Dry-run check: skip actual WhatsApp sending but log the intent
+        Boolean dryRun = (Boolean) context.getOrDefault("dryRun", false);
+        if (Boolean.TRUE.equals(dryRun)) {
+            log.info("[DRY RUN] SendWhatsAppNodeHandler - skipping actual WhatsApp send. Config: {}", nodeConfigJson);
+            Map<String, Object> dryRunResult = new HashMap<>();
+            dryRunResult.put("dryRun", true);
+            dryRunResult.put("skipped", "whatsapp_send");
+            dryRunResult.put("details", "WhatsApp send skipped in dry-run mode. Config: " + nodeConfigJson);
+            return dryRunResult;
+        }
 
         String workflowExecutionId = (String) context.get("executionId");
         String nodeId = (String) context.get("currentNodeId");
@@ -359,6 +373,18 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             // 6. Dispatch Batches
             List<WhatsappRequest> finalBatchList = new ArrayList<>(batchRequestMap.values());
             if (!finalBatchList.isEmpty()) {
+                // Rate limit check
+                if (!rateLimitService.checkAndIncrement(instituteId, "WHATSAPP", processedCount)) {
+                    log.warn("WHATSAPP rate limit exceeded for institute: {}. Skipping {} messages.", instituteId, processedCount);
+                    changes.put("rateLimitExceeded", true);
+                    changes.put("status", "rate_limited");
+                    if (logId != null) {
+                        executionLogger.completeNodeExecution(logId, ExecutionLogStatus.FAILED, null,
+                                "WhatsApp rate limit exceeded for institute: " + instituteId);
+                    }
+                    return changes;
+                }
+
                 try {
                     // Call the batch method ONCE
                     notificationService.sendWhatsappToUsers(finalBatchList, instituteId);

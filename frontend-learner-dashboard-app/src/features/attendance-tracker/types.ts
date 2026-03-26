@@ -5,7 +5,7 @@ export interface Session {
   meetingDate: string; // format: YYYY-MM-DD
   startTime: string; // format: HH:mm:ss
   lastEntryTime?: string; // format: HH:mm:ss
-  attendanceStatus: "PRESENT" | "ABSENT" | null;
+  attendanceStatus: "PRESENT" | "ABSENT" | "UNMARKED" | null;
   attendanceDetails?: any;
   attendanceTimestamp?: string; // ISO datetime
 }

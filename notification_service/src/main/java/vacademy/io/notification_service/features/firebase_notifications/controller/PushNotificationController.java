@@ -9,7 +9,14 @@ import vacademy.io.notification_service.features.firebase_notifications.reposito
 import vacademy.io.notification_service.features.firebase_notifications.entity.FcmToken;
 import vacademy.io.notification_service.features.firebase_notifications.dto.FcmTokenRequest;
 import vacademy.io.notification_service.features.firebase_notifications.dto.FcmNotificationRequest;
+import vacademy.io.notification_service.features.firebase_notifications.dto.BulkPushRequest;
+import vacademy.io.notification_service.features.firebase_notifications.dto.SystemAlertRequest;
+import vacademy.io.notification_service.features.announcements.service.AnnouncementEventService;
+import vacademy.io.notification_service.features.announcements.dto.AnnouncementEvent;
+import vacademy.io.notification_service.features.announcements.enums.EventType;
+import vacademy.io.notification_service.features.announcements.enums.ModeType;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +33,9 @@ public class PushNotificationController {
 
     @Autowired
     private FcmTokenRepository fcmTokenRepository;
+
+    @Autowired
+    private AnnouncementEventService announcementEventService;
 
     /**
      * Register FCM token for a user
@@ -113,17 +123,78 @@ public class PushNotificationController {
     @PostMapping("/deactivate")
     public ResponseEntity<Map<String, Object>> deactivateToken(@RequestParam String token) {
         Map<String, Object> response = new HashMap<>();
-        
+
         try {
             fcmTokenRepository.deactivateTokenByToken(token);
-            
+
             response.put("success", true);
             response.put("message", "FCM token deactivated successfully");
             return ResponseEntity.ok(response);
-            
+
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", "Failed to deactivate FCM token: " + e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+
+    /**
+     * Internal endpoint: Send push notification to multiple users
+     */
+    @PostMapping("/internal/send-to-users")
+    public ResponseEntity<Map<String, Object>> sendToUsers(@RequestBody BulkPushRequest request) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            for (String userId : request.getUserIds()) {
+                pushNotificationService.sendNotificationToUser(
+                        request.getInstituteId(),
+                        userId,
+                        request.getTitle(),
+                        request.getBody(),
+                        request.getData() != null ? request.getData() : Map.of()
+                );
+            }
+
+            response.put("success", true);
+            response.put("message", "Push notifications sent to " + request.getUserIds().size() + " users");
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Failed to send push notifications: " + e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+
+    /**
+     * Internal endpoint: Send system alert (SSE) to multiple users
+     */
+    @PostMapping("/internal/send-system-alert")
+    public ResponseEntity<Map<String, Object>> sendSystemAlert(@RequestBody SystemAlertRequest request) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            AnnouncementEvent event = AnnouncementEvent.builder()
+                    .type(EventType.SYSTEM_ALERT)
+                    .modeType(ModeType.SYSTEM_ALERT)
+                    .instituteId(request.getInstituteId())
+                    .data(Map.of("title", request.getTitle(), "body", request.getBody()))
+                    .timestamp(LocalDateTime.now())
+                    .priority("MEDIUM")
+                    .persistent(true)
+                    .eventId("system_alert_" + System.currentTimeMillis())
+                    .build();
+
+            announcementEventService.sendToUsers(request.getUserIds(), event);
+
+            response.put("success", true);
+            response.put("message", "System alert sent to " + request.getUserIds().size() + " users");
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Failed to send system alert: " + e.getMessage());
             return ResponseEntity.badRequest().body(response);
         }
     }

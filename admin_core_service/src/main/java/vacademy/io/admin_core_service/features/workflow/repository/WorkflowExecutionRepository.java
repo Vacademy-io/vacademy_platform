@@ -70,4 +70,21 @@ public interface WorkflowExecutionRepository extends JpaRepository<WorkflowExecu
                         @Param("startDate") Instant startDate,
                         @Param("endDate") Instant endDate,
                         Pageable pageable);
+
+        @Query(value = "SELECT " +
+                        "COUNT(*) as total, " +
+                        "COUNT(*) FILTER (WHERE we.status = 'COMPLETED') as completed, " +
+                        "COUNT(*) FILTER (WHERE we.status = 'FAILED') as failed, " +
+                        "COUNT(*) FILTER (WHERE we.status = 'PROCESSING') as processing, " +
+                        "COUNT(*) FILTER (WHERE we.status = 'PENDING') as pending, " +
+                        "COALESCE(AVG(EXTRACT(EPOCH FROM (we.completed_at - we.started_at)) * 1000) FILTER (WHERE we.completed_at IS NOT NULL), 0) as avg_execution_time_ms " +
+                        "FROM workflow_execution we " +
+                        "JOIN workflow w ON we.workflow_id = w.id " +
+                        "WHERE w.id = :workflowId " +
+                        "AND (:startDate IS NULL OR we.created_at >= :startDate) " +
+                        "AND (:endDate IS NULL OR we.created_at <= :endDate)",
+                        nativeQuery = true)
+        Object[] getExecutionSummary(@Param("workflowId") String workflowId,
+                        @Param("startDate") Instant startDate,
+                        @Param("endDate") Instant endDate);
 }

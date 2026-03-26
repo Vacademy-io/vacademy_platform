@@ -62,4 +62,10 @@ public class WorkflowTrigger {
      */
     @Column(name = "idempotency_generation_setting", columnDefinition = "TEXT")
     private String idempotencyGenerationSetting;
+
+    @Column(name = "webhook_url_slug")
+    private String webhookUrlSlug;
+
+    @Column(name = "webhook_secret")
+    private String webhookSecret;
 }

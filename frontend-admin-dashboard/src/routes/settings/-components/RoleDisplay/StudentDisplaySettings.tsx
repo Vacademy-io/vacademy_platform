@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 import {
     Select,
     SelectContent,
@@ -152,6 +153,87 @@ export default function StudentDisplaySettings(): JSX.Element {
         update('dashboard', { widgets: list });
     };
 
+    // Move sidebar tab up/down
+    const moveTab = (tabId: string, direction: 'up' | 'down') => {
+        if (!settings) return;
+        const sorted = [...settings.sidebar.tabs].sort((a, b) => (a.order || 0) - (b.order || 0));
+        const idx = sorted.findIndex((t) => t.id === tabId);
+        if (idx < 0) return;
+        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (swapIdx < 0 || swapIdx >= sorted.length) return;
+        const current = sorted[idx]!;
+        const swap = sorted[swapIdx]!;
+        const tabs = settings.sidebar.tabs.map((t) => {
+            if (t.id === current.id) return { ...t, order: swap.order };
+            if (t.id === swap.id) return { ...t, order: current.order };
+            return t;
+        });
+        update('sidebar', { ...settings.sidebar, tabs });
+    };
+
+    // Move sub-tab up/down
+    const moveSubTab = (tabId: string, subId: string, direction: 'up' | 'down') => {
+        if (!settings) return;
+        const tabs = settings.sidebar.tabs.map((t) => {
+            if (t.id !== tabId) return t;
+            const sorted = [...(t.subTabs || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+            const idx = sorted.findIndex((s) => s.id === subId);
+            if (idx < 0) return t;
+            const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+            if (swapIdx < 0 || swapIdx >= sorted.length) return t;
+            const current = sorted[idx]!;
+            const swap = sorted[swapIdx]!;
+            return {
+                ...t,
+                subTabs: (t.subTabs || []).map((s) => {
+                    if (s.id === current.id) return { ...s, order: swap.order };
+                    if (s.id === swap.id) return { ...s, order: current.order };
+                    return s;
+                }),
+            };
+        });
+        update('sidebar', { ...settings.sidebar, tabs });
+    };
+
+    // Move widget up/down
+    const moveWidget = (widgetIdx: number, direction: 'up' | 'down') => {
+        if (!settings) return;
+        const sorted = [...settings.dashboard.widgets].sort((a, b) => (a.order || 0) - (b.order || 0));
+        const swapIdx = direction === 'up' ? widgetIdx - 1 : widgetIdx + 1;
+        if (swapIdx < 0 || swapIdx >= sorted.length) return;
+        const current = sorted[widgetIdx]!;
+        const swap = sorted[swapIdx]!;
+        const widgets = settings.dashboard.widgets.map((w, i) => {
+            // Match by original index in unsorted array
+            if (w === current || (w.id === current.id && w.order === current.order))
+                return { ...w, order: swap.order };
+            if (w === swap || (w.id === swap.id && w.order === swap.order))
+                return { ...w, order: current.order };
+            return w;
+        });
+        update('dashboard', { widgets });
+    };
+
+    // Generic swap for simple tab arrays
+    const swapTabOrder = <T extends { id: string; order: number }>(
+        items: T[],
+        targetId: string,
+        direction: 'up' | 'down'
+    ): T[] => {
+        const sorted = [...items].sort((a, b) => (a.order || 0) - (b.order || 0));
+        const idx = sorted.findIndex((t) => t.id === targetId);
+        if (idx < 0) return items;
+        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (swapIdx < 0 || swapIdx >= sorted.length) return items;
+        const current = sorted[idx]!;
+        const swap = sorted[swapIdx]!;
+        return items.map((t) => {
+            if (t.id === current.id) return { ...t, order: swap.order };
+            if (t.id === swap.id) return { ...t, order: current.order };
+            return t;
+        });
+    };
+
     if (!settings) return <div className="p-4 text-sm">Loading...</div>;
 
     return (
@@ -185,206 +267,95 @@ export default function StudentDisplaySettings(): JSX.Element {
                         </Button>
                     </div>
                     <div className="space-y-2">
-                        {settings.sidebar.tabs
-                            .slice()
-                            .sort((a, b) => (a.order || 0) - (b.order || 0))
-                            .map((t) => (
+                        {(() => {
+                            const sortedTabs = settings.sidebar.tabs
+                                .slice()
+                                .sort((a, b) => (a.order || 0) - (b.order || 0));
+                            return sortedTabs.map((t, tabIdx) => (
                                 <div key={t.id} className="space-y-2 rounded border p-2">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <div className="grow text-xs font-medium">{t.id}</div>
-                                        <Label className="text-xs">Label</Label>
-                                        <Input
-                                            className="h-8 w-40"
-                                            value={t.label || ''}
-                                            onChange={(e) =>
-                                                updateTabField(t.id, 'label', e.target.value)
-                                            }
-                                        />
-                                        <Label className="text-xs">Route</Label>
-                                        <Input
-                                            className="h-8 w-56"
-                                            value={t.route || ''}
-                                            onChange={(e) =>
-                                                updateTabField(t.id, 'route', e.target.value)
-                                            }
-                                        />
-                                        <Label className="text-xs">Order</Label>
-                                        <Input
-                                            className="h-8 w-16"
-                                            type="number"
-                                            value={t.order}
-                                            onChange={(e) =>
-                                                updateTabField(
-                                                    t.id,
-                                                    'order',
-                                                    Number(e.target.value) || 0
-                                                )
-                                            }
-                                        />
-                                        <Label className="text-xs">Visible</Label>
-                                        <Switch
-                                            checked={t.visible}
-                                            onCheckedChange={(v) =>
-                                                updateTabField(t.id, 'visible', v)
-                                            }
-                                        />
-                                        {t.isCustom && (
-                                            <Button
-                                                type="button"
-                                                size="sm"
-                                                variant="destructive"
-                                                onClick={() => removeTab(t.id)}
-                                            >
-                                                Remove Tab
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <Button variant="ghost" size="icon" className="h-6 w-6" disabled={tabIdx === 0} onClick={() => moveTab(t.id, 'up')}>
+                                                <ArrowUp className="h-3 w-3" />
                                             </Button>
-                                        )}
-                                    </div>
-                                    <div className="ml-2 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-[11px] font-medium text-neutral-600">
-                                                Sub Tabs
-                                            </div>
-                                            <Button
-                                                type="button"
-                                                size="sm"
-                                                variant="secondary"
-                                                onClick={() => addSubTab(t.id)}
-                                            >
-                                                Add Sub Tab
+                                            <span className="text-xs text-muted-foreground">{tabIdx + 1}</span>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6" disabled={tabIdx === sortedTabs.length - 1} onClick={() => moveTab(t.id, 'down')}>
+                                                <ArrowDown className="h-3 w-3" />
                                             </Button>
                                         </div>
-                                        {(t.subTabs || [])
-                                            .slice()
-                                            .sort((a, b) => (a.order || 0) - (b.order || 0))
-                                            .map((s) => (
-                                                <div
-                                                    key={s.id}
-                                                    className="flex flex-wrap items-center gap-2 rounded border p-2"
-                                                >
-                                                    <div className="grow text-[11px] font-medium">
-                                                        {s.id}
-                                                    </div>
-                                                    <Label className="text-xs">Label</Label>
-                                                    <Input
-                                                        className="h-8 w-36"
-                                                        value={s.label || ''}
-                                                        onChange={(e) => {
-                                                            const tabs = settings.sidebar.tabs.map(
-                                                                (tab) => {
-                                                                    if (tab.id !== t.id) return tab;
-                                                                    const subTabs = (
-                                                                        tab.subTabs || []
-                                                                    ).map((sub) =>
-                                                                        sub.id === s.id
-                                                                            ? {
-                                                                                  ...sub,
-                                                                                  label: e.target
-                                                                                      .value,
-                                                                              }
-                                                                            : sub
-                                                                    );
-                                                                    return { ...tab, subTabs };
-                                                                }
-                                                            );
-                                                            update('sidebar', {
-                                                                ...settings.sidebar,
-                                                                tabs,
-                                                            });
-                                                        }}
-                                                    />
-                                                    <Label className="text-xs">Route</Label>
-                                                    <Input
-                                                        className="h-8 w-56"
-                                                        value={s.route}
-                                                        onChange={(e) => {
-                                                            const tabs = settings.sidebar.tabs.map(
-                                                                (tab) => {
-                                                                    if (tab.id !== t.id) return tab;
-                                                                    const subTabs = (
-                                                                        tab.subTabs || []
-                                                                    ).map((sub) =>
-                                                                        sub.id === s.id
-                                                                            ? {
-                                                                                  ...sub,
-                                                                                  route: e.target
-                                                                                      .value,
-                                                                              }
-                                                                            : sub
-                                                                    );
-                                                                    return { ...tab, subTabs };
-                                                                }
-                                                            );
-                                                            update('sidebar', {
-                                                                ...settings.sidebar,
-                                                                tabs,
-                                                            });
-                                                        }}
-                                                    />
-                                                    <Label className="text-xs">Order</Label>
-                                                    <Input
-                                                        className="h-8 w-16"
-                                                        type="number"
-                                                        value={s.order}
-                                                        onChange={(e) => {
-                                                            const order =
-                                                                Number(e.target.value) || 0;
-                                                            const tabs = settings.sidebar.tabs.map(
-                                                                (tab) => {
-                                                                    if (tab.id !== t.id) return tab;
-                                                                    const subTabs = (
-                                                                        tab.subTabs || []
-                                                                    ).map((sub) =>
-                                                                        sub.id === s.id
-                                                                            ? { ...sub, order }
-                                                                            : sub
-                                                                    );
-                                                                    return { ...tab, subTabs };
-                                                                }
-                                                            );
-                                                            update('sidebar', {
-                                                                ...settings.sidebar,
-                                                                tabs,
-                                                            });
-                                                        }}
-                                                    />
-                                                    <Label className="text-xs">Visible</Label>
-                                                    <Switch
-                                                        checked={s.visible}
-                                                        onCheckedChange={(v) => {
-                                                            const tabs = settings.sidebar.tabs.map(
-                                                                (tab) => {
-                                                                    if (tab.id !== t.id) return tab;
-                                                                    const subTabs = (
-                                                                        tab.subTabs || []
-                                                                    ).map((sub) =>
-                                                                        sub.id === s.id
-                                                                            ? { ...sub, visible: v }
-                                                                            : sub
-                                                                    );
-                                                                    return { ...tab, subTabs };
-                                                                }
-                                                            );
-                                                            update('sidebar', {
-                                                                ...settings.sidebar,
-                                                                tabs,
-                                                            });
-                                                        }}
-                                                    />
-                                                    {s.id.startsWith('custom-sub-') && (
-                                                        <Button
-                                                            type="button"
-                                                            size="sm"
-                                                            variant="destructive"
-                                                            onClick={() => removeSubTab(t.id, s.id)}
-                                                        >
-                                                            Remove
+                                        <div className="flex flex-1 flex-wrap items-center gap-2">
+                                            <div className="grow text-xs font-medium">{t.id}</div>
+                                            <Label className="text-xs">Label</Label>
+                                            <Input className="h-8 w-40" value={t.label || ''} onChange={(e) => updateTabField(t.id, 'label', e.target.value)} />
+                                            <Label className="text-xs">Route</Label>
+                                            <Input className="h-8 w-56" value={t.route || ''} onChange={(e) => updateTabField(t.id, 'route', e.target.value)} />
+                                            <Label className="text-xs">Visible</Label>
+                                            <Switch checked={t.visible} onCheckedChange={(v) => updateTabField(t.id, 'visible', v)} />
+                                            {t.isCustom && (
+                                                <Button type="button" size="sm" variant="destructive" onClick={() => removeTab(t.id)}>
+                                                    Remove Tab
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="ml-8 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="text-[11px] font-medium text-neutral-600">Sub Tabs</div>
+                                            <Button type="button" size="sm" variant="secondary" onClick={() => addSubTab(t.id)}>Add Sub Tab</Button>
+                                        </div>
+                                        {(() => {
+                                            const sortedSubs = (t.subTabs || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+                                            return sortedSubs.map((s, subIdx) => (
+                                                <div key={s.id} className="flex items-center gap-2 rounded border p-2">
+                                                    <div className="flex flex-col items-center gap-0.5">
+                                                        <Button variant="ghost" size="icon" className="h-5 w-5" disabled={subIdx === 0} onClick={() => moveSubTab(t.id, s.id, 'up')}>
+                                                            <ArrowUp className="h-3 w-3" />
                                                         </Button>
-                                                    )}
+                                                        <span className="text-[10px] text-muted-foreground">{subIdx + 1}</span>
+                                                        <Button variant="ghost" size="icon" className="h-5 w-5" disabled={subIdx === sortedSubs.length - 1} onClick={() => moveSubTab(t.id, s.id, 'down')}>
+                                                            <ArrowDown className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
+                                                    <div className="flex flex-1 flex-wrap items-center gap-2">
+                                                        <div className="grow text-[11px] font-medium">{s.id}</div>
+                                                        <Label className="text-xs">Label</Label>
+                                                        <Input className="h-8 w-36" value={s.label || ''} onChange={(e) => {
+                                                            const tabs = settings.sidebar.tabs.map((tab) => {
+                                                                if (tab.id !== t.id) return tab;
+                                                                const subTabs = (tab.subTabs || []).map((sub) => sub.id === s.id ? { ...sub, label: e.target.value } : sub);
+                                                                return { ...tab, subTabs };
+                                                            });
+                                                            update('sidebar', { ...settings.sidebar, tabs });
+                                                        }} />
+                                                        <Label className="text-xs">Route</Label>
+                                                        <Input className="h-8 w-56" value={s.route} onChange={(e) => {
+                                                            const tabs = settings.sidebar.tabs.map((tab) => {
+                                                                if (tab.id !== t.id) return tab;
+                                                                const subTabs = (tab.subTabs || []).map((sub) => sub.id === s.id ? { ...sub, route: e.target.value } : sub);
+                                                                return { ...tab, subTabs };
+                                                            });
+                                                            update('sidebar', { ...settings.sidebar, tabs });
+                                                        }} />
+                                                        <Label className="text-xs">Visible</Label>
+                                                        <Switch checked={s.visible} onCheckedChange={(v) => {
+                                                            const tabs = settings.sidebar.tabs.map((tab) => {
+                                                                if (tab.id !== t.id) return tab;
+                                                                const subTabs = (tab.subTabs || []).map((sub) => sub.id === s.id ? { ...sub, visible: v } : sub);
+                                                                return { ...tab, subTabs };
+                                                            });
+                                                            update('sidebar', { ...settings.sidebar, tabs });
+                                                        }} />
+                                                        {s.id.startsWith('custom-sub-') && (
+                                                            <Button type="button" size="sm" variant="destructive" onClick={() => removeSubTab(t.id, s.id)}>Remove</Button>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            ))}
+                                            ));
+                                        })()}
                                     </div>
                                 </div>
-                            ))}
+                            ));
+                        })()}
                     </div>
                 </div>
             </Card>
@@ -433,100 +404,67 @@ export default function StudentDisplaySettings(): JSX.Element {
                             Add Custom Widget
                         </Button>
                     </div>
-                    {settings.dashboard.widgets
-                        .slice()
-                        .sort((a, b) => (a.order || 0) - (b.order || 0))
-                        .map((w, idx) => (
-                            <div
-                                key={`${w.id}-${w.title ?? ''}`}
-                                className="flex flex-wrap items-center gap-2 rounded border p-2"
-                            >
-                                <div className="grow text-xs font-medium">
-                                    {w.id}
-                                    {w.isCustom && w.title ? `: ${w.title}` : ''}
+                    {(() => {
+                        const sorted = settings.dashboard.widgets
+                            .slice()
+                            .sort((a, b) => (a.order || 0) - (b.order || 0));
+                        return sorted.map((w, idx) => {
+                            // Find the original index in the unsorted array for updates
+                            const origIdx = settings.dashboard.widgets.indexOf(w);
+                            return (
+                                <div
+                                    key={`${w.id}-${w.title ?? ''}-${origIdx}`}
+                                    className="flex items-center gap-2 rounded border p-2"
+                                >
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => moveWidget(idx, 'up')}>
+                                            <ArrowUp className="h-3 w-3" />
+                                        </Button>
+                                        <span className="text-xs text-muted-foreground">{idx + 1}</span>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === sorted.length - 1} onClick={() => moveWidget(idx, 'down')}>
+                                            <ArrowDown className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                    <div className="flex flex-1 flex-wrap items-center gap-2">
+                                        <div className="grow text-xs font-medium">
+                                            {w.id}
+                                            {w.isCustom && w.title ? `: ${w.title}` : ''}
+                                        </div>
+                                        {w.id === 'custom' && (
+                                            <>
+                                                <Label className="text-xs">Title</Label>
+                                                <Input className="h-8 w-40" value={w.title || ''} onChange={(e) => {
+                                                    const widgets = settings.dashboard.widgets.map((x, i) => i === origIdx ? { ...x, title: e.target.value } : x);
+                                                    update('dashboard', { widgets });
+                                                }} />
+                                                <Label className="text-xs">Sub Title</Label>
+                                                <Input className="h-8 w-48" value={w.subTitle || ''} onChange={(e) => {
+                                                    const widgets = settings.dashboard.widgets.map((x, i) => i === origIdx ? { ...x, subTitle: e.target.value } : x);
+                                                    update('dashboard', { widgets });
+                                                }} />
+                                                <Label className="text-xs">Link</Label>
+                                                <Input className="h-8 w-56" placeholder="/route or https://..." value={w.link || ''} onChange={(e) => {
+                                                    const widgets = settings.dashboard.widgets.map((x, i) => i === origIdx ? { ...x, link: e.target.value } : x);
+                                                    update('dashboard', { widgets });
+                                                }} />
+                                            </>
+                                        )}
+                                        <Label className="text-xs">Visible</Label>
+                                        <Switch
+                                            checked={w.visible}
+                                            onCheckedChange={(v) => {
+                                                const widgets = settings.dashboard.widgets.map((x, i) => i === origIdx ? { ...x, visible: v } : x);
+                                                update('dashboard', { widgets });
+                                            }}
+                                        />
+                                        {(w.id === 'custom' || w.isCustom) && (
+                                            <Button type="button" size="sm" variant="destructive" onClick={() => removeWidgetAt(origIdx)}>Remove</Button>
+                                        )}
+                                    </div>
                                 </div>
-                                {w.id === 'custom' && (
-                                    <>
-                                        <Label className="text-xs">Title</Label>
-                                        <Input
-                                            className="h-8 w-40"
-                                            value={w.title || ''}
-                                            onChange={(e) => {
-                                                const widgets = settings.dashboard.widgets.map(
-                                                    (x, i) =>
-                                                        i === idx
-                                                            ? { ...x, title: e.target.value }
-                                                            : x
-                                                );
-                                                update('dashboard', { widgets });
-                                            }}
-                                        />
-                                        <Label className="text-xs">Sub Title</Label>
-                                        <Input
-                                            className="h-8 w-48"
-                                            value={w.subTitle || ''}
-                                            onChange={(e) => {
-                                                const widgets = settings.dashboard.widgets.map(
-                                                    (x, i) =>
-                                                        i === idx
-                                                            ? { ...x, subTitle: e.target.value }
-                                                            : x
-                                                );
-                                                update('dashboard', { widgets });
-                                            }}
-                                        />
-                                        <Label className="text-xs">Link</Label>
-                                        <Input
-                                            className="h-8 w-56"
-                                            placeholder="/route or https://..."
-                                            value={w.link || ''}
-                                            onChange={(e) => {
-                                                const widgets = settings.dashboard.widgets.map(
-                                                    (x, i) =>
-                                                        i === idx
-                                                            ? { ...x, link: e.target.value }
-                                                            : x
-                                                );
-                                                update('dashboard', { widgets });
-                                            }}
-                                        />
-                                    </>
-                                )}
-                                <Label className="text-xs">Order</Label>
-                                <Input
-                                    className="h-8 w-16"
-                                    type="number"
-                                    value={w.order}
-                                    onChange={(e) => {
-                                        const order = Number(e.target.value) || 0;
-                                        const widgets = settings.dashboard.widgets.map((x, i) =>
-                                            i === idx ? { ...x, order } : x
-                                        );
-                                        update('dashboard', { widgets });
-                                    }}
-                                />
-                                <Label className="text-xs">Visible</Label>
-                                <Switch
-                                    checked={w.visible}
-                                    onCheckedChange={(v) => {
-                                        const widgets = settings.dashboard.widgets.map((x, i) =>
-                                            i === idx ? { ...x, visible: v } : x
-                                        );
-                                        update('dashboard', { widgets });
-                                    }}
-                                />
-                                {(w.id === 'custom' || w.isCustom) && (
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="destructive"
-                                        onClick={() => removeWidgetAt(idx)}
-                                    >
-                                        Remove
-                                    </Button>
-                                )}
-                            </div>
-                        ))}
+                            );
+                        });
+                    })()}
                 </div>
             </Card>
 
@@ -732,46 +670,28 @@ export default function StudentDisplaySettings(): JSX.Element {
                 <div className="space-y-3 p-4 pt-0">
                     {/* Tabs visibility */}
                     <div className="space-y-2">
-                        {settings.courseDetails.tabs
-                            .slice()
-                            .sort((a, b) => (a.order || 0) - (b.order || 0))
-                            .map((t) => (
-                                <div
-                                    key={t.id}
-                                    className="flex flex-wrap items-center gap-2 rounded border p-2"
-                                >
+                        {(() => {
+                            const sorted = settings.courseDetails.tabs.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+                            return sorted.map((t, idx) => (
+                                <div key={t.id} className="flex items-center gap-2 rounded border p-2">
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => update('courseDetails', { ...settings.courseDetails, tabs: swapTabOrder(settings.courseDetails.tabs, t.id, 'up') })}>
+                                            <ArrowUp className="h-3 w-3" />
+                                        </Button>
+                                        <span className="text-xs text-muted-foreground">{idx + 1}</span>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === sorted.length - 1} onClick={() => update('courseDetails', { ...settings.courseDetails, tabs: swapTabOrder(settings.courseDetails.tabs, t.id, 'down') })}>
+                                            <ArrowDown className="h-3 w-3" />
+                                        </Button>
+                                    </div>
                                     <div className="grow text-xs font-medium">{t.id}</div>
-                                    <Label className="text-xs">Order</Label>
-                                    <Input
-                                        className="h-8 w-16"
-                                        type="number"
-                                        value={t.order}
-                                        onChange={(e) => {
-                                            const order = Number(e.target.value) || 0;
-                                            const tabs = settings.courseDetails.tabs.map((x) =>
-                                                x.id === t.id ? { ...x, order } : x
-                                            );
-                                            update('courseDetails', {
-                                                ...settings.courseDetails,
-                                                tabs,
-                                            });
-                                        }}
-                                    />
                                     <Label className="text-xs">Visible</Label>
-                                    <Switch
-                                        checked={t.visible}
-                                        onCheckedChange={(v) => {
-                                            const tabs = settings.courseDetails.tabs.map((x) =>
-                                                x.id === t.id ? { ...x, visible: v } : x
-                                            );
-                                            update('courseDetails', {
-                                                ...settings.courseDetails,
-                                                tabs,
-                                            });
-                                        }}
-                                    />
+                                    <Switch checked={t.visible} onCheckedChange={(v) => {
+                                        const tabs = settings.courseDetails.tabs.map((x) => x.id === t.id ? { ...x, visible: v } : x);
+                                        update('courseDetails', { ...settings.courseDetails, tabs });
+                                    }} />
                                 </div>
-                            ))}
+                            ));
+                        })()}
                     </div>
 
                     {/* Default tab select */}
@@ -949,40 +869,28 @@ export default function StudentDisplaySettings(): JSX.Element {
                 <div className="space-y-3 p-4 pt-0">
                     {/* Tabs visibility */}
                     <div className="space-y-2">
-                        {settings.allCourses.tabs
-                            .slice()
-                            .sort((a, b) => (a.order || 0) - (b.order || 0))
-                            .map((t) => (
-                                <div
-                                    key={t.id}
-                                    className="flex flex-wrap items-center gap-2 rounded border p-2"
-                                >
+                        {(() => {
+                            const sorted = settings.allCourses.tabs.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+                            return sorted.map((t, idx) => (
+                                <div key={t.id} className="flex items-center gap-2 rounded border p-2">
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => update('allCourses', { ...settings.allCourses, tabs: swapTabOrder(settings.allCourses.tabs, t.id, 'up') })}>
+                                            <ArrowUp className="h-3 w-3" />
+                                        </Button>
+                                        <span className="text-xs text-muted-foreground">{idx + 1}</span>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === sorted.length - 1} onClick={() => update('allCourses', { ...settings.allCourses, tabs: swapTabOrder(settings.allCourses.tabs, t.id, 'down') })}>
+                                            <ArrowDown className="h-3 w-3" />
+                                        </Button>
+                                    </div>
                                     <div className="grow text-xs font-medium">{t.id}</div>
-                                    <Label className="text-xs">Order</Label>
-                                    <Input
-                                        className="h-8 w-16"
-                                        type="number"
-                                        value={t.order}
-                                        onChange={(e) => {
-                                            const order = Number(e.target.value) || 0;
-                                            const tabs = settings.allCourses.tabs.map((x) =>
-                                                x.id === t.id ? { ...x, order } : x
-                                            );
-                                            update('allCourses', { ...settings.allCourses, tabs });
-                                        }}
-                                    />
                                     <Label className="text-xs">Visible</Label>
-                                    <Switch
-                                        checked={t.visible}
-                                        onCheckedChange={(v) => {
-                                            const tabs = settings.allCourses.tabs.map((x) =>
-                                                x.id === t.id ? { ...x, visible: v } : x
-                                            );
-                                            update('allCourses', { ...settings.allCourses, tabs });
-                                        }}
-                                    />
+                                    <Switch checked={t.visible} onCheckedChange={(v) => {
+                                        const tabs = settings.allCourses.tabs.map((x) => x.id === t.id ? { ...x, visible: v } : x);
+                                        update('allCourses', { ...settings.allCourses, tabs });
+                                    }} />
                                 </div>
-                            ))}
+                            ));
+                        })()}
                     </div>
 
                     {/* Default tab select */}

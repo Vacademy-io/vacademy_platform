@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface NodeDedupeRecordRepository extends JpaRepository<NodeDedupeRecord, String> {
     Optional<NodeDedupeRecord> findByNodeTemplateIdAndOperationKeyAndScheduleRunId(String nodeTemplateId,
             String operationKey, String scheduleRunId);
+
+    boolean existsByOperationKey(String operationKey);
 }

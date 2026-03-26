@@ -34,7 +34,7 @@ function DayDot({
   status,
   label,
 }: {
-  status: "PRESENT" | "ABSENT" | "PENDING" | "NO_CLASS";
+  status: "PRESENT" | "ABSENT" | "UNMARKED" | "PENDING" | "NO_CLASS";
   label: string;
 }) {
   return (
@@ -46,6 +46,8 @@ function DayDot({
             "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300",
           status === "ABSENT" &&
             "bg-red-100 text-red-700 ring-1 ring-red-300",
+          status === "UNMARKED" &&
+            "bg-slate-100 text-slate-400 ring-1 ring-slate-200",
           status === "PENDING" &&
             "bg-slate-100 text-slate-400 ring-1 ring-slate-200",
           status === "NO_CLASS" &&
@@ -56,9 +58,11 @@ function DayDot({
           ? "✓"
           : status === "ABSENT"
             ? "✕"
-            : status === "PENDING"
-              ? "•"
-              : "–"}
+            : status === "UNMARKED"
+              ? "?"
+              : status === "PENDING"
+                ? "•"
+                : "–"}
       </div>
       <span className="text-[10px] text-muted-foreground">{label}</span>
     </div>

@@ -24,6 +24,8 @@ import vacademy.io.admin_core_service.features.workflow.enums.NodeType;
 import vacademy.io.admin_core_service.features.workflow.dto.execution_log.EmailExecutionDetails;
 import vacademy.io.common.logging.SentryLogger;
 
+import vacademy.io.admin_core_service.features.workflow.service.NotificationRateLimitService;
+
 import java.util.*;
 
 @Slf4j
@@ -36,7 +38,8 @@ public class SendEmailNodeHandler implements NodeHandler {
     private final NotificationService notificationService;
     private final TemplateRepository templateRepository;
     private final WorkflowExecutionLogger executionLogger;
-    private final Map<String, Template> templateCache = new HashMap<>();
+    private final NotificationRateLimitService rateLimitService;
+    private final Map<String, Template> templateCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
     public boolean supports(String nodeType) {
@@ -50,6 +53,17 @@ public class SendEmailNodeHandler implements NodeHandler {
             int countProcessed) {
 
         log.info("SendEmailNodeHandler.handle() invoked.");
+
+        // Dry-run check: skip actual email sending but log the intent
+        Boolean dryRun = (Boolean) context.getOrDefault("dryRun", false);
+        if (Boolean.TRUE.equals(dryRun)) {
+            log.info("[DRY RUN] SendEmailNodeHandler - skipping actual email send. Config: {}", nodeConfigJson);
+            Map<String, Object> dryRunResult = new HashMap<>();
+            dryRunResult.put("dryRun", true);
+            dryRunResult.put("skipped", "email_send");
+            dryRunResult.put("details", "Email send skipped in dry-run mode. Config: " + nodeConfigJson);
+            return dryRunResult;
+        }
 
         String workflowExecutionId = (String) context.get("executionId");
         String nodeId = (String) context.get("currentNodeId");
@@ -271,6 +285,20 @@ public class SendEmailNodeHandler implements NodeHandler {
 
                 // --- Send Regular Email Batches ---
                 if (!regularBatchMap.isEmpty()) {
+                    // Rate limit check
+                    int emailCount = regularBatchMap.values().stream()
+                            .mapToInt(dto -> dto.getUsers() != null ? dto.getUsers().size() : 0).sum();
+                    if (!rateLimitService.checkAndIncrement(finalInstituteId, "EMAIL", emailCount)) {
+                        log.warn("EMAIL rate limit exceeded for institute: {}. Skipping {} emails.", finalInstituteId, emailCount);
+                        changes.put("rateLimitExceeded", true);
+                        changes.put("status", "rate_limited");
+                        if (logId != null) {
+                            executionLogger.completeNodeExecution(logId, ExecutionLogStatus.FAILED, null,
+                                    "Email rate limit exceeded for institute: " + finalInstituteId);
+                        }
+                        return changes;
+                    }
+
                     List<NotificationDTO> finalBatchList = new ArrayList<>(regularBatchMap.values());
                     try {
                         String result = notificationService.sendEmailToUsersMultiple(finalBatchList, finalInstituteId);

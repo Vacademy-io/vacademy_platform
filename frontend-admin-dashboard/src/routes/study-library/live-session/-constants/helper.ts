@@ -97,7 +97,7 @@ export interface LiveSessionStep2RequestDTO {
 
 export interface NotificationActionDTO {
     id: string | null;
-    type: 'ON_CREATE' | 'ON_LIVE' | 'BEFORE_LIVE';
+    type: 'ON_CREATE' | 'ON_LIVE' | 'BEFORE_LIVE' | 'ATTENDANCE';
     notify_by: NotifyBy;
     time: string | null;
     notify: boolean;
@@ -106,6 +106,8 @@ export interface NotificationActionDTO {
 export interface NotifyBy {
     mail: boolean;
     whatsapp: boolean;
+    push_notification: boolean;
+    system_notification: boolean;
 }
 
 export interface CustomFieldDTO {
@@ -370,14 +372,18 @@ export function transformFormToDTOStep2(
 
     const addedNotificationActions: NotificationActionDTO[] = [];
 
+    const notifyByPayload: NotifyBy = {
+        mail: notifyBy.mail,
+        whatsapp: notifyBy.whatsapp,
+        push_notification: notifyBy.push_notification,
+        system_notification: notifyBy.system_notification,
+    };
+
     if (notifySettings.onCreate) {
         addedNotificationActions.push({
             id: null,
             type: 'ON_CREATE',
-            notify_by: {
-                mail: notifyBy.mail,
-                whatsapp: notifyBy.whatsapp,
-            },
+            notify_by: notifyByPayload,
             notify: true,
             time: null,
         });
@@ -387,10 +393,7 @@ export function transformFormToDTOStep2(
         addedNotificationActions.push({
             id: null,
             type: 'ON_LIVE',
-            notify_by: {
-                mail: notifyBy.mail,
-                whatsapp: notifyBy.whatsapp,
-            },
+            notify_by: notifyByPayload,
             notify: true,
             time: null,
         });
@@ -401,13 +404,20 @@ export function transformFormToDTOStep2(
             addedNotificationActions.push({
                 id: null,
                 type: 'BEFORE_LIVE',
-                notify_by: {
-                    mail: notifyBy.mail,
-                    whatsapp: notifyBy.whatsapp,
-                },
+                notify_by: notifyByPayload,
                 notify: true,
                 time,
             });
+        });
+    }
+
+    if (notifySettings.onAttendance) {
+        addedNotificationActions.push({
+            id: null,
+            type: 'ATTENDANCE',
+            notify_by: notifyByPayload,
+            notify: true,
+            time: null,
         });
     }
     const { added_fields, update_fields } = fields.reduce(

@@ -9,5 +9,14 @@ public enum NodeType {
     SEND_EMAIL,
     SEND_WHATSAPP,
     HTTP_REQUEST,
-    COMBOT
+    COMBOT,
+    DELAY,
+    FILTER,
+    AGGREGATE,
+    CONDITION,
+    LOOP,
+    MERGE,
+    SCHEDULE_TASK,
+    UPDATE_RECORD,
+    SEND_PUSH_NOTIFICATION
 }

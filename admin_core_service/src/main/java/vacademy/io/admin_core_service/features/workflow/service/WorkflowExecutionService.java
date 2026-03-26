@@ -101,6 +101,39 @@ public class WorkflowExecutionService {
         return PageRequest.of(pageNo, pageSize, Sort.by(orders));
     }
 
+    @Transactional(readOnly = true)
+    public WorkflowExecutionSummaryDTO getExecutionSummary(String workflowId, Instant startDate, Instant endDate) {
+        Object[] result = workflowExecutionRepository.getExecutionSummary(workflowId, startDate, endDate);
+
+        if (result == null || result.length == 0 || result[0] == null) {
+            return WorkflowExecutionSummaryDTO.builder()
+                    .totalExecutions(0).completed(0).failed(0).processing(0).pending(0)
+                    .avgExecutionTimeMs(0).successRate(0)
+                    .build();
+        }
+
+        // Native query returns Object[] with column values
+        Object[] row = (result[0] instanceof Object[]) ? (Object[]) result[0] : result;
+
+        long total = ((Number) row[0]).longValue();
+        long completed = ((Number) row[1]).longValue();
+        long failed = ((Number) row[2]).longValue();
+        long processing = ((Number) row[3]).longValue();
+        long pending = ((Number) row[4]).longValue();
+        double avgTimeMs = ((Number) row[5]).doubleValue();
+        double successRate = total > 0 ? (double) completed / total : 0.0;
+
+        return WorkflowExecutionSummaryDTO.builder()
+                .totalExecutions(total)
+                .completed(completed)
+                .failed(failed)
+                .processing(processing)
+                .pending(pending)
+                .avgExecutionTimeMs(Math.round(avgTimeMs * 100.0) / 100.0)
+                .successRate(Math.round(successRate * 10000.0) / 10000.0)
+                .build();
+    }
+
     private WorkflowExecutionResponseDTO mapToResponse(WorkflowExecutionProjection projection) {
         return WorkflowExecutionResponseDTO.builder()
                 .id(projection.getId())

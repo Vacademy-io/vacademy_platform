@@ -73,6 +73,8 @@ public class PackageService {
                     List.of(PackageStatusEnum.ACTIVE.name()),
                     learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    learnerPackageFilterDTO.getLevelIds(),
+                    learnerPackageFilterDTO.getSessionIds(),
                     List.of(LevelStatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
@@ -88,6 +90,7 @@ public class PackageService {
             learnerPackageDetail = packageRepository.getCatalogPackageDetail(
                     instituteId,
                     learnerPackageFilterDTO.getLevelIds(),
+                    learnerPackageFilterDTO.getSessionIds(),
                     List.of(PackageStatusEnum.ACTIVE.name()),
                     learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
@@ -126,7 +129,7 @@ public class PackageService {
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
 
-            return new PackageDetailDTO(
+            PackageDetailDTO dto = new PackageDetailDTO(
                     projection.getId(),
                     projection.getPackageName(),
                     projection.getThumbnailFileId(),
@@ -151,6 +154,9 @@ public class PackageService {
                     projection.getLevelIds(),
                     projection.getReadTimeInMinutes(),
                     projection.getPackageType());
+            dto.setSessionId(projection.getSessionId());
+            dto.setSessionName(projection.getSessionName());
+            return dto;
         }).toList();
 
         return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());

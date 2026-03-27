@@ -58,6 +58,7 @@ export interface AllCourseFilters {
     sort_columns: Record<string, 'ASC' | 'DESC'>;
     package_ids?: string[];
     package_session_ids?: string[];
+    session_ids?: string[];
     package_session_filter?: 'PARENTS_ONLY' | 'CHILDREN_ONLY' | null;
 }
 
@@ -105,6 +106,8 @@ export interface CourseItem {
     package_session_id: string;
     level_id: string;
     level_name: string;
+    session_id: string;
+    session_name: string;
     instructors: CourseInstructor[];
 }
 

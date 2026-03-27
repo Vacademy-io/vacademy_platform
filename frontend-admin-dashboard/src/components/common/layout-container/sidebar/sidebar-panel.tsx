@@ -103,12 +103,14 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
     const activeSettingsTab = (routerState as unknown as Record<string, string>)?.selectedTab || 'tab';
 
     return (
-        <div
+        <nav
             className={cn(
                 'flex h-full flex-col border-r border-neutral-200 bg-neutral-50',
                 'transition-[width,opacity] duration-200 ease-in-out',
                 'overflow-hidden'
             )}
+            role="navigation"
+            aria-label={`${activeCategory} navigation panel`}
             style={{
                 width: panelOpen ? 250 : 0,
                 opacity: panelOpen ? 1 : 0,
@@ -119,15 +121,25 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
             <div className="flex flex-col border-b border-neutral-200">
                 <div
                     className="flex cursor-pointer items-center gap-2.5 px-4 py-4"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Go to ${instituteName} dashboard`}
                     onClick={() => {
                         navigate({ to: '/dashboard' });
                         onItemClick?.();
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            navigate({ to: '/dashboard' });
+                            onItemClick?.();
+                        }
                     }}
                 >
                     {instituteLogo && (
                         <img
                             src={instituteLogo}
-                            alt="logo"
+                            alt={`${instituteName} logo`}
                             className="h-8 w-auto max-w-[36px] flex-shrink-0 object-contain"
                         />
                     )}
@@ -202,7 +214,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                     <SupportOptions />
                 </div>
             )}
-        </div>
+        </nav>
     );
 };
 
@@ -276,6 +288,11 @@ function SupportOptions() {
             <PopoverTrigger asChild>
                 <div
                     className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-white"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Support options"
+                    aria-haspopup="true"
+                    aria-expanded={open}
                     onMouseEnter={() => setHover(true)}
                     onMouseLeave={() => setHover(false)}
                 >
@@ -300,6 +317,7 @@ function SupportOptions() {
                             <CommandItem>
                                 <div
                                     role="button"
+                                    aria-label="Contact support via WhatsApp"
                                     className="flex w-full cursor-pointer items-center gap-2"
                                     onClick={goToWhatsappSupport}
                                 >
@@ -310,6 +328,7 @@ function SupportOptions() {
                             <CommandItem>
                                 <div
                                     role="button"
+                                    aria-label="Contact support via email"
                                     className="flex w-full cursor-pointer items-center gap-2"
                                     onClick={goToMailSupport}
                                 >

@@ -59,6 +59,83 @@ const BASE_CATEGORIES: CategoryConfig[] = [
     { id: 'AI', label: 'AI', icon: Sparkle },
 ];
 
+/** Animated pill background used by category, recent, and settings buttons */
+const ActivePill: React.FC<{ className?: string }> = ({ className }) => (
+    <motion.div
+        layoutId="category-rail-active"
+        className={cn('absolute inset-0 rounded-xl', className || 'bg-white')}
+        transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
+    />
+);
+
+/** Extracted component to reduce cognitive complexity of CategoryRail */
+function CategoryButton({
+    label,
+    categoryId,
+    Icon,
+    isActive,
+    isLocked,
+    activeBg,
+    activeIconClass,
+    activeTextClass,
+    onCategoryChange,
+    onLockedClick,
+}: {
+    label: string;
+    categoryId: CategoryId;
+    Icon: React.FC<{ size: number; weight: string; className: string }>;
+    isActive: boolean;
+    isLocked: boolean | undefined;
+    activeBg?: string;
+    activeIconClass?: string;
+    activeTextClass?: string;
+    onCategoryChange: (categoryId: CategoryId) => void;
+    onLockedClick: () => void;
+}) {
+    return (
+        <button
+            className={cn(
+                'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
+                'hover:bg-white/10',
+                isLocked && 'cursor-not-allowed opacity-60'
+            )}
+            aria-label={`${label} category${isActive ? ' (active)' : ''}${isLocked ? ' (locked)' : ''}`}
+            aria-current={isActive ? 'true' : undefined}
+            onClick={() => {
+                if (isLocked) {
+                    onLockedClick();
+                    return;
+                }
+                onCategoryChange(categoryId);
+            }}
+        >
+            {isActive && <ActivePill className={activeBg} />}
+            <span className="relative z-10">
+                {isLocked ? (
+                    <LockKey size={22} weight="duotone" className="text-neutral-400" />
+                ) : (
+                    <Icon
+                        size={22}
+                        weight={isActive ? 'fill' : 'regular'}
+                        className={cn(
+                            'transition-colors duration-200',
+                            isActive ? activeIconClass || 'text-primary-600' : 'text-white/70'
+                        )}
+                    />
+                )}
+            </span>
+            <span
+                className={cn(
+                    'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
+                    isActive ? activeTextClass || 'text-white' : 'text-white/70'
+                )}
+            >
+                {label}
+            </span>
+        </button>
+    );
+}
+
 export const CategoryRail: React.FC<CategoryRailProps> = ({
     activeCategory,
     onCategoryChange,
@@ -105,93 +182,31 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
 
     const renderCategoryButton = (cat: CategoryConfig) => {
         const isActive = activeCategory === cat.id && !isSettingsActive;
-        const colors =
-            cat.id !== 'RECENT'
-                ? CATEGORY_COLORS[cat.id as 'CRM' | 'LMS' | 'AI']
-                : null;
         const isLocked =
             cat.id !== 'RECENT' &&
             roleDisplay?.sidebarCategories?.find((c) => c.id === cat.id)?.locked;
+        const colors =
+            cat.id !== 'RECENT' ? CATEGORY_COLORS[cat.id as 'CRM' | 'LMS' | 'AI'] : undefined;
 
         const buttonContent = (
-            <button
-                className={cn(
-                    'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
-                    'hover:bg-white/10',
-                    isLocked && 'cursor-not-allowed opacity-60'
-                )}
-                onClick={() => {
-                    if (isLocked) {
-                        navigate({
-                            to: '/locked-feature',
-                            search: { feature: `${cat.label} Category` },
-                        });
-                        return;
-                    }
-                    onCategoryChange(cat.id);
-                }}
-            >
-                {/* Animated pill background */}
-                {isActive && (
-                    <motion.div
-                        layoutId="category-rail-active"
-                        className={cn(
-                            'absolute inset-0 rounded-xl',
-                            colors?.railActiveBg || 'bg-white'
-                        )}
-                        transition={{
-                            type: 'spring',
-                            bounce: 0.15,
-                            duration: 0.5,
-                        }}
-                    />
-                )}
-
-                {/* Icon */}
-                <span className="relative z-10">
-                    {isLocked ? (
-                        <LockKey
-                            size={22}
-                            weight="duotone"
-                            className="text-neutral-400"
-                        />
-                    ) : (
-                        React.createElement(cat.icon, {
-                            size: 22,
-                            weight: isActive ? 'fill' : 'regular',
-                            className: cn(
-                                'transition-colors duration-200',
-                                isActive
-                                    ? colors?.railIconActive || 'text-primary-600'
-                                    : 'text-white/70'
-                            ),
-                        })
-                    )}
-                </span>
-
-                {/* Label */}
-                <span
-                    className={cn(
-                        'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
-                        isActive
-                            ? colors?.text || 'text-white'
-                            : 'text-white/70'
-                    )}
-                >
-                    {cat.label}
-                </span>
-            </button>
+            <CategoryButton
+                label={cat.label}
+                categoryId={cat.id}
+                Icon={cat.icon}
+                isActive={isActive}
+                isLocked={isLocked}
+                activeBg={colors?.railActiveBg}
+                activeIconClass={colors?.railIconActive}
+                activeTextClass={colors?.text}
+                onCategoryChange={onCategoryChange}
+                onLockedClick={() => navigate({ to: '/locked-feature', search: { feature: `${cat.label} Category` } })}
+            />
         );
 
-        // When collapsed, wrap category buttons with flyout menus
         if (isPanelCollapsed && cat.id !== 'RECENT' && !isLocked) {
             const catItems = getItemsForCategory(cat.id as 'CRM' | 'LMS' | 'AI');
             return (
-                <CategoryFlyoutMenu
-                    key={cat.id}
-                    category={cat.id as 'CRM' | 'LMS' | 'AI'}
-                    items={catItems}
-                >
+                <CategoryFlyoutMenu key={cat.id} category={cat.id as 'CRM' | 'LMS' | 'AI'} items={catItems}>
                     {buttonContent}
                 </CategoryFlyoutMenu>
             );
@@ -201,7 +216,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
     };
 
     return (
-        <div className="flex h-full w-16 flex-shrink-0 flex-col items-center border-r border-primary-600 bg-primary-500 py-3">
+        <nav className="flex h-full w-16 flex-shrink-0 flex-col items-center border-r border-primary-600 bg-primary-500 py-3" role="navigation" aria-label="Main category navigation">
             {/* Search Icon */}
             <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
@@ -211,6 +226,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                             'text-white/70 hover:bg-white/10 hover:text-white'
                         )}
                         onClick={() => setSearchOpen(true)}
+                        aria-label="Search (⌘K)"
                     >
                         <MagnifyingGlass size={20} weight="regular" />
                     </button>
@@ -229,54 +245,39 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
             <div className="mb-1 h-px w-8 bg-primary-400/50" />
 
             {/* Category Icons */}
-            <div className="flex flex-1 flex-col items-center gap-1">
+            <div className="flex flex-1 flex-col items-center gap-1" role="group" aria-label="Categories">
                 {visibleCategories.map((cat) => renderCategoryButton(cat))}
 
                 {/* Divider before Recent */}
                 <div className="my-1 h-px w-8 bg-primary-400/50" />
 
                 {/* Recent Tab */}
+                {(() => {
+                    const isRecentActive = activeCategory === 'RECENT' && !isSettingsActive;
+                    return (
                         <button
                             className={cn(
                                 'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
                                 'hover:bg-white/10',
                             )}
+                            aria-label={`Recent items${isRecentActive ? ' (active)' : ''}`}
+                            aria-current={isRecentActive ? 'true' : undefined}
                             onClick={() => onCategoryChange('RECENT')}
                         >
-                            {activeCategory === 'RECENT' && !isSettingsActive && (
-                                <motion.div
-                                    layoutId="category-rail-active"
-                                    className="absolute inset-0 rounded-xl bg-white"
-                                    transition={{
-                                        type: 'spring',
-                                        bounce: 0.15,
-                                        duration: 0.5,
-                                    }}
-                                />
-                            )}
+                            {isRecentActive && <ActivePill />}
                             <span className="relative z-10">
                                 <ClockCounterClockwise
                                     size={22}
-                                    weight={activeCategory === 'RECENT' && !isSettingsActive ? 'fill' : 'regular'}
-                                    className={cn(
-                                        'transition-colors duration-200',
-                                        activeCategory === 'RECENT' && !isSettingsActive
-                                            ? 'text-neutral-900'
-                                            : 'text-white/70'
-                                    )}
+                                    weight={isRecentActive ? 'fill' : 'regular'}
+                                    className={cn('transition-colors duration-200', isRecentActive ? 'text-neutral-900' : 'text-white/70')}
                                 />
                             </span>
-                            <span
-                                className={cn(
-                                    'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
-                                    activeCategory === 'RECENT' && !isSettingsActive
-                                        ? 'text-neutral-900'
-                                        : 'text-white/70'
-                                )}
-                            >
+                            <span className={cn('relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200', isRecentActive ? 'text-neutral-900' : 'text-white/70')}>
                                 Recent
                             </span>
                         </button>
+                    );
+                })()}
             </div>
 
             {/* ─── Settings (admin-only, pinned to bottom) ──── */}
@@ -288,42 +289,22 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                             'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
                             'hover:bg-white/10',
                         )}
+                        aria-label={`Settings${isSettingsActive ? ' (active)' : ''}`}
+                        aria-current={isSettingsActive ? 'page' : undefined}
                         onClick={() => {
                             navigate({ to: '/settings', search: { selectedTab: 'tab' } });
                             onCategoryChange('SETTINGS');
                         }}
                     >
-                        {isSettingsActive && (
-                            <motion.div
-                                layoutId="category-rail-active"
-                                className="absolute inset-0 rounded-xl bg-white"
-                                transition={{
-                                    type: 'spring',
-                                    bounce: 0.15,
-                                    duration: 0.5,
-                                }}
-                            />
-                        )}
+                        {isSettingsActive && <ActivePill />}
                         <span className="relative z-10">
                             <GearSix
                                 size={22}
                                 weight={isSettingsActive ? 'fill' : 'regular'}
-                                className={cn(
-                                    'transition-colors duration-200',
-                                    isSettingsActive
-                                        ? 'text-neutral-900'
-                                        : 'text-white/70'
-                                )}
+                                className={cn('transition-colors duration-200', isSettingsActive ? 'text-neutral-900' : 'text-white/70')}
                             />
                         </span>
-                        <span
-                            className={cn(
-                                'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
-                                isSettingsActive
-                                    ? 'text-neutral-900'
-                                    : 'text-white/70'
-                            )}
-                        >
+                        <span className={cn('relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200', isSettingsActive ? 'text-neutral-900' : 'text-white/70')}>
                             Settings
                         </span>
                     </button>
@@ -337,6 +318,6 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                 sidebarItems={sidebarItems}
                 instituteId={instituteId}
             />
-        </div>
+        </nav>
     );
 };

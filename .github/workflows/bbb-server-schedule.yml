@@ -3,7 +3,7 @@ name: BBB Server Schedule
 on:
   schedule:
     - cron: '0 10 * * 1-6'   # Start — 3:30 PM IST, Mon-Sat
-    - cron: '30 15 * * 1-6'  # Stop  — 9:00 PM IST, Mon-Sat
+    - cron: '30 14 * * 1-6'  # Stop  — 9:00 PM IST, Mon-Sat
   workflow_dispatch:
     inputs:
       action:

@@ -319,10 +319,20 @@ export default function AdmissionFormWizard() {
                 if (match) sessionId = match.session.id;
             }
 
+            const normalizedSource = (formData.source || '').toUpperCase();
+            const resolvedSource = normalizedSource === 'LEVEL' ? 'LEVEL' : 'INSTITUTE';
+            const resolvedSourceId =
+                resolvedSource === 'LEVEL'
+                    ? formData.sourceId ||
+                      formData.studentClass ||
+                      formData.destinationPackageSessionId ||
+                      ''
+                    : instituteId;
+
             const payload: Record<string, any> = {
                 institute_id: instituteId,
-                source: formData.source || 'INSTITUTE',
-                source_id: formData.sourceId || instituteId,
+                source: resolvedSource,
+                source_id: resolvedSourceId,
                 session_id: sessionId || '',
                 destination_package_session_id: formData.destinationPackageSessionId || '',
                 enquiry_id: formData.enquiryId || null,

@@ -76,6 +76,7 @@ function NewEnquiryForm() {
         packageSessionId: '',
         // Enquiry details
         enquiryStatus: 'NEW',
+        parentRelationWithChild: '',
         notes: '',
         sourceType: 'WEBSITE',
         referenceSource: '',
@@ -133,6 +134,10 @@ function NewEnquiryForm() {
             toast.error('Child name is required');
             return;
         }
+        if (!formData.parentRelationWithChild) {
+            toast.error('Relation with child is required');
+            return;
+        }
 
         setIsSubmitting(true);
 
@@ -173,6 +178,10 @@ function NewEnquiryForm() {
             custom_field_values: formData.customFieldValues,
             enquiry: {
                 enquiry_status: formData.enquiryStatus as any,
+                parent_relation_with_child: formData.parentRelationWithChild as
+                    | 'FATHER'
+                    | 'MOTHER'
+                    | 'GUARDIAN',
                 notes: formData.notes || undefined,
                 reference_source: formData.referenceSource || undefined,
                 fee_range_expectation: formData.feeExpectation || undefined,
@@ -353,6 +362,29 @@ function NewEnquiryForm() {
                                     placeholder="Enter parent mobile"
                                     required
                                 />
+                            </div>
+                            <div>
+                                <Label htmlFor="parentRelationWithChild">
+                                    Relation with Child <span className="text-red-500">*</span>
+                                </Label>
+                                <Select
+                                    value={formData.parentRelationWithChild}
+                                    onValueChange={(value) =>
+                                        setFormData({
+                                            ...formData,
+                                            parentRelationWithChild: value,
+                                        })
+                                    }
+                                >
+                                    <SelectTrigger id="parentRelationWithChild">
+                                        <SelectValue placeholder="Select relation" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="FATHER">Father</SelectItem>
+                                        <SelectItem value="MOTHER">Mother</SelectItem>
+                                        <SelectItem value="GUARDIAN">Guardian</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
 

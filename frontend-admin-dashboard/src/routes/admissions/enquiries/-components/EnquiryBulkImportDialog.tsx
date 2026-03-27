@@ -21,6 +21,7 @@ import {
 import {
     normalizeGender,
     parseOptionalEnquiryStatus,
+    parseOptionalParentRelationWithChild,
     parseOptionalSourceType,
 } from './enquiry-bulk-import-utils';
 import type { BatchForSessionType } from '@/schemas/student/student-list/institute-schema';
@@ -34,6 +35,7 @@ type ParsedCsvRow = {
     parent_name: string;
     parent_email: string;
     parent_mobile: string;
+    parent_relation_with_child: 'FATHER' | 'MOTHER' | 'GUARDIAN';
     status: string;
     source_type?: 'WEBSITE' | 'GOOGLE_ADS' | 'FACEBOOK' | 'INSTAGRAM' | 'REFERRAL' | 'OTHER';
 };
@@ -52,6 +54,7 @@ const REQUIRED_COLUMN_LABELS = [
     'Parent Name',
     'Parent Email',
     'Parent Mobile',
+    'Relation With Child',
 ] as const;
 
 const HEADER_ALIASES: Record<string, keyof ParsedCsvRow | null> = {
@@ -85,6 +88,10 @@ const HEADER_ALIASES: Record<string, keyof ParsedCsvRow | null> = {
     source: 'source_type',
     sourcetype: 'source_type',
     source_type: 'source_type',
+    relationwithchild: 'parent_relation_with_child',
+    relation_with_child: 'parent_relation_with_child',
+    parentrelationwithchild: 'parent_relation_with_child',
+    parent_relation_with_child: 'parent_relation_with_child',
 };
 
 const REQUIRED_CANONICAL_FIELDS: Array<keyof ParsedCsvRow> = [
@@ -94,6 +101,7 @@ const REQUIRED_CANONICAL_FIELDS: Array<keyof ParsedCsvRow> = [
     'parent_name',
     'parent_email',
     'parent_mobile',
+    'parent_relation_with_child',
 ];
 
 const toAliasKey = (raw: string): string => raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
@@ -194,6 +202,7 @@ export const EnquiryBulkImportDialog = ({
             'Parent Name',
             'Parent Email',
             'Parent Mobile',
+            'Relation With Child',
             'Status',
             'Source',
         ];
@@ -204,6 +213,7 @@ export const EnquiryBulkImportDialog = ({
             'Jane Parent',
             'parent@example.com',
             '+919876543210',
+            'MOTHER',
             'NEW',
             'WEBSITE',
         ];
@@ -269,6 +279,9 @@ export const EnquiryBulkImportDialog = ({
                     const parentMobile = canonicalRow.parent_mobile?.trim() || '';
                     const gender = normalizeGender(canonicalRow.gender);
                     const dobIso = normalizeDobToISO(canonicalRow.date_of_birth);
+                    const parentRelationWithChild = parseOptionalParentRelationWithChild(
+                        canonicalRow.parent_relation_with_child
+                    );
 
                     if (
                         !studentName ||
@@ -278,7 +291,8 @@ export const EnquiryBulkImportDialog = ({
                         !isValidEmail(parentEmail) ||
                         !isValidMobile(parentMobile) ||
                         !gender ||
-                        !dobIso
+                        !dobIso ||
+                        !parentRelationWithChild
                     ) {
                         skipped += 1;
                         continue;
@@ -289,6 +303,7 @@ export const EnquiryBulkImportDialog = ({
                         parent_name: parentName,
                         parent_email: parentEmail,
                         parent_mobile: parentMobile,
+                        parent_relation_with_child: parentRelationWithChild,
                         gender,
                         date_of_birth: dobIso,
                         status: parseOptionalEnquiryStatus(canonicalRow.status),
@@ -361,6 +376,7 @@ export const EnquiryBulkImportDialog = ({
             },
             enquiry: {
                 enquiry_status: row.status || 'NEW',
+                parent_relation_with_child: row.parent_relation_with_child,
             },
         }));
 
@@ -465,6 +481,7 @@ export const EnquiryBulkImportDialog = ({
                                         <th className="px-3 py-2">Parent Name</th>
                                         <th className="px-3 py-2">Parent Email</th>
                                         <th className="px-3 py-2">Parent Mobile</th>
+                                        <th className="px-3 py-2">Relation</th>
                                         <th className="px-3 py-2">Status</th>
                                         <th className="px-3 py-2">Source</th>
                                     </tr>
@@ -478,6 +495,9 @@ export const EnquiryBulkImportDialog = ({
                                             <td className="px-3 py-2">{row.parent_name}</td>
                                             <td className="px-3 py-2">{row.parent_email}</td>
                                             <td className="px-3 py-2">{row.parent_mobile}</td>
+                                            <td className="px-3 py-2">
+                                                {row.parent_relation_with_child}
+                                            </td>
                                             <td className="px-3 py-2">{row.status}</td>
                                             <td className="px-3 py-2">{row.source_type || '-'}</td>
                                         </tr>

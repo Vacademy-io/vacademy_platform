@@ -214,11 +214,4 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             @Param("subOrgId") String subOrgId,
             @Param("packageSessionId") String packageSessionId);
 
-    @Query(value = "SELECT DISTINCT ei.sub_org_id FROM enroll_invite ei " +
-            "WHERE ei.id IN (:inviteIds) AND ei.sub_org_id IS NOT NULL", nativeQuery = true)
-    List<String> findSubOrgIdsByInviteIds(@Param("inviteIds") List<String> inviteIds);
-
-    @Query(value = "SELECT DISTINCT ei.id FROM enroll_invite ei " +
-            "WHERE ei.sub_org_id IN (:subOrgIds) AND ei.status = 'ACTIVE'", nativeQuery = true)
-    List<String> findInviteIdsBySubOrgIds(@Param("subOrgIds") List<String> subOrgIds);
 }

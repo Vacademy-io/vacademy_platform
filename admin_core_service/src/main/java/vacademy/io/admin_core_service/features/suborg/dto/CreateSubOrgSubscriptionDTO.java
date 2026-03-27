@@ -6,7 +6,6 @@ import lombok.Data;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
 import java.util.List;
-import java.util.Map;
 
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -22,8 +21,4 @@ public class CreateSubOrgSubscriptionDTO {
     private String vendor;
     private String vendorId;
     private List<String> authRoles;   // Auth service roles for sub-org admin (e.g. ["TEACHER"])
-
-    // Mapping of package_session_id -> list of enroll_invite_ids
-    // Used to create FSPSSM entries with access_type = 'ENROLL_INVITE'
-    private Map<String, List<String>> packageSessionInviteMapping;
 }

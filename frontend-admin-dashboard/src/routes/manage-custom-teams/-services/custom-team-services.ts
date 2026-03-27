@@ -13,7 +13,6 @@ import {
     GET_SUB_ORG_SEAT_USAGE,
     GET_SUB_ORG_SUBSCRIPTION_STATUS,
     ADD_SUB_ORG_MEMBER,
-    ENROLL_INVITE_URL,
 } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
@@ -213,8 +212,6 @@ export interface CreateSubOrgSubscriptionRequest {
     vendor?: string;
     vendor_id?: string;
     auth_roles?: string[];
-    // Mapping: package_session_id -> list of enroll_invite_ids
-    package_session_invite_mapping?: Record<string, string[]>;
 }
 
 export interface CreateSubOrgSubscriptionResponse {
@@ -250,22 +247,6 @@ export const createSubOrgWithSubscription = async (
         data,
     });
     return response.data;
-};
-
-export const getInvitesForPackageSession = async (
-    packageSessionId: string
-): Promise<{ id: string; name: string; invite_code: string; status: string }[]> => {
-    const instituteId = getCurrentInstituteId();
-    const response = await authenticatedAxiosInstance({
-        method: 'POST',
-        url: `${ENROLL_INVITE_URL}/get-enroll-invite`,
-        params: { pageNo: 0, pageSize: 100, instituteId },
-        data: {
-            package_session_ids: [packageSessionId],
-            statuses: ['ACTIVE'],
-        },
-    });
-    return response.data?.content || [];
 };
 
 export const getScopedInvites = async (subOrgId: string) => {

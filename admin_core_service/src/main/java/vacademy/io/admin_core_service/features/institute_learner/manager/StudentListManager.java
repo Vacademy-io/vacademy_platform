@@ -84,20 +84,14 @@ public class StudentListManager {
      * - For PS with ENROLL_INVITE access: only shows learners enrolled via those invites
      * - For PS without invite access: shows all learners
      */
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(StudentListManager.class);
-
     private void applyFacultyAccessFilter(CustomUserDetails user, StudentListFilter filter) {
-        boolean hasPerm = user != null && hasFacultyAssignedPermission(user);
-        log.info("[FACULTY-FILTER] user={}, hasFacultyAssigned={}",
-                user != null ? user.getUserId() : "null", hasPerm);
-        if (!hasPerm) {
+        if (user == null || !hasFacultyAssignedPermission(user)) {
             return;
         }
 
         String instituteId = (filter.getInstituteIds() != null && !filter.getInstituteIds().isEmpty())
                 ? filter.getInstituteIds().get(0) : null;
         if (instituteId == null) {
-            log.info("[FACULTY-FILTER] EXIT: no instituteId");
             return;
         }
 
@@ -105,25 +99,20 @@ public class StudentListManager {
 
         List<String> accessiblePsIds = facultyMappingRepository
                 .findAccessIdsByUserIdAndInstituteId(user.getUserId(), instituteId, activeStatuses);
-        log.info("[FACULTY-FILTER] accessiblePsIds={}", accessiblePsIds);
 
         if (accessiblePsIds.isEmpty()) {
             filter.setPackageSessionIds(List.of("__NONE__"));
-            log.info("[FACULTY-FILTER] EXIT: no accessible PS");
             return;
         }
 
         // Intersect with user's requested packageSessionIds filter
         List<String> requestedPsIds = filter.getPackageSessionIds();
-        log.info("[FACULTY-FILTER] requestedPsIds={}", requestedPsIds);
         List<String> effectivePsIds;
         if (requestedPsIds != null && !requestedPsIds.isEmpty()) {
-            // Filter out empty strings from the request
             List<String> cleanRequestedPsIds = requestedPsIds.stream()
                     .filter(id -> id != null && !id.isEmpty())
                     .collect(Collectors.toList());
             if (cleanRequestedPsIds.isEmpty()) {
-                // Request had only empty strings — treat as "no PS filter" (show all accessible)
                 effectivePsIds = new ArrayList<>(accessiblePsIds);
             } else {
                 Set<String> accessibleSet = new HashSet<>(accessiblePsIds);
@@ -132,7 +121,6 @@ public class StudentListManager {
                         .collect(Collectors.toList());
                 if (effectivePsIds.isEmpty()) {
                     filter.setPackageSessionIds(List.of("__NONE__"));
-                    log.info("[FACULTY-FILTER] EXIT: no intersection");
                     return;
                 }
             }
@@ -140,26 +128,21 @@ public class StudentListManager {
             effectivePsIds = new ArrayList<>(accessiblePsIds);
         }
         filter.setPackageSessionIds(effectivePsIds);
-        log.info("[FACULTY-FILTER] effectivePsIds={}", effectivePsIds);
 
         // Get ENROLL_INVITE access_ids directly from FSPSSM
         List<String> accessibleInviteIds = facultyMappingRepository
                 .findEnrollInviteAccessIdsByUserIdAndInstituteId(user.getUserId(), instituteId, activeStatuses);
-        log.info("[FACULTY-FILTER] accessibleInviteIds={}", accessibleInviteIds);
 
         if (!accessibleInviteIds.isEmpty()) {
             List<String> invitePsIds = pslipoRepository.findPackageSessionIdsByEnrollInviteIds(accessibleInviteIds);
-            log.info("[FACULTY-FILTER] invitePsIds (from PSLIPO)={}", invitePsIds);
             Set<String> effectiveSet = new HashSet<>(effectivePsIds);
             List<String> enrollInvitePsIds = invitePsIds.stream()
                     .filter(effectiveSet::contains)
                     .collect(Collectors.toList());
-            log.info("[FACULTY-FILTER] enrollInvitePsIds={}", enrollInvitePsIds);
 
             if (!enrollInvitePsIds.isEmpty()) {
                 filter.setEnrollInviteIds(accessibleInviteIds);
                 filter.setEnrollInvitePackageSessionIds(enrollInvitePsIds);
-                log.info("[FACULTY-FILTER] APPLIED: inviteIds={}, invitePsIds={}", accessibleInviteIds, enrollInvitePsIds);
             }
         }
     }

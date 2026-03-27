@@ -499,7 +499,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             WHERE sub.channel_id IN (:phones)
               AND sub.notification_type = 'WHATSAPP_MESSAGE_INCOMING'
               AND sub.notification_date > (
-                SELECT COALESCE(MAX(nl2.notification_date), '1970-01-01'::timestamp)
+                SELECT COALESCE(MAX(nl2.notification_date), CAST('1970-01-01' AS TIMESTAMP))
                 FROM notification_log nl2
                 WHERE nl2.channel_id = sub.channel_id
                   AND nl2.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'

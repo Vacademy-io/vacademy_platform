@@ -11,8 +11,11 @@ import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotFlowS
 import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotNodeType;
 import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotSessionStatus;
 import vacademy.io.notification_service.features.chatbot_flow.repository.*;
+import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
+import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -28,6 +31,7 @@ public class ChatbotFlowEngine {
     private final ChatbotFlowEdgeRepository edgeRepository;
     private final ChatbotFlowSessionRepository sessionRepository;
     private final ChatbotDelayTaskRepository delayTaskRepository;
+    private final NotificationLogRepository notificationLogRepository;
     private final List<ChatbotNodeExecutor> executors;
     private final ObjectMapper objectMapper;
 
@@ -169,6 +173,9 @@ public class ChatbotFlowEngine {
             return;
         }
 
+        // Log outgoing message so it appears in WhatsApp Inbox
+        logOutgoingMessage(currentNode, context, result);
+
         // Merge output variables into session context
         mergeSessionContext(session, result.getOutputVariables());
 
@@ -268,6 +275,8 @@ public class ChatbotFlowEngine {
             if (executor != null) {
                 NodeExecutionResult result = executor.execute(nextNode, session, null, context);
                 if (result.isSuccess()) {
+                    // Log outgoing message so it appears in WhatsApp Inbox
+                    logOutgoingMessage(nextNode, context, result);
                     mergeSessionContext(session, result.getOutputVariables());
 
                     if (result.isWaitForInput()) {
@@ -328,6 +337,60 @@ public class ChatbotFlowEngine {
     }
 
     // ==================== Helpers ====================
+
+    /**
+     * Log outgoing messages from SEND_* and AI_RESPONSE nodes so they appear in WhatsApp Inbox.
+     */
+    private void logOutgoingMessage(ChatbotFlowNode node, FlowExecutionContext context,
+                                     NodeExecutionResult result) {
+        try {
+            String nodeType = node.getNodeType();
+            // Only log for send nodes and AI response
+            if (!nodeType.startsWith("SEND_") && !ChatbotNodeType.AI_RESPONSE.name().equals(nodeType)) {
+                return;
+            }
+
+            // Extract the actual message body that was sent
+            String messageBody = node.getName();
+
+            // For AI_RESPONSE: use the actual LLM-generated reply from output variables
+            if (ChatbotNodeType.AI_RESPONSE.name().equals(nodeType)
+                    && result != null && result.getOutputVariables() != null) {
+                Object aiReply = result.getOutputVariables().get("ai_last_response");
+                if (aiReply != null) {
+                    messageBody = aiReply.toString();
+                }
+            } else {
+                // For SEND_* nodes: extract from config
+                Map<String, Object> config = parseJson(node.getConfig());
+                if (config != null) {
+                    if (config.containsKey("text")) {
+                        messageBody = (String) config.get("text");
+                    } else if (config.containsKey("templateName")) {
+                        messageBody = "Template: " + config.get("templateName");
+                    } else if (config.containsKey("body")) {
+                        messageBody = (String) config.get("body");
+                    } else if (config.containsKey("mediaUrl")) {
+                        messageBody = "[" + config.getOrDefault("messageType", "media") + "] "
+                                + config.getOrDefault("mediaCaption", config.get("mediaUrl"));
+                    }
+                }
+            }
+
+            NotificationLog outLog = new NotificationLog();
+            outLog.setNotificationType("WHATSAPP_MESSAGE_OUTGOING");
+            outLog.setChannelId(context.getPhoneNumber());
+            outLog.setBody(messageBody);
+            outLog.setSource("CHATBOT_FLOW");
+            outLog.setSenderBusinessChannelId(context.getBusinessChannelId());
+            outLog.setNotificationDate(LocalDateTime.now());
+            outLog.setUserId(context.getUserId());
+
+            notificationLogRepository.save(outLog);
+        } catch (Exception e) {
+            log.warn("Failed to log outgoing message for node {}: {}", node.getId(), e.getMessage());
+        }
+    }
 
     private ChatbotNodeExecutor findExecutor(String nodeType) {
         return executors.stream()

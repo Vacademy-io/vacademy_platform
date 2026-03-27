@@ -14,6 +14,20 @@ import java.util.List;
 public interface StudentFeePaymentRepository extends JpaRepository<StudentFeePayment, String>,
         JpaSpecificationExecutor<StudentFeePayment> {
 
+    @Query(value = """
+            SELECT DISTINCT ssigm.user_id
+            FROM student_session_institute_group_mapping ssigm
+            WHERE ssigm.institute_id = :instituteId
+              AND NOT EXISTS (
+                SELECT 1
+                FROM student_fee_payment sfp
+                JOIN complex_payment_option cpo ON cpo.id = sfp.cpo_id
+                WHERE sfp.user_id = ssigm.user_id
+                  AND cpo.institute_id = :instituteId
+              )
+            """, nativeQuery = true)
+    List<String> findStudentIdsWithoutInstallmentsByInstituteId(@Param("instituteId") String instituteId);
+
     // Fetch all bills for a plan
     List<StudentFeePayment> findByUserPlanId(String userPlanId);
 

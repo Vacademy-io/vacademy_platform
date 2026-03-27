@@ -281,6 +281,7 @@ public class ChatbotFlowEngine {
      */
     private boolean isAutoExecuteNode(String nodeType) {
         return ChatbotNodeType.SEND_TEMPLATE.name().equals(nodeType)
+                || ChatbotNodeType.SEND_MESSAGE.name().equals(nodeType)
                 || ChatbotNodeType.SEND_INTERACTIVE.name().equals(nodeType)
                 || ChatbotNodeType.WORKFLOW_ACTION.name().equals(nodeType)
                 || ChatbotNodeType.DELAY.name().equals(nodeType)

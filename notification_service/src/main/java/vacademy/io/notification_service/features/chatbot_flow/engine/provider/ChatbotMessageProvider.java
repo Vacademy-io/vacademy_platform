@@ -35,7 +35,19 @@ public interface ChatbotMessageProvider {
 
     /**
      * Send a plain text message. Session window required.
-     * Used by AI_RESPONSE node to send LLM-generated replies.
+     * Used by AI_RESPONSE and SEND_MESSAGE nodes.
      */
     void sendText(String phone, String text, String instituteId, String businessChannelId);
+
+    /**
+     * Send a media message (image, video, document, audio). Session window required.
+     * Used by SEND_MESSAGE node for rich content without templates.
+     *
+     * @param mediaType "image", "video", "document", "audio"
+     * @param mediaUrl  publicly accessible URL of the media file
+     * @param caption   optional caption (not supported for audio)
+     * @param filename  optional filename (for documents)
+     */
+    void sendMedia(String phone, String mediaType, String mediaUrl, String caption,
+                   String filename, String instituteId, String businessChannelId);
 }

@@ -103,14 +103,32 @@ export function WebhookSetup({ activeProvider, providers }: WebhookSetupProps) {
         }
     };
 
-    const handleAutoRegister = async () => {
+    const handleFullSetup = async () => {
         if (!activeProviderDetails?.credentials) {
             toast.error('Provider credentials not configured');
+            return;
+        }
+        if (!channelId) {
+            toast.error('Phone Number ID / WhatsApp Number not found in credentials');
             return;
         }
         setRegistering(true);
         const creds = activeProviderDetails.credentials;
         try {
+            // Step 1: Create channel mapping (auto, if not exists)
+            if (!hasMapping) {
+                const displayNumber = creds.whatsappNumber || creds.phone_number_id
+                    || creds.phoneNumberId || channelId;
+                await createChannelMapping({
+                    channelId,
+                    channelType: providerToChannelType(activeProvider),
+                    displayChannelNumber: displayNumber,
+                });
+                toast.success('Channel mapping created');
+                await loadMappings();
+            }
+
+            // Step 2: Register webhook with provider
             let result: { success: boolean; message: string; steps?: string[] };
 
             if (activeProvider === 'WATI') {
@@ -120,10 +138,10 @@ export function WebhookSetup({ activeProvider, providers }: WebhookSetupProps) {
                     webhookUrl
                 );
             } else if (activeProvider === 'META') {
-                // Credentials read server-side from institute settings — no secrets sent from frontend
                 result = await registerMetaWebhook(webhookUrl);
             } else {
-                toast.error('Auto-registration not available for ' + activeProvider + '. Please configure manually.');
+                // COMBOT: just create mapping, webhook must be set manually
+                toast.success('Channel mapping ready. Copy the webhook URL and set it in your COMBOT dashboard.');
                 setRegistering(false);
                 return;
             }
@@ -136,8 +154,9 @@ export function WebhookSetup({ activeProvider, providers }: WebhookSetupProps) {
             } else {
                 toast.error(result.message);
             }
-        } catch {
-            toast.error('Failed to register webhook');
+        } catch (err) {
+            console.error(err);
+            toast.error('Setup failed');
         } finally {
             setRegistering(false);
         }
@@ -171,51 +190,67 @@ export function WebhookSetup({ activeProvider, providers }: WebhookSetupProps) {
             </div>
 
             <div className="p-4 space-y-4">
-                {/* Step 1: Channel Mapping */}
-                <div>
-                    <div className="flex items-center justify-between">
+                {/* Status bar */}
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
                         <div>
-                            <p className="text-xs font-semibold text-gray-600">Step 1: Channel Mapping</p>
-                            <p className="text-xs text-gray-400">
-                                Links your WhatsApp number to your institute for routing
-                            </p>
+                            <p className="text-xs font-semibold text-gray-600">Channel Mapping</p>
+                            <p className="text-xs text-gray-400">Routes incoming webhooks to your institute</p>
                         </div>
-                        {hasMapping ? (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
-                                Connected
-                            </span>
-                        ) : (
-                            <button
-                                onClick={handleCreateMapping}
-                                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700"
-                            >
-                                Create Mapping
-                            </button>
-                        )}
                     </div>
-                    {hasMapping && (
-                        <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-                            <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">
-                                {channelId}
-                            </span>
-                            → {providerToChannelType(activeProvider)}
-                        </div>
+                    {hasMapping ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+                            Connected: {channelId}
+                        </span>
+                    ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">
+                            Not Connected
+                        </span>
                     )}
                 </div>
 
                 <hr />
 
-                {/* Step 2: Webhook URL */}
+                {/* One-click setup button */}
                 <div>
-                    <p className="text-xs font-semibold text-gray-600">Step 2: Webhook URL</p>
+                    <p className="text-xs font-semibold text-gray-600">
+                        {canAutoRegister ? 'One-Click Setup' : 'Webhook URL'}
+                    </p>
                     <p className="text-xs text-gray-400 mb-2">
                         {canAutoRegister
-                            ? `Click "Auto-Register" to configure automatically, or copy the URL to set up manually.`
-                            : `Copy this URL and paste it in your ${activeProvider} dashboard → Webhook Settings`}
+                            ? `Creates channel mapping and registers webhook with ${activeProvider} automatically.`
+                            : `Creates channel mapping. Copy the webhook URL and paste it in your ${activeProvider} dashboard.`}
                     </p>
 
-                    {/* URL display with copy */}
-                    <div className="flex items-center gap-2">
+                    {/* Setup button */}
+                    <button
+                        onClick={handleFullSetup}
+                        disabled={registering}
+                        className="text-xs px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                        {registering ? (
+                            <ArrowClockwise size={14} className="animate-spin" />
+                        ) : (
+                            <Plugs size={14} />
+                        )}
+                        {registering
+                            ? 'Setting up...'
+                            : hasMapping && canAutoRegister
+                              ? `Re-register Webhook with ${activeProvider}`
+                              : canAutoRegister
+                                ? `Setup Webhook with ${activeProvider}`
+                                : hasMapping
+                                  ? 'Mapping Already Created'
+                                  : 'Create Channel Mapping'}
+                    </button>
+                </div>
+
+                <hr />
+
+                {/* Webhook URL (always shown for reference/manual setup) */}
+                <div>
+                    <p className="text-xs font-semibold text-gray-600">Webhook URL</p>
+                    <div className="flex items-center gap-2 mt-1">
                         <code className="flex-1 px-3 py-2 bg-gray-100 rounded text-xs font-mono text-gray-700 break-all select-all">
                             {webhookUrl}
                         </code>
@@ -228,35 +263,14 @@ export function WebhookSetup({ activeProvider, providers }: WebhookSetupProps) {
                         </button>
                     </div>
 
-                    {/* Auto-register button (WATI + META) */}
-                    {canAutoRegister && (
-                        <div className="mt-2 flex items-center gap-2">
-                            <button
-                                onClick={handleAutoRegister}
-                                disabled={registering || !hasMapping}
-                                className="text-xs px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
-                            >
-                                {registering ? (
-                                    <ArrowClockwise size={14} className="animate-spin" />
-                                ) : (
-                                    <Plugs size={14} />
-                                )}
-                                {registering ? 'Registering...' : `Auto-Register with ${activeProvider}`}
-                            </button>
-                            {!hasMapping && (
-                                <span className="text-xs text-gray-400">Create channel mapping first</span>
-                            )}
-                        </div>
-                    )}
-
-                    {/* COMBOT: manual only, show verify token */}
+                    {/* COMBOT: show verify token for manual setup */}
                     {activeProvider === 'COMBOT' && (
                         <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
                             <p className="font-medium flex items-center gap-1">
-                                <Warning size={14} /> Manual Setup Required
+                                <Warning size={14} /> Manual Webhook Setup
                             </p>
                             <p className="mt-1">
-                                Paste the webhook URL above into your Com.bot dashboard → Settings → Webhooks.
+                                Paste the URL above into Com.bot dashboard → Settings → Webhooks.
                             </p>
                             <p className="mt-1">Verify Token:</p>
                             <code className="block mt-0.5 bg-yellow-100 px-2 py-1 rounded font-mono select-all">

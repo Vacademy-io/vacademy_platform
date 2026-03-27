@@ -411,4 +411,39 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     // Chatbot flow session message history
     List<NotificationLog> findByChannelIdAndNotificationTypeInOrderByNotificationDateAsc(
             String channelId, List<String> notificationTypes);
+
+    // ==================== COMMUNICATION TIMELINE METHODS ====================
+
+    /**
+     * Find all non-event logs for a user filtered by notification types, paginated and sorted by date DESC.
+     * Used by the unified communication timeline to fetch EMAIL, WHATSAPP_MESSAGE_OUTGOING, WHATSAPP_MESSAGE_INCOMING.
+     */
+    @Query("""
+                SELECT nl FROM NotificationLog nl
+                WHERE nl.userId = :userId
+                AND nl.notificationType IN :types
+                ORDER BY nl.notificationDate DESC
+            """)
+    Page<NotificationLog> findByUserIdAndNotificationTypeInOrderByNotificationDateDesc(
+            @Param("userId") String userId,
+            @Param("types") List<String> types,
+            Pageable pageable);
+
+    /**
+     * Find all non-event logs for a user filtered by notification types and date range.
+     */
+    @Query("""
+                SELECT nl FROM NotificationLog nl
+                WHERE nl.userId = :userId
+                AND nl.notificationType IN :types
+                AND (:fromDate IS NULL OR nl.notificationDate >= :fromDate)
+                AND (:toDate IS NULL OR nl.notificationDate <= :toDate)
+                ORDER BY nl.notificationDate DESC
+            """)
+    Page<NotificationLog> findByUserIdAndTypesAndDateRange(
+            @Param("userId") String userId,
+            @Param("types") List<String> types,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            Pageable pageable);
 }

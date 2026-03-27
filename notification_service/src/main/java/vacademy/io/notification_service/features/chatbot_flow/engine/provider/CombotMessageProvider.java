@@ -196,6 +196,32 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
         sendPayload(config, payload);
     }
 
+    @Override
+    public void sendMedia(String phone, String mediaType, String mediaUrl, String caption,
+                           String filename, String instituteId, String businessChannelId) {
+        ProviderConfig config = resolveConfig(instituteId);
+        if (config == null) throw new RuntimeException("COMBOT/META config not found for institute: " + instituteId);
+
+        // Meta API: type determines the media object key
+        // { "messaging_product": "whatsapp", "to": "...", "type": "image", "image": { "link": "..." } }
+        Map<String, Object> mediaObj = new LinkedHashMap<>();
+        mediaObj.put("link", mediaUrl);
+        if (caption != null && !caption.isBlank() && !"audio".equals(mediaType)) {
+            mediaObj.put("caption", caption);
+        }
+        if (filename != null && !filename.isBlank() && "document".equals(mediaType)) {
+            mediaObj.put("filename", filename);
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("messaging_product", "whatsapp");
+        payload.put("to", phone);
+        payload.put("type", mediaType);
+        payload.put(mediaType, mediaObj); // "image": {...}, "video": {...}, etc.
+
+        sendPayload(config, payload);
+    }
+
     private void sendPayload(ProviderConfig config, Map<String, Object> payload) {
         String url = config.apiUrl + "/" + config.phoneNumberId + "/messages";
 

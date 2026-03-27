@@ -190,6 +190,27 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
         sendRequest(config, url, Map.of("messageText", text));
     }
 
+    @Override
+    public void sendMedia(String phone, String mediaType, String mediaUrl, String caption,
+                           String filename, String instituteId, String businessChannelId) {
+        WatiConfig config = resolveConfig(instituteId);
+        if (config == null) throw new RuntimeException("WATI config not found for institute: " + instituteId);
+
+        String formattedPhone = phone.replaceAll("[^0-9]", "");
+
+        // WATI V3: POST /api/ext/v3/conversations/messages/fileViaUrl
+        String url = config.apiUrl + "/api/ext/v3/conversations/messages/fileViaUrl";
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("target", formattedPhone);
+        payload.put("fileUrl", mediaUrl);
+        if (caption != null && !caption.isBlank()) {
+            payload.put("caption", caption);
+        }
+
+        sendRequest(config, url, payload);
+    }
+
     private void sendRequest(WatiConfig config, String url, Map<String, Object> payload) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

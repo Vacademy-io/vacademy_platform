@@ -54,6 +54,7 @@ export function NodeConfigPanel() {
             {/* Config form */}
             <div className="p-4 space-y-4">
                 {nodeType === 'TRIGGER' && <TriggerConfig config={config} onChange={handleConfigChange} />}
+                {nodeType === 'SEND_MESSAGE' && <SendMessageConfig config={config} onChange={handleConfigChange} />}
                 {nodeType === 'SEND_TEMPLATE' && <SendTemplateConfig config={config} onChange={handleConfigChange} />}
                 {nodeType === 'SEND_INTERACTIVE' && <SendInteractiveConfig config={config} onChange={handleConfigChange} />}
                 {nodeType === 'CONDITION' && <ConditionConfig config={config} onChange={handleConfigChange} />}
@@ -103,6 +104,87 @@ function TriggerConfig({ config, onChange }: { config: Record<string, unknown>; 
 
             <FieldLabel>Priority (higher = checked first)</FieldLabel>
             <input type="number" value={(config.priority as number) || 10} onChange={(e) => onChange('priority', parseInt(e.target.value) || 10)} className="w-full px-2 py-1.5 text-sm border rounded" min={1} max={100} />
+        </>
+    );
+}
+
+// ==================== SEND_MESSAGE (free-form, no template needed) ====================
+function SendMessageConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (keyOrBatch: string | Record<string, unknown>, value?: unknown) => void }) {
+    const msgType = (config.messageType as string) || 'text';
+
+    return (
+        <>
+            <SectionLabel>Session Message</SectionLabel>
+            <div className="p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
+                No template needed — sends directly within the 24hr session window.
+            </div>
+
+            <FieldLabel>Message Type</FieldLabel>
+            <select value={msgType} onChange={(e) => onChange('messageType', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded">
+                <option value="text">Text Message</option>
+                <option value="image">Image</option>
+                <option value="video">Video</option>
+                <option value="document">Document (PDF, etc.)</option>
+                <option value="audio">Audio</option>
+            </select>
+
+            {msgType === 'text' ? (
+                <>
+                    <FieldLabel>Message Text</FieldLabel>
+                    <textarea
+                        value={(config.text as string) || ''}
+                        onChange={(e) => onChange('text', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border rounded h-24 resize-y"
+                        placeholder={"Hello {{user.name}}! 👋\n\nWelcome to our service. How can I help you today?"}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                        Supports WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```code```
+                    </p>
+                    <p className="text-xs text-gray-400">
+                        Use {'{{variable}}'} for dynamic values: {'{{user.name}}'}, {'{{phone}}'}, {'{{session.varName}}'}
+                    </p>
+                </>
+            ) : (
+                <>
+                    <FieldLabel>Media URL</FieldLabel>
+                    <input
+                        type="text"
+                        value={(config.mediaUrl as string) || ''}
+                        onChange={(e) => onChange('mediaUrl', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border rounded"
+                        placeholder="https://example.com/image.jpg"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                        Must be a publicly accessible HTTPS URL. Use {'{{variable}}'} for dynamic URLs.
+                    </p>
+
+                    {msgType !== 'audio' && (
+                        <>
+                            <FieldLabel>Caption (optional)</FieldLabel>
+                            <input
+                                type="text"
+                                value={(config.mediaCaption as string) || ''}
+                                onChange={(e) => onChange('mediaCaption', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm border rounded"
+                                placeholder="Check out this image!"
+                            />
+                        </>
+                    )}
+
+                    {msgType === 'document' && (
+                        <>
+                            <FieldLabel>Filename</FieldLabel>
+                            <input
+                                type="text"
+                                value={(config.filename as string) || ''}
+                                onChange={(e) => onChange('filename', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm border rounded"
+                                placeholder="brochure.pdf"
+                            />
+                        </>
+                    )}
+                </>
+            )}
         </>
     );
 }

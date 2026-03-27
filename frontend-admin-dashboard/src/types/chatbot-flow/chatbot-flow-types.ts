@@ -1,6 +1,7 @@
 export type ChatbotNodeType =
     | 'TRIGGER'
     | 'SEND_TEMPLATE'
+    | 'SEND_MESSAGE'
     | 'SEND_INTERACTIVE'
     | 'CONDITION'
     | 'WORKFLOW_ACTION'
@@ -65,9 +66,17 @@ export const NODE_TYPE_REGISTRY: NodeTypeInfo[] = [
         defaultConfig: { triggerType: 'KEYWORD_MATCH', keywords: [], matchType: 'contains' },
     },
     {
+        type: 'SEND_MESSAGE',
+        label: 'Send Message',
+        description: 'Send text, image, video, or document (no template needed)',
+        color: '#10b981',
+        icon: '💬',
+        defaultConfig: { messageType: 'text', text: '', mediaUrl: '', mediaCaption: '', filename: '' },
+    },
+    {
         type: 'SEND_TEMPLATE',
         label: 'Send Template',
-        description: 'Send a WhatsApp template message',
+        description: 'Send a pre-approved WhatsApp template',
         color: '#3b82f6',
         icon: '📄',
         defaultConfig: { templateName: '', languageCode: 'en', bodyParams: [], headerConfig: { type: 'none' }, buttonConfig: [] },

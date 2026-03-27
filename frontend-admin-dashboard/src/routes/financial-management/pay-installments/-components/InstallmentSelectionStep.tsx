@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CurrencyInr, Wallet, WarningCircle, X } from '@phosphor-icons/react';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
@@ -9,6 +9,7 @@ import {
     fetchStudentDues,
     getStudentDuesQueryKey,
     generateInvoiceForInstallments,
+    applyManualDiscount,
     sendInvoiceEmail,
 } from '@/services/manage-finances';
 import { useTheme } from '@/providers/theme/theme-provider';
@@ -62,6 +63,7 @@ export function InstallmentSelectionStep({
     onProceedToPayment,
 }: InstallmentSelectionStepProps) {
     const { getPrimaryColorCode } = useTheme();
+    const queryClient = useQueryClient();
 
     const { data: dues, isLoading, error } = useQuery({
         queryKey: getStudentDuesQueryKey(student.student_id),
@@ -95,10 +97,7 @@ export function InstallmentSelectionStep({
         });
     }, [dues, statusFilter, dueDateFrom, dueDateTo]);
 
-    const payableDues = useMemo(
-        () => filteredDues.filter((d) => d.status !== 'PAID' && d.amount_due > 0),
-        [filteredDues]
-    );
+    const selectableDues = useMemo(() => filteredDues.filter((d) => d.status !== 'PAID'), [filteredDues]);
 
     const selectedDues = useMemo(
         () => (dues || []).filter((d) => selectedIds.has(d.id)),
@@ -140,20 +139,58 @@ export function InstallmentSelectionStep({
     };
 
     const toggleSelectAll = () => {
-        if (selectedIds.size === payableDues.length && payableDues.length > 0) {
+        if (selectedIds.size === selectableDues.length && selectableDues.length > 0) {
             setSelectedIds((prev) => {
                 const next = new Set(prev);
-                payableDues.forEach((d) => next.delete(d.id));
+                selectableDues.forEach((d) => next.delete(d.id));
                 return next;
             });
         } else {
             setSelectedIds((prev) => {
                 const next = new Set(prev);
-                payableDues.forEach((d) => next.add(d.id));
+                selectableDues.forEach((d) => next.add(d.id));
                 return next;
             });
         }
     };
+
+    const [discountDrafts, setDiscountDrafts] = useState<Record<string, string>>({});
+    const [reasonDrafts, setReasonDrafts] = useState<Record<string, string>>({});
+
+    const discountMutation = useMutation({
+        mutationFn: ({
+            studentFeePaymentId,
+            userId,
+            discountAmount,
+            discountReason,
+        }: {
+            studentFeePaymentId: string;
+            userId: string;
+            discountAmount: number;
+            discountReason?: string;
+        }) =>
+            applyManualDiscount({
+                student_fee_payment_id: studentFeePaymentId,
+                user_id: userId,
+                discount_amount: discountAmount,
+                discount_reason: discountReason,
+            }),
+        onSuccess: (_data, variables) => {
+            // Auto-select the installment so it is included in allocate-selected receipts
+            setSelectedIds((prev) => {
+                const next = new Set(prev);
+                next.add(variables.studentFeePaymentId);
+                return next;
+            });
+            toast.success('Discount applied');
+            queryClient.invalidateQueries({ queryKey: getStudentDuesQueryKey(student.student_id) });
+            setDiscountDrafts((prev) => ({ ...prev, [variables.studentFeePaymentId]: '' }));
+            setReasonDrafts((prev) => ({ ...prev, [variables.studentFeePaymentId]: '' }));
+        },
+        onError: (err: any) => {
+            toast.error(err?.response?.data?.ex || err?.message || 'Failed to apply discount');
+        },
+    });
 
     const invoiceMutation = useMutation({
         mutationFn: () =>
@@ -211,8 +248,8 @@ export function InstallmentSelectionStep({
         );
     }
 
-    const allVisiblePayableSelected =
-        payableDues.length > 0 && payableDues.every((d) => selectedIds.has(d.id));
+    const allVisibleSelectableSelected =
+        selectableDues.length > 0 && selectableDues.every((d) => selectedIds.has(d.id));
 
     return (
         <div className="flex flex-col h-[calc(100vh-220px)]">
@@ -361,7 +398,7 @@ export function InstallmentSelectionStep({
                                         <th className="py-3 px-4 w-10">
                                             <input
                                                 type="checkbox"
-                                                checked={allVisiblePayableSelected}
+                                            checked={allVisibleSelectableSelected}
                                                 onChange={toggleSelectAll}
                                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             />
@@ -386,7 +423,7 @@ export function InstallmentSelectionStep({
                                         </tr>
                                     )}
                                     {filteredDues.map((inst: StudentFeeDueDTO) => {
-                                        const isPayable = inst.status !== 'PAID' && inst.amount_due > 0;
+                                        const isSelectable = inst.status !== 'PAID';
                                         const isSelected = selectedIds.has(inst.id);
                                         return (
                                             <tr
@@ -395,14 +432,14 @@ export function InstallmentSelectionStep({
                                                     isSelected
                                                         ? 'bg-blue-50/40'
                                                         : 'hover:bg-gray-50/60'
-                                                } ${!isPayable ? 'opacity-50' : 'cursor-pointer'}`}
-                                                onClick={() => isPayable && toggleSelect(inst.id)}
+                                                } ${!isSelectable ? 'opacity-50' : 'cursor-pointer'}`}
+                                                onClick={() => isSelectable && toggleSelect(inst.id)}
                                             >
                                                 <td className="py-3 px-4">
                                                     <input
                                                         type="checkbox"
                                                         checked={isSelected}
-                                                        disabled={!isPayable}
+                                                        disabled={!isSelectable}
                                                         onChange={() => toggleSelect(inst.id)}
                                                         onClick={(e) => e.stopPropagation()}
                                                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-30"
@@ -412,7 +449,67 @@ export function InstallmentSelectionStep({
                                                 <td className="py-3 px-4 text-gray-600">{inst.cpo_name || '\u2014'}</td>
                                                 <td className="py-3 px-4 text-gray-700">{formatCurrency(inst.amount_expected)}</td>
                                                 <td className="py-3 px-4 text-gray-500">
-                                                    {inst.discount_amount > 0 ? `-${formatCurrency(inst.discount_amount)}` : '\u2014'}
+                                                    <div className="flex flex-col gap-2">
+                                                        <div>
+                                                            {inst.discount_amount > 0 ? `-${formatCurrency(inst.discount_amount)}` : '\u2014'}
+                                                        </div>
+
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="number"
+                                                                inputMode="decimal"
+                                                                min={0}
+                                                                step={1}
+                                                                placeholder="Add"
+                                                                value={discountDrafts[inst.id] ?? ''}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                onChange={(e) =>
+                                                                    setDiscountDrafts((prev) => ({
+                                                                        ...prev,
+                                                                        [inst.id]: e.target.value,
+                                                                    }))
+                                                                }
+                                                                className="w-24 rounded-lg border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const raw = discountDrafts[inst.id] ?? '';
+                                                                    const amt = Number(raw);
+                                                                    if (!raw || Number.isNaN(amt) || amt <= 0) {
+                                                                        toast.error('Enter a valid discount amount');
+                                                                        return;
+                                                                    }
+                                                                    const reason = (reasonDrafts[inst.id] ?? '').trim();
+                                                                    discountMutation.mutate({
+                                                                        studentFeePaymentId: inst.id,
+                                                                        userId: student.student_id,
+                                                                        discountAmount: amt,
+                                                                        discountReason: reason || undefined,
+                                                                    });
+                                                                }}
+                                                                disabled={!isSelectable || discountMutation.isPending}
+                                                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                Apply
+                                                            </button>
+                                                        </div>
+
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Reason (optional)"
+                                                            value={reasonDrafts[inst.id] ?? ''}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            onChange={(e) =>
+                                                                setReasonDrafts((prev) => ({
+                                                                    ...prev,
+                                                                    [inst.id]: e.target.value,
+                                                                }))
+                                                            }
+                                                            className="w-full rounded-lg border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                        />
+                                                    </div>
                                                 </td>
                                                 <td className="py-3 px-4 text-emerald-700 font-semibold">{formatCurrency(inst.amount_paid)}</td>
                                                 <td className="py-3 px-4 text-red-600 font-semibold">

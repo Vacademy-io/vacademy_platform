@@ -315,7 +315,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
+                p.course_depth, p.course_html_description, p.package_type, p.created_at,
                 ps.id /* 4. Added Grouping by Session ID */
 
             HAVING
@@ -525,7 +525,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
+                p.course_depth, p.course_html_description, p.package_type, p.created_at,
                 ps.id
             HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
             """,
@@ -706,7 +706,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                    p.course_depth, p.course_html_description, p.created_at, p.created_by_user_id,
+                    p.course_depth, p.course_html_description, p.package_type, p.created_at, p.created_by_user_id,
                     ps_read_time.total_read_time_minutes
             """, countQuery = """
                 SELECT COUNT(DISTINCT p.id)
@@ -907,7 +907,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
+                p.course_depth, p.course_html_description, p.package_type, p.created_at,
                 ps.id, ps.name, l.id, l.level_name /* 3. Added Grouping by Session */
             """,
 
@@ -1046,7 +1046,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
+                p.course_depth, p.course_html_description, p.package_type, p.created_at,
                 ps.id, ps.name, l.id, l.level_name
 
             ORDER BY p.created_at DESC
@@ -1210,7 +1210,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                    p.course_depth, p.course_html_description, p.created_at,
+                    p.course_depth, p.course_html_description, p.package_type, p.created_at,
                     ps.id, ps.name, l.id, l.level_name /* 3. Added Grouping by Session */
             """,
 
@@ -1417,7 +1417,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                    p.course_depth, p.course_html_description, p.created_at, p.created_by_user_id,
+                    p.course_depth, p.course_html_description, p.package_type, p.created_at, p.created_by_user_id,
                     ps_read_time.total_read_time_minutes
             """, countQuery = """
                 SELECT COUNT(DISTINCT p.id)
@@ -1645,7 +1645,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
+                p.course_depth, p.course_html_description, p.package_type, p.created_at,
                 ps.id
 
             HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) < 100
@@ -1761,7 +1761,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
+                p.course_depth, p.course_html_description, p.package_type, p.created_at,
                 dest_ps.id, dest_l.id, dest_l.level_name,
                 ssigm.created_at
             """,
@@ -1944,7 +1944,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
               p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
               p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
               p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-              p.course_depth, p.course_html_description, p.created_at,
+              p.course_depth, p.course_html_description, p.package_type, p.created_at,
               ps.id
             """,
 
@@ -2133,7 +2133,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at, p.created_by_user_id,
+                p.course_depth, p.course_html_description, p.package_type, p.created_at, p.created_by_user_id,
                 ps.id /* 4. Added Grouping by Session */
             """,
 
@@ -2323,7 +2323,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at, p.created_by_user_id,
+                p.course_depth, p.course_html_description, p.package_type, p.created_at, p.created_by_user_id,
                 ps.id
             """,
 
@@ -2839,6 +2839,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     )
                 GROUP BY
                     p.id,
+                    p.package_type,
                     p.created_by_user_id,
                     ps.id,
                     l.id,
@@ -3074,6 +3075,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
                 GROUP BY
                     p.id,
+                    p.package_type,
                     p.created_by_user_id,
                     ps.id,
                     l.id,

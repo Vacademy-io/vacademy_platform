@@ -58,6 +58,7 @@ export interface AllCourseFilters {
     sort_columns: Record<string, 'ASC' | 'DESC'>;
     package_ids?: string[];
     package_session_ids?: string[];
+    session_ids?: string[];
     package_session_filter?: 'PARENTS_ONLY' | 'CHILDREN_ONLY' | null;
 }
 

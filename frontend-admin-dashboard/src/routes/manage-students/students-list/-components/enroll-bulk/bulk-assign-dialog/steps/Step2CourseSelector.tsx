@@ -13,15 +13,23 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { MagnifyingGlass, BookOpen, FunnelSimple, X, CaretDown } from '@phosphor-icons/react';
+import {
+    MagnifyingGlass,
+    BookOpen,
+    FunnelSimple,
+    X,
+    CaretDown,
+    CaretLeft,
+    CaretRight,
+    Warning,
+} from '@phosphor-icons/react';
 import { SelectedPackageSession } from '../../../../-types/bulk-assign-types';
 import { cn } from '@/lib/utils';
 import { getAllCoursesWithFilters } from '@/routes/study-library/courses/-services/courses-services';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import type {
-    CourseItem,
-    AllCourseFilters,
-} from '@/routes/study-library/courses/-components/course-material';
+import { GET_LEVELS_BY_INSTITUTE, GET_SESSION_DETAILS } from '@/constants/urls';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import type { CourseItem } from '@/routes/study-library/courses/-components/course-material';
 
 interface Props {
     selectedPackageSessions: SelectedPackageSession[];
@@ -37,18 +45,7 @@ function useDebounce<T>(value: T, delay: number): T {
     return debounced;
 }
 
-const BASE_FILTERS: AllCourseFilters = {
-    status: ['ACTIVE'],
-    level_ids: [],
-    tag: [],
-    faculty_ids: [],
-    search_by_name: '',
-    min_percentage_completed: 0,
-    max_percentage_completed: 0,
-    sort_columns: { created_at: 'DESC' },
-    package_ids: [],
-    package_session_ids: [],
-};
+const PAGE_SIZE = 20;
 
 export const Step2CourseSelector = ({
     selectedPackageSessions,
@@ -59,64 +56,86 @@ export const Step2CourseSelector = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]);
     const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([]);
+    const [page, setPage] = useState(0);
     const debouncedSearch = useDebounce(searchQuery, 400);
 
-    // Unfiltered call to extract dropdown options (levels/sessions)
-    const { data: allData, isLoading: isAllLoading } = useQuery({
-        queryKey: ['STEP2_ALL_COURSES', instituteId],
-        queryFn: () => getAllCoursesWithFilters(0, 200, instituteId, BASE_FILTERS),
+    // Reset page when filters change
+    useEffect(() => {
+        setPage(0);
+    }, [debouncedSearch, selectedLevelIds, selectedSessionIds]);
+
+    // Fetch levels from dedicated API
+    const { data: levelOptions = [], isLoading: isLevelsLoading } = useQuery<
+        { id: string; level_name: string }[]
+    >({
+        queryKey: ['STEP2_LEVELS', instituteId],
+        queryFn: async () => {
+            const response = await authenticatedAxiosInstance.get(GET_LEVELS_BY_INSTITUTE, {
+                params: { instituteId },
+            });
+            return response.data;
+        },
+        staleTime: 300000,
         enabled: !!instituteId,
-        staleTime: 1000 * 60 * 5,
     });
 
-    // Build filter options from the unfiltered response
-    const { levelOptions, sessionOptions } = useMemo(() => {
-        const items: CourseItem[] = allData?.content ?? [];
-        const levelMap = new Map<string, string>();
-        const sessionMap = new Map<string, string>();
-        items.forEach((item) => {
-            if (item.level_id && item.level_name) levelMap.set(item.level_id, item.level_name);
-            if (item.session_id && item.session_name)
-                sessionMap.set(item.session_id, item.session_name);
-        });
-        return {
-            levelOptions: Array.from(levelMap, ([id, name]) => ({ id, name })),
-            sessionOptions: Array.from(sessionMap, ([id, name]) => ({ id, name })),
-        };
-    }, [allData]);
+    // Fetch sessions from dedicated API
+    // The API returns [{ session: { id, session_name, ... }, packages: [...] }]
+    const { data: sessionOptions = [], isLoading: isSessionsLoading } = useQuery<
+        { id: string; session_name: string }[]
+    >({
+        queryKey: ['STEP2_SESSIONS', instituteId],
+        queryFn: async () => {
+            const response = await authenticatedAxiosInstance.get(GET_SESSION_DETAILS, {
+                params: { instituteId },
+            });
+            return (response.data ?? []).map(
+                (item: { session: { id: string; session_name: string } }) => ({
+                    id: item.session.id,
+                    session_name: item.session.session_name,
+                })
+            );
+        },
+        staleTime: 300000,
+        enabled: !!instituteId,
+    });
 
-    // Build the filtered query
-    const filters: AllCourseFilters = useMemo(
-        () => ({
-            ...BASE_FILTERS,
-            search_by_name: debouncedSearch || '',
-            level_ids: selectedLevelIds,
-            // The search API doesn't have a direct session_ids filter in its DTO,
-            // but we can filter client-side after the response
-        }),
-        [debouncedSearch, selectedLevelIds]
-    );
-
-    const hasActiveSearch = !!debouncedSearch || selectedLevelIds.length > 0;
-
-    // Filtered call — only fires when there are active filters, otherwise use allData
-    const { data: filteredData, isLoading: isFilteredLoading } = useQuery({
-        queryKey: ['STEP2_FILTERED_COURSES', instituteId, filters],
-        queryFn: () => getAllCoursesWithFilters(0, 200, instituteId, filters),
-        enabled: !!instituteId && hasActiveSearch,
+    // Fetch courses with all filters applied server-side
+    const {
+        data: courseData,
+        isLoading: isCoursesLoading,
+        isError,
+        error,
+    } = useQuery({
+        queryKey: [
+            'STEP2_COURSES',
+            instituteId,
+            debouncedSearch,
+            selectedLevelIds,
+            selectedSessionIds,
+            page,
+        ],
+        queryFn: () =>
+            getAllCoursesWithFilters(page, PAGE_SIZE, instituteId, {
+                status: ['ACTIVE'],
+                level_ids: selectedLevelIds,
+                session_ids: selectedSessionIds,
+                tag: [],
+                faculty_ids: [],
+                search_by_name: debouncedSearch || '',
+                min_percentage_completed: 0,
+                max_percentage_completed: 0,
+                sort_columns: { created_at: 'DESC' },
+                package_ids: [],
+                package_session_ids: [],
+            }),
+        enabled: !!instituteId,
         staleTime: 1000 * 30,
     });
 
-    const rawItems: CourseItem[] = hasActiveSearch
-        ? (filteredData?.content ?? [])
-        : (allData?.content ?? []);
-
-    // Apply session filter client-side (the search API filters by level_ids but
-    // doesn't have a dedicated session_ids filter in the DTO)
-    const items = useMemo(() => {
-        if (selectedSessionIds.length === 0) return rawItems;
-        return rawItems.filter((item) => selectedSessionIds.includes(item.session_id));
-    }, [rawItems, selectedSessionIds]);
+    const items: CourseItem[] = courseData?.content ?? [];
+    const totalPages: number = courseData?.totalPages ?? 0;
+    const totalElements: number = courseData?.totalElements ?? 0;
 
     // Group by package for display
     const groups = useMemo(() => {
@@ -133,8 +152,6 @@ export const Step2CourseSelector = ({
             batches: group.items,
         }));
     }, [items]);
-
-    const isLoading = isAllLoading || (hasActiveSearch && isFilteredLoading);
 
     const isSelected = useCallback(
         (packageSessionId: string) =>
@@ -173,6 +190,8 @@ export const Step2CourseSelector = ({
         setSelectedSessionIds([]);
     };
 
+    const isDropdownLoading = isLevelsLoading || isSessionsLoading;
+
     return (
         <div className="flex flex-col gap-4 px-6 py-5">
             {/* Selection summary */}
@@ -194,7 +213,7 @@ export const Step2CourseSelector = ({
                     <Input
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search courses, levels…"
+                        placeholder="Search courses, levels..."
                         className="h-9 pl-9 text-sm"
                     />
                 </div>
@@ -226,7 +245,7 @@ export const Step2CourseSelector = ({
                             Filter by Level
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {isAllLoading ? (
+                        {isDropdownLoading ? (
                             <div className="space-y-1 p-2">
                                 <Skeleton className="h-5 w-full" />
                                 <Skeleton className="h-5 w-3/4" />
@@ -247,7 +266,7 @@ export const Step2CourseSelector = ({
                                     }
                                     className="text-xs"
                                 >
-                                    {lvl.name}
+                                    {lvl.level_name}
                                 </DropdownMenuCheckboxItem>
                             ))
                         )}
@@ -281,7 +300,7 @@ export const Step2CourseSelector = ({
                             Filter by Session
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {isAllLoading ? (
+                        {isDropdownLoading ? (
                             <div className="space-y-1 p-2">
                                 <Skeleton className="h-5 w-full" />
                                 <Skeleton className="h-5 w-3/4" />
@@ -304,7 +323,7 @@ export const Step2CourseSelector = ({
                                     }
                                     className="text-xs"
                                 >
-                                    {ses.name}
+                                    {ses.session_name}
                                 </DropdownMenuCheckboxItem>
                             ))
                         )}
@@ -322,7 +341,7 @@ export const Step2CourseSelector = ({
                                 key={id}
                                 className="inline-flex items-center gap-1 rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700"
                             >
-                                Level: {lvl?.name ?? id}
+                                Level: {lvl?.level_name ?? id}
                                 <button
                                     onClick={() =>
                                         setSelectedLevelIds((prev) =>
@@ -343,7 +362,7 @@ export const Step2CourseSelector = ({
                                 key={id}
                                 className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700"
                             >
-                                Session: {ses?.name ?? id}
+                                Session: {ses?.session_name ?? id}
                                 <button
                                     onClick={() =>
                                         setSelectedSessionIds((prev) =>
@@ -366,9 +385,20 @@ export const Step2CourseSelector = ({
                 </div>
             )}
 
+            {/* Error state */}
+            {isError && (
+                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <Warning size={16} weight="fill" className="shrink-0" />
+                    <span>
+                        Failed to load courses.{' '}
+                        {error instanceof Error ? error.message : 'Please try again.'}
+                    </span>
+                </div>
+            )}
+
             {/* Course list */}
             <div className="flex flex-col gap-3">
-                {isLoading ? (
+                {isCoursesLoading ? (
                     Array.from({ length: 3 }).map((_, i) => (
                         <div key={i} className="rounded-lg border border-neutral-200 bg-white">
                             <div className="flex items-center gap-3 border-b border-neutral-100 px-4 py-3">
@@ -381,7 +411,7 @@ export const Step2CourseSelector = ({
                             </div>
                         </div>
                     ))
-                ) : groups.length === 0 ? (
+                ) : groups.length === 0 && !isError ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
                         <BookOpen
                             size={36}
@@ -464,6 +494,39 @@ export const Step2CourseSelector = ({
                     ))
                 )}
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t border-neutral-100 pt-3">
+                    <span className="text-xs text-neutral-400">
+                        Showing {page * PAGE_SIZE + 1}–
+                        {Math.min((page + 1) * PAGE_SIZE, totalElements)} of {totalElements}
+                    </span>
+                    <div className="flex items-center gap-1">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            disabled={page === 0}
+                            onClick={() => setPage((p) => p - 1)}
+                        >
+                            <CaretLeft size={13} />
+                        </Button>
+                        <span className="px-2 text-xs text-neutral-600">
+                            {page + 1} / {totalPages}
+                        </span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            disabled={page >= totalPages - 1}
+                            onClick={() => setPage((p) => p + 1)}
+                        >
+                            <CaretRight size={13} />
+                        </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

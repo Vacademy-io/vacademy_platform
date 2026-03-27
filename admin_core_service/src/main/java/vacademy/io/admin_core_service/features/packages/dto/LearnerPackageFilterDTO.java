@@ -27,6 +27,8 @@ public class LearnerPackageFilterDTO {
     private List<String> packageIds;
     /** Comma-separated package session IDs to filter by. Optional. */
     private List<String> packageSessionIds;
+    /** Session IDs to filter by (academic session). Optional. */
+    private List<String> sessionIds;
     /**
      * Optional filter on package sessions for this course search.
      * Allowed values:

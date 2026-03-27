@@ -73,6 +73,8 @@ public class PackageService {
                     List.of(PackageStatusEnum.ACTIVE.name()),
                     learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    learnerPackageFilterDTO.getLevelIds(),
+                    learnerPackageFilterDTO.getSessionIds(),
                     List.of(LevelStatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(StatusEnum.ACTIVE.name()),
@@ -88,6 +90,7 @@ public class PackageService {
             learnerPackageDetail = packageRepository.getCatalogPackageDetail(
                     instituteId,
                     learnerPackageFilterDTO.getLevelIds(),
+                    learnerPackageFilterDTO.getSessionIds(),
                     List.of(PackageStatusEnum.ACTIVE.name()),
                     learnerPackageFilterDTO.getPackageTypes(),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),

@@ -879,6 +879,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                 AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                 AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
+                AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ses.id IN (:sessionIds))
                 AND (
                     CAST(:packageSessionFilter AS VARCHAR) IS NULL
                     OR :packageSessionFilter = ''
@@ -936,6 +938,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                             AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                             AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
+                            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                            AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ses.id IN (:sessionIds))
                             AND (
                                 CAST(:packageSessionFilter AS VARCHAR) IS NULL
                                 OR :packageSessionFilter = ''
@@ -971,6 +975,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("packageStatus") List<String> packageStatus,
             @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,
+            @Param("levelIds") List<String> levelIds,
+            @Param("sessionIds") List<String> sessionIds,
             @Param("levelStatus") List<String> levelStatus,
             @Param("facultySubjectSessionStatus") List<String> facultySubjectSessionStatus,
             @Param("ratingStatuses") List<String> ratingStatuses,
@@ -1187,6 +1193,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 WHERE
                     (:instituteId IS NULL OR pi.institute_id = :instituteId)
                     AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                    AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ses.id IN (:sessionIds))
                     AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
@@ -1243,6 +1250,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     WHERE
                         (:instituteId IS NULL OR pi.institute_id = :instituteId)
                         AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                        AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ses.id IN (:sessionIds))
                         AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                         AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
@@ -1278,6 +1286,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     Page<PackageDetailProjection> getCatalogPackageDetail(
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
+            @Param("sessionIds") List<String> sessionIds,
             @Param("packageStatus") List<String> packageStatus,
             @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,

@@ -19,9 +19,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -137,13 +135,13 @@ public class LearnerEnrollmentNotificationService {
     }
 
     private Map<String, String> createPlaceholders(InstituteStudentDTO student, Institute institute) {
-        return Map.of(
-                "STUDENT_NAME", student.getUserDetails().getFullName(),
-                "USERNAME", student.getUserDetails().getUsername(),
-                "PASSWORD", student.getUserDetails().getPassword(),
-                "INSTITUTE_NAME", institute.getInstituteName(),
-                "LOGIN_URL", NotificationConfig.INSTITUTE_LEARNER_LOGIN_URL
-        );
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("STUDENT_NAME", Objects.toString(student.getUserDetails().getFullName(), ""));
+        placeholders.put("USERNAME", Objects.toString(student.getUserDetails().getUsername(), ""));
+        placeholders.put("PASSWORD", Objects.toString(student.getUserDetails().getPassword(), ""));
+        placeholders.put("INSTITUTE_NAME", Objects.toString(institute.getInstituteName(), ""));
+        placeholders.put("LOGIN_URL", Objects.toString(NotificationConfig.INSTITUTE_LEARNER_LOGIN_URL, ""));
+        return placeholders;
     }
 
     /**

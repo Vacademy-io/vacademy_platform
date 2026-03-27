@@ -7,7 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
+import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.notification_service.features.chatbot_flow.engine.ChatbotNodeExecutor;
 import vacademy.io.notification_service.features.chatbot_flow.engine.FlowExecutionContext;
 import vacademy.io.notification_service.features.chatbot_flow.engine.NodeExecutionResult;
@@ -24,11 +24,14 @@ import java.util.*;
 public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
 
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate;
+    private final InternalClientUtils internalClientUtils;
     private final List<ChatbotMessageProvider> messageProviders;
 
     @Value("${admin.core.service.baseurl:http://localhost:8081}")
     private String adminCoreServiceUrl;
+
+    @Value("${spring.application.name:notification_service}")
+    private String clientName;
 
     @Override
     public boolean canHandle(String nodeType) {
@@ -99,15 +102,15 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
             aiRequest.put("maxTokens", maxTokens);
             aiRequest.put("temperature", temperature);
 
-            String url = adminCoreServiceUrl + "/admin-core-service/internal/chatbot-ai/respond";
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(aiRequest, headers);
+            String endpoint = "/admin-core-service/internal/chatbot-ai/respond";
 
-            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.POST.name(), adminCoreServiceUrl, endpoint, aiRequest);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                String assistantMessage = (String) response.getBody().get("assistantMessage");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> responseBody = objectMapper.readValue(response.getBody(), Map.class);
+                String assistantMessage = (String) responseBody.get("assistantMessage");
 
                 // Send AI reply to user via WhatsApp
                 if (assistantMessage != null && !assistantMessage.isBlank()) {

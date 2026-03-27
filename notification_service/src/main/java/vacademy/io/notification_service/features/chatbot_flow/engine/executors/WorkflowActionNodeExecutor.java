@@ -7,7 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
+import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.notification_service.features.chatbot_flow.engine.ChatbotNodeExecutor;
 import vacademy.io.notification_service.features.chatbot_flow.engine.FlowExecutionContext;
 import vacademy.io.notification_service.features.chatbot_flow.engine.NodeExecutionResult;
@@ -24,10 +24,13 @@ import java.util.Map;
 public class WorkflowActionNodeExecutor implements ChatbotNodeExecutor {
 
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate;
+    private final InternalClientUtils internalClientUtils;
 
     @Value("${admin.core.service.baseurl:http://localhost:8081}")
     private String adminCoreServiceUrl;
+
+    @Value("${spring.application.name:notification_service}")
+    private String clientName;
 
     @Override
     public boolean canHandle(String nodeType) {
@@ -48,22 +51,18 @@ public class WorkflowActionNodeExecutor implements ChatbotNodeExecutor {
         }
 
         try {
-            // Build params to pass to workflow
             @SuppressWarnings("unchecked")
             Map<String, String> configParams = (Map<String, String>) config.getOrDefault("params", Map.of());
-            Map<String, String> params = new HashMap<>(configParams);
+            Map<String, Object> params = new HashMap<>(configParams);
             params.put("phone_number", context.getPhoneNumber());
             params.put("instituteId", context.getInstituteId());
             if (context.getUserId() != null) params.put("userId", context.getUserId());
             if (context.getMessageText() != null) params.put("messageText", context.getMessageText());
 
-            String url = adminCoreServiceUrl + "/admin-core-service/internal/workflow/run?wfId=" + workflowId;
+            String endpoint = "/admin-core-service/internal/workflow/run?wfId=" + workflowId;
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(params, headers);
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.POST.name(), adminCoreServiceUrl, endpoint, params);
 
             boolean success = response.getStatusCode().is2xxSuccessful();
             log.info("Workflow {} triggered: success={}", workflowId, success);

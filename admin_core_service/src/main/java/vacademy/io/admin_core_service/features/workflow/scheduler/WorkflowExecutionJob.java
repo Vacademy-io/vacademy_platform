@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.workflow.entity.WorkflowSchedule;
 import vacademy.io.admin_core_service.features.workflow.service.IdempotencyService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowScheduleService;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -41,10 +42,24 @@ public class WorkflowExecutionJob implements Job {
 
             log.info("Found {} schedules due for execution", dueSchedules.size());
 
+            SentryLogger.logInfo("Scheduled workflow job started", Map.of(
+                    "schedule.count", String.valueOf(dueSchedules.size()),
+                    "operation", "WorkflowExecutionJob"
+            ));
+
             for (WorkflowSchedule schedule : dueSchedules) {
                 log.info("Processing schedule: {} - workflow: {}, cron: {}, lastRunAt: {}, nextRunAt: {}",
                         schedule.getId(), schedule.getWorkflowId(), schedule.getCronExpression(),
                         schedule.getLastRunAt(), schedule.getNextRunAt());
+
+                SentryLogger.logInfo("Processing scheduled workflow", Map.of(
+                        "schedule.id", schedule.getId(),
+                        "workflow.id", schedule.getWorkflowId(),
+                        "cron.expression", schedule.getCronExpression() != null ? schedule.getCronExpression() : "N/A",
+                        "last.run.at", schedule.getLastRunAt() != null ? schedule.getLastRunAt().toString() : "N/A",
+                        "next.run.at", schedule.getNextRunAt() != null ? schedule.getNextRunAt().toString() : "N/A",
+                        "operation", "WorkflowExecutionJob.processSchedule"
+                ));
 
                 try {
                     String idempotencyKey = generateIdempotencyKey(schedule);
@@ -64,10 +79,25 @@ public class WorkflowExecutionJob implements Job {
                         String errorMsg = (String) result.getOrDefault("error", "Unknown error");
                         idempotencyService.markAsFailed(idempotencyKey, errorMsg);
                         log.error("Workflow schedule execution failed: {} - Error: {}", schedule.getId(), errorMsg);
+
+                        SentryLogger.SentryEventBuilder.error()
+                                .withMessage("Scheduled workflow execution failed")
+                                .withTag("schedule.id", schedule.getId())
+                                .withTag("workflow.id", schedule.getWorkflowId())
+                                .withTag("error.message", errorMsg)
+                                .withTag("operation", "WorkflowExecutionJob.executionFailed")
+                                .send();
                     } else {
                         idempotencyService.markAsCompleted(idempotencyKey, result);
                         log.info("Successfully executed workflow schedule: {} - Status: {}",
                                 schedule.getId(), result.get("status"));
+
+                        SentryLogger.logInfo("Scheduled workflow execution completed", Map.of(
+                                "schedule.id", schedule.getId(),
+                                "workflow.id", schedule.getWorkflowId(),
+                                "status", String.valueOf(result.get("status")),
+                                "operation", "WorkflowExecutionJob.executionCompleted"
+                        ));
                     }
 
                     WorkflowSchedule updatedSchedule = workflowScheduleService.getScheduleById(schedule.getId())
@@ -82,10 +112,23 @@ public class WorkflowExecutionJob implements Job {
                     log.warn(
                             "Workflow schedule {} is already being executed by another instance (Duplicate key). Skipping execution.",
                             schedule.getId());
+
+                    SentryLogger.logWarning("Scheduled workflow skipped - duplicate execution (another pod)", Map.of(
+                            "schedule.id", schedule.getId(),
+                            "workflow.id", schedule.getWorkflowId(),
+                            "operation", "WorkflowExecutionJob.duplicateSkipped"
+                    ));
                 } catch (Exception e) {
                     log.error("Error executing workflow schedule: {}", schedule.getId(), e);
                     String idempotencyKey = generateIdempotencyKey(schedule);
                     idempotencyService.markAsFailed(idempotencyKey, e.getMessage());
+
+                    SentryLogger.SentryEventBuilder.error(e)
+                            .withMessage("Scheduled workflow execution error")
+                            .withTag("schedule.id", schedule.getId())
+                            .withTag("workflow.id", schedule.getWorkflowId())
+                            .withTag("operation", "WorkflowExecutionJob.executionError")
+                            .send();
                 }
             }
         } catch (Exception e) {

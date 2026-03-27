@@ -54,6 +54,10 @@ public class LiveSessionProviderSyncProcessor {
 
     public void syncAll() {
         for (MeetingProvider provider : MeetingProvider.values()) {
+            // Zoho is not in active use — skip to avoid unnecessary API calls and log noise
+            if (provider == MeetingProvider.ZOHO_MEETING) {
+                continue;
+            }
             try {
                 syncRecordingsForProvider(provider.name());
                 // BBB attendance is tracked at join time — skip attendance sync for BBB

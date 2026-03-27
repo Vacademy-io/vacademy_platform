@@ -229,13 +229,13 @@ export default function AdminDisplaySettings() {
 
     // Move a top-level tab up or down within its category
     // Generic move helper: swaps order of two adjacent items in a sorted list
-    const swapOrder = <T extends { order: number }>(
+    const swapOrder = <T extends { order?: number }>(
         items: T[],
         getId: (item: T) => string,
         targetId: string,
         direction: 'up' | 'down'
     ): T[] => {
-        const sorted = [...items].sort((a, b) => a.order - b.order);
+        const sorted = [...items].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         const idx = sorted.findIndex((item) => getId(item) === targetId);
         if (idx < 0) return items;
         const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -623,12 +623,12 @@ export default function AdminDisplaySettings() {
                         ];
                         const sorted = courseListIds
                             .map((id) => ({
-                                id,
                                 ...(settings.courseList?.tabs.find((t) => t.id === id) || {
                                     id,
                                     order: courseListIds.indexOf(id),
                                     visible: true,
                                 }),
+                                id,
                             }))
                             .sort((a, b) => a.order - b.order);
 
@@ -751,12 +751,12 @@ export default function AdminDisplaySettings() {
                         };
                         const sorted = detailsIds
                             .map((id) => ({
-                                id,
                                 ...(settings.courseDetails?.tabs.find((t) => t.id === id) || {
                                     id,
                                     order: orderForId[id] ?? 99,
                                     visible: true,
                                 }),
+                                id,
                             }))
                             .sort((a, b) => a.order - b.order);
 

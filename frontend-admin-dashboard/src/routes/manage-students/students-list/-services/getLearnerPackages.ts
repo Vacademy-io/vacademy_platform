@@ -50,19 +50,23 @@ export const useLearnerPackagesQuery = ({
     page = 0,
     size = 10,
     type,
+    status = [],
+    levelIds = [],
 }: {
     instituteId: string;
     userId: string;
     page?: number;
     size?: number;
-    type: 'PROGRESS' | 'COMPLETED';
+    type: 'PROGRESS' | 'COMPLETED' | 'PAST';
+    status?: string[];
+    levelIds?: string[];
 }) => {
     return useQuery<LearnerPackagesResponse>({
-        queryKey: ['GET_LEARNER_PACKAGES', instituteId, userId, page, size, type],
+        queryKey: ['GET_LEARNER_PACKAGES', instituteId, userId, page, size, type, status, levelIds],
         queryFn: async () => {
             const body = {
-                status: [],
-                level_ids: [],
+                status: status,
+                level_ids: levelIds,
                 faculty_ids: [],
                 search_by_name: '',
                 tag: [],

@@ -58,6 +58,9 @@ public class AdmissionResponsesRepositoryCustomImpl implements AdmissionResponse
             where.append(" AND ar.applicant_id IS NOT NULL ");
         }
 
+        // Do not return ENQUIRY rows in this list API
+        where.append(" AND ar.overall_status <> 'ENQUIRY' ");
+
         // Optional status filter (audience_response.overall_status)
         if (filter.getStatuses() != null && !filter.getStatuses().isEmpty()) {
             where.append(" AND ar.overall_status IN (:statuses) ");

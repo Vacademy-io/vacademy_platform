@@ -1736,6 +1736,72 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.comma_separated_tags AS commaSeparetedTags,
                 p.course_depth AS courseDepth,
                 p.course_html_description AS courseHtmlDescriptionHtml,
+                p.package_type AS packageType,
+                p.created_at AS createdAt,
+                0 AS percentageCompleted,
+                0 AS readTimeInMinutes,
+                0.0 AS rating,
+                dest_ps.id AS packageSessionId,
+                dest_l.id AS levelId,
+                dest_l.level_name AS levelName,
+                CAST(ARRAY[] AS text[]) AS facultyUserIds,
+                ARRAY[CAST(dest_l.id AS text)] AS levelIds,
+                0 AS validityInDays
+            FROM student_session_institute_group_mapping ssigm
+            JOIN package_session dest_ps ON dest_ps.id = ssigm.destination_package_session_id
+            JOIN level dest_l ON dest_l.id = dest_ps.level_id
+            JOIN package p ON p.id = dest_ps.package_id
+            JOIN package_institute pi ON pi.package_id = p.id
+            WHERE ssigm.user_id = :userId
+                AND ssigm.status = 'INVITED'
+                AND ssigm.destination_package_session_id IS NOT NULL
+                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR dest_l.id IN (:levelIds))
+            GROUP BY
+                p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
+                p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
+                p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
+                p.course_depth, p.course_html_description, p.created_at,
+                dest_ps.id, dest_l.id, dest_l.level_name,
+                ssigm.created_at
+            """,
+            countQuery = """
+                SELECT COUNT(*) FROM (
+                    SELECT dest_ps.id
+                    FROM student_session_institute_group_mapping ssigm
+                    JOIN package_session dest_ps ON dest_ps.id = ssigm.destination_package_session_id
+                    JOIN level dest_l ON dest_l.id = dest_ps.level_id
+                    JOIN package p ON p.id = dest_ps.package_id
+                    JOIN package_institute pi ON pi.package_id = p.id
+                    WHERE ssigm.user_id = :userId
+                        AND ssigm.status = 'INVITED'
+                        AND ssigm.destination_package_session_id IS NOT NULL
+                        AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                        AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR dest_l.id IN (:levelIds))
+                    GROUP BY dest_ps.id
+                ) AS count_subquery
+                """, nativeQuery = true)
+    Page<PackageDetailProjection> getPastLearnerPackages(
+            @Param("userId") String userId,
+            @Param("instituteId") String instituteId,
+            @Param("levelIds") List<String> levelIds,
+            Pageable pageable);
+
+    @Query(value = """
+            SELECT
+                p.id AS id,
+                p.package_name AS packageName,
+                p.thumbnail_file_id AS thumbnailFileId,
+                p.is_course_published_to_catalaouge AS isCoursePublishedToCatalaouge,
+                p.course_preview_image_media_id AS coursePreviewImageMediaId,
+                p.course_banner_media_id AS courseBannerMediaId,
+                p.course_media_id AS courseMediaId,
+                p.why_learn AS whyLearnHtml,
+                p.who_should_learn AS whoShouldLearnHtml,
+                p.about_the_course AS aboutTheCourseHtml,
+                p.comma_separated_tags AS commaSeparetedTags,
+                p.course_depth AS courseDepth,
+                p.course_html_description AS courseHtmlDescriptionHtml,
                     p.package_type AS packageType,
                 p.created_at AS createdAt,
 

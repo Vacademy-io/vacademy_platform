@@ -169,9 +169,9 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemId: 'dashboard',
             },
             {
-                subItem: 'Admission Form',
-                subItemLink: '/admissions/admission-form',
-                subItemId: 'admission-form',
+                subItem: 'Admission List',
+                subItemLink: '/admissions/admission-list',
+                subItemId: 'admission-list',
             },
             {
                 subItem: 'Enquiries',
@@ -285,6 +285,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItem: 'Workflows',
                 subItemLink: '/workflow/list',
                 subItemId: 'workflow-list',
+            },
+            {
+                subItem: 'Chatbot Flows',
+                subItemLink: '/automation/chatbot-flows',
+                subItemId: 'chatbot-flows',
             },
             {
                 subItem: 'Website Builder',

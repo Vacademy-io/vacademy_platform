@@ -31,7 +31,7 @@ public interface LevelRepository extends JpaRepository<Level, String> {
     );
 
     @Query(value = """
-    SELECT l.* 
+    SELECT l.*
     FROM level l
     JOIN package_session ps ON l.id = ps.level_id
     JOIN package_institute pi ON ps.package_id = pi.package_id
@@ -47,4 +47,16 @@ public interface LevelRepository extends JpaRepository<Level, String> {
             @Param("instituteId") String instituteId,
             @Param("statusList") List<String> statusList
     );
+
+    @Query(value = """
+            SELECT DISTINCT l.*
+            FROM level l
+            JOIN package_session ps ON l.id = ps.level_id
+            JOIN package_institute pi ON ps.package_id = pi.package_id
+            WHERE pi.institute_id = :instituteId
+              AND l.status = 'ACTIVE'
+              AND ps.status = 'ACTIVE'
+            ORDER BY l.level_name
+            """, nativeQuery = true)
+    List<Level> findAllLevelsByInstituteId(@Param("instituteId") String instituteId);
 }

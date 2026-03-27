@@ -85,7 +85,6 @@ const AudienceResponseForm = ({
   // New state for student/parent/enquiry fields
   const [studentName, setStudentName] = useState("");
   const [studentDob, setStudentDob] = useState("");
-  const [studentGender, setStudentGender] = useState("");
   const [parentName, setParentName] = useState("");
   const [parentEmail, setParentEmail] = useState("");
   const [addressLine, setAddressLine] = useState("");
@@ -139,6 +138,7 @@ const AudienceResponseForm = ({
   const zodSchema = baseSchema.extend({
     parentMobile: z.string().min(1, "Mobile number is required"),
     gender: z.string().optional(),
+    parentRelationWithChild: z.string().min(1, "Relation with child is required"),
     packageSessionId: z.string().min(1, "Class is required"),
   });
   type FormValues = z.infer<typeof zodSchema>;
@@ -183,6 +183,7 @@ const AudienceResponseForm = ({
     {
       parentMobile: "",
       gender: "",
+      parentRelationWithChild: "",
       packageSessionId: "",
     } as any,
   );
@@ -310,7 +311,8 @@ const AudienceResponseForm = ({
         audienceId,
         studentName,
         studentDob,
-        studentGender,
+        (values as any).gender || "",
+        (values as any).parentRelationWithChild || "",
         parentName,
         parentEmail,
         (values as any).parentMobile || "",
@@ -331,7 +333,6 @@ const AudienceResponseForm = ({
       form.reset();
       setStudentName("");
       setStudentDob("");
-      setStudentGender("");
       setParentName("");
       setParentEmail("");
       setAddressLine("");
@@ -620,6 +621,19 @@ const AudienceResponseForm = ({
                     control={form.control}
                     country="in"
                     required={true}
+                  />
+
+                  <SelectField
+                    label="Relation with Child"
+                    name="parentRelationWithChild"
+                    options={[
+                      { label: "Father", value: "FATHER", _id: "FATHER" },
+                      { label: "Mother", value: "MOTHER", _id: "MOTHER" },
+                      { label: "Guardian", value: "GUARDIAN", _id: "GUARDIAN" },
+                    ]}
+                    control={form.control}
+                    required={true}
+                    className="!w-full"
                   />
 
                   <MyInput

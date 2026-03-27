@@ -11,6 +11,20 @@ import {
 } from 'reactflow';
 import { v4 as uuidv4 } from 'uuid';
 
+export interface ScheduleConfig {
+    scheduleType: 'CRON' | 'INTERVAL';
+    cronExpression: string;
+    intervalMinutes: number;
+    timezone: string;
+    startDate: string;
+    endDate: string;
+}
+
+export interface TriggerConfig {
+    eventName: string;
+    description: string;
+}
+
 export interface WorkflowBuilderState {
     nodes: Node[];
     edges: Edge[];
@@ -18,6 +32,8 @@ export interface WorkflowBuilderState {
     workflowName: string;
     workflowDescription: string;
     workflowType: 'SCHEDULED' | 'EVENT_DRIVEN';
+    scheduleConfig: ScheduleConfig;
+    triggerConfig: TriggerConfig;
     isDirty: boolean;
     isSaving: boolean;
 
@@ -35,9 +51,25 @@ export interface WorkflowBuilderState {
     setWorkflowName: (name: string) => void;
     setWorkflowDescription: (description: string) => void;
     setWorkflowType: (type: 'SCHEDULED' | 'EVENT_DRIVEN') => void;
+    setScheduleConfig: (config: Partial<ScheduleConfig>) => void;
+    setTriggerConfig: (config: Partial<TriggerConfig>) => void;
     setIsSaving: (saving: boolean) => void;
     reset: () => void;
 }
+
+const defaultSchedule: ScheduleConfig = {
+    scheduleType: 'CRON',
+    cronExpression: '0 0 9 * * ?',
+    intervalMinutes: 60,
+    timezone: 'Asia/Kolkata',
+    startDate: '',
+    endDate: '',
+};
+
+const defaultTrigger: TriggerConfig = {
+    eventName: '',
+    description: '',
+};
 
 const initialState = {
     nodes: [] as Node[],
@@ -46,6 +78,8 @@ const initialState = {
     workflowName: '',
     workflowDescription: '',
     workflowType: 'SCHEDULED' as const,
+    scheduleConfig: { ...defaultSchedule },
+    triggerConfig: { ...defaultTrigger },
     isDirty: false,
     isSaving: false,
 };
@@ -143,6 +177,10 @@ export const useWorkflowBuilderStore = create<WorkflowBuilderState>((set, get) =
     setWorkflowDescription: (description) =>
         set({ workflowDescription: description, isDirty: true }),
     setWorkflowType: (type) => set({ workflowType: type, isDirty: true }),
+    setScheduleConfig: (config) =>
+        set((state) => ({ scheduleConfig: { ...state.scheduleConfig, ...config }, isDirty: true })),
+    setTriggerConfig: (config) =>
+        set((state) => ({ triggerConfig: { ...state.triggerConfig, ...config }, isDirty: true })),
     setIsSaving: (saving) => set({ isSaving: saving }),
-    reset: () => set(initialState),
+    reset: () => set({ ...initialState, scheduleConfig: { ...defaultSchedule }, triggerConfig: { ...defaultTrigger } }),
 }));

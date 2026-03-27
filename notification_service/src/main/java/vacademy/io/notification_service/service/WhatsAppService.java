@@ -702,9 +702,14 @@ public class WhatsAppService {
                 // Extract userId if present in params
                 String userId = params.getOrDefault("userId", params.getOrDefault("user_id", null));
                 
-                // Get send status
+                // Get send status — try exact match first, then try any key in result map
                 Boolean sendSuccess = result.get(phoneNumber);
-                
+                if (sendSuccess == null && !result.isEmpty()) {
+                    // Phone format mismatch (e.g., +91xxx vs 91xxx) — take the first value
+                    sendSuccess = result.values().iterator().next();
+                }
+                boolean success = Boolean.TRUE.equals(sendSuccess);
+
                 // Build payload JSON
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("templateName", templateName);
@@ -716,17 +721,17 @@ public class WhatsAppService {
                 if (headerParams != null && headerParams.containsKey(phoneNumber)) {
                     payload.put("headerParams", headerParams.get(phoneNumber));
                 }
-                
+
                 String payloadJson;
                 try {
                     payloadJson = objectMapper.writeValueAsString(payload);
                 } catch (Exception e) {
                     payloadJson = payload.toString();
                 }
-                
+
                 // Build body message for display
                 String bodyMessage = String.format("WhatsApp Template: %s | Provider: %s | Status: %s | Params: %s",
-                        templateName, provider, sendSuccess ? "SUCCESS" : "FAILED", params);
+                        templateName, provider, success ? "SUCCESS" : "FAILED", params);
                 
                 // Create notification log
                 NotificationLog log = new NotificationLog();

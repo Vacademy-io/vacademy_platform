@@ -129,6 +129,34 @@ public class SubOrgSubscriptionService {
             log.info("Linked invite to {} package sessions", mappings.size());
         }
 
+        // 6. Create SUBORG_LEARNER invite per PS (for learner enrollment + FSPSSM access)
+        if (!CollectionUtils.isEmpty(request.getPackageSessionIds())) {
+            for (String psId : request.getPackageSessionIds()) {
+                EnrollInvite learnerInvite = new EnrollInvite();
+                learnerInvite.setName("Sub-Org Learner: " + request.getSubOrgDetails().getInstituteName());
+                learnerInvite.setTag(EnrollInviteTag.SUBORG_LEARNER.name());
+                learnerInvite.setSubOrgId(subOrgId);
+                learnerInvite.setStatus(StatusEnum.ACTIVE.name());
+                learnerInvite.setInstituteId(parentInstituteId);
+                learnerInvite.setInviteCode(generateInviteCode());
+                learnerInvite.setIsBundled(false);
+                learnerInvite.setVendor(request.getVendor());
+                learnerInvite.setVendorId(request.getVendorId());
+                learnerInvite.setCurrency(request.getCurrency());
+                learnerInvite.setLearnerAccessDays(request.getValidityInDays());
+                learnerInvite = enrollInviteRepository.save(learnerInvite);
+
+                // Link to PS with same payment option
+                PackageSession ps = packageSessionService.findById(psId);
+                PackageSessionLearnerInvitationToPaymentOption learnerMapping =
+                        new PackageSessionLearnerInvitationToPaymentOption(
+                                learnerInvite, ps, option, StatusEnum.ACTIVE.name());
+                packageSessionEnrollInviteToPaymentOptionService
+                        .createPackageSessionLearnerInvitationToPaymentOptions(List.of(learnerMapping));
+                log.info("Created SUBORG_LEARNER invite id={} for sub-org={}, PS={}", learnerInvite.getId(), subOrgId, psId);
+            }
+        }
+
         return CreateSubOrgSubscriptionResponseDTO.builder()
                 .subOrgId(subOrgId)
                 .enrollInviteId(invite.getId())

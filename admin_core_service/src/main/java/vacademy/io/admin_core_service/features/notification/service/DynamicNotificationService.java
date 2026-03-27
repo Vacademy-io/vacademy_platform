@@ -80,6 +80,21 @@ public class DynamicNotificationService {
                     packageSession.getLevel() != null ? packageSession.getLevel().getLevelName() : "",
                     packageSession.getSession() != null ? packageSession.getSession().getSessionName() : "");
 
+            // Override institute name/theme with sub-org info if the invite has a subOrgId
+            if (enrollInvite != null && enrollInvite.getSubOrgId() != null && !enrollInvite.getSubOrgId().isEmpty()) {
+                try {
+                    Institute subOrgInstitute = getInstituteFromId(enrollInvite.getSubOrgId());
+                    if (subOrgInstitute != null) {
+                        templateVars.setInstituteName(subOrgInstitute.getInstituteName());
+                        if (subOrgInstitute.getInstituteThemeCode() != null) {
+                            templateVars.setThemeColor(subOrgInstitute.getInstituteThemeCode().trim());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Could not resolve sub-org institute for subOrgId={}: {}", enrollInvite.getSubOrgId(), e.getMessage());
+                }
+            }
+
             // Populate referral and invitation templates for dynamic notifications
             try {
                 String invitationLink = learnerInvitationLinkService
@@ -93,7 +108,10 @@ public class DynamicNotificationService {
                 templateVars.setShortReferralLink(shortRefLink);
                 templateVars.setRefCode(refCode);
                 templateVars.setInviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "");
-                templateVars.setThemeColor(getThemeColorFromInstitute(getInstituteFromId(instituteId)));
+                // Only set theme color from parent institute if not already set by sub-org
+                if (templateVars.getThemeColor() == null || templateVars.getThemeColor().isEmpty()) {
+                    templateVars.setThemeColor(getThemeColorFromInstitute(getInstituteFromId(instituteId)));
+                }
                 templateVars.setName(user.getFullName() != null ? user.getFullName() : user.getUsername());
             } catch (Exception e) {
                 log.warn("Error populating referral variables for dynamic notification user {}: {}", user.getId(),

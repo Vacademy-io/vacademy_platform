@@ -547,12 +547,17 @@ public class InstituteInitManager {
         }
 
         /**
-         * Checks if the user has HAS_FACULTY_ASSIGNED permission in their JWT.
-         * Only users with this permission should have faculty-based filtering applied.
+         * Checks if the user has HAS_FACULTY_ASSIGNED permission.
+         * Falls back to checking FSPSSM directly if not found in Spring Security authorities.
          */
         private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
-                return user.getAuthorities().stream()
+                boolean fromAuthorities = user.getAuthorities().stream()
                                 .map(auth -> auth.getAuthority())
                                 .anyMatch(authority -> "HAS_FACULTY_ASSIGNED".equalsIgnoreCase(authority));
+                if (fromAuthorities) return true;
+
+                // Fallback: check if user has any active FSPSSM entries
+                return facultyMappingRepository.findByUserId(user.getUserId()).stream()
+                                .anyMatch(m -> "ACTIVE".equals(m.getStatus()));
         }
 }

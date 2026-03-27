@@ -14,6 +14,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
+import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
+import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentBasicDetailsDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentDTO;
@@ -63,13 +66,121 @@ public class StudentListManager {
     @Autowired
     AttendanceReportService attendanceReportService;
 
+    @Autowired
+    FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
+
+    @Autowired
+    PackageSessionLearnerInvitationToPaymentOptionRepository pslipoRepository;
+
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
     @Value("${spring.application.name}")
     private String applicationName;
 
+    /**
+     * Applies faculty access filtering to the student list filter.
+     * If the user has HAS_FACULTY_ASSIGNED permission:
+     * - Restricts packageSessionIds to only accessible package sessions
+     * - For PS with ENROLL_INVITE access: only shows learners enrolled via those invites
+     * - For PS without invite access: shows all learners
+     */
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(StudentListManager.class);
+
+    private void applyFacultyAccessFilter(CustomUserDetails user, StudentListFilter filter) {
+        boolean hasPerm = user != null && hasFacultyAssignedPermission(user);
+        log.info("[FACULTY-FILTER] user={}, hasFacultyAssigned={}",
+                user != null ? user.getUserId() : "null", hasPerm);
+        if (!hasPerm) {
+            return;
+        }
+
+        String instituteId = (filter.getInstituteIds() != null && !filter.getInstituteIds().isEmpty())
+                ? filter.getInstituteIds().get(0) : null;
+        if (instituteId == null) {
+            log.info("[FACULTY-FILTER] EXIT: no instituteId");
+            return;
+        }
+
+        List<String> activeStatuses = List.of("ACTIVE");
+
+        List<String> accessiblePsIds = facultyMappingRepository
+                .findAccessIdsByUserIdAndInstituteId(user.getUserId(), instituteId, activeStatuses);
+        log.info("[FACULTY-FILTER] accessiblePsIds={}", accessiblePsIds);
+
+        if (accessiblePsIds.isEmpty()) {
+            filter.setPackageSessionIds(List.of("__NONE__"));
+            log.info("[FACULTY-FILTER] EXIT: no accessible PS");
+            return;
+        }
+
+        // Intersect with user's requested packageSessionIds filter
+        List<String> requestedPsIds = filter.getPackageSessionIds();
+        log.info("[FACULTY-FILTER] requestedPsIds={}", requestedPsIds);
+        List<String> effectivePsIds;
+        if (requestedPsIds != null && !requestedPsIds.isEmpty()) {
+            // Filter out empty strings from the request
+            List<String> cleanRequestedPsIds = requestedPsIds.stream()
+                    .filter(id -> id != null && !id.isEmpty())
+                    .collect(Collectors.toList());
+            if (cleanRequestedPsIds.isEmpty()) {
+                // Request had only empty strings — treat as "no PS filter" (show all accessible)
+                effectivePsIds = new ArrayList<>(accessiblePsIds);
+            } else {
+                Set<String> accessibleSet = new HashSet<>(accessiblePsIds);
+                effectivePsIds = cleanRequestedPsIds.stream()
+                        .filter(accessibleSet::contains)
+                        .collect(Collectors.toList());
+                if (effectivePsIds.isEmpty()) {
+                    filter.setPackageSessionIds(List.of("__NONE__"));
+                    log.info("[FACULTY-FILTER] EXIT: no intersection");
+                    return;
+                }
+            }
+        } else {
+            effectivePsIds = new ArrayList<>(accessiblePsIds);
+        }
+        filter.setPackageSessionIds(effectivePsIds);
+        log.info("[FACULTY-FILTER] effectivePsIds={}", effectivePsIds);
+
+        // Get ENROLL_INVITE access_ids directly from FSPSSM
+        List<String> accessibleInviteIds = facultyMappingRepository
+                .findEnrollInviteAccessIdsByUserIdAndInstituteId(user.getUserId(), instituteId, activeStatuses);
+        log.info("[FACULTY-FILTER] accessibleInviteIds={}", accessibleInviteIds);
+
+        if (!accessibleInviteIds.isEmpty()) {
+            List<String> invitePsIds = pslipoRepository.findPackageSessionIdsByEnrollInviteIds(accessibleInviteIds);
+            log.info("[FACULTY-FILTER] invitePsIds (from PSLIPO)={}", invitePsIds);
+            Set<String> effectiveSet = new HashSet<>(effectivePsIds);
+            List<String> enrollInvitePsIds = invitePsIds.stream()
+                    .filter(effectiveSet::contains)
+                    .collect(Collectors.toList());
+            log.info("[FACULTY-FILTER] enrollInvitePsIds={}", enrollInvitePsIds);
+
+            if (!enrollInvitePsIds.isEmpty()) {
+                filter.setEnrollInviteIds(accessibleInviteIds);
+                filter.setEnrollInvitePackageSessionIds(enrollInvitePsIds);
+                log.info("[FACULTY-FILTER] APPLIED: inviteIds={}, invitePsIds={}", accessibleInviteIds, enrollInvitePsIds);
+            }
+        }
+    }
+
+    private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
+        // Check Spring Security authorities
+        boolean fromAuthorities = user.getAuthorities().stream()
+                .map(auth -> auth.getAuthority())
+                .anyMatch(authority -> "HAS_FACULTY_ASSIGNED".equalsIgnoreCase(authority));
+        if (fromAuthorities) return true;
+
+        // Fallback: check if user has any active FSPSSM entries (direct DB check)
+        List<FacultySubjectPackageSessionMapping> mappings = facultyMappingRepository.findByUserId(user.getUserId());
+        return mappings.stream().anyMatch(m -> "ACTIVE".equals(m.getStatus()));
+    }
+
     public ResponseEntity<AllStudentResponse> getLinkedStudents(CustomUserDetails user,
             StudentListFilter studentListFilter, int pageNo, int pageSize) {
+        // Apply faculty access filter (restricts PS and injects invite filter)
+        applyFacultyAccessFilter(user, studentListFilter);
+
         // Create a sorting object based on the provided sort columns
         Sort thisSort = ListService.createSortObject(studentListFilter.getSortColumns());
 
@@ -147,6 +258,8 @@ public class StudentListManager {
 
     public ResponseEntity<AllStudentV2Response> getLinkedStudentsV2(CustomUserDetails user,
                                                                     StudentListFilter studentListFilter, int pageNo, int pageSize) {
+        // Apply faculty access filter (restricts PS and injects invite filter)
+        applyFacultyAccessFilter(user, studentListFilter);
 
         Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
         Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
@@ -166,10 +279,12 @@ public class StudentListManager {
 
     private Page<StudentListV2Projection> fetchStudentPage(StudentListFilter filter, Pageable pageable) {
         boolean hasCustomFieldFilters = filter.getCustomFieldFilters() != null && !filter.getCustomFieldFilters().isEmpty();
-        
+        boolean hasEnrollInviteFilter = filter.getEnrollInviteIds() != null && !filter.getEnrollInviteIds().isEmpty();
+        // Use custom repo methods when custom field filters or enroll invite filters are present
+        boolean useCustomRepo = hasCustomFieldFilters || hasEnrollInviteFilter;
+
         if (StringUtils.hasText(filter.getName())) {
-            if (hasCustomFieldFilters) {
-                // Use custom repository method with custom field filters
+            if (useCustomRepo) {
                 return instituteStudentRepository.getAllStudentV2WithSearchAndCustomFieldFilters(
                         filter.getName(),
                         filter.getInstituteIds(),
@@ -185,9 +300,10 @@ public class StudentListManager {
                         filter.getCustomFieldFilters(),
                         filter.getStartDate(),
                         filter.getEndDate(),
+                        filter.getEnrollInviteIds(),
+                        filter.getEnrollInvitePackageSessionIds(),
                         pageable);
             } else {
-                // Use existing @Query method
                 return instituteStudentRepository.getAllStudentV2WithSearchRaw(
                         filter.getName(),
                         filter.getInstituteIds(),
@@ -207,8 +323,7 @@ public class StudentListManager {
         }
 
         if (!filter.getInstituteIds().isEmpty()) {
-            if (hasCustomFieldFilters) {
-                // Use custom repository method with custom field filters
+            if (useCustomRepo) {
                 return instituteStudentRepository.getAllStudentV2WithFilterAndCustomFieldFilters(
                         filter.getStatuses(),
                         filter.getGender(),
@@ -226,6 +341,8 @@ public class StudentListManager {
                         filter.getCustomFieldFilters(),
                         filter.getStartDate(),
                         filter.getEndDate(),
+                        filter.getEnrollInviteIds(),
+                        filter.getEnrollInvitePackageSessionIds(),
                         pageable);
             } else {
                 // Use existing @Query method

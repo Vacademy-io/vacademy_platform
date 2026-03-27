@@ -95,4 +95,7 @@ public class InstituteDomainRouting {
 
     @Column(name = "convert_username_password_to_lowercase", nullable = false)
     private boolean convertUsernamePasswordToLowercase;
+
+    @Column(name = "sub_org_id")
+    private String subOrgId;
 }

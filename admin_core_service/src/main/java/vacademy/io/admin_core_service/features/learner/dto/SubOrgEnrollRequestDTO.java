@@ -33,4 +33,7 @@ public class SubOrgEnrollRequestDTO {
     private String status;
     private String commaSeparatedOrgRoles;
     private List<CustomFieldValueDTO> customFieldValues;
+
+    // Optional: enroll invite IDs for this PS to create FSPSSM entries with access_type = ENROLL_INVITE
+    private List<String> enrollInviteIds;
 }

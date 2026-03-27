@@ -241,8 +241,11 @@ public class CombotWebhookService {
                 String userText = extractMessageText(message);
                 String messageId = (String) message.get(CombotWebhookKeys.MESSAGE_ID);
 
+                // Extract sender name from contacts[0].profile.name
+                String senderName = extractSenderName(value);
+
                 // Log Incoming
-                logIncomingMessage(messageId, userPhone, userText, receivingPhoneId);
+                logIncomingMessage(messageId, userPhone, userText, receivingPhoneId, senderName);
 
                 // --- KEYWORD CHECK FOR OPT OUT ---
                 if (isOptOutKeyword(userText)) {
@@ -811,7 +814,8 @@ public class CombotWebhookService {
 
     // --- Log & Extraction Helpers ---
 
-    private void logIncomingMessage(String messageId, String fromPhone, String text, String receivingChannelId) {
+    private void logIncomingMessage(String messageId, String fromPhone, String text,
+                                     String receivingChannelId, String senderName) {
         try {
             NotificationLog logEntry = new NotificationLog();
             logEntry.setNotificationType(CombotNotificationType.WHATSAPP_INCOMING.getType());
@@ -821,6 +825,9 @@ public class CombotWebhookService {
             logEntry.setBody(text);
             logEntry.setSenderBusinessChannelId(receivingChannelId);
             logEntry.setNotificationDate(LocalDateTime.now());
+            if (senderName != null && !senderName.isBlank()) {
+                logEntry.setSenderName(senderName);
+            }
 
             // Find last outgoing message to this user to get userId
             Optional<NotificationLog> lastOutgoingOpt = notificationLogRepository
@@ -837,6 +844,21 @@ public class CombotWebhookService {
         } catch (Exception e) {
             log.error("Failed to log incoming message from {}", fromPhone, e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractSenderName(Map<String, Object> value) {
+        try {
+            List<Map<String, Object>> contacts = (List<Map<String, Object>>) value.get("contacts");
+            if (contacts != null && !contacts.isEmpty()) {
+                Map<String, Object> contact = contacts.get(0);
+                Map<String, Object> profile = (Map<String, Object>) contact.get("profile");
+                if (profile != null) {
+                    return (String) profile.get("name");
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private String extractPhoneNumberId(Map<String, Object> value) {

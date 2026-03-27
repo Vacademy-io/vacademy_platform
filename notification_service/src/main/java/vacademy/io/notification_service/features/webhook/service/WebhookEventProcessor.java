@@ -40,7 +40,7 @@ public class WebhookEventProcessor {
 
     // Notification types for webhook events
     private static final String WHATSAPP_STATUS_EVENT = "WHATSAPP_STATUS_EVENT";
-    private static final String WHATSAPP_INCOMING_MESSAGE = "WHATSAPP_INCOMING_MESSAGE";
+    private static final String WHATSAPP_INCOMING_MESSAGE = "WHATSAPP_MESSAGE_INCOMING";
     private static final String WHATSAPP_VERIFICATION = "WHATSAPP_VERIFICATION";
 
     /**
@@ -98,6 +98,11 @@ public class WebhookEventProcessor {
 
         // Business channel ID - identifies which business account
         notificationLog.setSenderBusinessChannelId(event.getBusinessChannelId());
+
+        // Sender name from WhatsApp profile (for inbox display)
+        if (event.getSenderName() != null && !event.getSenderName().isBlank()) {
+            notificationLog.setSenderName(event.getSenderName());
+        }
 
         // Notification date from event timestamp
         if (event.getTimestamp() != null) {

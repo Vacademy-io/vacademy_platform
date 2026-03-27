@@ -87,11 +87,19 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
 
             // Call admin-core-service AI endpoint
             String modelId = (String) config.getOrDefault("modelId", "google/gemini-2.0-flash-001");
-            String systemPrompt = (String) config.getOrDefault("systemPrompt", "You are a helpful assistant.");
+            String userSystemPrompt = (String) config.getOrDefault("systemPrompt", "You are a helpful assistant.");
             int maxTokens = config.get("maxTokens") instanceof Number
                     ? ((Number) config.get("maxTokens")).intValue() : 500;
             double temperature = config.get("temperature") instanceof Number
                     ? ((Number) config.get("temperature")).doubleValue() : 0.7;
+
+            // Inject WhatsApp context so the LLM knows its output goes directly as a message
+            String systemPrompt = userSystemPrompt + "\n\n"
+                    + "IMPORTANT CONTEXT: Your response will be sent directly as a WhatsApp message to the user. "
+                    + "Keep it concise and conversational. No explanations, no meta-commentary, no markdown headers. "
+                    + "Do not say things like 'Here is my response' or 'This translates to'. "
+                    + "Just reply naturally as if you are chatting on WhatsApp. "
+                    + "Use WhatsApp formatting if needed: *bold*, _italic_. Keep responses under 300 characters when possible.";
 
             Map<String, Object> aiRequest = new LinkedHashMap<>();
             aiRequest.put("instituteId", context.getInstituteId());

@@ -248,6 +248,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
         category: 'CRM',
         subItems: [
             {
+                subItem: 'WhatsApp Inbox',
+                subItemLink: '/communication/inbox',
+                subItemId: 'whatsapp-inbox',
+            },
+            {
                 subItem: 'Create Announcement',
                 subItemLink: '/announcement/create',
                 subItemId: 'announcement-create',

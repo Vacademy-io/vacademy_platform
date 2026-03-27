@@ -80,6 +80,7 @@ import { Route as EvaluationEvaluationsIndexRouteImport } from "./routes/evaluat
 import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/evaluation/evaluation-tool/index"
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
 import { Route as CommunityQuestionPaperIndexRouteImport } from "./routes/community/question-paper/index"
+import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
 import { Route as AudienceManagerListIndexRouteImport } from "./routes/audience-manager/list/index"
@@ -698,6 +699,13 @@ const CommunityQuestionPaperIndexRoute =
   } as any).lazy(() =>
     import("./routes/community/question-paper/index.lazy").then((d) => d.Route),
   )
+const CommunicationInboxIndexRoute = CommunicationInboxIndexRouteImport.update({
+  id: "/communication/inbox/",
+  path: "/communication/inbox/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/communication/inbox/index.lazy").then((d) => d.Route),
+)
 const CertificateGenerationStudentDataIndexRoute =
   CertificateGenerationStudentDataIndexRouteImport.update({
     id: "/certificate-generation/student-data/",
@@ -1349,6 +1357,7 @@ export interface FileRoutesByFullPath {
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
+  "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
@@ -1493,6 +1502,7 @@ export interface FileRoutesByTo {
   "/audience-manager/list": typeof AudienceManagerListIndexRoute
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
+  "/communication/inbox": typeof CommunicationInboxIndexRoute
   "/community/question-paper": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId": typeof ContentContentIdIndexRoute
   "/evaluation/evaluation-tool": typeof EvaluationEvaluationToolIndexRoute
@@ -1639,6 +1649,7 @@ export interface FileRoutesById {
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
+  "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
@@ -1786,6 +1797,7 @@ export interface FileRouteTypes {
     | "/audience-manager/list/"
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
+    | "/communication/inbox/"
     | "/community/question-paper/"
     | "/content/$contentId/"
     | "/evaluation/evaluation-tool/"
@@ -1930,6 +1942,7 @@ export interface FileRouteTypes {
     | "/audience-manager/list"
     | "/automation/chatbot-flows"
     | "/certificate-generation/student-data"
+    | "/communication/inbox"
     | "/community/question-paper"
     | "/content/$contentId"
     | "/evaluation/evaluation-tool"
@@ -2075,6 +2088,7 @@ export interface FileRouteTypes {
     | "/audience-manager/list/"
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
+    | "/communication/inbox/"
     | "/community/question-paper/"
     | "/content/$contentId/"
     | "/evaluation/evaluation-tool/"
@@ -2220,6 +2234,7 @@ export interface RootRouteChildren {
   AudienceManagerListIndexRoute: typeof AudienceManagerListIndexRoute
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
+  CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
   CommunityQuestionPaperIndexRoute: typeof CommunityQuestionPaperIndexRoute
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
   EvaluationEvaluationToolIndexRoute: typeof EvaluationEvaluationToolIndexRoute
@@ -2817,6 +2832,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CommunityQuestionPaperIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/communication/inbox/": {
+      id: "/communication/inbox/"
+      path: "/communication/inbox"
+      fullPath: "/communication/inbox/"
+      preLoaderRoute: typeof CommunicationInboxIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/certificate-generation/student-data/": {
       id: "/certificate-generation/student-data/"
       path: "/certificate-generation/student-data"
@@ -3385,6 +3407,7 @@ const rootRouteChildren: RootRouteChildren = {
   AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
+  CommunicationInboxIndexRoute: CommunicationInboxIndexRoute,
   CommunityQuestionPaperIndexRoute: CommunityQuestionPaperIndexRoute,
   ContentContentIdIndexRoute: ContentContentIdIndexRoute,
   EvaluationEvaluationToolIndexRoute: EvaluationEvaluationToolIndexRoute,

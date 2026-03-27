@@ -58,4 +58,7 @@ public class NotificationLog {
 
     @Column(name = "message_payload", columnDefinition = "TEXT")
     private String messagePayload;
+
+    @Column(name = "sender_name")
+    private String senderName;
 }

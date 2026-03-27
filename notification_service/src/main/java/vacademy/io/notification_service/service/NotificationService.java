@@ -5,11 +5,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.AttachmentUsersDTO;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.dto.NotificationToUserDTO;
+import vacademy.io.notification_service.features.announcements.client.AuthServiceClient;
+import vacademy.io.notification_service.features.announcements.service.UserAnnouncementPreferenceService;
 import vacademy.io.notification_service.features.bounced_emails.service.BouncedEmailService;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
@@ -31,14 +34,82 @@ public class NotificationService {
     private final NotificationLogRepository notificationLogRepository;
     private final EmailService emailSenderService;
     private final BouncedEmailService bouncedEmailService;
+    private final UserAnnouncementPreferenceService userAnnouncementPreferenceService;
+    private final AuthServiceClient authServiceClient;
 
     /**
      * Check if an email should be blocked from sending.
      * Checks both domain blocklist and bounced email blocklist.
      */
     private boolean isEmailBlocked(String email) {
-        return EmailDomainBlocklistUtil.isEmailDomainBlocked(email) || 
+        return EmailDomainBlocklistUtil.isEmailDomainBlocked(email) ||
                bouncedEmailService.isEmailBlocked(email);
+    }
+
+    /**
+     * Resolve the actual user UUID from userId which may be an email address (workflow emails)
+     * or already a UUID (announcement emails). Returns null if resolution fails.
+     */
+    private String resolveUserUUID(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return null;
+        }
+        // If userId contains '@', it's likely an email address — resolve to UUID
+        if (userId.contains("@")) {
+            try {
+                User user = authServiceClient.getUserByEmail(userId.trim());
+                if (user != null && StringUtils.hasText(user.getId())) {
+                    return user.getId().trim();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to resolve user UUID from email {}: {}", userId, e.getMessage());
+            }
+            return null;
+        }
+        // Otherwise assume it's already a UUID
+        return userId.trim();
+    }
+
+    /**
+     * Check if user has unsubscribed from emails for the given institute and email type.
+     * Returns false (allow sending) if check fails for any reason to avoid blocking emails.
+     */
+    private boolean isUserUnsubscribed(String userId, String channelId, String instituteId, String emailType) {
+        try {
+            if (!StringUtils.hasText(instituteId)) {
+                return false;
+            }
+            String resolvedUserId = resolveUserUUID(userId);
+            if (resolvedUserId == null) {
+                return false;
+            }
+
+            String resolvedEmailType = StringUtils.hasText(emailType) ? emailType : NotificationConstants.UTILITY_EMAIL;
+
+            // Get the from address for this email type and institute
+            List<EmailService.EmailSenderInfo> senders = emailSenderService.listInstituteEmailSenders(instituteId);
+            String fromAddress = senders.stream()
+                    .filter(s -> resolvedEmailType.equalsIgnoreCase(s.getEmailType()))
+                    .map(EmailService.EmailSenderInfo::getFromAddress)
+                    .filter(StringUtils::hasText)
+                    .findFirst()
+                    .orElse(null);
+
+            if (fromAddress == null) {
+                return false;
+            }
+
+            boolean unsubscribed = userAnnouncementPreferenceService.isEmailSenderUnsubscribed(
+                    resolvedUserId, instituteId, resolvedEmailType, fromAddress);
+            if (unsubscribed) {
+                log.info("Skipping email for unsubscribed user {} (resolved: {}) from {} ({})",
+                        userId, resolvedUserId, fromAddress, resolvedEmailType);
+            }
+            return unsubscribed;
+        } catch (Exception e) {
+            log.warn("Error checking unsubscribe status for user {}, proceeding with send: {}", userId, e.getMessage());
+            return false;
+        }
     }
 
     @Transactional
@@ -63,6 +134,10 @@ public class NotificationService {
                     // Skip sending email if blocked (domain blocklist or bounced email blocklist)
                     if (isEmailBlocked(channelId)) {
                         log.info("Skipping email notification for blocked email address: {}", channelId);
+                        break;
+                    }
+                    // Skip sending email if user has unsubscribed
+                    if (isUserUnsubscribed(userId, channelId, instituteId, NotificationConstants.UTILITY_EMAIL)) {
                         break;
                     }
                     // Use UTILITY_EMAIL as default for regular notification emails
@@ -140,6 +215,11 @@ public class NotificationService {
                         String emailType = StringUtils.hasText(attachmentNotificationDTO.getEmailType())
                                 ? attachmentNotificationDTO.getEmailType()
                                 : NotificationConstants.UTILITY_EMAIL;
+
+                        // Skip sending email if user has unsubscribed
+                        if (isUserUnsubscribed(userId, channelId, instituteId, emailType)) {
+                            continue;
+                        }
 
                         emailSenderService.sendAttachmentEmail(
                                 channelId,

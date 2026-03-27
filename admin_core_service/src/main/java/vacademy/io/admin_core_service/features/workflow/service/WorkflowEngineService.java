@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.workflow.repository.NodeTemplateR
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowNodeMappingRepository;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowRepository;
 import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.*;
 
@@ -85,6 +86,10 @@ public class WorkflowEngineService {
             Map<String, Integer> nodeVisitCount = new HashMap<>();
             int maxVisitsPerNode = 3; // Allow re-execution in diamond DAGs, but cap to prevent infinite loops
 
+            // Track notification nodes that have already sent messages to prevent duplicates
+            // in diamond DAG patterns where multiple paths converge on the same notification node
+            Set<String> executedNotificationNodes = new HashSet<>();
+
             // Push start node to stack
             nodeExecutionStack.push(startNode.getNodeTemplateId());
             log.info("Starting workflow execution with start node: {}", startNode.getNodeTemplateId());
@@ -121,6 +126,36 @@ public class WorkflowEngineService {
                 String effectiveConfig = mergeConfig(tmpl.getConfigJson(), current.getOverrideConfig());
                 String nodeType = tmpl.getNodeType();
                 log.info("Node type: {}, effective config: {}", nodeType, effectiveConfig);
+
+                // Prevent duplicate notification sends in diamond DAG patterns:
+                // If multiple paths converge on the same SEND_EMAIL or SEND_WHATSAPP node,
+                // only execute it once per workflow run.
+                if (("SEND_EMAIL".equalsIgnoreCase(nodeType) || "SEND_WHATSAPP".equalsIgnoreCase(nodeType))
+                        && !executedNotificationNodes.add(currentNodeId)) {
+                    log.info("Skipping duplicate notification node {} (type: {}) - already executed in this workflow run",
+                            currentNodeId, nodeType);
+
+                    SentryLogger.logWarning("Duplicate notification node skipped in workflow", Map.of(
+                            "workflow.id", workflowId,
+                            "node.id", currentNodeId,
+                            "node.type", nodeType,
+                            "institute.id", String.valueOf(ctx.get("instituteId")),
+                            "operation", "WorkflowEngine.duplicateNodeSkipped"
+                    ));
+                    continue;
+                }
+
+                // Sentry log when a notification node is about to execute
+                if ("SEND_EMAIL".equalsIgnoreCase(nodeType) || "SEND_WHATSAPP".equalsIgnoreCase(nodeType)) {
+                    SentryLogger.logInfo("Executing notification node in workflow", Map.of(
+                            "workflow.id", workflowId,
+                            "node.id", currentNodeId,
+                            "node.type", nodeType,
+                            "institute.id", String.valueOf(ctx.get("instituteId")),
+                            "execution.id", String.valueOf(ctx.get("executionId")),
+                            "operation", "WorkflowEngine.notificationNodeExecute"
+                    ));
+                }
 
                 // Use registry for O(1) lookup
                 NodeHandler handler = nodeHandlerRegistry.getHandler(nodeType);

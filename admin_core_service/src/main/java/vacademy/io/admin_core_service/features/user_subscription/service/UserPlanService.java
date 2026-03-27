@@ -438,26 +438,68 @@ public class UserPlanService {
             }
 
             // Send dynamic enrollment notification
-            dynamicNotificationService.sendDynamicNotification(
-                    NotificationEventType.LEARNER_ENROLL,
-                    firstPackageSessionId,
-                    instituteId,
-                    userDTO,
-                    paymentOption,
-                    enrollInvite);
-            logger.info("Enrollment notification sent successfully for user: {}", userDTO.getId());
+            try {
+                dynamicNotificationService.sendDynamicNotification(
+                        NotificationEventType.LEARNER_ENROLL,
+                        firstPackageSessionId,
+                        instituteId,
+                        userDTO,
+                        paymentOption,
+                        enrollInvite);
+                logger.info("Enrollment notification sent successfully for user: {}", userDTO.getId());
+            } catch (Exception ex) {
+                logger.warn("Dynamic enrollment notification skipped/failed for user: {} - {}", userDTO.getId(), ex.getMessage());
+            }
 
             // Send referral invitation email
-            dynamicNotificationService.sendReferralInvitationNotification(
-                    instituteId,
-                    userDTO,
-                    enrollInvite);
-            logger.info("Referral invitation sent successfully for user: {}", userDTO.getId());
+            try {
+                dynamicNotificationService.sendReferralInvitationNotification(
+                        instituteId,
+                        userDTO,
+                        enrollInvite);
+                logger.info("Referral invitation sent successfully for user: {}", userDTO.getId());
+            } catch (Exception ex) {
+                logger.warn("Referral invitation skipped/failed for user: {} - {}", userDTO.getId(), ex.getMessage());
+            }
+
+            // --- Send Login Credentials upon successful payment ---
+            try {
+                if (checkInstituteSendCredentialsFlag(instituteId)) {
+                    authService.sendEnrollmentEmails(List.of(userDTO.getId()));
+                    logger.info("Enrollment credentials email sent successfully for user: {}", userDTO.getId());
+                } else {
+                    logger.info("Institute {} explicitly disabled sendCredentials. Skipping credentials email for user: {}", instituteId, userDTO.getId());
+                }
+            } catch (Exception credEx) {
+                logger.error("Error sending enrollment credentials email for user: {}", userDTO.getId(), credEx);
+            }
 
         } catch (Exception e) {
             logger.error("Error sending enrollment notifications after payment for UserPlan ID: {}. " +
                     "Enrollment is complete but notification failed.", userPlan.getId(), e);
             // Don't throw exception - enrollment is complete, notification is secondary
+        }
+    }
+
+    private boolean checkInstituteSendCredentialsFlag(String instituteId) {
+        try {
+            Optional<Institute> instituteOpt = instituteRepository.findById(instituteId);
+            if (instituteOpt.isEmpty()) return true;
+            Institute institute = instituteOpt.get();
+            String settingJson = institute.getSetting();
+            if (!org.springframework.util.StringUtils.hasText(settingJson)) return true;
+            com.fasterxml.jackson.databind.JsonNode rootNode = objectMapper.readTree(settingJson);
+            if (!rootNode.has("setting")) return true;
+            com.fasterxml.jackson.databind.JsonNode settingNode = rootNode.path("setting");
+            if (!settingNode.has("LEARNER_ENROLLMENT_SETTING")) return true;
+            com.fasterxml.jackson.databind.JsonNode enrollmentSettingNode = settingNode.path("LEARNER_ENROLLMENT_SETTING");
+            if (!enrollmentSettingNode.has("data")) return true;
+            com.fasterxml.jackson.databind.JsonNode dataNode = enrollmentSettingNode.path("data");
+            if (!dataNode.has("sendCredentials")) return true;
+            return dataNode.path("sendCredentials").asBoolean(true);
+        } catch (Exception e) {
+            logger.error("Error parsing institute setting_json for sendCredentials in UserPlanService: {}", e.getMessage());
+            return true;
         }
     }
 

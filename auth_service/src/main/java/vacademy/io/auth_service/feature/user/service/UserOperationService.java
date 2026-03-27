@@ -34,6 +34,31 @@ public class UserOperationService {
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    private vacademy.io.auth_service.feature.auth.service.AuthService internalAuthService;
+
+    public String sendEnrollmentEmails(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return "Invalid input";
+        }
+        List<User> users = userRepository.findUserDetailsByIds(userIds);
+        if (users == null || users.isEmpty()) {
+            return "No valid users found";
+        }
+        for (User user : users) {
+             String instituteId = null;
+             if (user.getRoles() != null && !user.getRoles().isEmpty()) {
+                 instituteId = user.getRoles().iterator().next().getInstituteId();
+             }
+             try {
+                 internalAuthService.sendLearnerEnrollmentNewUserEmail(user, instituteId, user.getRoles());
+             } catch(Exception e) {
+                 // Ignore individual failures
+             }
+        }
+        return "Enrollment emails sent successfully";
+    }
+
     public String sendUserPasswords(List<String> userIds, CustomUserDetails userDetails) {
         if (userIds == null || userIds.isEmpty()) {
             return "Invalid input: userIds or userDetails is missing";

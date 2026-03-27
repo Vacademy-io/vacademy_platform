@@ -169,6 +169,15 @@ public class LearnerEnrollRequestService {
             boolean sendCredentials = getSendCredentialsFlag(
                     learnerEnrollRequestDTO.getInstituteId(),
                     enrollDTO.getPackageSessionIds());
+
+            // For PAID plans, do NOT send credentials at checkout (they will be sent by webhook after payment)
+            PaymentOption preCheckPaymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
+            if (preCheckPaymentOption != null && 
+               (preCheckPaymentOption.getType().equals(PaymentOptionType.SUBSCRIPTION.name()) || 
+                preCheckPaymentOption.getType().equals(PaymentOptionType.ONE_TIME.name()))) {
+                sendCredentials = false;
+            }
+
             UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(learnerEnrollRequestDTO.getUser(),
                     learnerEnrollRequestDTO.getInstituteId(), sendCredentials);
             learnerEnrollRequestDTO.setUser(user);

@@ -129,7 +129,16 @@ const FEE_TYPE_PRESETS = [
 
 // ─── Payload builder ────────────────────────────────────────────────────────────
 
-export function buildCreateCPOPayload(form: CPOForm): CreateCPOPayload {
+export function buildCreateCPOPayload(form: CPOForm, allBatches: any[] = []): CreateCPOPayload {
+    const expandedIds = new Set<string>(form.packageSessionIds);
+    for (const selectedId of form.packageSessionIds) {
+        for (const batch of allBatches) {
+            if (batch.parent_id === selectedId) {
+                expandedIds.add(batch.id);
+            }
+        }
+    }
+
     return {
         id: null,
         name: form.name,
@@ -171,7 +180,7 @@ export function buildCreateCPOPayload(form: CPOForm): CreateCPOPayload {
                 discount_value: 0,
             },
         })),
-        package_session_links: form.packageSessionIds.map((id) => ({
+        package_session_links: Array.from(expandedIds).map((id) => ({
             enroll_invite_id: null,
             package_session_id: id,
         })),

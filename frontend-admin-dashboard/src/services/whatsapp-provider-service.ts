@@ -60,14 +60,26 @@ export const PROVIDER_CREDENTIAL_FIELDS: Record<string, CredentialField[]> = {
         {
             key: 'access_token',
             label: 'Access Token',
-            placeholder: 'Enter Meta Access Token',
+            placeholder: 'Enter System User Access Token',
             type: 'password',
         },
         { key: 'app_id', label: 'App ID', placeholder: 'Enter Meta App ID', type: 'text' },
         {
+            key: 'app_secret',
+            label: 'App Secret',
+            placeholder: 'Enter Meta App Secret',
+            type: 'password',
+        },
+        {
             key: 'phoneNumberId',
             label: 'Phone Number ID',
             placeholder: 'Enter Phone Number ID',
+            type: 'text',
+        },
+        {
+            key: 'wabaId',
+            label: 'WABA ID',
+            placeholder: 'Enter WhatsApp Business Account ID',
             type: 'text',
         },
     ],
@@ -166,6 +178,18 @@ export async function registerWatiWebhook(
         method: 'POST',
         url: `${CHANNEL_MAPPING_BASE}/register-webhook/wati`,
         data: { watiApiUrl, watiApiKey, webhookUrl },
+    });
+    return response.data;
+}
+
+export async function registerMetaWebhook(
+    webhookUrl: string
+): Promise<{ success: boolean; message: string; steps?: string[] }> {
+    const instituteId = getInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${CHANNEL_MAPPING_BASE}/register-webhook/meta`,
+        data: { instituteId, webhookUrl },
     });
     return response.data;
 }

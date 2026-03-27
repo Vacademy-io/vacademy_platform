@@ -1,17 +1,20 @@
 package vacademy.io.notification_service.features.chatbot_flow.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
+import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.combot.entity.ChannelToInstituteMapping;
 import vacademy.io.notification_service.features.combot.repository.ChannelToInstituteMappingRepository;
+import vacademy.io.notification_service.institute.InstituteInfoDTO;
+import vacademy.io.notification_service.institute.InstituteInternalService;
 
-import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * CRUD for channel_to_institute_mapping + webhook registration.
@@ -26,6 +29,8 @@ public class ChannelMappingController {
 
     private final ChannelToInstituteMappingRepository mappingRepository;
     private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    private final InstituteInternalService instituteInternalService;
 
     // ==================== CRUD ====================
 
@@ -58,10 +63,8 @@ public class ChannelMappingController {
 
     @GetMapping
     public ResponseEntity<List<ChannelToInstituteMapping>> getMappings(@RequestParam String instituteId) {
-        // findByInstituteId returns Optional, but we need all mappings
-        // Use findAll and filter since repository only has findByInstituteId returning Optional
-        Optional<ChannelToInstituteMapping> mapping = mappingRepository.findByInstituteId(instituteId);
-        return ResponseEntity.ok(mapping.map(List::of).orElse(List.of()));
+        List<ChannelToInstituteMapping> mappings = mappingRepository.findAllByInstituteId(instituteId);
+        return ResponseEntity.ok(mappings);
     }
 
     @DeleteMapping("/{channelId}")
@@ -116,6 +119,120 @@ public class ChannelMappingController {
             return ResponseEntity.ok(Map.of(
                     "success", false,
                     "message", "Failed: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Register webhook URL with Meta WhatsApp Cloud API.
+     * SECURITY: Reads app_secret and credentials from server-side institute settings (NOT from frontend).
+     * Frontend only sends { instituteId, webhookUrl, verifyToken }.
+     *
+     * Step 1: POST /{app-id}/subscriptions (register callback URL using App Access Token)
+     * Step 2: POST /{waba-id}/subscribed_apps (subscribe WABA using System User token)
+     */
+    @PostMapping("/register-webhook/meta")
+    public ResponseEntity<Map<String, Object>> registerMetaWebhook(@RequestBody Map<String, String> body) {
+        String instituteId = body.get("instituteId");
+        String webhookUrl = body.get("webhookUrl");
+        String verifyToken = body.getOrDefault("verifyToken", "vacademy_webhook_secret");
+
+        if (instituteId == null || webhookUrl == null) {
+            return ResponseEntity.badRequest().body(Map.of("success", false,
+                    "message", "Missing required fields: instituteId, webhookUrl"));
+        }
+
+        List<String> steps = new java.util.ArrayList<>();
+
+        try {
+            // Read Meta credentials from server-side institute settings
+            InstituteInfoDTO institute = instituteInternalService.getInstituteByInstituteId(instituteId);
+            JsonNode root = objectMapper.readTree(institute.getSetting());
+
+            JsonNode whatsappSetting = root.path("setting")
+                    .path(NotificationConstants.WHATSAPP_SETTING)
+                    .path(NotificationConstants.DATA)
+                    .path(NotificationConstants.UTILITY_WHATSAPP);
+            if (whatsappSetting.isMissingNode()) {
+                whatsappSetting = root.path(NotificationConstants.WHATSAPP_SETTING)
+                        .path(NotificationConstants.DATA)
+                        .path(NotificationConstants.UTILITY_WHATSAPP);
+            }
+
+            JsonNode meta = whatsappSetting.path("meta");
+            String appId = meta.path("app_id").asText(meta.path("appId").asText(
+                    whatsappSetting.path("appId").asText(whatsappSetting.path("app_id").asText(""))));
+            String appSecret = meta.path("app_secret").asText(meta.path("appSecret").asText(""));
+            String accessToken = meta.path("access_token").asText(meta.path("accessToken").asText(
+                    whatsappSetting.path("access_token").asText("")));
+            String wabaId = meta.path("wabaId").asText(meta.path("waba_id").asText(""));
+
+            if (appId.isBlank() || appSecret.isBlank()) {
+                return ResponseEntity.ok(Map.of("success", false,
+                        "message", "Meta App ID and App Secret must be configured in provider credentials first"));
+            }
+
+            // Step 1: Register webhook URL on the app using App Access Token
+            String appAccessToken = appId + "|" + appSecret;
+            String subscriptionUrl = "https://graph.facebook.com/v22.0/" + appId + "/subscriptions";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+            String formBody = "object=whatsapp_business_account"
+                    + "&callback_url=" + java.net.URLEncoder.encode(webhookUrl, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&verify_token=" + java.net.URLEncoder.encode(verifyToken, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&fields=messages"
+                    + "&access_token=" + java.net.URLEncoder.encode(appAccessToken, java.nio.charset.StandardCharsets.UTF_8);
+
+            HttpEntity<String> request = new HttpEntity<>(formBody, headers);
+            ResponseEntity<String> response = restTemplate.postForEntity(subscriptionUrl, request, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                steps.add("Webhook URL registered on app");
+                log.info("Meta webhook registered: appId={}, url={}", appId, webhookUrl);
+            } else {
+                log.error("Meta subscription failed: {}", response.getBody());
+                return ResponseEntity.ok(Map.of("success", false,
+                        "message", "Failed to register webhook: " + response.getBody(),
+                        "steps", steps));
+            }
+
+            // Step 2: Subscribe WABA to the app (if WABA ID and access token available)
+            if (!wabaId.isBlank() && !accessToken.isBlank()) {
+                String subscribeUrl = "https://graph.facebook.com/v22.0/" + wabaId + "/subscribed_apps";
+
+                HttpHeaders tokenHeaders = new HttpHeaders();
+                tokenHeaders.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+                String subscribeBody = "access_token=" + java.net.URLEncoder.encode(accessToken, java.nio.charset.StandardCharsets.UTF_8);
+                HttpEntity<String> subscribeRequest = new HttpEntity<>(subscribeBody, tokenHeaders);
+                ResponseEntity<String> subscribeResponse = restTemplate.postForEntity(subscribeUrl, subscribeRequest, String.class);
+
+                if (subscribeResponse.getStatusCode().is2xxSuccessful()) {
+                    steps.add("WABA subscribed to app webhook");
+                    log.info("Meta WABA subscribed: wabaId={}", wabaId);
+                } else {
+                    steps.add("WABA subscription failed: " + subscribeResponse.getBody());
+                    log.warn("Meta WABA subscription failed: {}", subscribeResponse.getBody());
+                }
+            } else {
+                steps.add("WABA subscription skipped (no WABA ID or access token configured)");
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Meta webhook setup complete",
+                    "steps", steps
+            ));
+
+        } catch (Exception e) {
+            log.error("Failed to register Meta webhook: {}", e.getMessage(), e);
+            steps.add("Error: " + e.getMessage());
+            return ResponseEntity.ok(Map.of(
+                    "success", false,
+                    "message", "Failed: " + e.getMessage(),
+                    "steps", steps
             ));
         }
     }

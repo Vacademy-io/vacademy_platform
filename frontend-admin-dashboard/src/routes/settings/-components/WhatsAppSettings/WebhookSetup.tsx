@@ -6,6 +6,7 @@ import {
     createChannelMapping,
     deleteChannelMapping,
     registerWatiWebhook,
+    registerMetaWebhook,
     verifyWebhookEndpoint,
     getWebhookUrl,
     providerToChannelType,
@@ -27,6 +28,10 @@ export function WebhookSetup({ activeProvider, providers }: WebhookSetupProps) {
     const [copied, setCopied] = useState(false);
 
     const activeProviderDetails = providers.find((p) => p.name === activeProvider);
+    // Check isConfigured with same fallback as parent: credentials may exist even if isConfigured is false
+    const hasCredentials = activeProviderDetails?.credentials != null
+        && Object.values(activeProviderDetails.credentials).some((v) => v && v.trim() !== '');
+    const isProviderReady = activeProviderDetails?.isConfigured || hasCredentials;
     const channelId = getChannelIdFromProvider(activeProvider, activeProviderDetails);
     const webhookUrl = getWebhookUrl(activeProvider, channelId);
 
@@ -98,31 +103,49 @@ export function WebhookSetup({ activeProvider, providers }: WebhookSetupProps) {
         }
     };
 
-    const handleRegisterWati = async () => {
+    const handleAutoRegister = async () => {
         if (!activeProviderDetails?.credentials) {
-            toast.error('WATI credentials not configured');
+            toast.error('Provider credentials not configured');
             return;
         }
         setRegistering(true);
+        const creds = activeProviderDetails.credentials;
         try {
-            const result = await registerWatiWebhook(
-                activeProviderDetails.credentials.apiUrl || activeProviderDetails.credentials.api_url || '',
-                activeProviderDetails.credentials.apiKey || activeProviderDetails.credentials.api_key || '',
-                webhookUrl
-            );
+            let result: { success: boolean; message: string; steps?: string[] };
+
+            if (activeProvider === 'WATI') {
+                result = await registerWatiWebhook(
+                    creds.apiUrl || creds.api_url || '',
+                    creds.apiKey || creds.api_key || '',
+                    webhookUrl
+                );
+            } else if (activeProvider === 'META') {
+                // Credentials read server-side from institute settings — no secrets sent from frontend
+                result = await registerMetaWebhook(webhookUrl);
+            } else {
+                toast.error('Auto-registration not available for ' + activeProvider + '. Please configure manually.');
+                setRegistering(false);
+                return;
+            }
+
             if (result.success) {
-                toast.success('Webhook registered with WATI automatically');
+                toast.success(`Webhook registered with ${activeProvider}`);
+                if (result.steps) {
+                    result.steps.forEach((s) => toast.info(s));
+                }
             } else {
                 toast.error(result.message);
             }
         } catch {
-            toast.error('Failed to register webhook with WATI');
+            toast.error('Failed to register webhook');
         } finally {
             setRegistering(false);
         }
     };
 
-    if (!activeProvider || !activeProviderDetails?.isConfigured) {
+    const canAutoRegister = activeProvider === 'WATI' || activeProvider === 'META';
+
+    if (!activeProvider || !isProviderReady) {
         return (
             <div className="mt-6 p-4 border rounded-lg bg-gray-50">
                 <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
@@ -186,8 +209,8 @@ export function WebhookSetup({ activeProvider, providers }: WebhookSetupProps) {
                 <div>
                     <p className="text-xs font-semibold text-gray-600">Step 2: Webhook URL</p>
                     <p className="text-xs text-gray-400 mb-2">
-                        {activeProvider === 'WATI'
-                            ? 'Auto-register with WATI, or copy and paste into WATI Dashboard → Settings → Webhooks'
+                        {canAutoRegister
+                            ? `Click "Auto-Register" to configure automatically, or copy the URL to set up manually.`
                             : `Copy this URL and paste it in your ${activeProvider} dashboard → Webhook Settings`}
                     </p>
 
@@ -205,26 +228,11 @@ export function WebhookSetup({ activeProvider, providers }: WebhookSetupProps) {
                         </button>
                     </div>
 
-                    {/* Meta/COMBOT: verify token info */}
-                    {(activeProvider === 'META' || activeProvider === 'COMBOT') && (
-                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
-                            <p className="font-medium flex items-center gap-1">
-                                <Warning size={14} /> Verify Token
-                            </p>
-                            <code className="block mt-1 bg-yellow-100 px-2 py-1 rounded font-mono select-all">
-                                vacademy_webhook_secret
-                            </code>
-                            <p className="mt-1 text-yellow-600">
-                                Enter this as the Verify Token when configuring the webhook in the {activeProvider} dashboard.
-                            </p>
-                        </div>
-                    )}
-
-                    {/* WATI: auto-register button */}
-                    {activeProvider === 'WATI' && (
+                    {/* Auto-register button (WATI + META) */}
+                    {canAutoRegister && (
                         <div className="mt-2 flex items-center gap-2">
                             <button
-                                onClick={handleRegisterWati}
+                                onClick={handleAutoRegister}
                                 disabled={registering || !hasMapping}
                                 className="text-xs px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
                             >
@@ -233,11 +241,27 @@ export function WebhookSetup({ activeProvider, providers }: WebhookSetupProps) {
                                 ) : (
                                     <Plugs size={14} />
                                 )}
-                                {registering ? 'Registering...' : 'Auto-Register with WATI'}
+                                {registering ? 'Registering...' : `Auto-Register with ${activeProvider}`}
                             </button>
                             {!hasMapping && (
                                 <span className="text-xs text-gray-400">Create channel mapping first</span>
                             )}
+                        </div>
+                    )}
+
+                    {/* COMBOT: manual only, show verify token */}
+                    {activeProvider === 'COMBOT' && (
+                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
+                            <p className="font-medium flex items-center gap-1">
+                                <Warning size={14} /> Manual Setup Required
+                            </p>
+                            <p className="mt-1">
+                                Paste the webhook URL above into your Com.bot dashboard → Settings → Webhooks.
+                            </p>
+                            <p className="mt-1">Verify Token:</p>
+                            <code className="block mt-0.5 bg-yellow-100 px-2 py-1 rounded font-mono select-all">
+                                vacademy_webhook_secret
+                            </code>
                         </div>
                     )}
                 </div>
@@ -312,7 +336,7 @@ function getChannelIdFromProvider(provider: string, details?: ProviderDetails | 
         case 'COMBOT':
             return creds.phone_number_id || creds.phoneNumberId || '';
         case 'META':
-            return creds.phoneNumberId || creds.phone_number_id || creds.app_id || '';
+            return creds.phoneNumberId || creds.phone_number_id || '';
         case 'WATI':
             return creds.whatsappNumber || creds.whatsapp_number || '';
         default:

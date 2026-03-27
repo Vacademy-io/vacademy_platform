@@ -148,9 +148,9 @@ export const SlideMaterial = ({
         // paste operations before React has committed the new DOM.
         const origFocus = ed.focus?.bind(ed);
         if (origFocus) {
-            ed.focus = (...args: any[]) => {
+            ed.focus = () => {
                 try {
-                    return origFocus(...args);
+                    return origFocus();
                 } catch (e: any) {
                     if (e?.message?.includes?.('Cannot resolve a DOM node from Slate node')) {
                         console.warn('[Yoopta] Suppressed DOM resolve error during focus:', e.message);
@@ -168,11 +168,10 @@ export const SlideMaterial = ({
     // is non-fatal — the paste still succeeds — so we swallow it to prevent
     // Sentry noise and React error-boundary crashes.
     useEffect(() => {
-        const handler = (event: ErrorEvent) => {
+        const handler = (event: ErrorEvent): void => {
             if (event.error?.message?.includes?.('Cannot resolve a DOM node from Slate node')) {
                 event.preventDefault();
                 console.warn('[Yoopta] Suppressed vendor DOM resolve error during paste');
-                return true;
             }
         };
         window.addEventListener('error', handler);

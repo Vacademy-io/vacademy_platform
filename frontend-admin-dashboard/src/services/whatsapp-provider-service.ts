@@ -113,3 +113,98 @@ export async function removeWhatsAppCredentials(providerName: string): Promise<v
         params: { instituteId },
     });
 }
+
+// ==================== Channel Mapping & Webhook Registration ====================
+
+const CHANNEL_MAPPING_BASE = `${BASE_URL}/notification-service/v1/channel-mapping`;
+
+export interface ChannelMapping {
+    channelId: string;
+    channelType: string;
+    displayChannelNumber: string;
+    instituteId: string;
+    active: boolean;
+}
+
+export async function getChannelMappings(): Promise<ChannelMapping[]> {
+    const instituteId = getInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: CHANNEL_MAPPING_BASE,
+        params: { instituteId },
+    });
+    return response.data;
+}
+
+export async function createChannelMapping(mapping: {
+    channelId: string;
+    channelType: string;
+    displayChannelNumber: string;
+}): Promise<ChannelMapping> {
+    const instituteId = getInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: CHANNEL_MAPPING_BASE,
+        data: { ...mapping, instituteId },
+    });
+    return response.data;
+}
+
+export async function deleteChannelMapping(channelId: string): Promise<void> {
+    await authenticatedAxiosInstance({
+        method: 'DELETE',
+        url: `${CHANNEL_MAPPING_BASE}/${channelId}`,
+    });
+}
+
+export async function registerWatiWebhook(
+    watiApiUrl: string,
+    watiApiKey: string,
+    webhookUrl: string
+): Promise<{ success: boolean; message: string }> {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${CHANNEL_MAPPING_BASE}/register-webhook/wati`,
+        data: { watiApiUrl, watiApiKey, webhookUrl },
+    });
+    return response.data;
+}
+
+export async function verifyWebhookEndpoint(
+    webhookUrl: string
+): Promise<{ success: boolean; message: string }> {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${CHANNEL_MAPPING_BASE}/verify-webhook`,
+        data: { webhookUrl },
+    });
+    return response.data;
+}
+
+/**
+ * Generate the correct webhook URL for a given provider.
+ */
+export function getWebhookUrl(provider: string, channelId?: string): string {
+    switch (provider.toUpperCase()) {
+        case 'WATI':
+            return `${BASE_URL}/notification-service/webhook/v1/wati/${channelId || 'YOUR_CHANNEL_ID'}`;
+        case 'META':
+            return `${BASE_URL}/notification-service/v1/webhook/whatsapp`;
+        case 'COMBOT':
+            return `${BASE_URL}/notification-service/v1/webhook/whatsapp`;
+        default:
+            return `${BASE_URL}/notification-service/v1/webhook/whatsapp`;
+    }
+}
+
+/**
+ * Map provider name to channel type for channel_to_institute_mapping.
+ */
+export function providerToChannelType(provider: string): string {
+    switch (provider.toUpperCase()) {
+        case 'WATI': return 'WHATSAPP_WATI';
+        case 'META': return 'WHATSAPP_META';
+        case 'COMBOT': return 'WHATSAPP_COMBOT';
+        default: return 'WHATSAPP';
+    }
+}

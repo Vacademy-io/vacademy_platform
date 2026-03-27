@@ -437,11 +437,21 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                                                 ).length
                                             }
                                         </div>
-                                        <div className="font-medium text-neutral-500">
+                                        <div className="font-medium text-danger-500">
                                             Absent:{' '}
                                             {
                                                 reportResponse.filter(
-                                                    (item) => item.attendanceStatus !== 'PRESENT'
+                                                    (item) => item.attendanceStatus === 'ABSENT'
+                                                ).length
+                                            }
+                                        </div>
+                                        <div className="font-medium text-neutral-400">
+                                            Unmarked:{' '}
+                                            {
+                                                reportResponse.filter(
+                                                    (item) =>
+                                                        item.attendanceStatus !== 'PRESENT' &&
+                                                        item.attendanceStatus !== 'ABSENT'
                                                 ).length
                                             }
                                         </div>

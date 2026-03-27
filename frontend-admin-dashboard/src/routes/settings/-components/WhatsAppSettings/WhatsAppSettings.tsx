@@ -16,6 +16,7 @@ import {
     type ProviderDetails,
     type CredentialField,
 } from '@/services/whatsapp-provider-service';
+import { WebhookSetup } from './WebhookSetup';
 
 type Props = { isTab?: boolean };
 
@@ -396,6 +397,9 @@ export default function WhatsAppSettings({ isTab = false }: Props) {
                     </Card>
                 );
             })}
+
+            {/* Webhook Setup */}
+            <WebhookSetup activeProvider={activeProvider} providers={providers} />
 
             {/* Info Card */}
             <Card className="rounded-lg border-gray-200 bg-gray-50">

@@ -122,8 +122,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         userService.updateLastLoginTimeForUser(userDetails.getUserId());
                     }
 
-                    // ── Session-limit enforcement ──
-                    if (instituteId != null && userSessionRepository != null) {
+                    // ── Session-limit enforcement (only in auth_service — it owns the tables) ──
+                    if (instituteId != null && userSessionRepository != null
+                            && "auth_service".equals(serviceName)) {
                         try {
                             if (isInstituteLimited(instituteId) && !isSessionStillActive(sessionToken)) {
                                 SecurityContextHolder.clearContext();

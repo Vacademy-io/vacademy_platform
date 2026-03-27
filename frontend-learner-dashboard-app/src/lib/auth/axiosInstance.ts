@@ -2,11 +2,36 @@ import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
 import axios from "axios";
 import { isTokenExpired, removeTokensAndLogout, getTokenFromStorage } from "./sessionUtility";
-import { REFRESH_TOKEN_URL } from "@/constants/urls";
+import { REFRESH_TOKEN_URL, VALIDATE_SESSION } from "@/constants/urls";
 import { maybeServeFromCache, maybeStoreInCache } from "@/lib/http/clientCache";
 import { toast } from "sonner";
 
 let isHandlingSessionTermination = false;
+
+// ── Session heartbeat: pings auth_service every 5 min to detect terminated sessions ──
+const SESSION_HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
+let lastHeartbeatTime = 0;
+
+async function sessionHeartbeat(accessToken: string) {
+  const now = Date.now();
+  if (now - lastHeartbeatTime < SESSION_HEARTBEAT_INTERVAL_MS) return;
+  lastHeartbeatTime = now;
+  try {
+    await axios.get(VALIDATE_SESSION, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch (error: any) {
+    if (error?.response?.status === 460 && !isHandlingSessionTermination) {
+      isHandlingSessionTermination = true;
+      toast.error(
+        "Your session was terminated because another device logged in. Please log in again."
+      );
+      removeTokensAndLogout();
+      window.location.assign("/logout");
+    }
+    // Other errors (network, 401) are silently ignored — not the heartbeat's job
+  }
+}
 
 const removeTokensAndInstituteId = async () => {
   await Preferences.remove({ key: TokenKey.accessToken });
@@ -110,6 +135,8 @@ authenticatedAxiosInstance.interceptors.request.use(
 
     if (!isExpired) {
       request.headers.Authorization = `Bearer ${accessToken}`;
+      // Piggyback session heartbeat (fires at most once every 5 min)
+      sessionHeartbeat(accessToken!);
       // Serve from client cache for GET when possible
       request = maybeServeFromCache(request);
       return request;

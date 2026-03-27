@@ -34,18 +34,49 @@ export async function convertPptToPdf(file: File): Promise<File> {
     const formData = new globalThis.FormData();
     formData.append('file', file);
 
-    const response = await authenticatedAxiosInstance.post(
-        `${CONVERT_PPT_TO_PDF_URL}?quality=high`,
-        formData,
-        {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            responseType: 'blob',
-        }
-    );
+    try {
+        const response = await authenticatedAxiosInstance.post(
+            `${CONVERT_PPT_TO_PDF_URL}?quality=high`,
+            formData,
+            {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                responseType: 'blob',
+            }
+        );
 
-    const pdfBlob = new Blob([response.data], { type: 'application/pdf' });
-    const pdfFileName = file.name.replace(/\.[^/.]+$/, '') + '.pdf';
-    return new File([pdfBlob], pdfFileName, { type: 'application/pdf' });
+        const pdfBlob = new Blob([response.data], { type: 'application/pdf' });
+        const pdfFileName = file.name.replace(/\.[^/.]+$/, '') + '.pdf';
+        return new File([pdfBlob], pdfFileName, { type: 'application/pdf' });
+    } catch (error: unknown) {
+        // If the axios interceptor already extracted the message (e.g. from blob 511 response)
+        if (error instanceof Error && error.message && error.message !== 'Network Error') {
+            throw error;
+        }
+        // Fallback: try to parse blob error response directly
+        if (
+            error &&
+            typeof error === 'object' &&
+            'response' in error &&
+            (error as { response?: { data?: unknown } }).response?.data instanceof Blob
+        ) {
+            const blob = (error as { response: { data: Blob } }).response.data;
+            try {
+                const text = await blob.text();
+                const json = JSON.parse(text);
+                throw new Error(json.ex || json.message || 'PPT conversion failed.');
+            } catch (parseError) {
+                if (parseError instanceof Error && parseError.message !== 'PPT conversion failed.') {
+                    throw new Error(
+                        (parseError as SyntaxError).name === 'SyntaxError'
+                            ? 'PPT conversion failed. Please try again.'
+                            : parseError.message
+                    );
+                }
+                throw parseError;
+            }
+        }
+        throw error;
+    }
 }
 
 export const AddPptDialog = ({
@@ -277,7 +308,7 @@ export const AddPptDialog = ({
                                             Drop your PPT file here, or click to browse
                                         </p>
                                         <p className="text-sm text-neutral-500">
-                                            Supports .ppt and .pptx files
+                                            Supports .ppt and .pptx files (up to 20 MB)
                                         </p>
                                     </div>
                                 </div>

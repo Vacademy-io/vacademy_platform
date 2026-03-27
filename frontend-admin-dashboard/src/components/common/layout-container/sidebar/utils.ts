@@ -253,6 +253,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemId: 'whatsapp-inbox',
             },
             {
+                subItem: 'WhatsApp Templates',
+                subItemLink: '/communication/whatsapp-templates',
+                subItemId: 'whatsapp-templates',
+            },
+            {
                 subItem: 'Create Announcement',
                 subItemLink: '/announcement/create',
                 subItemId: 'announcement-create',

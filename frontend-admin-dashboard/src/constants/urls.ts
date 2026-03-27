@@ -412,6 +412,9 @@ export const CHATBOT_FLOW_BASE = `${NOTIFICATION_SERVICE_BASE}/chatbot-flow`;
 // WhatsApp Inbox
 export const WHATSAPP_INBOX_BASE = `${NOTIFICATION_SERVICE_BASE}/inbox`;
 
+// WhatsApp Template Manager
+export const WHATSAPP_TEMPLATE_BASE = `${NOTIFICATION_SERVICE_BASE}/whatsapp-templates`;
+
 // Notification Settings (Announcement / Institute Notification Settings)
 export const NOTIFICATION_SETTINGS_BASE = `${NOTIFICATION_SERVICE_BASE}/institute-settings`;
 export const GET_NOTIFICATION_SETTINGS_BY_INSTITUTE = `${NOTIFICATION_SETTINGS_BASE}/institute`;

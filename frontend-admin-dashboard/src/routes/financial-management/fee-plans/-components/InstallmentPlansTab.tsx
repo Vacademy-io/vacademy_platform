@@ -384,7 +384,7 @@ export default function InstallmentPlansTab() {
     const createCPOMutation = useCreateCPO();
 
     const handleCreateSave = (formData: Parameters<typeof buildCreateCPOPayload>[0]) => {
-        const payload = buildCreateCPOPayload(formData);
+        const payload = buildCreateCPOPayload(formData, batches);
         createCPOMutation.mutate(payload, {
             onSuccess: () => {
                 setShowCreateDialog(false);

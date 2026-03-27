@@ -90,6 +90,20 @@ authenticatedAxiosInstance.interceptors.response.use(
                 return Promise.reject(error);
             }
 
+            // Handle blob responses (e.g. from requests with responseType: 'blob')
+            if (responseData instanceof Blob) {
+                try {
+                    const text = await responseData.text();
+                    const json = JSON.parse(text);
+                    if (json.ex || json.responseCode) {
+                        console.warn('[Axios Response] 511 Blob error with backend exception - NOT logging out:', json);
+                        return Promise.reject(new Error(json.ex || json.responseCode));
+                    }
+                } catch {
+                    // Not valid JSON, fall through to logout
+                }
+            }
+
             console.error(
                 '[Axios Response] 511 Network Authentication Required - Token may be invalid or expired'
             );

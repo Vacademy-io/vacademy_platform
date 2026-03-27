@@ -10,9 +10,18 @@ interface ChatbotNodeData {
     icon: string;
 }
 
+interface Branch {
+    id: string;
+    label: string;
+    isDefault?: boolean;
+}
+
 function ChatbotCustomNode({ id, data, selected }: NodeProps<ChatbotNodeData>) {
     const selectNode = useChatbotFlowStore((s) => s.selectNode);
     const removeNode = useChatbotFlowStore((s) => s.removeNode);
+
+    const isCondition = data.nodeType === 'CONDITION';
+    const branches = isCondition ? ((data.config.branches as Branch[]) || []) : [];
 
     return (
         <div
@@ -64,11 +73,6 @@ function ChatbotCustomNode({ id, data, selected }: NodeProps<ChatbotNodeData>) {
                         ⏱️ {data.config.delayValue as number} {(data.config.delayUnit as string)?.toLowerCase()}
                     </p>
                 )}
-                {data.nodeType === 'CONDITION' && (
-                    <p className="text-xs text-gray-500 mt-1">
-                        🔀 {((data.config.branches as unknown[]) || []).length} branches
-                    </p>
-                )}
                 {data.nodeType === 'TRIGGER' && (
                     <p className="text-xs text-gray-500 mt-1">
                         ⚡ {((data.config.keywords as string[]) || []).join(', ') || 'Any message'}
@@ -81,11 +85,38 @@ function ChatbotCustomNode({ id, data, selected }: NodeProps<ChatbotNodeData>) {
                 )}
             </div>
 
-            {/* Handles */}
+            {/* CONDITION: Branch output handles with labels */}
+            {isCondition && branches.length > 0 && (
+                <div className="flex justify-around px-2 pb-2 pt-1 border-t border-gray-100">
+                    {branches.map((branch, i) => (
+                        <div key={branch.id} className="flex flex-col items-center relative" style={{ minWidth: 50 }}>
+                            <span className="text-[9px] text-gray-500 mb-1 truncate max-w-[60px]">
+                                {branch.label || (branch.isDefault ? 'Default' : `Branch ${i + 1}`)}
+                            </span>
+                            <Handle
+                                type="source"
+                                position={Position.Bottom}
+                                id={branch.id}
+                                className="!w-2.5 !h-2.5 !relative !transform-none !inset-auto"
+                                style={{
+                                    background: branch.isDefault ? '#9ca3af' : data.color,
+                                    position: 'relative',
+                                }}
+                            />
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Handles — input (top) */}
             {data.nodeType !== 'TRIGGER' && (
                 <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-3 !h-3" />
             )}
-            <Handle type="source" position={Position.Bottom} className="!w-3 !h-3" style={{ background: data.color }} />
+
+            {/* Single output handle for non-CONDITION nodes */}
+            {!isCondition && (
+                <Handle type="source" position={Position.Bottom} className="!w-3 !h-3" style={{ background: data.color }} />
+            )}
         </div>
     );
 }

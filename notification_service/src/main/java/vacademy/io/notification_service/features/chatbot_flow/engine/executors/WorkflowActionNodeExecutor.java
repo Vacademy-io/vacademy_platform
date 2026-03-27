@@ -26,7 +26,7 @@ public class WorkflowActionNodeExecutor implements ChatbotNodeExecutor {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
-    @Value("${admin.core.service.url:http://localhost:8081}")
+    @Value("${admin.core.service.baseurl:http://localhost:8081}")
     private String adminCoreServiceUrl;
 
     @Override

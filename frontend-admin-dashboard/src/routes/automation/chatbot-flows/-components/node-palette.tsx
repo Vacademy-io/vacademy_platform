@@ -5,7 +5,7 @@ export function NodePalette() {
     const addNode = useChatbotFlowStore((s) => s.addNode);
 
     return (
-        <div className="w-56 border-r bg-gray-50 p-3 overflow-y-auto">
+        <div className="w-56 shrink-0 border-r bg-gray-50 p-3 overflow-y-auto">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
                 Add Nodes
             </h3>

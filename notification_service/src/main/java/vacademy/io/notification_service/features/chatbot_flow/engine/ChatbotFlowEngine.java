@@ -66,6 +66,8 @@ public class ChatbotFlowEngine {
             }
 
             // 2. No active session — check if any ACTIVE flow has a matching trigger
+            // Search across all WhatsApp channel types for this institute:
+            // exact match first, then generic "WHATSAPP", then other WA variants
             List<ChatbotFlow> activeFlows = new ArrayList<>(flowRepository
                     .findByInstituteIdAndChannelTypeAndStatus(instituteId, channelType,
                             ChatbotFlowStatus.ACTIVE.name()));
@@ -75,6 +77,21 @@ public class ChatbotFlowEngine {
                 activeFlows.addAll(flowRepository.findByInstituteIdAndChannelTypeAndStatus(
                         instituteId, "WHATSAPP", ChatbotFlowStatus.ACTIVE.name()));
             }
+
+            // Cross-provider fallback: a flow built for WATI should also fire for META and vice versa
+            // (the flow logic is provider-agnostic, only the send mechanism differs)
+            for (String fallbackType : List.of("WHATSAPP_META", "WHATSAPP_WATI", "WHATSAPP_COMBOT")) {
+                if (!fallbackType.equals(channelType)) {
+                    activeFlows.addAll(flowRepository.findByInstituteIdAndChannelTypeAndStatus(
+                            instituteId, fallbackType, ChatbotFlowStatus.ACTIVE.name()));
+                }
+            }
+
+            // Deduplicate by flow ID (in case same flow was found through multiple channel type queries)
+            Set<String> seenFlowIds = new HashSet<>();
+            activeFlows.removeIf(f -> !seenFlowIds.add(f.getId()));
+
+            log.info("Found {} active flows for institute={}, channelType={}", activeFlows.size(), instituteId, channelType);
 
             for (ChatbotFlow flow : activeFlows) {
                 List<ChatbotFlowNode> triggerNodes = nodeRepository
@@ -114,6 +131,8 @@ public class ChatbotFlowEngine {
             }
 
             // 3. No flow matched — fall back to legacy
+            log.info("No chatbot flow matched for phone={}, institute={}, text='{}'",
+                    userPhone, instituteId, userText != null ? userText.substring(0, Math.min(userText.length(), 30)) : "null");
             return false;
 
         } catch (Exception e) {

@@ -14,7 +14,7 @@ export function NodeConfigPanel() {
     const selectedNode = nodes.find((n) => n.id === selectedNodeId);
     if (!selectedNode) {
         return (
-            <div className="w-80 border-l bg-gray-50 p-4 flex items-center justify-center">
+            <div className="w-80 shrink-0 border-l bg-gray-50 p-4 flex items-center justify-center">
                 <p className="text-sm text-gray-400">Select a node to configure</p>
             </div>
         );
@@ -33,7 +33,7 @@ export function NodeConfigPanel() {
     };
 
     return (
-        <div className="w-80 border-l bg-gray-50 overflow-y-auto">
+        <div className="w-80 shrink-0 border-l bg-gray-50 overflow-y-auto">
             {/* Header */}
             <div className="p-4 border-b" style={{ backgroundColor: `${color}10` }}>
                 <div className="flex items-center gap-2 mb-2">

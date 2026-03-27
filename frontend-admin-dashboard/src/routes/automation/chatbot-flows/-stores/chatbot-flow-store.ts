@@ -91,13 +91,38 @@ export const useChatbotFlowStore = create<ChatbotFlowBuilderState>((set, get) =>
         })),
 
     onConnect: (connection) =>
-        set((state) => ({
-            edges: addEdge(
-                { ...connection, id: `edge-${uuid()}`, type: 'chatbotEdge', animated: true },
-                state.edges
-            ),
-            isDirty: true,
-        })),
+        set((state) => {
+            // If connecting from a CONDITION node's branch handle, auto-set branch label + conditionConfig
+            let label: string | undefined;
+            let conditionConfig: Record<string, unknown> | undefined;
+
+            if (connection.sourceHandle && connection.sourceHandle.startsWith('branch_')) {
+                const sourceNode = state.nodes.find((n) => n.id === connection.source);
+                if (sourceNode?.data?.nodeType === 'CONDITION') {
+                    const branches = (sourceNode.data.config?.branches as Array<{ id: string; label: string }>) || [];
+                    const branch = branches.find((b) => b.id === connection.sourceHandle);
+                    if (branch) {
+                        label = branch.label || connection.sourceHandle;
+                        conditionConfig = { branchId: branch.id };
+                    }
+                }
+            }
+
+            return {
+                edges: addEdge(
+                    {
+                        ...connection,
+                        id: `edge-${uuid()}`,
+                        type: 'chatbotEdge',
+                        animated: true,
+                        label,
+                        data: conditionConfig ? { conditionConfig } : undefined,
+                    },
+                    state.edges
+                ),
+                isDirty: true,
+            };
+        }),
 
     addNode: (type, position) => {
         const info = NODE_TYPE_REGISTRY.find((n) => n.type === type);
@@ -196,6 +221,8 @@ export const useChatbotFlowStore = create<ChatbotFlowBuilderState>((set, get) =>
             id: e.id,
             source: e.sourceNodeId,
             target: e.targetNodeId,
+            // Restore sourceHandle from conditionConfig.branchId for CONDITION node branch handles
+            sourceHandle: (e.conditionConfig as Record<string, unknown>)?.branchId as string || undefined,
             label: e.conditionLabel || undefined,
             data: { conditionConfig: e.conditionConfig },
             type: 'chatbotEdge',
@@ -232,7 +259,9 @@ export const useChatbotFlowStore = create<ChatbotFlowBuilderState>((set, get) =>
             sourceNodeId: e.source,
             targetNodeId: e.target,
             conditionLabel: (e.label as string) || undefined,
-            conditionConfig: e.data?.conditionConfig,
+            conditionConfig: e.sourceHandle
+                ? { ...(e.data?.conditionConfig || {}), branchId: e.sourceHandle }
+                : e.data?.conditionConfig,
             sortOrder: 0,
         }));
 

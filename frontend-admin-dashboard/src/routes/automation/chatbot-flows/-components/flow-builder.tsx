@@ -73,14 +73,24 @@ function FlowBuilderInner() {
             return;
         }
         try {
-            if (isDirty) {
-                try { await handleSave(); } catch { return; }
+            if (flowStatus === 'ACTIVE') {
+                // Deactivate first, then save pending changes
+                const result = await deactivateChatbotFlow(flowId);
+                loadFlow(result);
+                toast.success('Flow deactivated');
+                // Now save pending changes if dirty (flow is INACTIVE now, so PUT will work)
+                if (isDirty) {
+                    try { await handleSave(); } catch { /* save failed but deactivate succeeded */ }
+                }
+            } else {
+                // Save first (flow is DRAFT/INACTIVE, PUT allowed), then activate
+                if (isDirty) {
+                    try { await handleSave(); } catch { return; }
+                }
+                const result = await activateChatbotFlow(flowId);
+                loadFlow(result);
+                toast.success('Flow activated');
             }
-            const result = flowStatus === 'ACTIVE'
-                ? await deactivateChatbotFlow(flowId)
-                : await activateChatbotFlow(flowId);
-            loadFlow(result);
-            toast.success(result.status === 'ACTIVE' ? 'Flow activated' : 'Flow deactivated');
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : 'Validation failed';
             toast.error(msg);
@@ -150,10 +160,10 @@ function FlowBuilderInner() {
             </div>
 
             {/* 3-panel layout */}
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1 min-h-0 overflow-hidden">
                 <NodePalette />
 
-                <div className="flex-1">
+                <div className="flex-1 h-full">
                     <ReactFlow
                         nodes={nodes}
                         edges={edges}

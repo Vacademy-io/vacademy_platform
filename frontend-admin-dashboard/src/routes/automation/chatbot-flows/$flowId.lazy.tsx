@@ -5,6 +5,7 @@ import { useChatbotFlowStore } from './-stores/chatbot-flow-store';
 import { getChatbotFlow } from './-services/chatbot-flow-api';
 import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
+import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 
 export const Route = createLazyFileRoute('/automation/chatbot-flows/$flowId')({
     component: ChatbotFlowBuilderWrapper,
@@ -21,8 +22,6 @@ function ChatbotFlowBuilderWrapper() {
 
         if (flowId === 'new') {
             reset();
-            // Set instituteId AFTER reset (reset clears it to '')
-            // Use setTimeout to ensure reset state is committed first
             queueMicrotask(() => setInstituteId(instituteId));
         } else {
             getChatbotFlow(flowId)
@@ -41,8 +40,10 @@ function ChatbotFlowBuilderWrapper() {
     }, [flowId, loadFlow, reset, setInstituteId]);
 
     return (
-        <div className="h-screen flex flex-col">
-            <FlowBuilder />
-        </div>
+        <LayoutContainer intrnalMargin={false}>
+            <div className="flex flex-col" style={{ height: 'calc(100vh - 48px)' }}>
+                <FlowBuilder />
+            </div>
+        </LayoutContainer>
     );
 }

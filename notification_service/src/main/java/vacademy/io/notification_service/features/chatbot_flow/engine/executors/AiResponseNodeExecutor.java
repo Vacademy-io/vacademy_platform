@@ -27,7 +27,7 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
     private final RestTemplate restTemplate;
     private final List<ChatbotMessageProvider> messageProviders;
 
-    @Value("${admin.core.service.url:http://localhost:8081}")
+    @Value("${admin.core.service.baseurl:http://localhost:8081}")
     private String adminCoreServiceUrl;
 
     @Override

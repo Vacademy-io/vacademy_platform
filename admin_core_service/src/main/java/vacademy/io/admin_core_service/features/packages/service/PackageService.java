@@ -126,7 +126,7 @@ public class PackageService {
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
 
-            return new PackageDetailDTO(
+            PackageDetailDTO dto = new PackageDetailDTO(
                     projection.getId(),
                     projection.getPackageName(),
                     projection.getThumbnailFileId(),
@@ -146,13 +146,14 @@ public class PackageService {
                     projection.getPackageSessionName(),
                     projection.getLevelId(),
                     projection.getLevelName(),
-                    projection.getSessionId(),
-                    projection.getSessionName(),
                     projection.getDripConditionJson(),
                     instructors,
                     projection.getLevelIds(),
                     projection.getReadTimeInMinutes(),
                     projection.getPackageType());
+            dto.setSessionId(projection.getSessionId());
+            dto.setSessionName(projection.getSessionName());
+            return dto;
         }).toList();
 
         return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());

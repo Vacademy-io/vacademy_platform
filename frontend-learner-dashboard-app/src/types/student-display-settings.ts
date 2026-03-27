@@ -35,6 +35,7 @@ export type StudentDashboardWidgetId =
   | "myMembership"
   | "myBooks"
   | "upcomingLiveClasses"
+  | "myOrders"
   | "custom";
 
 export interface StudentDashboardWidgetConfig {

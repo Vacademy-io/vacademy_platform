@@ -975,6 +975,7 @@ public class UserPlanService {
             "#filterDTO.startDateInUtc + '_' + #filterDTO.endDateInUtc + '_' + " +
             "(#filterDTO.membershipStatuses != null ? #filterDTO.membershipStatuses.toString() : 'null') + '_' + " +
             "(#filterDTO.packageSessionIds != null ? #filterDTO.packageSessionIds.toString() : 'null') + '_' + " +
+            "(#filterDTO.packageTypes != null ? #filterDTO.packageTypes.toString() : 'null') + '_' + " +
             "(#filterDTO.sortOrder != null ? #filterDTO.sortOrder.toString() : 'null')", unless = "#result == null || #result.isEmpty()")
     @Transactional(readOnly = true)
     public Page<MembershipDetailsDTO> getMembershipDetails(MembershipFilterDTO filterDTO, int pageNo, int pageSize) {
@@ -987,6 +988,7 @@ public class UserPlanService {
                 filterDTO.getEndDateInUtc(),
                 filterDTO.getMembershipStatuses(),
                 filterDTO.getPackageSessionIds(),
+                filterDTO.getPackageTypes(),
                 pageable);
 
         // 2. Extract User Plan IDs to fetch entities in bulk
@@ -1105,6 +1107,7 @@ public class UserPlanService {
             "#filterDTO.startDateInUtc + '_' + #filterDTO.endDateInUtc + '_' + " +
             "(#filterDTO.membershipStatuses != null ? #filterDTO.membershipStatuses.toString() : 'null') + '_' + " +
             "(#filterDTO.packageSessionIds != null ? #filterDTO.packageSessionIds.toString() : 'null') + '_' + " +
+            "(#filterDTO.packageTypes != null ? #filterDTO.packageTypes.toString() : 'null') + '_' + " +
             "(#filterDTO.sortOrder != null ? #filterDTO.sortOrder.toString() : 'null')", unless = "#result == null || #result.isEmpty()")
     @Transactional(readOnly = true)
     public Page<MembershipDetailsDTO> getMembershipDetailsCached(MembershipFilterDTO filterDTO, int pageNo,

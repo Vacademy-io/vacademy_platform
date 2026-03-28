@@ -2,11 +2,20 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import PackageSelector from '@/components/design-system/PackageSelector';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { Calendar, Funnel, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { BatchForSession, PackageSessionFilter } from '@/types/payment-logs';
+import { useQuery } from '@tanstack/react-query';
+import { fetchPackageTypes } from '@/services/membership-expiry';
 
 interface MembershipExpiryFiltersProps {
     startDate: string;
@@ -18,6 +27,8 @@ interface MembershipExpiryFiltersProps {
     batchesForSessions: BatchForSession[];
     onQuickFilterSelect: (range: { start: string; end: string }) => void;
     onClearFilters: () => void;
+    selectedPackageTypes: string[];
+    onPackageTypeChange: (types: string[]) => void;
 }
 
 export function MembershipExpiryFilters({
@@ -30,8 +41,15 @@ export function MembershipExpiryFilters({
     batchesForSessions,
     onQuickFilterSelect,
     onClearFilters,
+    selectedPackageTypes,
+    onPackageTypeChange,
 }: MembershipExpiryFiltersProps) {
     const [showFilters, setShowFilters] = useState(false);
+
+    const { data: packageTypes = [] } = useQuery({
+        queryKey: ['package-types'],
+        queryFn: fetchPackageTypes,
+    });
 
     // Simplified package session ID logic
     const handlePackageSessionChange = (selection: {
@@ -82,7 +100,8 @@ export function MembershipExpiryFilters({
     const hasActiveFilters =
         startDate ||
         endDate ||
-        !!packageSessionFilter.packageId;
+        !!packageSessionFilter.packageId ||
+        selectedPackageTypes.length > 0;
 
     return (
         <div className="space-y-4">
@@ -100,7 +119,8 @@ export function MembershipExpiryFilters({
                         <span className="ml-1 flex size-5 items-center justify-center rounded-full bg-primary-500 text-xs text-white">
                             {(startDate ? 1 : 0) +
                                 (endDate ? 1 : 0) +
-                                (packageSessionFilter.packageSessionIds?.length || (packageSessionFilter.packageId ? 1 : 0))}
+                                (packageSessionFilter.packageSessionIds?.length || (packageSessionFilter.packageId ? 1 : 0)) +
+                                (selectedPackageTypes.length > 0 ? 1 : 0)}
                         </span>
                     )}
                 </Button>
@@ -181,6 +201,37 @@ export function MembershipExpiryFilters({
                             batchesForSessions={batchesForSessions}
                         />
                     </div>
+
+                    {/* Package Type Filter */}
+                    {packageTypes.length > 0 && (
+                        <div className="mb-4">
+                            <Label className="mb-2 block text-sm font-medium text-gray-700">
+                                Package Type
+                            </Label>
+                            <Select
+                                value={selectedPackageTypes[0] || ''}
+                                onValueChange={(value) => {
+                                    if (value === 'ALL') {
+                                        onPackageTypeChange([]);
+                                    } else {
+                                        onPackageTypeChange([value]);
+                                    }
+                                }}
+                            >
+                                <SelectTrigger className="h-9 w-[200px]">
+                                    <SelectValue placeholder="All Types" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ALL">All Types</SelectItem>
+                                    {packageTypes.map((type) => (
+                                        <SelectItem key={type} value={type}>
+                                            {type}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
 
                     {/* Other Filters */}
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">

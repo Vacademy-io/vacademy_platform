@@ -16,5 +16,6 @@ public class MembershipFilterDTO {
     private List<String> membershipStatuses; // Values: "ENDED", "ABOUT_TO_END"
     private String instituteId;
     private List<String> packageSessionIds;
+    private List<String> packageTypes;
     Map<String, String> sortOrder;
 }

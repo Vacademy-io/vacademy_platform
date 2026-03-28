@@ -544,8 +544,8 @@ public class SchoolFeeReceiptService {
                             <span class="totals-label">Total Expected:</span>
                             <span class="totals-value">{{currency_symbol}} {{total_expected}}</span>
                         </div>
-                        <div class="totals-row">
-                            <span class="totals-label">Discount:</span>
+                        <div class="totals-row" style="{{TOTAL_CONCESSION_ROW_STYLE}}">
+                            <span class="totals-label">Concession:</span>
                             <span class="totals-value">- {{currency_symbol}} {{total_discount}}</span>
                         </div>
                         <div class="totals-row">
@@ -588,7 +588,8 @@ public class SchoolFeeReceiptService {
         String instituteAddress = buildInstituteAddress(institute);
         String logoHtml = buildInstituteLogoHtml(institute);
         String logoUrl = buildInstituteLogoUrl(institute);
-        String feeTableHtml = buildFeeTableHtml(feePayments, currency);
+        boolean showConcession = totalDiscount != null && totalDiscount.signum() > 0;
+        String feeTableHtml = buildFeeTableHtml(feePayments, currency, showConcession);
         ReceiptEnrichment enrichment = enrichReceiptFromEnrollment(user.getId(), institute.getId());
         String safeTransactionId = transactionId != null ? transactionId : "N/A";
         String safePaymentMode = paymentMode != null ? paymentMode : "OFFLINE";
@@ -640,6 +641,7 @@ public class SchoolFeeReceiptService {
                 .replace("{{FEE_TABLE}}", feeTableHtml)
                 .replace("{{TOTAL_EXPECTED_FEE}}", currencySymbol + " " + totalExpected.toPlainString())
                 .replace("{{TOTAL_DISCOUNT}}", currencySymbol + " " + totalDiscount.toPlainString())
+                .replace("{{TOTAL_CONCESSION_ROW_STYLE}}", showConcession ? "" : "display: none;")
                 .replace("{{TOTAL_PAID_ALL_TIME}}", currencySymbol + " " + totalPaid.toPlainString())
                 .replace("{{CURRENT_BALANCE_DUE}}", currencySymbol + " " + balanceDue.toPlainString())
                 .replace("{{AMOUNT_PAID_NOW}}", currencySymbol + " " + amountPaid.toPlainString());
@@ -821,6 +823,7 @@ public class SchoolFeeReceiptService {
                     .replace("{{FEE_DUE_DATE_" + index + "}}", dueDate)
                     .replace("{{FEE_AMOUNT_EXPECTED_" + index + "}}", currencySymbol + " " + expected.toPlainString())
                     .replace("{{FEE_DISCOUNT_" + index + "}}", currencySymbol + " " + discount.toPlainString())
+                    .replace("{{FEE_CONCESSION_" + index + "}}", currencySymbol + " " + discount.toPlainString())
                     .replace("{{FEE_AMOUNT_PAID_" + index + "}}", currencySymbol + " " + paid.toPlainString())
                     .replace("{{FEE_BALANCE_" + index + "}}", currencySymbol + " " + balance.toPlainString())
                     .replace("{{FEE_STATUS_CLASS_" + index + "}}", statusClass)
@@ -850,7 +853,11 @@ public class SchoolFeeReceiptService {
 
     // ─── Fee Table HTML ──────────────────────────────────────────────────────
 
-    private String buildFeeTableHtml(List<StudentFeePayment> feePayments, String currency) {
+    /**
+     * @param showConcessionColumn when false, no concession column is rendered (all amounts are zero).
+     */
+    private String buildFeeTableHtml(List<StudentFeePayment> feePayments, String currency,
+            boolean showConcessionColumn) {
         String currencySymbol = getCurrencySymbol(currency);
         StringBuilder sb = new StringBuilder();
         sb.append("<table>");
@@ -858,9 +865,11 @@ public class SchoolFeeReceiptService {
                 .append("<th>#</th>")
                 .append("<th>Fee Type</th>")
                 .append("<th>Due Date</th>")
-                .append("<th>Amount Expected</th>")
-                .append("<th>Discount</th>")
-                .append("<th>Amount Paid</th>")
+                .append("<th>Amount Expected</th>");
+        if (showConcessionColumn) {
+            sb.append("<th>Concession</th>");
+        }
+        sb.append("<th>Amount Paid</th>")
                 .append("<th>Balance</th>")
                 .append("<th>Status</th>")
                 .append("</tr>");
@@ -895,9 +904,11 @@ public class SchoolFeeReceiptService {
                     .append("<td>").append(index++).append("</td>")
                     .append("<td>").append(feeTypeName).append("</td>")
                     .append("<td>").append(dueDate).append("</td>")
-                    .append("<td>").append(currencySymbol).append(" ").append(expected.toPlainString()).append("</td>")
-                    .append("<td>").append(currencySymbol).append(" ").append(discount.toPlainString()).append("</td>")
-                    .append("<td>").append(currencySymbol).append(" ").append(paid.toPlainString()).append("</td>")
+                    .append("<td>").append(currencySymbol).append(" ").append(expected.toPlainString()).append("</td>");
+            if (showConcessionColumn) {
+                sb.append("<td>").append(currencySymbol).append(" ").append(discount.toPlainString()).append("</td>");
+            }
+            sb.append("<td>").append(currencySymbol).append(" ").append(paid.toPlainString()).append("</td>")
                     .append("<td>").append(currencySymbol).append(" ").append(balance.toPlainString()).append("</td>")
                     .append("<td class=\"status-").append(status).append("\">").append(status.replace("_", " "))
                     .append("</td>")

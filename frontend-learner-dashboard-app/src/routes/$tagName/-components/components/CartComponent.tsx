@@ -290,6 +290,8 @@ export const CartComponent: React.FC<CartComponentProps> = ({
     const pendingOrderId = localStorage.getItem("pendingOrderId");
     if (pendingOrderId) {
       console.log("Found pending order ID:", pendingOrderId);
+      // Remove immediately to prevent re-triggering on subsequent cart visits
+      localStorage.removeItem("pendingOrderId");
 
       const verifyPayment = async (attempts = 1) => {
         // 1. Get InstituteId from storage (CapacitorStorage.InstituteId or fallbacks)
@@ -346,7 +348,6 @@ export const CartComponent: React.FC<CartComponentProps> = ({
               toast.success("Payment successful! Please log in to access your courses.");
 
               // Redirect to Login if we couldn't auth
-              localStorage.removeItem("pendingOrderId");
               setTimeout(() => {
                 window.location.href = "/login";
               }, 1500);
@@ -354,7 +355,6 @@ export const CartComponent: React.FC<CartComponentProps> = ({
             }
 
             toast.success("Payment successful. Redirecting...");
-            localStorage.removeItem("pendingOrderId");
             setTimeout(() => {
               window.location.href = targetCoursesUrl;
             }, 500);
@@ -388,7 +388,6 @@ export const CartComponent: React.FC<CartComponentProps> = ({
 
       // Helper to clear pending storage and redirect
       const cleanupAndCompleteRedirect = async (url: string) => {
-        localStorage.removeItem("pendingOrderId");
         localStorage.removeItem("pendingUsername");
         localStorage.removeItem("pendingUserPassword");
         localStorage.removeItem("pendingAccessToken");

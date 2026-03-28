@@ -12,6 +12,7 @@ import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * WATI provider — converts generic payloads to WATI's flat API format.
@@ -31,6 +32,14 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final InstituteInternalService instituteInternalService;
+
+    /** Config cache: instituteId → {config, fetchedAt}. TTL = 5 minutes. */
+    private Map<String, CachedConfig> configCache = new ConcurrentHashMap<>();
+    private static final long CONFIG_TTL_MS = 5 * 60 * 1000;
+
+    private record CachedConfig(WatiConfig config, long fetchedAt) {
+        boolean isExpired() { return System.currentTimeMillis() - fetchedAt > CONFIG_TTL_MS; }
+    }
 
     @Override
     public boolean supports(String channelType) {
@@ -231,6 +240,12 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
     }
 
     private WatiConfig resolveConfig(String instituteId) {
+        // Check cache first
+        CachedConfig cached = configCache.get(instituteId);
+        if (cached != null && !cached.isExpired()) {
+            return cached.config();
+        }
+
         try {
             InstituteInfoDTO institute = instituteInternalService.getInstituteByInstituteId(instituteId);
             String jsonString = institute.getSetting();
@@ -247,21 +262,24 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
                         .path(NotificationConstants.UTILITY_WHATSAPP);
             }
 
+            WatiConfig config;
             JsonNode wati = whatsappSetting.path("wati");
             if (wati.isMissingNode()) {
-                // Fallback to root-level wati keys
-                return new WatiConfig(
+                config = new WatiConfig(
                         whatsappSetting.path("apiUrl").asText(whatsappSetting.path("api_url").asText("https://live-server.wati.io")),
                         whatsappSetting.path("apiKey").asText(whatsappSetting.path("api_key").asText("")),
                         whatsappSetting.path("whatsappNumber").asText(whatsappSetting.path("whatsapp_number").asText(""))
                 );
+            } else {
+                config = new WatiConfig(
+                        wati.path("apiUrl").asText(wati.path("api_url").asText("https://live-server.wati.io")),
+                        wati.path("apiKey").asText(wati.path("api_key").asText("")),
+                        wati.path("whatsappNumber").asText(wati.path("whatsapp_number").asText(""))
+                );
             }
 
-            return new WatiConfig(
-                    wati.path("apiUrl").asText(wati.path("api_url").asText("https://live-server.wati.io")),
-                    wati.path("apiKey").asText(wati.path("api_key").asText("")),
-                    wati.path("whatsappNumber").asText(wati.path("whatsapp_number").asText(""))
-            );
+            configCache.put(instituteId, new CachedConfig(config, System.currentTimeMillis()));
+            return config;
         } catch (Exception e) {
             log.error("Failed to resolve WATI config for institute {}: {}", instituteId, e.getMessage());
             return null;

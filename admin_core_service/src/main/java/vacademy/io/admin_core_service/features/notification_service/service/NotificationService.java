@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.notification_service.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
@@ -12,6 +13,8 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.notification.constants.NotificationConstant;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
+import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendRequest;
+import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendResponse;
 import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
@@ -22,6 +25,7 @@ import vacademy.io.common.logging.SentryLogger;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 public class NotificationService {
 
@@ -154,7 +158,7 @@ public class NotificationService {
     }
 
     public String sendWhatsappToUsers(List<WhatsappRequest> requests, String instituteId) {
-        System.out.println(JsonUtil.toJson(requests));
+        log.debug("Sending bulk WhatsApp requests: {}", JsonUtil.toJson(requests));
         String url = NotificationConstant.SEND_WHATSAPP_TO_USER_MULTIPLE + "?instituteId=" + instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
@@ -211,6 +215,53 @@ public class NotificationService {
                     "institute.id", instituteId,
                     "user.count", String.valueOf(userIds.size()),
                     "operation", "sendSystemAlertToUsers"));
+        }
+    }
+
+    // ==================== Unified Send API ====================
+
+    /**
+     * Send notification via the unified API — single endpoint for WhatsApp, Email, Push, System Alert.
+     * Supports sync (<=100 recipients) and async batch (>100).
+     * New callers should prefer this over the channel-specific methods above.
+     */
+    public UnifiedSendResponse sendUnified(UnifiedSendRequest request) {
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                NotificationConstant.UNIFIED_SEND,
+                request);
+
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            return mapper.readValue(response.getBody(), UnifiedSendResponse.class);
+        } catch (JsonProcessingException e) {
+            SentryLogger.logError(e, "Failed to parse unified send response", Map.of(
+                    "notification.type", request.getChannel() != null ? request.getChannel() : "unknown",
+                    "institute.id", request.getInstituteId() != null ? request.getInstituteId() : "unknown",
+                    "operation", "sendUnified"));
+            throw new VacademyException("Error parsing unified send response: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Poll batch status for async sends.
+     */
+    public UnifiedSendResponse getUnifiedBatchStatus(String batchId) {
+        String url = NotificationConstant.UNIFIED_SEND + "/" + batchId + "/status";
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.GET.name(),
+                notificationServerBaseUrl,
+                url,
+                null);
+
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            return mapper.readValue(response.getBody(), UnifiedSendResponse.class);
+        } catch (JsonProcessingException e) {
+            throw new VacademyException("Error parsing batch status response: " + e.getMessage());
         }
     }
 }

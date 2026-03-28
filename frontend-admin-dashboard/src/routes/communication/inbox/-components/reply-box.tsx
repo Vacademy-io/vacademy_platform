@@ -50,15 +50,37 @@ export function ReplyBox({ phone }: Props) {
     const handleSendTemplate = useCallback(async (template: WhatsAppTemplateDTO) => {
         setSending(true);
         try {
-            // Build variables from variable names (empty values for now — admin fills later if needed)
+            // Build variables: use sample values, variable names, or count from body text
             const variables: Record<string, string> = {};
-            if (template.bodyVariableNames) {
-                template.bodyVariableNames.forEach((name, i) => {
-                    variables[String(i + 1)] = name; // Use variable name as placeholder value for now
-                });
-            } else if (template.bodySampleValues) {
+            if (template.bodySampleValues && template.bodySampleValues.length > 0) {
                 template.bodySampleValues.forEach((val, i) => {
                     variables[String(i + 1)] = val;
+                });
+            } else if (template.bodyVariableNames && template.bodyVariableNames.length > 0) {
+                template.bodyVariableNames.forEach((name, i) => {
+                    variables[String(i + 1)] = name;
+                });
+            } else if (template.bodyText) {
+                // Count {{N}} placeholders in body text and fill with empty strings
+                const matches = template.bodyText.match(/\{\{\d+\}\}/g);
+                if (matches) {
+                    matches.forEach((_, i) => {
+                        variables[String(i + 1)] = '';
+                    });
+                }
+            }
+
+            // If template has params but all are empty, warn user
+            const paramCount = Object.keys(variables).length;
+            const hasEmptyParams = paramCount > 0 && Object.values(variables).every(v => !v);
+            if (hasEmptyParams) {
+                const userInput = prompt(
+                    `Template "${template.name}" requires ${paramCount} parameter(s).\nEnter values (comma-separated):`
+                );
+                if (userInput === null) { setSending(false); return; } // cancelled
+                const parts = userInput.split(',').map(s => s.trim());
+                parts.forEach((val, i) => {
+                    if (i < paramCount) variables[String(i + 1)] = val || '';
                 });
             }
 

@@ -124,7 +124,7 @@ jobs:
         id: ssh
         run: |
           KEYS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
-            "${{ env.HETZNER_API }}/ssh_keys" | jq '[.ssh_keys[].id]')
+            "${{ env.HETZNER_API }}/ssh_keys" | jq -c '[.ssh_keys[].id]')
           echo "keys=$KEYS" >> "$GITHUB_OUTPUT"
 
       - name: Create server from snapshot

@@ -61,12 +61,14 @@ export function BatchProgress({ batchId, onComplete }: Props) {
     const progress = status.total > 0 ? ((status.accepted + status.failed) / status.total) * 100 : 0;
     const isComplete = status.status !== 'PROCESSING';
 
-    const statusConfig = {
+    const statuses: Record<string, any> = {
         COMPLETED: { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', label: 'Completed' },
         PARTIAL: { icon: CheckCircle, color: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-200', label: 'Partial' },
         FAILED: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', label: 'Failed' },
         PROCESSING: { icon: Clock, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', label: 'Processing' },
-    }[status.status] || statusConfig.PROCESSING;
+    };
+
+    const statusConfig = statuses[status.status] || statuses.PROCESSING;
 
     const Icon = statusConfig.icon;
 

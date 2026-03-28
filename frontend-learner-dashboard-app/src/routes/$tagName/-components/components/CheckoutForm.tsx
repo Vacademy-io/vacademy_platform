@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
@@ -47,6 +47,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const [phone, setPhone] = useState("");
     const [address, setAddress] = useState("");
     const [otp, setOtp] = useState("");
+    const otpInputRef = useRef<HTMLInputElement>(null);
     const [loading, setLoading] = useState(false);
     const [isInitializing, setIsInitializing] = useState(false);
     const [phoneOtpSent, setPhoneOtpSent] = useState(false);
@@ -191,6 +192,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
             setPhoneOtpSent(true);
             toast.success("OTP sent to your WhatsApp");
+            setTimeout(() => otpInputRef.current?.focus(), 100);
         } catch (error) {
             console.error("Failed to send WhatsApp OTP:", error);
             toast.error("Failed to send OTP. Please try again");
@@ -656,6 +658,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                     {phoneOtpSent && !isPhoneVerified && (
                                         <div className="flex gap-2 mt-2 animate-in slide-in-from-top-1 duration-200">
                                             <input
+                                                ref={otpInputRef}
                                                 type="text"
                                                 value={otp}
                                                 onChange={(e) => setOtp(e.target.value)}

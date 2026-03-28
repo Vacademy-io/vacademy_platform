@@ -448,6 +448,8 @@ export const GET_CPOS_BY_INSTITUTE = (instituteId: string) =>
     `${CREATE_CPO}/institute/${instituteId}`;
 export const GET_CPO_FULL = (cpoId: string) => `${CREATE_CPO}/${cpoId}/full`;
 export const APPROVE_CPO = (cpoId: string) => `${CREATE_CPO}/${cpoId}/approve`;
+export const GET_CPO_LIST = (instituteId: string) => `${CREATE_CPO}/${instituteId}`;
+export const GET_CPO_FULL_DETAILS = GET_CPO_FULL;
 
 export const ANALYTICS_USER_ACTIVITY = `${BASE_URL}/auth-service/v1/analytics/user-activity`;
 export const ANALYTICS_ACTIVE_USERS_REALTIME = `${BASE_URL}/auth-service/v1/analytics/active-users/real-time`;
@@ -648,13 +650,6 @@ export const SCHOOL_ENROLL = `${BASE_URL}/admin-core-service/v1/school/enroll`;
 // Default payment option (open)
 export const GET_DEFAULT_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/open/v1/payment-option/default-payment-option`;
 export const GET_INSTITUTE_VENDORS = `${BASE_URL}/admin-core-service/open/v1/institute/payment-setting/vendors`;
-
-// Fee Management - CPO CRUD
-export const CREATE_CPO = `${BASE_URL}/admin-core-service/v1/fee-management/cpo`;
-export const GET_CPO_LIST = (instituteId: string) =>
-    `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${instituteId}`;
-export const GET_CPO_FULL_DETAILS = (cpoId: string) =>
-    `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${cpoId}/full`;
 
 // Offline Data Entry
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;

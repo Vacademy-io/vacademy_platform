@@ -24,8 +24,10 @@ import vacademy.io.notification_service.features.announcements.repository.Recipi
 import vacademy.io.notification_service.features.announcements.repository.RichTextDataRepository;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
+import vacademy.io.notification_service.features.send.dto.UnifiedSendRequest;
+import vacademy.io.notification_service.features.send.dto.UnifiedSendResponse;
+import vacademy.io.notification_service.features.send.service.UnifiedSendService;
 import vacademy.io.notification_service.service.EmailService;
-import vacademy.io.notification_service.service.WhatsAppService;
 import vacademy.io.notification_service.features.firebase_notifications.service.PushNotificationService;
 import vacademy.io.common.auth.entity.User;
 
@@ -46,10 +48,10 @@ public class AnnouncementDeliveryService {
     private final RichTextDataRepository richTextDataRepository;
     private final NotificationLogRepository notificationLogRepository;
     
-    // Existing notification services
+    // Notification services
     private final EmailService emailService;
-    private final WhatsAppService whatsAppService;
     private final PushNotificationService pushNotificationService;
+    private final UnifiedSendService unifiedSendService;
     private final UserAnnouncementPreferenceService userAnnouncementPreferenceService;
     
     // Service clients for user resolution
@@ -138,10 +140,8 @@ public class AnnouncementDeliveryService {
                 break;
                 
             case WHATSAPP:
-                // WhatsApp delivery (legacy - loads all messages)
-                List<RecipientMessage> whatsappMessages = recipientMessageRepository
-                    .findByAnnouncementIdAndStatus(announcement.getId(), MessageStatus.PENDING);
-                deliverViaWhatsApp(announcement, content, medium, whatsappMessages, announcement.getInstituteId());
+                // WhatsApp delivery with pagination + unified send batch
+                deliverViaWhatsApp(announcement, content, medium, announcement.getInstituteId());
                 break;
                 
             case PUSH_NOTIFICATION:
@@ -265,9 +265,22 @@ public class AnnouncementDeliveryService {
                         // RATE LIMITING: Acquire permit before sending (blocks if limit exceeded)
                         rateLimiter.acquire();
                     
-                    // Send email using existing service with email type, custom from address, and name
-                    emailService.sendHtmlEmail(userEmail, subject, "announcement-service", processedContent, 
-                                             instituteId, fromEmail, fromName, resolvedEmailType);
+                    // Send email via unified send for consistent logging
+                    unifiedSendService.routeSync(UnifiedSendRequest.builder()
+                            .instituteId(instituteId)
+                            .channel("EMAIL")
+                            .recipients(List.of(UnifiedSendRequest.Recipient.builder()
+                                    .email(userEmail).userId(message.getUserId()).build()))
+                            .options(UnifiedSendRequest.SendOptions.builder()
+                                    .emailSubject(subject)
+                                    .emailBody(processedContent)
+                                    .emailType(resolvedEmailType)
+                                    .fromEmail(fromEmail)
+                                    .fromName(fromName)
+                                    .source("announcement-service")
+                                    .sourceId(announcement.getId())
+                                    .build())
+                            .build());
                     
                     message.setStatus(MessageStatus.DELIVERED);
                     message.setDeliveredAt(LocalDateTime.now());
@@ -334,72 +347,147 @@ public class AnnouncementDeliveryService {
     }
 
     /**
-     * Deliver via WhatsApp using existing WhatsAppService
+     * Deliver via WhatsApp using unified send with pagination.
+     * Processes in batches (deliveryBatchSize) to avoid loading all messages into memory.
      */
-    private void deliverViaWhatsApp(Announcement announcement, RichTextData content, 
-                                   AnnouncementMedium medium, List<RecipientMessage> pendingMessages,String instituteId) {
-        
+    private void deliverViaWhatsApp(Announcement announcement, RichTextData content,
+                                   AnnouncementMedium medium, String instituteId) {
+
         Map<String, Object> whatsAppConfig = medium.getMediumConfig();
         String templateName = (String) whatsAppConfig.get("template_name");
         @SuppressWarnings("unchecked")
         Map<String, String> dynamicValues = (Map<String, String>) whatsAppConfig.get("dynamic_values");
-        
+
         if (templateName == null) {
             log.error("WhatsApp template name not configured for announcement: {}", announcement.getId());
             return;
         }
-        
-        for (RecipientMessage message : pendingMessages) {
-            if (message.getMediumType() != null && message.getMediumType() != MediumType.WHATSAPP) continue; // skip others
-            try {
-                String resolvedUsername = resolveUsernameById(message.getUserId());
-                String userPhone = resolveUserPhone(message.getUserId());
-                if (userAnnouncementPreferenceService.isWhatsAppUnsubscribed(message.getUserId(), announcement.getInstituteId(),userPhone)) {
-                    message.setMediumType(MediumType.WHATSAPP);
-                    message.setStatus(MessageStatus.FAILED);
-                    message.setErrorMessage("User unsubscribed from WhatsApp notifications");
-                    recipientMessageRepository.save(message);
-                    createNotificationLog(announcement, message, "WHATSAPP", "FAILED", message.getErrorMessage());
-                    log.info("Skipping WhatsApp delivery to user {} (message {}) due to unsubscribe preference",
-                            resolvedUsername, message.getId());
-                    continue;
-                }
 
-                message.setMediumType(MediumType.WHATSAPP);
-                message.setStatus(MessageStatus.SENT);
-                message.setSentAt(LocalDateTime.now());
-                
-                // Get user phone - this would need to be resolved from user service
-                if (userPhone != null) {
-                    // Prepare dynamic values with user-specific data
+        long totalRecipients = recipientMessageRepository.countByAnnouncementIdAndStatus(
+                announcement.getId(), MessageStatus.PENDING);
+        log.info("Starting WhatsApp delivery for announcement {}: {} total recipients",
+                announcement.getId(), totalRecipients);
+
+        int pageNumber = 0;
+        int totalSuccess = 0;
+        int totalFailed = 0;
+        Page<RecipientMessage> page;
+
+        do {
+            Pageable pageable = PageRequest.of(pageNumber, deliveryBatchSize);
+            page = recipientMessageRepository.findByAnnouncementIdAndStatusAndMediumType(
+                    announcement.getId(), MessageStatus.PENDING, MediumType.WHATSAPP, pageable);
+
+            List<RecipientMessage> batch = page.getContent();
+            if (batch.isEmpty()) break;
+
+            // Build unified send recipients for this batch
+            List<UnifiedSendRequest.Recipient> recipients = new java.util.ArrayList<>();
+            Map<String, RecipientMessage> messageByPhone = new HashMap<>();
+
+            for (RecipientMessage message : batch) {
+                try {
+                    String userPhone = resolveUserPhone(message.getUserId());
+
+                    // Check unsubscribe
+                    if (userAnnouncementPreferenceService.isWhatsAppUnsubscribed(
+                            message.getUserId(), announcement.getInstituteId(), userPhone)) {
+                        message.setMediumType(MediumType.WHATSAPP);
+                        message.setStatus(MessageStatus.FAILED);
+                        message.setErrorMessage("User unsubscribed from WhatsApp notifications");
+                        recipientMessageRepository.save(message);
+                        createNotificationLog(announcement, message, "WHATSAPP", "FAILED", message.getErrorMessage());
+                        totalFailed++;
+                        continue;
+                    }
+
+                    if (userPhone == null) {
+                        message.setMediumType(MediumType.WHATSAPP);
+                        message.setStatus(MessageStatus.FAILED);
+                        message.setErrorMessage("User phone not found");
+                        recipientMessageRepository.save(message);
+                        createNotificationLog(announcement, message, "WHATSAPP", "FAILED", "User phone not found");
+                        totalFailed++;
+                        continue;
+                    }
+
                     Map<String, String> userSpecificValues = prepareDynamicValues(dynamicValues, message, announcement, content);
-                    
-                    // Send WhatsApp using existing service
-                    // Note: This is a simplified call - actual implementation would need proper parameter mapping
-                    Map<String, Map<String, String>> bodyParams = Map.of(userPhone, userSpecificValues);
-                    whatsAppService.sendWhatsappMessages(templateName, List.of(bodyParams), null, "en", null,instituteId);
-                    
-                    message.setStatus(MessageStatus.DELIVERED);
-                    message.setDeliveredAt(LocalDateTime.now());
-                    
-                    createNotificationLog(announcement, message, "WHATSAPP", "SUCCESS", null);
-                    
-                } else {
+
+                    recipients.add(UnifiedSendRequest.Recipient.builder()
+                            .phone(userPhone)
+                            .userId(message.getUserId())
+                            .variables(userSpecificValues)
+                            .build());
+                    messageByPhone.put(userPhone.replaceAll("[^0-9]", ""), message);
+
+                    message.setMediumType(MediumType.WHATSAPP);
+                    message.setSentAt(LocalDateTime.now());
+
+                } catch (Exception e) {
+                    log.error("Error preparing WhatsApp for message {}: {}", message.getId(), e.getMessage());
                     message.setStatus(MessageStatus.FAILED);
-                    message.setErrorMessage("User phone not found");
-                    createNotificationLog(announcement, message, "WHATSAPP", "FAILED", "User phone not found");
+                    message.setErrorMessage(e.getMessage());
+                    recipientMessageRepository.save(message);
+                    totalFailed++;
                 }
-                
-                recipientMessageRepository.save(message);
-                
-            } catch (Exception e) {
-                log.error("Error sending WhatsApp for message: {}", message.getId(), e);
-                message.setStatus(MessageStatus.FAILED);
-                message.setErrorMessage(e.getMessage());
-                recipientMessageRepository.save(message);
-                createNotificationLog(announcement, message, "WHATSAPP", "FAILED", e.getMessage());
             }
-        }
+
+            // Send batch via unified send
+            if (!recipients.isEmpty()) {
+                try {
+                    UnifiedSendResponse response = unifiedSendService.send(UnifiedSendRequest.builder()
+                            .instituteId(instituteId)
+                            .channel("WHATSAPP")
+                            .templateName(templateName)
+                            .languageCode("en")
+                            .recipients(recipients)
+                            .options(UnifiedSendRequest.SendOptions.builder()
+                                    .source("announcement-service")
+                                    .sourceId(announcement.getId())
+                                    .build())
+                            .build());
+
+                    // Update message statuses from response
+                    if (response.getResults() != null) {
+                        for (UnifiedSendResponse.RecipientResult result : response.getResults()) {
+                            String normalizedPhone = result.getPhone() != null
+                                    ? result.getPhone().replaceAll("[^0-9]", "") : "";
+                            RecipientMessage msg = messageByPhone.get(normalizedPhone);
+                            if (msg != null) {
+                                if (result.isSuccess()) {
+                                    msg.setStatus(MessageStatus.DELIVERED);
+                                    msg.setDeliveredAt(LocalDateTime.now());
+                                    createNotificationLog(announcement, msg, "WHATSAPP", "SUCCESS", null);
+                                    totalSuccess++;
+                                } else {
+                                    msg.setStatus(MessageStatus.FAILED);
+                                    msg.setErrorMessage(result.getError());
+                                    createNotificationLog(announcement, msg, "WHATSAPP", "FAILED", result.getError());
+                                    totalFailed++;
+                                }
+                                recipientMessageRepository.save(msg);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("Batch WhatsApp send failed for announcement {}: {}", announcement.getId(), e.getMessage());
+                    for (RecipientMessage msg : messageByPhone.values()) {
+                        msg.setStatus(MessageStatus.FAILED);
+                        msg.setErrorMessage("Batch send failed: " + e.getMessage());
+                        recipientMessageRepository.save(msg);
+                        totalFailed++;
+                    }
+                }
+            }
+
+            log.info("WhatsApp batch {} completed for announcement {}: {} success, {} failed",
+                    pageNumber + 1, announcement.getId(), totalSuccess, totalFailed);
+            pageNumber++;
+
+        } while (page.hasNext());
+
+        log.info("WhatsApp delivery completed for announcement {}: {} success, {} failed out of {}",
+                announcement.getId(), totalSuccess, totalFailed, totalRecipients);
     }
 
     /**

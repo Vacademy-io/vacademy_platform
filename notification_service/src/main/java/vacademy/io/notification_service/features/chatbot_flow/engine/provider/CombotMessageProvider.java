@@ -35,6 +35,18 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
         boolean isExpired() { return System.currentTimeMillis() - fetchedAt > CONFIG_TTL_MS; }
     }
 
+    /** Evict cached config for an institute (called when provider settings change). */
+    public void evictConfig(String instituteId) {
+        configCache.remove(instituteId);
+        log.info("Evicted COMBOT/META config cache for institute {}", instituteId);
+    }
+
+    /** Evict all cached configs. */
+    public void evictAllConfigs() {
+        configCache.clear();
+        log.info("Evicted all COMBOT/META config caches");
+    }
+
     @Override
     public boolean supports(String channelType) {
         return "WHATSAPP_COMBOT".equalsIgnoreCase(channelType)

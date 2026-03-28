@@ -55,6 +55,14 @@ public class SendUniqueLinkService {
      * values
      * Special handling for customFields Map to expand nested key-value pairs
      */
+    /**
+     * Public alias for converting template variables to a flat Map.
+     * Used by DynamicNotificationService for unified send.
+     */
+    public Map<String, String> buildVariablesMap(NotificationTemplateVariables templateVars) {
+        return convertTemplateVariablesToMap(templateVars);
+    }
+
     private Map<String, String> convertTemplateVariablesToMap(NotificationTemplateVariables templateVars) {
         Map<String, String> placeholders = new HashMap<>();
 
@@ -365,7 +373,7 @@ public class SendUniqueLinkService {
             notificationToUserDTO.setPlaceholders(mergedParams); // Keep for any additional processing
 
             notificationDTO.setUsers(List.of(notificationToUserDTO));
-            notificationService.sendEmailToUsers(notificationDTO, instituteId);
+            notificationService.sendEmailViaUnified(notificationDTO, instituteId);
         }
     }
 
@@ -447,7 +455,7 @@ public class SendUniqueLinkService {
             request.setUserDetails(List.of(singleUser));
 
             // Dispatch to notification-service
-            notificationService.sendWhatsappToUsers(request, instituteId);
+            notificationService.sendWhatsappViaUnified(request, instituteId);
         }
     }
 }

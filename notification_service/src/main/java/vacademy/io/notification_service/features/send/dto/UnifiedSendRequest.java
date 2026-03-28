@@ -49,6 +49,21 @@ public class UnifiedSendRequest {
          * For Email, these replace {{key}} placeholders directly.
          */
         private Map<String, String> variables;
+
+        /**
+         * Email attachments (base64-encoded). Each entry: filename → base64 content.
+         * Only used for EMAIL channel. Ignored for WhatsApp/Push.
+         */
+        private List<Attachment> attachments;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Attachment {
+        private String filename;
+        private String contentBase64; // base64-encoded file content
     }
 
     @Data
@@ -74,6 +89,9 @@ public class UnifiedSendRequest {
         private String pushTitle;
         private String pushBody;
         private Map<String, String> pushData;
+
+        // Rate limiting (optional — for bulk sends like announcements)
+        private Integer rateLimitPerSecond;
 
         // General
         private String source;  // caller identifier for logging

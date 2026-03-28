@@ -63,6 +63,7 @@ public class WhatsAppTemplateManagerService {
                 .footerText(dto.getFooterText())
                 .buttonsConfig(toJson(dto.getButtons()))
                 .bodySampleValues(toJson(dto.getBodySampleValues()))
+                .bodyVariableNames(toJson(dto.getBodyVariableNames()))
                 .headerSampleValues(toJson(dto.getHeaderSampleValues()))
                 .createdViaVacademy(true)
                 .createdBy(dto.getCreatedBy())
@@ -102,6 +103,7 @@ public class WhatsAppTemplateManagerService {
         template.setFooterText(dto.getFooterText());
         template.setButtonsConfig(toJson(dto.getButtons()));
         template.setBodySampleValues(toJson(dto.getBodySampleValues()));
+        template.setBodyVariableNames(toJson(dto.getBodyVariableNames()));
         template.setHeaderSampleValues(toJson(dto.getHeaderSampleValues()));
 
         if ("REJECTED".equals(template.getStatus())) {
@@ -453,6 +455,7 @@ public class WhatsAppTemplateManagerService {
                 .footerText(t.getFooterText())
                 .buttons(fromJsonButtons(t.getButtonsConfig()))
                 .bodySampleValues(fromJsonList(t.getBodySampleValues()))
+                .bodyVariableNames(fromJsonList(t.getBodyVariableNames()))
                 .headerSampleValues(fromJsonList(t.getHeaderSampleValues()))
                 .createdViaVacademy(t.isCreatedViaVacademy())
                 .createdBy(t.getCreatedBy())

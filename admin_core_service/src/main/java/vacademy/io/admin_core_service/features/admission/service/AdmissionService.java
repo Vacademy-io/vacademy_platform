@@ -850,7 +850,7 @@ public class AdmissionService {
                 emailReq.setTo(parent.getEmail());
                 emailReq.setSubject("Admission Confirmed! Welcome to " + instituteName);
                 emailReq.setBody(body);
-                notificationService.sendGenericHtmlMail(emailReq, instituteId);
+                notificationService.sendGenericHtmlMailViaUnified(emailReq, instituteId);
             }
         } catch (Exception e) {
             logger.error("Failed to send Admission Welcome Email", e);

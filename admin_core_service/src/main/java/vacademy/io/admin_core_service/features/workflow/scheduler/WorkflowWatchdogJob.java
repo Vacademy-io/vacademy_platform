@@ -115,7 +115,7 @@ public class WorkflowWatchdogJob {
 
                 // Pass instituteId for logging/billing if needed, or extract from workflow
                 String instituteId = execution.getWorkflow().getInstituteId();
-                notificationService.sendGenericHtmlMail(request, instituteId);
+                notificationService.sendGenericHtmlMailViaUnified(request, instituteId);
             }
 
             log.info("Alert sent for stale execution: {}", execution.getId());

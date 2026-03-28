@@ -11,18 +11,13 @@ import org.hibernate.annotations.UuidGenerator;
 
 import java.sql.Timestamp;
 
-/**
- * @deprecated Use {@link NotificationTemplate} instead. This class is kept for backward compatibility
- * during migration. It maps to the same table (renamed to notification_template).
- */
-@Deprecated
 @Entity
 @Table(name = "notification_template")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WhatsAppTemplate {
+public class NotificationTemplate {
 
     @Id
     @UuidGenerator
@@ -37,11 +32,15 @@ public class WhatsAppTemplate {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "language", nullable = false, length = 10)
+    @Column(name = "channel_type", length = 20)
+    @Builder.Default
+    private String channelType = "WHATSAPP";
+
+    @Column(name = "language", length = 10)
     @Builder.Default
     private String language = "en";
 
-    @Column(name = "category", nullable = false, length = 50)
+    @Column(name = "category", length = 50)
     private String category;
 
     @Column(name = "status", length = 30)
@@ -50,6 +49,8 @@ public class WhatsAppTemplate {
 
     @Column(name = "rejection_reason", columnDefinition = "TEXT")
     private String rejectionReason;
+
+    // ==================== WhatsApp-specific fields ====================
 
     @Column(name = "header_type", length = 20)
     @Builder.Default
@@ -61,7 +62,7 @@ public class WhatsAppTemplate {
     @Column(name = "header_sample_url", columnDefinition = "TEXT")
     private String headerSampleUrl;
 
-    @Column(name = "body_text", columnDefinition = "TEXT")
+    @Column(name = "body_text", columnDefinition = "TEXT") // nullable for EMAIL templates
     private String bodyText;
 
     @Column(name = "footer_text", columnDefinition = "TEXT")
@@ -73,17 +74,37 @@ public class WhatsAppTemplate {
     @Column(name = "body_sample_values", columnDefinition = "TEXT")
     private String bodySampleValues;
 
-    /**
-     * JSON array of semantic variable names for each {{N}} placeholder.
-     * e.g. ["name", "course_name", "date"]
-     * Used by unified send API for named → positional resolution.
-     * If null, falls back to body_sample_values (which are example values, not names).
-     */
     @Column(name = "body_variable_names", columnDefinition = "TEXT")
     private String bodyVariableNames;
 
     @Column(name = "header_sample_values", columnDefinition = "TEXT")
     private String headerSampleValues;
+
+    // ==================== Email-specific fields ====================
+
+    @Column(name = "subject", columnDefinition = "TEXT")
+    private String subject;
+
+    @Column(name = "content", columnDefinition = "TEXT")
+    private String content;
+
+    @Column(name = "content_type", length = 20)
+    private String contentType;
+
+    // ==================== General fields ====================
+
+    @Column(name = "setting_json", columnDefinition = "TEXT")
+    private String settingJson;
+
+    @Column(name = "dynamic_parameters", columnDefinition = "TEXT")
+    private String dynamicParameters;
+
+    @Column(name = "can_delete")
+    @Builder.Default
+    private Boolean canDelete = true;
+
+    @Column(name = "template_category", length = 50)
+    private String templateCategory;
 
     @Column(name = "created_via_vacademy")
     @Builder.Default

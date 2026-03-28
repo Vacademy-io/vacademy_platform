@@ -1548,7 +1548,7 @@ public class InvoiceService {
                         .users(List.of(toUser))
                         .build();
 
-                notificationService.sendAttachmentEmail(List.of(attachmentDto), instituteId);
+                notificationService.sendAttachmentEmailViaUnified(List.of(attachmentDto), instituteId);
                 log.info("Invoice email sent to learner {} for invoice: {} (PDF attached)", user.getEmail(), invoice.getInvoiceNumber());
             } else {
                 NotificationDTO notificationDTO = new NotificationDTO();
@@ -1562,7 +1562,7 @@ public class InvoiceService {
                 toUser.setUserId(user.getId());
                 toUser.setPlaceholders(Map.of("email", user.getEmail()));
                 notificationDTO.setUsers(List.of(toUser));
-                notificationService.sendEmailToUsers(notificationDTO, instituteId);
+                notificationService.sendEmailViaUnified(notificationDTO, instituteId);
                 log.info("Invoice email sent to learner {} for invoice: {} (link in body)", user.getEmail(), invoice.getInvoiceNumber());
             }
         } catch (Exception e) {

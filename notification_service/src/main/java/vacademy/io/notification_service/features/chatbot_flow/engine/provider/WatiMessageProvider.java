@@ -41,6 +41,11 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
         boolean isExpired() { return System.currentTimeMillis() - fetchedAt > CONFIG_TTL_MS; }
     }
 
+    public void evictConfig(String instituteId) {
+        configCache.remove(instituteId);
+        log.info("Evicted WATI config cache for institute {}", instituteId);
+    }
+
     @Override
     public boolean supports(String channelType) {
         return "WHATSAPP_WATI".equalsIgnoreCase(channelType);

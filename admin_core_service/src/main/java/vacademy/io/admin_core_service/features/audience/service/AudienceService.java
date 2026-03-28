@@ -434,7 +434,7 @@ public class AudienceService {
                         emailRequest.setBody(defaultEmailBody);
 
                         try {
-                            notificationService.sendGenericHtmlMail(emailRequest, instituteIdForNotification);
+                            notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteIdForNotification);
                             logger.info("Sent default email to respondent: {}", userForNotification.getEmail());
                         } catch (Exception ex) {
                             logger.error("Failed to send default email to {}: {}", userForNotification.getEmail(),
@@ -471,7 +471,7 @@ public class AudienceService {
                         adminEmailRequest.setBody(adminEmailBody);
 
                         try {
-                            notificationService.sendGenericHtmlMail(adminEmailRequest, instituteIdForNotification);
+                            notificationService.sendGenericHtmlMailViaUnified(adminEmailRequest, instituteIdForNotification);
                             logger.info("Sent default admin notification to: {}", trimmedEmail);
                         } catch (Exception ex) {
                             logger.error("Failed to send admin notification to {}: {}", trimmedEmail, ex.getMessage());
@@ -838,7 +838,7 @@ public class AudienceService {
                 adminEmailRequest.setBody(adminEmailBody);
 
                 try {
-                    notificationService.sendGenericHtmlMail(adminEmailRequest, instituteIdForNotification);
+                    notificationService.sendGenericHtmlMailViaUnified(adminEmailRequest, instituteIdForNotification);
                     logger.info("Sent default admin notification to: {}", trimmedEmail);
                 } catch (Exception ex) {
                     logger.error("Failed to send admin notification to {}: {}", trimmedEmail, ex.getMessage());
@@ -2576,7 +2576,7 @@ public class AudienceService {
             emailRequest.setSubject("Enquiry Submitted Successfully - " + campaignName + " - " + trackingId);
             emailRequest.setBody(defaultEmailBody);
 
-            notificationService.sendGenericHtmlMail(emailRequest, instituteId);
+            notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
         }
     }
 

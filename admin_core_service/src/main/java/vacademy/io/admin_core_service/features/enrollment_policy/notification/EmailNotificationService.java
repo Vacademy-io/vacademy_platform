@@ -150,7 +150,7 @@ public class EmailNotificationService implements INotificationService {
         notificationToUserDTO.setPlaceholders(dynamicParams);
 
         notificationDTO.setUsers(List.of(notificationToUserDTO));
-        notificationService.sendEmailToUsers(notificationDTO, instituteId);
+        notificationService.sendEmailViaUnified(notificationDTO, instituteId);
     }
 
     /**

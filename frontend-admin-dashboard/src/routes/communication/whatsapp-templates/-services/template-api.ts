@@ -25,7 +25,15 @@ export interface WhatsAppTemplateDTO {
     footerText?: string;
     buttons?: TemplateButton[];
     bodySampleValues?: string[];
+    bodyVariableNames?: string[];  // semantic names: ["name", "course_name"]
     headerSampleValues?: string[];
+    channelType?: 'WHATSAPP' | 'EMAIL' | 'SMS' | 'PUSH';
+    subject?: string;       // email subject
+    content?: string;       // email HTML body
+    contentType?: string;   // HTML, TEXT
+    dynamicParameters?: string;
+    canDelete?: boolean;
+    templateCategory?: string;
     createdViaVacademy?: boolean;
     createdBy?: string;
     createdAt?: string;

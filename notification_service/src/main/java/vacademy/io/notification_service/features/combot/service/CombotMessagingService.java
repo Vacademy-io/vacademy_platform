@@ -27,8 +27,13 @@ import java.util.*;
 
 /**
  * Service for sending WhatsApp messages via Com.bot API
- * Fetches Com.bot credentials from institute settings
+ * Fetches Com.bot credentials from institute settings.
+ *
+ * @deprecated Prefer {@link vacademy.io.notification_service.features.chatbot_flow.engine.provider.CombotMessageProvider}
+ *             for new code. This class is retained for CombotWebhookService response pipeline,
+ *             EngagementTriggerService, and CombotMessagingController until those are migrated.
  */
+@Deprecated
 @Service
 @RequiredArgsConstructor
 @Slf4j

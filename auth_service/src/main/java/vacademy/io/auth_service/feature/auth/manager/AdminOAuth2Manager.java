@@ -161,7 +161,7 @@ public class AdminOAuth2Manager {
         genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
                 user.getUsername(), user.getPassword(), learnerLoginUrl, theme));
         genericEmailRequest.setSubject("Welcome to " + instituteName);
-        notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
+        notificationService.sendGenericHtmlMailViaUnified(genericEmailRequest, instituteId);
     }
 
     /**

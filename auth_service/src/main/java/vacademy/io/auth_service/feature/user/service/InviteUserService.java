@@ -94,7 +94,7 @@ public class InviteUserService {
                 InviteUserEmailBody.createInviteUserEmail(
                         userDTO.getFullName(), userDTO.getUsername(), userDTO.getPassword(), userDTO.getRoles(), theme,instituteName,adminLoginUrl)
         );
-        notificationService.sendGenericHtmlMail(emailRequest, instituteId);
+        notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
     }
 
     private void sendReminderEmail(User user) {
@@ -108,7 +108,7 @@ public class InviteUserService {
                 InviteUserEmailBody.createReminderEmail(
                         user.getFullName(), user.getUsername(), user.getPassword(), getUserRoleNames(user))
         );
-        notificationService.sendGenericHtmlMail(emailRequest, instituteId);
+        notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
     }
 
     private ModifyUserRolesDTO createModifyRolesDTO(String userId, String instituteId, List<String> roles) {

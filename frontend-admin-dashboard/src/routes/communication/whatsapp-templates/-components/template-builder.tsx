@@ -33,6 +33,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
     const [footerText, setFooterText] = useState(template?.footerText || '');
     const [buttons, setButtons] = useState<TemplateButton[]>(template?.buttons || []);
     const [bodySampleValues, setBodySampleValues] = useState<string[]>(template?.bodySampleValues || []);
+    const [bodyVariableNames, setBodyVariableNames] = useState<string[]>(template?.bodyVariableNames || []);
     const [saving, setSaving] = useState(false);
 
     // Count placeholders in body
@@ -47,6 +48,13 @@ export function TemplateBuilder({ template, onClose }: Props) {
         while (arr.length < placeholderCount) arr.push('');
         return arr.slice(0, placeholderCount);
     }, [bodySampleValues, placeholderCount]);
+
+    // Auto-adjust variable names array size
+    const adjustedVarNames = useMemo(() => {
+        const arr = [...bodyVariableNames];
+        while (arr.length < placeholderCount) arr.push('');
+        return arr.slice(0, placeholderCount);
+    }, [bodyVariableNames, placeholderCount]);
 
     const insertPlaceholder = () => {
         const nextNum = placeholderCount + 1;
@@ -73,6 +81,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
         footerText: footerText || undefined,
         buttons: buttons.length > 0 ? buttons : undefined,
         bodySampleValues: adjustedSamples.length > 0 ? adjustedSamples : undefined,
+        bodyVariableNames: adjustedVarNames.some(v => v.trim()) ? adjustedVarNames : undefined,
     });
 
     const handleSaveDraft = async () => {
@@ -209,23 +218,34 @@ export function TemplateBuilder({ template, onClose }: Props) {
                             maxLength={1024} />
                         <p className="text-[10px] text-gray-400 mt-0.5">{bodyText.length}/1024 characters</p>
 
-                        {/* Sample values */}
+                        {/* Variable names + Sample values */}
                         {placeholderCount > 0 && (
                             <div className="mt-2 space-y-1">
-                                <p className="text-xs text-gray-500">Sample values (required by Meta for approval):</p>
+                                <p className="text-xs text-gray-500">Variable configuration:</p>
                                 {adjustedSamples.map((val, i) => (
                                     <div key={i} className="flex items-center gap-2">
-                                        <span className="text-xs text-gray-400 w-10">{`{{${i + 1}}}`}</span>
+                                        <span className="text-xs text-gray-400 w-10 shrink-0">{`{{${i + 1}}}`}</span>
+                                        <input type="text" value={adjustedVarNames[i] || ''}
+                                            onChange={(e) => {
+                                                const arr = [...adjustedVarNames];
+                                                arr[i] = e.target.value;
+                                                setBodyVariableNames(arr);
+                                            }}
+                                            placeholder="Variable name (e.g. name, course)"
+                                            className="flex-1 px-2 py-1 text-xs border rounded" />
                                         <input type="text" value={val}
                                             onChange={(e) => {
                                                 const arr = [...adjustedSamples];
                                                 arr[i] = e.target.value;
                                                 setBodySampleValues(arr);
                                             }}
-                                            placeholder="Sample value"
+                                            placeholder="Sample value (e.g. John)"
                                             className="flex-1 px-2 py-1 text-xs border rounded" />
                                     </div>
                                 ))}
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                    Variable names let you use named params in the API: {`{"name": "John"}`} instead of {`{"1": "John"}`}
+                                </p>
                             </div>
                         )}
                     </div>

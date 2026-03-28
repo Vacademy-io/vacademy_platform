@@ -1105,7 +1105,7 @@ public class SchoolFeeReceiptService {
                     .users(List.of(toUser))
                     .build();
 
-            notificationService.sendAttachmentEmail(List.of(attachmentNotification), instituteId);
+            notificationService.sendAttachmentEmailViaUnified(List.of(attachmentNotification), instituteId);
             log.info("School fee receipt email sent to {} for receipt: {}", user.getEmail(), receiptNumber);
 
         } catch (Exception e) {

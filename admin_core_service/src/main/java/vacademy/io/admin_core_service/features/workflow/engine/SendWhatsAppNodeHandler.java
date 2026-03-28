@@ -387,7 +387,7 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
 
                 try {
                     // Call the batch method ONCE
-                    notificationService.sendWhatsappToUsers(finalBatchList, instituteId);
+                    notificationService.sendWhatsappViaUnified(finalBatchList, instituteId);
                     log.info("Successfully dispatched {} WhatsApp batches for {} total users.", finalBatchList.size(),
                             processedCount);
                     results.add("SUCCESS: Dispatched " + finalBatchList.size() + " batches for " + processedCount

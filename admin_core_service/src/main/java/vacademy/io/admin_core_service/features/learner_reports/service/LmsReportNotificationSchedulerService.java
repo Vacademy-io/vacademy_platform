@@ -209,7 +209,7 @@ public class LmsReportNotificationSchedulerService {
             }
 
             attachUsersToNotifications(notificationMap, userGroups);
-            return notificationService.sendAttachmentEmail(new ArrayList<>(notificationMap.values()),details.getInstituteId());
+            return notificationService.sendAttachmentEmailViaUnified(new ArrayList<>(notificationMap.values()),details.getInstituteId());
         }
         return true;
     }

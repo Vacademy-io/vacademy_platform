@@ -189,10 +189,16 @@ export const sendInvoiceEmail = async (
         primaryColor,
     });
 
-    await authenticatedAxiosInstance.post(`${NOTIFICATION_SERVICE_BASE}/send-html-email`, {
-        to: email,
-        subject: `Fee Invoice - ${studentName}`,
-        body: htmlBody,
+    await authenticatedAxiosInstance.post(`${NOTIFICATION_SERVICE_BASE}/send`, {
+        instituteId: '',
+        channel: 'EMAIL',
+        recipients: [{ email }],
+        options: {
+            emailSubject: `Fee Invoice - ${studentName}`,
+            emailBody: htmlBody,
+            emailType: 'UTILITY_EMAIL',
+            source: 'fee-invoice',
+        },
     });
 };
 
@@ -217,9 +223,15 @@ export const sendPaymentLinkEmail = async (
         primaryColor,
     });
 
-    await authenticatedAxiosInstance.post(`${NOTIFICATION_SERVICE_BASE}/send-html-email`, {
-        to: email,
-        subject: `Payment Link - ${feeName}`,
-        body: htmlBody,
+    await authenticatedAxiosInstance.post(`${NOTIFICATION_SERVICE_BASE}/send`, {
+        instituteId: '',
+        channel: 'EMAIL',
+        recipients: [{ email }],
+        options: {
+            emailSubject: `Payment Link - ${feeName}`,
+            emailBody: htmlBody,
+            emailType: 'UTILITY_EMAIL',
+            source: 'payment-link',
+        },
     });
 };

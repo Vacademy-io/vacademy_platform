@@ -14,6 +14,7 @@ export function TemplateListPage() {
     const [isCreating, setIsCreating] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeProvider, setActiveProvider] = useState<string>('');
+    const [channelFilter, setChannelFilter] = useState<'ALL' | 'WHATSAPP' | 'EMAIL'>('ALL');
     const instituteId = getInstituteId() || '';
 
     // Meta/COMBOT can create templates via API; WATI must use WATI dashboard
@@ -107,15 +108,17 @@ export function TemplateListPage() {
 
     const filtered = templates.filter((t) =>
         t.status !== 'DELETED' &&
+        (channelFilter === 'ALL' || (t.channelType || 'WHATSAPP') === channelFilter) &&
         (t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-         (t.bodyText || '').toLowerCase().includes(searchQuery.toLowerCase()))
+         (t.bodyText || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+         (t.subject || '').toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
     return (
         <div className="p-4 sm:p-6 w-full max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">WhatsApp Templates</h1>
+                    <h1 className="text-2xl font-bold text-gray-800">Message Templates</h1>
                     <p className="text-sm text-gray-500 mt-1">
                         {canCreateViaApi
                             ? 'Create, manage, and submit templates for Meta approval'
@@ -157,6 +160,20 @@ export function TemplateListPage() {
                     </div>
                 </div>
             )}
+
+            {/* Channel filter tabs */}
+            <div className="flex gap-1 mb-3">
+                {(['ALL', 'WHATSAPP', 'EMAIL'] as const).map((tab) => (
+                    <button key={tab} onClick={() => setChannelFilter(tab)}
+                        className={`px-3 py-1.5 text-xs rounded-lg font-medium transition ${
+                            channelFilter === tab
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}>
+                        {tab === 'ALL' ? 'All' : tab === 'WHATSAPP' ? 'WhatsApp' : 'Email'}
+                    </button>
+                ))}
+            </div>
 
             {/* Search */}
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}

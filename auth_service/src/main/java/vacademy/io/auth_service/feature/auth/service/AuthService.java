@@ -244,7 +244,7 @@ public class AuthService {
         genericEmailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
                 user.getUsername(), user.getPassword(), loginUrl, theme));
         genericEmailRequest.setSubject("Welcome to " + instituteName);
-        notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
+        notificationService.sendGenericHtmlMailViaUnified(genericEmailRequest, instituteId);
     }
 
     public void sendKeepingCredentialsWelcomeMailToUser(User user, String instituteId, Set<UserRole> roles) {
@@ -292,7 +292,7 @@ public class AuthService {
         emailRequest.setTo(user.getEmail());
         emailRequest.setSubject("Welcome to " + instituteName);
         emailRequest.setBody(body);
-        notificationService.sendGenericHtmlMail(emailRequest, instituteId);
+        notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
     }
 
     @Transactional
@@ -504,7 +504,7 @@ public class AuthService {
                 instituteName, user.getFullName(),
                 user.getUsername(), user.getPassword(), loginUrl, theme));
         genericEmailRequest.setSubject("Course Enrollment - " + instituteName);
-        notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
+        notificationService.sendGenericHtmlMailViaUnified(genericEmailRequest, instituteId);
     }
 
     /**
@@ -554,6 +554,6 @@ public class AuthService {
         emailRequest.setTo(user.getEmail());
         emailRequest.setSubject("Course Enrollment - " + instituteName);
         emailRequest.setBody(body);
-        notificationService.sendGenericHtmlMail(emailRequest, instituteId);
+        notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
     }
 }

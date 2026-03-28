@@ -482,7 +482,7 @@ public class ApplicationFeeReceiptService {
                 .users(List.of(toUser))
                 .build();
 
-        notificationService.sendAttachmentEmail(List.of(notification), instituteId);
+        notificationService.sendAttachmentEmailViaUnified(List.of(notification), instituteId);
         log.info("Application fee invoice email sent to {} for receipt: {}", recipientEmail, receiptNumber);
     }
 

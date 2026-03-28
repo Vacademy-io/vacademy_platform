@@ -103,6 +103,8 @@ export async function switchWhatsAppProvider(newProvider: string): Promise<void>
         params: { instituteId },
         data: { newProvider },
     });
+    // Evict notification service's config cache so it picks up the new provider
+    await evictProviderConfigCache(instituteId || '').catch(() => {});
 }
 
 export async function updateWhatsAppCredentials(
@@ -115,6 +117,8 @@ export async function updateWhatsAppCredentials(
         params: { instituteId },
         data: request,
     });
+    // Evict notification service's config cache so it picks up new credentials
+    await evictProviderConfigCache(instituteId || '').catch(() => {});
 }
 
 export async function removeWhatsAppCredentials(providerName: string): Promise<void> {
@@ -129,6 +133,15 @@ export async function removeWhatsAppCredentials(providerName: string): Promise<v
 // ==================== Channel Mapping & Webhook Registration ====================
 
 const CHANNEL_MAPPING_BASE = `${BASE_URL}/notification-service/v1/channel-mapping`;
+
+/** Evict notification service's provider config cache after switching provider or updating credentials */
+async function evictProviderConfigCache(instituteId: string): Promise<void> {
+    await authenticatedAxiosInstance.post(
+        `${CHANNEL_MAPPING_BASE}/evict-cache`,
+        null,
+        { params: { instituteId } }
+    );
+}
 
 export interface ChannelMapping {
     channelId: string;

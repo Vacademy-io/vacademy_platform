@@ -32,6 +32,7 @@ public class WhatsAppTemplateDTO {
 
     private List<TemplateButton> buttons;
     private List<String> bodySampleValues;
+    private List<String> bodyVariableNames;  // semantic names: ["name", "course_name"]
     private List<String> headerSampleValues;
 
     private boolean createdViaVacademy;

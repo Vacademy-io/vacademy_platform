@@ -1,4 +1,4 @@
-package vacademy.io.admin_core_service.features.notification.dto;
+package vacademy.io.auth_service.feature.notification.dto.unified;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
@@ -9,10 +9,6 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Mirrors notification-service's UnifiedSendRequest.
- * Single DTO for sending WhatsApp, Email, Push, or System Alert.
- */
 @Data
 @Builder
 @NoArgsConstructor
@@ -20,7 +16,7 @@ import java.util.Map;
 public class UnifiedSendRequest {
 
     private String instituteId;
-    private String channel; // WHATSAPP, EMAIL, PUSH, SYSTEM_ALERT
+    private String channel;
     private String templateName;
     private String languageCode;
     private List<Recipient> recipients;
@@ -36,16 +32,6 @@ public class UnifiedSendRequest {
         private String userId;
         private String name;
         private Map<String, String> variables;
-        private List<Attachment> attachments;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Attachment {
-        private String filename;
-        private String contentBase64;
     }
 
     @Data
@@ -60,13 +46,6 @@ public class UnifiedSendRequest {
         private String fromEmail;
         @JsonProperty("fromName")
         private String fromName;
-        private String headerType;
-        private String headerUrl;
-        private Map<String, String> buttonUrlParams;
-        private String pushTitle;
-        private String pushBody;
-        private Map<String, String> pushData;
-        private Integer rateLimitPerSecond;
         private String source;
         private String sourceId;
     }

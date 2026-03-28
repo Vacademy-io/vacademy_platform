@@ -50,7 +50,7 @@ public class PasswordResetManager {
             instituteId = user.getRoles().iterator().next().getInstituteId();
         }
         
-        if (!notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId)) {
+        if (!notificationService.sendGenericHtmlMailViaUnifiedAsBoolean(genericEmailRequest, instituteId)) {
             throw new VacademyException("Email not sent");
         }
 

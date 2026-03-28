@@ -8,6 +8,8 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.notification_service.constants.NotificationConstants;
+import vacademy.io.notification_service.features.chatbot_flow.engine.provider.CombotMessageProvider;
+import vacademy.io.notification_service.features.chatbot_flow.engine.provider.WatiMessageProvider;
 import vacademy.io.notification_service.features.combot.entity.ChannelToInstituteMapping;
 import vacademy.io.notification_service.features.combot.repository.ChannelToInstituteMappingRepository;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
@@ -31,6 +33,8 @@ public class ChannelMappingController {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final InstituteInternalService instituteInternalService;
+    private final CombotMessageProvider combotMessageProvider;
+    private final WatiMessageProvider watiMessageProvider;
 
     // ==================== CRUD ====================
 
@@ -266,5 +270,19 @@ public class ChannelMappingController {
                     "message", "Endpoint unreachable: " + e.getMessage()
             ));
         }
+    }
+
+    // ==================== Cache Invalidation ====================
+
+    /**
+     * Evict provider config cache for an institute.
+     * Call this after switching providers or updating credentials.
+     */
+    @PostMapping("/evict-cache")
+    public ResponseEntity<Map<String, Object>> evictCache(@RequestParam String instituteId) {
+        combotMessageProvider.evictConfig(instituteId);
+        watiMessageProvider.evictConfig(instituteId);
+        log.info("Evicted all provider config caches for institute {}", instituteId);
+        return ResponseEntity.ok(Map.of("success", true, "message", "Cache evicted for " + instituteId));
     }
 }

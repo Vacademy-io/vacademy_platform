@@ -12,9 +12,9 @@ import {
 } from '@/components/ui/select';
 import { PaperPlaneTilt, Spinner, Eye } from '@phosphor-icons/react';
 import { toast } from 'sonner';
-import { v4 as uuidv4 } from 'uuid';
 import { useEnrollRequestsDialogStore } from '../bulk-actions-store';
-import { BASE_URL } from '@/constants/urls';
+import { sendNotification, type UnifiedSendResponse } from '@/services/unified-send-service';
+import { getInstituteId } from '@/constants/helper';
 
 // Define email templates
 const EMAIL_TEMPLATES = [
@@ -216,65 +216,80 @@ export const SendEmailDialog = () => {
             return;
         }
 
-        // Prepare email body
+        // Prepare email body (convert newlines to HTML breaks)
         const finalApiBody = trimmedEmailBody.replace(/\n/g, '<br />');
-
-        const requestBody = {
-            body: finalApiBody,
-            notification_type: 'EMAIL',
-            subject: trimmedEmailSubject,
-            source: 'STUDENT_MANAGEMENT_BULK_EMAIL',
-            source_id: uuidv4(),
-            users: apiUsersPayload,
-        };
+        const instituteId = getInstituteId() || '';
 
         try {
-            const response = await fetch(
-                `${BASE_URL}/notification-service/v1/send-email-to-users-public`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(requestBody),
-                }
-            );
+            // Build recipients for unified send API
+            const recipients = apiUsersPayload.map((u) => ({
+                email: u!.channel_id,
+                userId: u!.user_id,
+                variables: u!.placeholders as Record<string, string>,
+            }));
 
-            if (response.ok) {
-                toast.success(`Successfully sent request for ${apiUsersPayload.length} email(s).`, {
+            const response: UnifiedSendResponse = await sendNotification({
+                instituteId,
+                channel: 'EMAIL',
+                recipients,
+                options: {
+                    emailSubject: trimmedEmailSubject,
+                    emailBody: finalApiBody,
+                    emailType: 'UTILITY_EMAIL',
+                    source: 'STUDENT_MANAGEMENT_BULK_EMAIL',
+                },
+            });
+
+            if (response.status === 'COMPLETED' || response.status === 'PARTIAL') {
+                const successCount = response.accepted;
+                const failCount = response.failed;
+
+                if (failCount === 0) {
+                    toast.success(`Successfully sent ${successCount} email(s).`, {
+                        id: 'bulk-email-progress',
+                    });
+                } else {
+                    toast.warning(`Sent ${successCount}, failed ${failCount} email(s).`, {
+                        id: 'bulk-email-progress',
+                    });
+                }
+
+                // Update per-student statuses from response results
+                if (response.results) {
+                    setStudentEmailStatuses((prev) =>
+                        prev.map((s) => {
+                            const result = response.results?.find((r) => r.email === s.email);
+                            return {
+                                ...s,
+                                status: result?.success ? 'sent' : result ? 'failed' : 'sent',
+                                error: result?.error,
+                            };
+                        })
+                    );
+                } else {
+                    setStudentEmailStatuses((prev) =>
+                        prev.map((s) => ({ ...s, status: 'sent' }))
+                    );
+                }
+            } else if (response.status === 'PROCESSING') {
+                toast.info(`Batch queued (${response.total} emails). Processing in background.`, {
                     id: 'bulk-email-progress',
                 });
-                setStudentEmailStatuses((prevStatuses) =>
-                    prevStatuses.map((s) => ({ ...s, status: 'sent' }))
+                setStudentEmailStatuses((prev) =>
+                    prev.map((s) => ({ ...s, status: 'sent' }))
                 );
             } else {
-                const errorData = await response
-                    .json()
-                    .catch(() => ({ message: 'Failed to parse error response' }));
-                console.error('API Error:', response.status, errorData);
-                toast.error(`API Error: ${errorData.message || response.statusText}`, {
-                    id: 'bulk-email-progress',
-                });
-                setStudentEmailStatuses((prevStatuses) =>
-                    prevStatuses.map((s) => ({
-                        ...s,
-                        status: 'failed',
-                        error: errorData.message || response.statusText,
-                    }))
+                toast.error('Failed to send emails.', { id: 'bulk-email-progress' });
+                setStudentEmailStatuses((prev) =>
+                    prev.map((s) => ({ ...s, status: 'failed', error: 'Send failed' }))
                 );
             }
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } catch (error: any) {
-            console.error('Network or other error sending email:', error);
-            toast.error(`Error: ${error.message || 'An unexpected error occurred.'}`, {
-                id: 'bulk-email-progress',
-            });
-            setStudentEmailStatuses((prevStatuses) =>
-                prevStatuses.map((s) => ({
-                    ...s,
-                    status: 'failed',
-                    error: error.message || 'Network error',
-                }))
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+            console.error('Error sending email:', error);
+            toast.error(`Error: ${message}`, { id: 'bulk-email-progress' });
+            setStudentEmailStatuses((prev) =>
+                prev.map((s) => ({ ...s, status: 'failed', error: message }))
             );
         }
 

@@ -467,9 +467,6 @@ export const UPDATE_MESSAGE_TEMPLATE = `${MESSAGE_TEMPLATE_BASE}/update`;
 export const DELETE_MESSAGE_TEMPLATE = `${MESSAGE_TEMPLATE_BASE}`;
 export const SEARCH_MESSAGE_TEMPLATES = `${MESSAGE_TEMPLATE_BASE}/search`;
 
-// Notification Service - Email sending
-export const SEND_EMAIL_TO_USERS_PUBLIC = `${NOTIFICATION_SERVICE_BASE}/send-email-to-users-public`;
-
 // Student Data Enrichment Service
 export const STUDENT_DATA_ENRICHMENT_BASE = `${BASE_URL}/admin-core-service`;
 

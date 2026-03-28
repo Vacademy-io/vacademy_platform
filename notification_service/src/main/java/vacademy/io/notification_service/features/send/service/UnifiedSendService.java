@@ -5,8 +5,8 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import vacademy.io.notification_service.features.chatbot_flow.entity.WhatsAppTemplate;
-import vacademy.io.notification_service.features.chatbot_flow.repository.WhatsAppTemplateRepository;
+import vacademy.io.notification_service.features.chatbot_flow.entity.NotificationTemplate;
+import vacademy.io.notification_service.features.chatbot_flow.repository.NotificationTemplateRepository;
 import vacademy.io.notification_service.features.firebase_notifications.service.PushNotificationService;
 import vacademy.io.notification_service.features.send.dto.SendBatchSummaryDTO;
 import vacademy.io.notification_service.features.send.dto.UnifiedSendRequest;
@@ -30,7 +30,7 @@ public class UnifiedSendService implements SendChannelRouter {
     private final SendBatchRepository sendBatchRepository;
     private final ObjectMapper objectMapper;
     private final BatchProcessorService batchProcessorService;
-    private final WhatsAppTemplateRepository whatsAppTemplateRepository;
+    private final NotificationTemplateRepository notificationTemplateRepository;
 
     private static final int SYNC_THRESHOLD = 100;
 
@@ -211,6 +211,37 @@ public class UnifiedSendService implements SendChannelRouter {
                 ? request.getOptions()
                 : UnifiedSendRequest.SendOptions.builder().build();
 
+        // Resolve email template if templateName is provided (look up from notification_template)
+        String templateSubject = opts.getEmailSubject();
+        String templateBody = opts.getEmailBody();
+
+        if (request.getTemplateName() != null && !request.getTemplateName().isEmpty()) {
+            try {
+                Optional<NotificationTemplate> templateOpt = notificationTemplateRepository
+                        .findByInstituteIdAndNameAndChannelType(
+                                request.getInstituteId(), request.getTemplateName(), "EMAIL");
+                if (templateOpt.isPresent()) {
+                    NotificationTemplate tmpl = templateOpt.get();
+                    if (tmpl.getSubject() != null) templateSubject = tmpl.getSubject();
+                    if (tmpl.getContent() != null) templateBody = tmpl.getContent();
+                    log.debug("Resolved email template '{}' for institute {}",
+                            request.getTemplateName(), request.getInstituteId());
+                } else {
+                    log.warn("Email template '{}' not found for institute {}, using options",
+                            request.getTemplateName(), request.getInstituteId());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to resolve email template '{}': {}", request.getTemplateName(), e.getMessage());
+            }
+        }
+
+        // Optional rate limiting for bulk sends (e.g., announcements)
+        com.google.common.util.concurrent.RateLimiter rateLimiter = null;
+        if (opts.getRateLimitPerSecond() != null && opts.getRateLimitPerSecond() > 0) {
+            rateLimiter = com.google.common.util.concurrent.RateLimiter.create(opts.getRateLimitPerSecond());
+            log.info("Email rate limiting enabled: {} emails/sec", opts.getRateLimitPerSecond());
+        }
+
         for (UnifiedSendRequest.Recipient r : request.getRecipients()) {
             String email = r.getEmail();
             if (email == null || email.isEmpty()) {
@@ -220,9 +251,14 @@ public class UnifiedSendService implements SendChannelRouter {
                 continue;
             }
 
+            // Rate limit if configured
+            if (rateLimiter != null) {
+                rateLimiter.acquire();
+            }
+
             try {
-                String subject = opts.getEmailSubject() != null ? opts.getEmailSubject() : "Notification";
-                String body = opts.getEmailBody() != null ? opts.getEmailBody() : "";
+                String subject = templateSubject != null ? templateSubject : "Notification";
+                String body = templateBody != null ? templateBody : "";
 
                 if (r.getVariables() != null) {
                     for (Map.Entry<String, String> var : r.getVariables().entrySet()) {
@@ -234,16 +270,40 @@ public class UnifiedSendService implements SendChannelRouter {
                 }
 
                 String emailType = opts.getEmailType() != null ? opts.getEmailType() : "UTILITY_EMAIL";
-                emailService.sendHtmlEmail(email, subject, "unified-send", body,
-                        request.getInstituteId(), opts.getFromEmail(), opts.getFromName(), emailType);
+
+                // Check for attachments
+                if (r.getAttachments() != null && !r.getAttachments().isEmpty()) {
+                    Map<String, byte[]> attachmentMap = new HashMap<>();
+                    for (UnifiedSendRequest.Attachment att : r.getAttachments()) {
+                        if (att.getFilename() != null && att.getContentBase64() != null) {
+                            attachmentMap.put(att.getFilename(),
+                                    java.util.Base64.getDecoder().decode(att.getContentBase64()));
+                        }
+                    }
+                    emailService.sendAttachmentEmail(email, subject, "unified-send", body,
+                            attachmentMap, request.getInstituteId(), emailType);
+                } else {
+                    emailService.sendHtmlEmail(email, subject, "unified-send", body,
+                            request.getInstituteId(), opts.getFromEmail(), opts.getFromName(), emailType);
+                }
 
                 results.add(UnifiedSendResponse.RecipientResult.builder()
                         .email(email).success(true).status("SENT").build());
             } catch (Exception e) {
-                log.error("Email send failed for {}: {}", email, e.getMessage());
-                results.add(UnifiedSendResponse.RecipientResult.builder()
-                        .email(email).success(false)
-                        .status("FAILED").error(e.getMessage()).build());
+                String errorMsg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+
+                // Retry-friendly: detect SES throttling errors
+                if (errorMsg.contains("Throttling") || errorMsg.contains("Rate") || errorMsg.contains("limit")) {
+                    log.warn("Email rate limit hit for {}: {} — marking as QUEUED for retry", email, errorMsg);
+                    results.add(UnifiedSendResponse.RecipientResult.builder()
+                            .email(email).success(false)
+                            .status("QUEUED").error("Rate limited - retry later").build());
+                } else {
+                    log.error("Email send failed for {}: {}", email, errorMsg);
+                    results.add(UnifiedSendResponse.RecipientResult.builder()
+                            .email(email).success(false)
+                            .status("FAILED").error(errorMsg).build());
+                }
             }
         }
 
@@ -421,22 +481,25 @@ public class UnifiedSendService implements SendChannelRouter {
         if (templateName == null || instituteId == null) return Map.of();
 
         try {
-            Optional<WhatsAppTemplate> templateOpt = whatsAppTemplateRepository
+            Optional<NotificationTemplate> templateOpt = notificationTemplateRepository
                     .findByInstituteIdAndNameAndLanguage(instituteId, templateName, language);
 
             if (templateOpt.isEmpty()) return Map.of();
 
-            WhatsAppTemplate template = templateOpt.get();
-            String sampleJson = template.getBodySampleValues();
+            NotificationTemplate template = templateOpt.get();
 
-            if (sampleJson == null || sampleJson.isBlank()) {
-                // Fallback: try to infer from bodyText placeholders count
-                // e.g., "Hello {{1}}, your order {{2}}" → assume caller sends positional
+            // Prefer bodyVariableNames (semantic: ["name", "course"])
+            // Fall back to bodySampleValues (example values: ["Shreyash", "Math 101"])
+            String namesJson = template.getBodyVariableNames();
+            if (namesJson == null || namesJson.isBlank()) {
+                namesJson = template.getBodySampleValues();
+            }
+
+            if (namesJson == null || namesJson.isBlank()) {
                 return Map.of();
             }
 
-            // Parse sample values: ["name", "course", "date"]
-            String[] sampleNames = objectMapper.readValue(sampleJson, String[].class);
+            String[] sampleNames = objectMapper.readValue(namesJson, String[].class);
 
             Map<String, Integer> mapping = new HashMap<>();
             for (int i = 0; i < sampleNames.length; i++) {

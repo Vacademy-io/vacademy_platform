@@ -42,7 +42,7 @@ public class LearnerEnrollmentNotificationService {
             try {
                 Institute institute = fetchInstitute(instituteId);
                 NotificationDTO notificationDTO = createNotificationDTO(institute, students);
-                //notificationService.sendEmailToUsers(notificationDTO,instituteId);
+                //notificationService.sendEmailViaUnified(notificationDTO,instituteId);
                 for (InstituteStudentDTO student : students) {
                     if (student != null && student.getUserDetails() != null) {
                         // Send dynamic notification using packageSessionId

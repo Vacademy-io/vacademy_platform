@@ -166,7 +166,7 @@ jobs:
         id: wait
         run: |
           SERVER_ID="${{ steps.create.outputs.server_id }}"
-          for i in $(seq 1 18); do
+          for i in $(seq 1 60); do
             sleep 10
             STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
               "${{ env.HETZNER_API }}/servers/$SERVER_ID" | jq -r '.server.status')
@@ -179,7 +179,7 @@ jobs:
               exit 0
             fi
           done
-          echo "::error::Timeout waiting for server to boot (3 min)"
+          echo "::error::Timeout waiting for server to boot (10 min)"
           exit 1
 
       - name: Update Cloudflare DNS

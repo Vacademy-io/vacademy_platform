@@ -47,6 +47,11 @@ public class PackageController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/package-types")
+    public ResponseEntity<List<String>> getPackageTypes(@RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(packageService.getDistinctPackageTypes(instituteId));
+    }
+
     @Autowired
     private vacademy.io.admin_core_service.features.packages.service.PackageAutocompleteService packageAutocompleteService;
 

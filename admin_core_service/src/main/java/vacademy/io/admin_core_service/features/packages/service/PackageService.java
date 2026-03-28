@@ -324,4 +324,8 @@ public class PackageService {
         packageRepository.save(packageEntity);
     }
 
+    public List<String> getDistinctPackageTypes(String instituteId) {
+        return packageRepository.findDistinctPackageTypesByInstituteId(instituteId);
+    }
+
 }

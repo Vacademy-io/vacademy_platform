@@ -36,6 +36,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
     List<LevelProjection> findDistinctLevelsByInstituteIdAndStatusIn(@Param("instituteId") String instituteId,
             @Param("statusList") List<String> statusList);
 
+    @Query(value = "SELECT DISTINCT p.package_type FROM package p " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId " +
+            "AND p.package_type IS NOT NULL", nativeQuery = true)
+    List<String> findDistinctPackageTypesByInstituteId(@Param("instituteId") String instituteId);
+
     // Get all distinct packages of an institute_id
     @Query(value = "SELECT DISTINCT p.* FROM package p " +
             "JOIN package_institute pi ON p.id = pi.package_id " +

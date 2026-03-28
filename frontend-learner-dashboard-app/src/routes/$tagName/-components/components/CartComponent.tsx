@@ -125,7 +125,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
           {showPrice && (
             <div className="text-right flex-shrink-0">
               <p className="text-sm sm:text-base font-bold text-gray-900">
-                ₹{item.price.toFixed(0)}
+                ₹{(item.price * item.quantity).toFixed(0)}
               </p>
             </div>
           )}

@@ -209,7 +209,8 @@ public class LmsReportNotificationSchedulerService {
             }
 
             attachUsersToNotifications(notificationMap, userGroups);
-            return notificationService.sendAttachmentEmailViaUnified(new ArrayList<>(notificationMap.values()),details.getInstituteId());
+            notificationService.sendAttachmentEmailViaUnified(new ArrayList<>(notificationMap.values()),details.getInstituteId());
+            return true;
         }
         return true;
     }

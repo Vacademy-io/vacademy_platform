@@ -301,8 +301,8 @@ public class SendEmailNodeHandler implements NodeHandler {
 
                     List<NotificationDTO> finalBatchList = new ArrayList<>(regularBatchMap.values());
                     try {
-                        String result = notificationService.sendEmailToUsersMultipleViaUnified(finalBatchList, finalInstituteId);
-                        emailResults.add(result);
+                        notificationService.sendEmailToUsersMultipleViaUnified(finalBatchList, finalInstituteId);
+                        emailResults.add("SUCCESS: Dispatched " + finalBatchList.size() + " batches");
                         log.info("Successfully dispatched {} regular email batches.", finalBatchList.size());
                     } catch (Exception e) {
                         log.error("Error sending regular email batch request", e);

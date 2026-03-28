@@ -42,6 +42,7 @@ export interface MembershipFilterDTO {
     end_date_in_utc?: string;
     membership_statuses?: MembershipStatus[];
     package_session_ids?: string[];
+    package_types?: string[];
     institute_id: string;
     sort_order?: Record<string, 'asc' | 'desc'>;
 }

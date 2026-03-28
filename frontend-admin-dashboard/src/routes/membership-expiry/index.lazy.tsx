@@ -30,6 +30,7 @@ function MembershipExpiryPage() {
     levelId: undefined,
     packageSessionId: undefined,
   });
+  const [selectedPackageTypes, setSelectedPackageTypes] = useState<string[]>([]);
 
   // Get institute details from Zustand store
   const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
@@ -45,6 +46,7 @@ function MembershipExpiryPage() {
     const filters: any = {
       start_date_in_utc: startDate || undefined,
       end_date_in_utc: endDate || undefined,
+      package_types: selectedPackageTypes.length > 0 ? selectedPackageTypes : undefined,
     };
 
     if (packageSessionFilter.packageSessionIds && packageSessionFilter.packageSessionIds.length > 0) {
@@ -67,7 +69,7 @@ function MembershipExpiryPage() {
     }
 
     return filters;
-  }, [startDate, endDate, packageSessionFilter, batchesForSessions]);
+  }, [startDate, endDate, packageSessionFilter, batchesForSessions, selectedPackageTypes]);
 
   const queryKey = getMembershipExpiryQueryKey(pageNo, pageSize, requestFilters);
 
@@ -79,6 +81,11 @@ function MembershipExpiryPage() {
 
   const handlePackageSessionFilterChange = (filter: PackageSessionFilter) => {
     setPackageSessionFilter(filter);
+    setPageNo(0);
+  };
+
+  const handlePackageTypeChange = (types: string[]) => {
+    setSelectedPackageTypes(types);
     setPageNo(0);
   };
 
@@ -111,6 +118,14 @@ function MembershipExpiryPage() {
         }
         setPageNo(0);
         break;
+      case 'packageType':
+        if (value) {
+          setSelectedPackageTypes(prev => prev.filter(t => t !== value));
+        } else {
+          setSelectedPackageTypes([]);
+        }
+        setPageNo(0);
+        break;
     }
   };
 
@@ -129,6 +144,7 @@ function MembershipExpiryPage() {
       levelId: undefined,
       packageSessionId: undefined,
     });
+    setSelectedPackageTypes([]);
     setPageNo(0);
   };
 
@@ -169,6 +185,8 @@ function MembershipExpiryPage() {
             batchesForSessions={batchesForSessions}
             onQuickFilterSelect={handleQuickFilter}
             onClearFilters={handleClearFilters}
+            selectedPackageTypes={selectedPackageTypes}
+            onPackageTypeChange={handlePackageTypeChange}
           />
 
           <ActiveFiltersDisplay

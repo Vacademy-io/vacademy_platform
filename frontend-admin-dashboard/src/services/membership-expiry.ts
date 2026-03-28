@@ -3,7 +3,9 @@ import { BASE_URL } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import type { MembershipDetailsResponse, MembershipFilterDTO } from '@/types/membership-expiry';
 
-export const MEMBERSHIP_EXPIRY_URL = `${BASE_URL}/admin-core-service/v1/user-plan/membership-details`;
+const LOCAL_BASE_URL = 'http://localhost:8072';
+export const MEMBERSHIP_EXPIRY_URL = `${LOCAL_BASE_URL}/admin-core-service/v1/user-plan/membership-details`;
+export const PACKAGE_TYPES_URL = `${LOCAL_BASE_URL}/admin-core-service/packages/v1/package-types`;
 
 /**
  * Fetch membership expiry details
@@ -35,6 +37,20 @@ export const fetchMembershipExpiry = async (
         }
     );
 
+    return response.data;
+};
+
+/**
+ * Fetch distinct package types for the current institute
+ */
+export const fetchPackageTypes = async (): Promise<string[]> => {
+    const instituteId = getCurrentInstituteId();
+    if (!instituteId) {
+        throw new Error('Institute ID not found');
+    }
+    const response = await authenticatedAxiosInstance.get<string[]>(PACKAGE_TYPES_URL, {
+        params: { instituteId },
+    });
     return response.data;
 };
 

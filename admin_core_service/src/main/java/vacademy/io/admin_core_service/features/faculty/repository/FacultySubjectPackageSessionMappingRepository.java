@@ -188,7 +188,7 @@ public interface FacultySubjectPackageSessionMappingRepository
       SELECT DISTINCT f.access_id
       FROM faculty_subject_package_session_mapping f
       WHERE f.user_id = :userId
-        AND f.access_type = 'EnrollInvite'
+        AND f.access_type = 'ENROLL_INVITE'
         AND f.status IN (:statusList)
         AND EXISTS (
             SELECT 1 FROM enroll_invite ei

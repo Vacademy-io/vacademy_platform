@@ -129,6 +129,32 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                      ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles
             """;
 
+    /**
+     * Appends the enroll invite filter clause to the WHERE clause.
+     * Logic: For PS with invite access, only show learners enrolled via those invites.
+     * For PS without invite access, show all learners.
+     */
+    private void addListFilter(StringBuilder whereClause, Map<String, Object> parameters,
+            String paramName, String column, List<String> values) {
+        if (values != null && !values.isEmpty()) {
+            whereClause.append("AND ").append(column).append(" IN (:").append(paramName).append(") ");
+            parameters.put(paramName, values);
+        }
+    }
+
+    private void appendEnrollInviteFilter(StringBuilder whereClause, Map<String, Object> parameters,
+            List<String> enrollInviteIds, List<String> enrollInvitePackageSessionIds) {
+        if (enrollInviteIds != null && !enrollInviteIds.isEmpty()
+                && enrollInvitePackageSessionIds != null && !enrollInvitePackageSessionIds.isEmpty()) {
+            whereClause.append("AND ( ");
+            whereClause.append("  (ssigm.package_session_id IN (:enrollInvitePsIds) AND up.enroll_invite_id IN (:enrollInviteIds)) ");
+            whereClause.append("  OR ssigm.package_session_id NOT IN (:enrollInvitePsIds) ");
+            whereClause.append(") ");
+            parameters.put("enrollInviteIds", enrollInviteIds);
+            parameters.put("enrollInvitePsIds", enrollInvitePackageSessionIds);
+        }
+    }
+
     @Override
     public Page<StudentListV2Projection> getAllStudentV2WithSearchAndCustomFieldFilters(
             String name,
@@ -145,6 +171,8 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             Map<String, List<String>> customFieldFilters,
             LocalDate startDate,
             LocalDate endDate,
+            List<String> enrollInviteIds,
+            List<String> enrollInvitePackageSessionIds,
             Pageable pageable) {
 
         StringBuilder whereClause = new StringBuilder(" WHERE (");
@@ -167,54 +195,32 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         whereClause.append(") ");
         whereClause.append(") ");
 
-        // Standard filters
-        whereClause.append("AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) ");
-        whereClause.append("AND (:statuses IS NULL OR ssigm.status IN (:statuses)) ");
-        whereClause.append("AND (:paymentStatuses IS NULL OR last_pl.payment_status IN (:paymentStatuses)) ");
-        whereClause.append("AND (:sources IS NULL OR ssigm.source IN (:sources)) ");
-        whereClause.append("AND (:types IS NULL OR ssigm.type IN (:types)) ");
-        whereClause.append("AND (:typeIds IS NULL OR ssigm.type_id IN (:typeIds)) ");
-        whereClause.append("AND (:destinationPackageSessionIds IS NULL OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds)) ");
-        whereClause.append("AND (:levelIds IS NULL OR ssigm.desired_level_id IN (:levelIds)) ");
-
-        // Date range filter for enrolled_date and expiry_date
-        whereClause.append("AND ( ");
-        whereClause.append("  :startDate IS NULL ");
-        whereClause.append("  OR :endDate IS NULL ");
-        whereClause.append("  OR ( ");
-        whereClause.append("    ssigm.enrolled_date <= :endDate ");
-        whereClause.append("    AND (ssigm.expiry_date >= :startDate OR ssigm.expiry_date IS NULL) ");
-        whereClause.append("  ) ");
-        whereClause.append(") ");
-
-        // Sub org user types filter
-        whereClause.append("AND ( ");
-        whereClause.append("  :subOrgUserTypes IS NULL ");
-        whereClause.append("  OR ( ");
-        whereClause.append("    ssigm.comma_separated_org_roles IS NOT NULL ");
-        whereClause.append("    AND ssigm.comma_separated_org_roles != '' ");
-        whereClause.append("    AND EXISTS ( ");
-        whereClause.append("      SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role ");
-        whereClause.append("      WHERE TRIM(role) IN (:subOrgUserTypes) ");
-        whereClause.append("    ) ");
-        whereClause.append("  ) ");
-        whereClause.append(") ");
-
-        // Custom field filters - dynamic WHERE clauses
+        // Standard filters — only add when non-null/non-empty to avoid PostgreSQL null type errors
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("name", name);
-        parameters.put("instituteIds", instituteIds);
-        parameters.put("statuses", statuses);
-        parameters.put("paymentStatuses", paymentStatuses);
-        parameters.put("customFieldStatus", customFieldStatus);
-        parameters.put("sources", sources);
-        parameters.put("types", types);
-        parameters.put("typeIds", typeIds);
-        parameters.put("destinationPackageSessionIds", destinationPackageSessionIds);
-        parameters.put("levelIds", levelIds);
-        parameters.put("subOrgUserTypes", subOrgUserTypes);
-        parameters.put("startDate", startDate);
-        parameters.put("endDate", endDate);
+        addListFilter(whereClause, parameters, "instituteIds", "ssigm.institute_id", instituteIds);
+        addListFilter(whereClause, parameters, "statuses", "ssigm.status", statuses);
+        addListFilter(whereClause, parameters, "paymentStatuses", "last_pl.payment_status", paymentStatuses);
+        addListFilter(whereClause, parameters, "sources", "ssigm.source", sources);
+        addListFilter(whereClause, parameters, "types", "ssigm.type", types);
+        addListFilter(whereClause, parameters, "typeIds", "ssigm.type_id", typeIds);
+        addListFilter(whereClause, parameters, "destinationPackageSessionIds", "ssigm.destination_package_session_id", destinationPackageSessionIds);
+        addListFilter(whereClause, parameters, "levelIds", "ssigm.desired_level_id", levelIds);
+
+        // Date range filter
+        if (startDate != null && endDate != null) {
+            whereClause.append("AND (ssigm.enrolled_date <= :endDate AND (ssigm.expiry_date >= :startDate OR ssigm.expiry_date IS NULL)) ");
+            parameters.put("startDate", startDate);
+            parameters.put("endDate", endDate);
+        }
+
+        // Sub org user types filter
+        if (subOrgUserTypes != null && !subOrgUserTypes.isEmpty()) {
+            whereClause.append("AND (ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != '' ");
+            whereClause.append("AND EXISTS (SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role ");
+            whereClause.append("WHERE TRIM(role) IN (:subOrgUserTypes))) ");
+            parameters.put("subOrgUserTypes", subOrgUserTypes);
+        }
 
         if (customFieldFilters != null && !customFieldFilters.isEmpty()) {
             int filterIndex = 0;
@@ -239,6 +245,9 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             }
         }
 
+        // Enroll invite filter
+        appendEnrollInviteFilter(whereClause, parameters, enrollInviteIds, enrollInvitePackageSessionIds);
+
         // Build main query
         String mainQuery = BASE_SELECT + whereClause.toString() + GROUP_BY;
         String countQuery = BASE_COUNT + whereClause.toString();
@@ -248,14 +257,14 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         setParameters(nativeCountQuery, parameters);
         long total = ((Number) nativeCountQuery.getSingleResult()).longValue();
 
-        // Execute main query with pagination
-        Query nativeQuery = entityManager.createNativeQuery(mainQuery, "StudentListV2ProjectionMapping");
+        // Execute main query with pagination (includes customFieldStatus for the JOIN)
+        Query nativeQuery = entityManager.createNativeQuery(mainQuery, jakarta.persistence.Tuple.class);
         setParameters(nativeQuery, parameters);
+        nativeQuery.setParameter("customFieldStatus", customFieldStatus);
         nativeQuery.setFirstResult((int) pageable.getOffset());
         nativeQuery.setMaxResults(pageable.getPageSize());
 
-        @SuppressWarnings("unchecked")
-        List<StudentListV2Projection> content = nativeQuery.getResultList();
+        List<StudentListV2Projection> content = mapTuplesToProjections(nativeQuery);
 
         return new PageImpl<>(content, pageable, total);
     }
@@ -278,63 +287,40 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             Map<String, List<String>> customFieldFilters,
             LocalDate startDate,
             LocalDate endDate,
+            List<String> enrollInviteIds,
+            List<String> enrollInvitePackageSessionIds,
             Pageable pageable) {
 
         StringBuilder whereClause = new StringBuilder(" WHERE 1=1 ");
+        Map<String, Object> parameters = new HashMap<>();
 
-        // Standard filters
-        whereClause.append("AND (:statuses IS NULL OR ssigm.status IN (:statuses)) ");
-        whereClause.append("AND (:gender IS NULL OR s.gender IN (:gender)) ");
-        whereClause.append("AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds)) ");
-        whereClause.append("AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds)) ");
-        whereClause.append("AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds)) ");
-        whereClause.append("AND (:paymentStatuses IS NULL OR last_pl.payment_status IN (:paymentStatuses)) ");
-        whereClause.append("AND (:sources IS NULL OR ssigm.source IN (:sources)) ");
-        whereClause.append("AND (:types IS NULL OR ssigm.type IN (:types)) ");
-        whereClause.append("AND (:typeIds IS NULL OR ssigm.type_id IN (:typeIds)) ");
-        whereClause.append("AND (:destinationPackageSessionIds IS NULL OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds)) ");
-        whereClause.append("AND (:levelIds IS NULL OR ssigm.desired_level_id IN (:levelIds)) ");
+        // Only add WHERE conditions when the list is non-null and non-empty (avoids PostgreSQL null type errors)
+        addListFilter(whereClause, parameters, "statuses", "ssigm.status", statuses);
+        addListFilter(whereClause, parameters, "gender", "s.gender", gender);
+        addListFilter(whereClause, parameters, "instituteIds", "ssigm.institute_id", instituteIds);
+        addListFilter(whereClause, parameters, "groupIds", "ssigm.group_id", groupIds);
+        addListFilter(whereClause, parameters, "packageSessionIds", "ssigm.package_session_id", packageSessionIds);
+        addListFilter(whereClause, parameters, "paymentStatuses", "last_pl.payment_status", paymentStatuses);
+        addListFilter(whereClause, parameters, "sources", "ssigm.source", sources);
+        addListFilter(whereClause, parameters, "types", "ssigm.type", types);
+        addListFilter(whereClause, parameters, "typeIds", "ssigm.type_id", typeIds);
+        addListFilter(whereClause, parameters, "destinationPackageSessionIds", "ssigm.destination_package_session_id", destinationPackageSessionIds);
+        addListFilter(whereClause, parameters, "levelIds", "ssigm.desired_level_id", levelIds);
 
-        // Date range filter for enrolled_date and expiry_date
-        whereClause.append("AND ( ");
-        whereClause.append("  :startDate IS NULL ");
-        whereClause.append("  OR :endDate IS NULL ");
-        whereClause.append("  OR ( ");
-        whereClause.append("    ssigm.enrolled_date <= :endDate ");
-        whereClause.append("    AND (ssigm.expiry_date >= :startDate OR ssigm.expiry_date IS NULL) ");
-        whereClause.append("  ) ");
-        whereClause.append(") ");
+        // Date range filter
+        if (startDate != null && endDate != null) {
+            whereClause.append("AND (ssigm.enrolled_date <= :endDate AND (ssigm.expiry_date >= :startDate OR ssigm.expiry_date IS NULL)) ");
+            parameters.put("startDate", startDate);
+            parameters.put("endDate", endDate);
+        }
 
         // Sub org user types filter
-        whereClause.append("AND ( ");
-        whereClause.append("  :subOrgUserTypes IS NULL ");
-        whereClause.append("  OR ( ");
-        whereClause.append("    ssigm.comma_separated_org_roles IS NOT NULL ");
-        whereClause.append("    AND ssigm.comma_separated_org_roles != '' ");
-        whereClause.append("    AND EXISTS ( ");
-        whereClause.append("      SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role ");
-        whereClause.append("      WHERE TRIM(role) IN (:subOrgUserTypes) ");
-        whereClause.append("    ) ");
-        whereClause.append("  ) ");
-        whereClause.append(") ");
-
-        // Prepare parameters
-        Map<String, Object> parameters = new HashMap<>();
-        parameters.put("statuses", statuses);
-        parameters.put("gender", gender);
-        parameters.put("instituteIds", instituteIds);
-        parameters.put("groupIds", groupIds);
-        parameters.put("packageSessionIds", packageSessionIds);
-        parameters.put("paymentStatuses", paymentStatuses);
-        parameters.put("customFieldStatus", customFieldStatus);
-        parameters.put("sources", sources);
-        parameters.put("types", types);
-        parameters.put("typeIds", typeIds);
-        parameters.put("destinationPackageSessionIds", destinationPackageSessionIds);
-        parameters.put("levelIds", levelIds);
-        parameters.put("subOrgUserTypes", subOrgUserTypes);
-        parameters.put("startDate", startDate);
-        parameters.put("endDate", endDate);
+        if (subOrgUserTypes != null && !subOrgUserTypes.isEmpty()) {
+            whereClause.append("AND (ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != '' ");
+            whereClause.append("AND EXISTS (SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role ");
+            whereClause.append("WHERE TRIM(role) IN (:subOrgUserTypes))) ");
+            parameters.put("subOrgUserTypes", subOrgUserTypes);
+        }
 
         if (customFieldFilters != null && !customFieldFilters.isEmpty()) {
             int filterIndex = 0;
@@ -359,6 +345,9 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             }
         }
 
+        // Enroll invite filter
+        appendEnrollInviteFilter(whereClause, parameters, enrollInviteIds, enrollInvitePackageSessionIds);
+
         // Build main query
         String mainQuery = BASE_SELECT + whereClause.toString() + GROUP_BY;
         String countQuery = BASE_COUNT + whereClause.toString();
@@ -368,15 +357,69 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         setParameters(nativeCountQuery, parameters);
         long total = ((Number) nativeCountQuery.getSingleResult()).longValue();
 
-        // Execute main query with pagination
-        Query nativeQuery = entityManager.createNativeQuery(mainQuery, "StudentListV2ProjectionMapping");
+        // Execute main query with pagination (includes customFieldStatus for the JOIN)
+        Query nativeQuery = entityManager.createNativeQuery(mainQuery, jakarta.persistence.Tuple.class);
         setParameters(nativeQuery, parameters);
+        nativeQuery.setParameter("customFieldStatus", customFieldStatus);
         nativeQuery.setFirstResult((int) pageable.getOffset());
         nativeQuery.setMaxResults(pageable.getPageSize());
 
-        List<StudentListV2Projection> content = nativeQuery.getResultList();
+        List<StudentListV2Projection> content = mapTuplesToProjections(nativeQuery);
 
         return new PageImpl<>(content, pageable, total);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<StudentListV2Projection> mapTuplesToProjections(Query nativeQuery) {
+        List<jakarta.persistence.Tuple> tuples = nativeQuery.getResultList();
+        return tuples.stream().map(t -> new StudentListV2Projection() {
+            private String str(String col) { try { return t.get(col, String.class); } catch (Exception e) { return null; } }
+            private Integer intVal(String col) { try { Object v = t.get(col); return v == null ? null : ((Number) v).intValue(); } catch (Exception e) { return null; } }
+            private Double dblVal(String col) { try { Object v = t.get(col); return v == null ? null : ((Number) v).doubleValue(); } catch (Exception e) { return null; } }
+            public String getFullName() { return str("fullname"); }
+            public String getEmail() { return str("email"); }
+            public String getUsername() { return str("username"); }
+            public String getPhone() { return str("phone"); }
+            public String getPackageSessionId() { return str("packagesessionid"); }
+            public Integer getAccessDays() { return intVal("accessdays"); }
+            public String getPaymentStatus() { return str("paymentstatus"); }
+            public String getCustomFieldsJson() { return str("customfieldsjson"); }
+            public String getUserId() { return str("userid"); }
+            public String getId() { return str("id"); }
+            public String getAddressLine() { return str("addressline"); }
+            public String getRegion() { return str("region"); }
+            public String getCity() { return str("city"); }
+            public String getPinCode() { return str("pincode"); }
+            public String getDateOfBirth() { return str("dateofbirth"); }
+            public String getGender() { return str("gender"); }
+            public String getFathersName() { return str("fathersname"); }
+            public String getMothersName() { return str("mothersname"); }
+            public String getParentsMobileNumber() { return str("parentsmobilenumber"); }
+            public String getParentsEmail() { return str("parentsemail"); }
+            public String getLinkedInstituteName() { return str("linkedinstitutename"); }
+            public String getCreatedAt() { return str("createdat"); }
+            public String getUpdatedAt() { return str("updatedat"); }
+            public String getFaceFileId() { return str("facefileid"); }
+            public String getExpiryDate() { return str("expirydate"); }
+            public String getParentsToMotherMobileNumber() { return str("parentstomothermobilenumber"); }
+            public String getParentsToMotherEmail() { return str("parentstomotheremail"); }
+            public String getInstituteEnrollmentNumber() { return str("instituteenrollmentnumber"); }
+            public String getInstituteId() { return str("instituteid"); }
+            public String getGroupId() { return str("groupid"); }
+            public String getStatus() { return str("status"); }
+            public String getPaymentPlanJson() { return str("paymentplanjson"); }
+            public String getPaymentOptionJson() { return str("paymentoptionjson"); }
+            public String getDestinationPackageSessionId() { return str("destinationpackagesessionid"); }
+            public String getEnrollInviteId() { return str("enrollinviteid"); }
+            public Double getPaymentAmount() { return dblVal("paymentamount"); }
+            public String getSource() { return str("source"); }
+            public String getType() { return str("type"); }
+            public String getTypeId() { return str("typeid"); }
+            public String getDesiredLevelId() { return str("desiredlevelid"); }
+            public String getSubOrgId() { return str("suborgid"); }
+            public String getSubOrgName() { return str("suborgname"); }
+            public String getCommaSeparatedOrgRoles() { return str("commaseparatedorgroles"); }
+        }).collect(java.util.stream.Collectors.toList());
     }
 
     private void setParameters(Query query, Map<String, Object> parameters) {

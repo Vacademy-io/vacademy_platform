@@ -69,6 +69,7 @@ import { cn } from "@/lib/utils";
 import { getChatbotSettings } from "@/services/chatbot-settings";
 import { MyMembershipWidget } from "./-components/MyMembershipWidget";
 import { MyBooksWidget } from "./-components/MyBooksWidget";
+import { MyOrdersWidget } from "./-components/MyOrdersWidget";
 import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidget";
 import { Preferences } from "@capacitor/preferences";
 import { AttendanceWidget } from "./-components/AttendanceWidget";
@@ -202,9 +203,12 @@ export function DashboardComponent() {
       .catch(() => setWidgetConfigs(null));
   }, [setNavHeading, trackPageView]);
 
+  const OPT_IN_WIDGETS: Set<StudentDashboardWidgetConfig["id"]> = new Set(["myOrders"]);
+
   const isWidgetVisible = (id: StudentDashboardWidgetConfig["id"]) => {
     const cfg = widgetConfigs?.find((w) => w.id === id);
-    return cfg ? cfg.visible !== false : true;
+    if (!cfg) return !OPT_IN_WIDGETS.has(id);
+    return cfg.visible !== false;
   };
 
   const getWidgetOrder = (id: StudentDashboardWidgetConfig["id"]) => {
@@ -619,6 +623,11 @@ export function DashboardComponent() {
                   id: "myBooks" as const,
                   className: "sm:col-span-2",
                   render: <MyBooksWidget />,
+                },
+                {
+                  id: "myOrders" as const,
+                  className: "sm:col-span-2 lg:col-span-4",
+                  render: <MyOrdersWidget />,
                 },
               ]
                 .filter((w) => isWidgetVisible(w.id) && w.render)

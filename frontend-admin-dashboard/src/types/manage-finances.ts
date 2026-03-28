@@ -26,6 +26,7 @@ export interface StudentFeePaymentRowDTO {
     due_amount: number;
     overdue_amount: number;
     status: 'PAID' | 'OVERDUE' | 'PARTIAL' | 'PENDING';
+    installment_statuses: string[]; // per-installment statuses ordered by due date
 }
 
 // ─── Paginated Response (Spring Boot Page) ──────────────────────────────────

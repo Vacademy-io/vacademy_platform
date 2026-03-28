@@ -36,6 +36,12 @@ public class BatchProcessorService {
     public void processAsyncBatch(String batchId) {
         if (channelRouter == null) {
             log.error("BatchProcessorService.channelRouter not initialized yet for batch {}", batchId);
+            sendBatchRepository.findById(batchId).ifPresent(batch -> {
+                batch.setStatus("FAILED");
+                batch.setErrorMessage("Internal error: channel router not initialized");
+                batch.setCompletedAt(LocalDateTime.now());
+                sendBatchRepository.save(batch);
+            });
             return;
         }
         try {
@@ -79,7 +85,13 @@ public class BatchProcessorService {
 
                 // Rate limit between chunks
                 if (end < allRecipients.size()) {
-                    Thread.sleep(200);
+                    try {
+                        Thread.sleep(200);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        log.warn("Batch {} processing interrupted", batchId);
+                        break;
+                    }
                 }
             }
 

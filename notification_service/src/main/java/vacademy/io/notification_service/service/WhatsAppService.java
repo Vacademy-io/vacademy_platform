@@ -85,6 +85,10 @@ public class WhatsAppService {
         try {
             InstituteInfoDTO instituteDTO = internalService.getInstituteByInstituteId(instituteId);
             String jsonString = instituteDTO.getSetting();
+            if (jsonString == null || jsonString.isEmpty()) {
+                log.error("No WhatsApp settings configured for institute {}", instituteId);
+                return null;
+            }
             log.info("Retrieved institute settings for: {}", instituteId);
 
             JsonNode root = objectMapper.readTree(jsonString);

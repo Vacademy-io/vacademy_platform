@@ -18,3 +18,4 @@ CREATE TABLE IF NOT EXISTS send_batch (
 
 CREATE INDEX idx_send_batch_institute ON send_batch(institute_id);
 CREATE INDEX idx_send_batch_status ON send_batch(status);
+CREATE INDEX idx_send_batch_institute_created ON send_batch(institute_id, created_at DESC);

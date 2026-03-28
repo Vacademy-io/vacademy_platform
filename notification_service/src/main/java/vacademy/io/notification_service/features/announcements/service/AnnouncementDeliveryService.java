@@ -255,16 +255,12 @@ public class AnnouncementDeliveryService {
                         continue;
                     }
 
-                    // Update message status now that we're sending
-                    message.setStatus(MessageStatus.SENT);
-                    message.setSentAt(LocalDateTime.now());
-                    
                     // Process HTML content with variables (use cached users - no additional API calls)
                     String processedContent = processHtmlVariables(content.getContent(), message, announcement, userEmailMap);
-                        
+
                         // RATE LIMITING: Acquire permit before sending (blocks if limit exceeded)
                         rateLimiter.acquire();
-                    
+
                     // Send email via unified send for consistent logging
                     unifiedSendService.routeSync(UnifiedSendRequest.builder()
                             .instituteId(instituteId)
@@ -281,8 +277,10 @@ public class AnnouncementDeliveryService {
                                     .sourceId(announcement.getId())
                                     .build())
                             .build());
-                    
+
+                    // Only mark DELIVERED after successful send
                     message.setStatus(MessageStatus.DELIVERED);
+                    message.setSentAt(LocalDateTime.now());
                     message.setDeliveredAt(LocalDateTime.now());
                     
                     // Create email-specific notification log entry

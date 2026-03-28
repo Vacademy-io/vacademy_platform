@@ -51,6 +51,10 @@ public class NotificationService {
                 NotificationConstant.UNIFIED_SEND,
                 request);
 
+        if (response == null || response.getBody() == null) {
+            throw new VacademyException("Empty response from unified send API");
+        }
+
         ObjectMapper mapper = new ObjectMapper();
         try {
             return mapper.readValue(response.getBody(), UnifiedSendResponse.class);
@@ -253,6 +257,10 @@ public class NotificationService {
      */
     public UnifiedSendResponse sendAttachmentEmailViaUnified(
             List<AttachmentNotificationDTO> dtos, String instituteId) {
+
+        if (dtos == null || dtos.isEmpty()) {
+            return UnifiedSendResponse.builder().total(0).accepted(0).failed(0).status("COMPLETED").build();
+        }
 
         List<UnifiedSendRequest.Recipient> recipients = new java.util.ArrayList<>();
 

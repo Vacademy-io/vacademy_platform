@@ -1,5 +1,11 @@
 -- Rename whatsapp_template → notification_template (unified template storage)
-ALTER TABLE whatsapp_template RENAME TO notification_template;
+-- Idempotent: only rename if old table exists and new doesn't
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsapp_template' AND table_schema = current_schema())
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notification_template' AND table_schema = current_schema()) THEN
+        ALTER TABLE whatsapp_template RENAME TO notification_template;
+    END IF;
+END $$;
 
 -- Add email/general template columns
 ALTER TABLE notification_template ADD COLUMN IF NOT EXISTS channel_type VARCHAR(20) DEFAULT 'WHATSAPP';

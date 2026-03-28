@@ -73,6 +73,22 @@ public class DomainRoutingService {
                     .instructorPortalUrl(institute.getAdminPortalBaseUrl());
         }
 
+        // If sub-org is configured, override logo, name, and theme from sub-org institute
+        if (StringUtils.hasText(mapping.getSubOrgId())) {
+            responseBuilder.subOrgId(mapping.getSubOrgId());
+            instituteRepository.findById(mapping.getSubOrgId()).ifPresent(subOrg -> {
+                if (StringUtils.hasText(subOrg.getLogoFileId())) {
+                    responseBuilder.instituteLogoFileId(subOrg.getLogoFileId());
+                }
+                if (StringUtils.hasText(subOrg.getInstituteName())) {
+                    responseBuilder.instituteName(subOrg.getInstituteName());
+                }
+                if (StringUtils.hasText(subOrg.getInstituteThemeCode())) {
+                    responseBuilder.instituteThemeCode(subOrg.getInstituteThemeCode());
+                }
+            });
+        }
+
         return Optional.of(responseBuilder.build());
     }
 }

@@ -856,12 +856,14 @@ public class SubOrgLearnerService {
     }
 
     /**
-     * Creates a FacultySubjectPackageSessionMapping for a sub-org admin so that
-     * the HAS_FACULTY_ASSIGNED permission system scopes their package sessions.
+     * Creates FSPSSM entries for a sub-org admin:
+     * - One entry with access_type = PACKAGE_SESSION (always)
+     * - One entry per SUBORG_LEARNER invite with access_type = ENROLL_INVITE (auto-discovered via sub_org_id)
      */
     private void syncFacultyMappingForSubOrgAdmin(UserDTO user, String packageSessionId,
                                                    String subOrgId, String orgRoles) {
-        AddUserAccessDTO accessDTO = AddUserAccessDTO.builder()
+        // 1. PACKAGE_SESSION entry
+        AddUserAccessDTO psAccessDTO = AddUserAccessDTO.builder()
                 .userId(user.getId())
                 .packageSessionId(packageSessionId)
                 .name(user.getFullName())
@@ -873,9 +875,35 @@ public class SubOrgLearnerService {
                 .linkageType("SUB_ORG")
                 .suborgId(subOrgId)
                 .build();
-        facultyService.grantUserAccess(accessDTO);
-        log.info("Synced faculty mapping for sub-org admin user={}, packageSession={}, subOrg={}",
-                user.getId(), packageSessionId, subOrgId);
+        facultyService.grantUserAccess(psAccessDTO);
+        log.info("Synced FSPSSM (PACKAGE_SESSION) user={}, PS={}, subOrg={}", user.getId(), packageSessionId, subOrgId);
+
+        // 2. ENROLL_INVITE entries — auto-discover invites with sub_org_id for this PS
+        try {
+            List<String> inviteIds = enrollInviteRepository
+                    .findInviteIdsForSubOrgAndPackageSession(subOrgId, packageSessionId);
+            for (String inviteId : inviteIds) {
+                AddUserAccessDTO inviteAccessDTO = AddUserAccessDTO.builder()
+                        .userId(user.getId())
+                        .packageSessionId(packageSessionId)
+                        .name(user.getFullName())
+                        .status("ACTIVE")
+                        .userType(orgRoles)
+                        .accessType("ENROLL_INVITE")
+                        .accessId(inviteId)
+                        .accessPermission("FULL")
+                        .linkageType("SUB_ORG")
+                        .suborgId(subOrgId)
+                        .build();
+                facultyService.grantUserAccess(inviteAccessDTO);
+            }
+            if (!inviteIds.isEmpty()) {
+                log.info("Synced {} FSPSSM (ENROLL_INVITE) entries for user={}, subOrg={}, PS={}",
+                        inviteIds.size(), user.getId(), subOrgId, packageSessionId);
+            }
+        } catch (Exception e) {
+            log.warn("Could not sync ENROLL_INVITE FSPSSM for subOrg={}, PS={}: {}", subOrgId, packageSessionId, e.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)

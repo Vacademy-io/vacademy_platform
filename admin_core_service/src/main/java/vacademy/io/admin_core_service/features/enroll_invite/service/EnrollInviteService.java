@@ -74,6 +74,9 @@ public class EnrollInviteService {
     @Autowired
     private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
+
     @org.springframework.beans.factory.annotation.Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerBaseUrl;
 
@@ -475,6 +478,17 @@ public class EnrollInviteService {
                 .map(this::mapToPackageSessionToPaymentOptionDTO)
                 .collect(Collectors.toList());
         dto.setPackageSessionToPaymentOptions(paymentOptionDTOs);
+
+        // 3. Populate sub-org info if present
+        if (StringUtils.hasText(enrollInvite.getSubOrgId())) {
+            instituteRepository.findById(enrollInvite.getSubOrgId()).ifPresent(subOrg -> {
+                EnrollInviteDTO.SubOrgInfoDTO subOrgInfo = new EnrollInviteDTO.SubOrgInfoDTO();
+                subOrgInfo.setId(subOrg.getId());
+                subOrgInfo.setName(subOrg.getInstituteName());
+                subOrgInfo.setLogoFileId(subOrg.getLogoFileId());
+                dto.setSubOrg(subOrgInfo);
+            });
+        }
 
         return dto;
     }

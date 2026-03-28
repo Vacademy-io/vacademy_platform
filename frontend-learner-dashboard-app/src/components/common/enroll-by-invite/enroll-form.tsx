@@ -1891,10 +1891,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 branding={{
                   instituteId: instituteId || null,
                   instituteName:
+                    inviteData?.sub_org?.name ??
                     instituteData?.institute_name ??
                     instituteData?.name ??
                     null,
                   instituteLogoFileId:
+                    inviteData?.sub_org?.logo_file_id ??
                     instituteData?.institute_logo_file_id ?? null,
                   instituteThemeCode:
                     (instituteData?.institute_theme_code as string) ||

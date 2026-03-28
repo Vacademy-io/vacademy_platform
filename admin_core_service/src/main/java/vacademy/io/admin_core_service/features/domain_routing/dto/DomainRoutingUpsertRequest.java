@@ -29,4 +29,5 @@ public class DomainRoutingUpsertRequest {
     private String windowsAppLink;
     private String macAppLink;
     private Boolean convertUsernamePasswordToLowercase;
+    private String subOrgId;
 }

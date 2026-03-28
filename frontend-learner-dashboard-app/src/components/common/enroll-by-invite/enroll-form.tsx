@@ -1720,7 +1720,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             userEmail={userDetails.email}
             userContact={userDetails.contact}
             courseName={
-              courseData.aboutCourse ||
+              courseData.course ||
               enrollmentData.selectedPayment?.name ||
               "Course Enrollment"
             }

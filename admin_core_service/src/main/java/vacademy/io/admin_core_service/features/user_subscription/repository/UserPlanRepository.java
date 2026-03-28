@@ -49,7 +49,8 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                                    CASE
                                        WHEN up.end_date IS NULL THEN 'LIFETIME'
                                        WHEN up.end_date < CURRENT_TIMESTAMP THEN 'ENDED'
-                                       ELSE 'ABOUT_TO_END'
+                                       WHEN up.end_date <= CURRENT_TIMESTAMP + INTERVAL '30 days' THEN 'ABOUT_TO_END'
+                                       ELSE 'ACTIVE'
                                    END as computedStatus,
                                    up.end_date as actualEndDate
                             FROM user_plan up
@@ -79,7 +80,8 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                                 CASE
                                    WHEN up.end_date IS NULL THEN 'LIFETIME'
                                    WHEN up.end_date < CURRENT_TIMESTAMP THEN 'ENDED'
-                                   ELSE 'ABOUT_TO_END'
+                                   WHEN up.end_date <= CURRENT_TIMESTAMP + INTERVAL '30 days' THEN 'ABOUT_TO_END'
+                                   ELSE 'ACTIVE'
                                 END IN (:statuses)
                             )
                         """, countQuery = """
@@ -106,7 +108,8 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                                 CASE
                                    WHEN up.end_date IS NULL THEN 'LIFETIME'
                                    WHEN up.end_date < CURRENT_TIMESTAMP THEN 'ENDED'
-                                   ELSE 'ABOUT_TO_END'
+                                   WHEN up.end_date <= CURRENT_TIMESTAMP + INTERVAL '30 days' THEN 'ABOUT_TO_END'
+                                   ELSE 'ACTIVE'
                                 END IN (:statuses)
                             )
                         """, nativeQuery = true)

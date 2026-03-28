@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.notification_service.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -24,6 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
 
+@Slf4j
 @Component
 public class SendUniqueLinkService {
     @Autowired
@@ -103,17 +105,7 @@ public class SendUniqueLinkService {
                 }
             }
         } catch (Exception e) {
-            // Log error but don't fail the notification
-            System.err.println("Error converting template variables to map: " + e.getMessage());
-            e.printStackTrace();
-        }
-
-        // Debug logging
-        // System.out.println("Template Variables Map: " + placeholders);
-        if (placeholders.containsKey("applicantId") || placeholders.containsKey("applicant_id")) {
-            System.out.println("DEBUG: Applicant ID present in vars: " + placeholders.get("applicant_id"));
-        } else {
-            System.out.println("DEBUG: Applicant ID MISSING from vars");
+            log.error("Error converting template variables to map: {}", e.getMessage(), e);
         }
 
         return placeholders;
@@ -173,7 +165,7 @@ public class SendUniqueLinkService {
                     params.put(entry.getKey(), entry.getValue() != null ? entry.getValue().toString() : "");
                 }
             } catch (Exception e) {
-                System.err.println("Error parsing dynamic parameters JSON: " + e.getMessage());
+                log.error("Error parsing dynamic parameters JSON: {}", e.getMessage());
             }
         }
         return params;

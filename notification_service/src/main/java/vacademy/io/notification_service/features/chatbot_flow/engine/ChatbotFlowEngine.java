@@ -58,15 +58,47 @@ public class ChatbotFlowEngine {
 
             if (activeSession.isPresent()) {
                 ChatbotFlowSession session = activeSession.get();
-                log.info("Resuming chatbot flow session: sessionId={}, flowId={}, currentNode={}",
-                        session.getId(), session.getFlowId(), session.getCurrentNodeId());
 
-                FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
-                        userText, businessChannelId, messageType, buttonId, buttonPayload,
-                        listReplyId, session);
+                // Check if the incoming message matches a trigger keyword for ANY flow.
+                // If it does, the user wants to start over — complete the old session and let
+                // a new flow start below. This prevents AI_RESPONSE sessions from "trapping"
+                // the user when they type a trigger keyword like "hello" again.
+                boolean matchesTrigger = doesMessageMatchAnyTrigger(instituteId, channelType, userText,
+                        messageType, buttonId, buttonPayload, listReplyId);
 
-                resumeSession(session, context);
-                return true;
+                if (matchesTrigger) {
+                    // Check if current node is a CONDITION or AI_RESPONSE (waiting for input)
+                    ChatbotFlowNode currentNode = session.getCurrentNodeId() != null
+                            ? nodeRepository.findById(session.getCurrentNodeId()).orElse(null) : null;
+                    boolean isWaitingNode = currentNode != null && (
+                            ChatbotNodeType.CONDITION.name().equals(currentNode.getNodeType())
+                            || ChatbotNodeType.AI_RESPONSE.name().equals(currentNode.getNodeType()));
+
+                    if (isWaitingNode) {
+                        log.info("Trigger keyword detected while session active on {} node — restarting flow",
+                                currentNode.getNodeType());
+                        completeSession(session);
+                        // Fall through to trigger matching below to start a new flow
+                    } else {
+                        // Not on a waiting node — resume normally
+                        FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
+                                userText, businessChannelId, messageType, buttonId, buttonPayload,
+                                listReplyId, session);
+                        resumeSession(session, context);
+                        return true;
+                    }
+                } else {
+                    // Message doesn't match any trigger — resume current session
+                    log.info("Resuming chatbot flow session: sessionId={}, flowId={}, currentNode={}",
+                            session.getId(), session.getFlowId(), session.getCurrentNodeId());
+
+                    FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
+                            userText, businessChannelId, messageType, buttonId, buttonPayload,
+                            listReplyId, session);
+
+                    resumeSession(session, context);
+                    return true;
+                }
             }
 
             // 2. No active session — check if any ACTIVE flow has a matching trigger
@@ -337,6 +369,47 @@ public class ChatbotFlowEngine {
     }
 
     // ==================== Helpers ====================
+
+    /**
+     * Check if the incoming message matches ANY active flow's trigger for this institute.
+     * Used to decide if an active session should be restarted.
+     */
+    private boolean doesMessageMatchAnyTrigger(String instituteId, String channelType,
+                                                String userText, String messageType,
+                                                String buttonId, String buttonPayload, String listReplyId) {
+        // Collect all active flows (same logic as main trigger scan)
+        List<ChatbotFlow> activeFlows = new ArrayList<>(flowRepository
+                .findByInstituteIdAndChannelTypeAndStatus(instituteId, channelType,
+                        ChatbotFlowStatus.ACTIVE.name()));
+        if (!channelType.equals("WHATSAPP")) {
+            activeFlows.addAll(flowRepository.findByInstituteIdAndChannelTypeAndStatus(
+                    instituteId, "WHATSAPP", ChatbotFlowStatus.ACTIVE.name()));
+        }
+        for (String fallbackType : List.of("WHATSAPP_META", "WHATSAPP_WATI", "WHATSAPP_COMBOT")) {
+            if (!fallbackType.equals(channelType)) {
+                activeFlows.addAll(flowRepository.findByInstituteIdAndChannelTypeAndStatus(
+                        instituteId, fallbackType, ChatbotFlowStatus.ACTIVE.name()));
+            }
+        }
+
+        FlowExecutionContext ctx = FlowExecutionContext.builder()
+                .messageType(messageType).buttonId(buttonId)
+                .buttonPayload(buttonPayload).listReplyId(listReplyId)
+                .build();
+
+        for (ChatbotFlow flow : activeFlows) {
+            List<ChatbotFlowNode> triggerNodes = nodeRepository
+                    .findByFlowIdAndNodeType(flow.getId(), ChatbotNodeType.TRIGGER.name());
+            for (ChatbotFlowNode triggerNode : triggerNodes) {
+                ChatbotNodeExecutor executor = findExecutor(triggerNode.getNodeType());
+                if (executor != null) {
+                    NodeExecutionResult result = executor.execute(triggerNode, null, userText, ctx);
+                    if (result.isSuccess()) return true;
+                }
+            }
+        }
+        return false;
+    }
 
     /**
      * Log outgoing messages from SEND_* and AI_RESPONSE nodes so they appear in WhatsApp Inbox.

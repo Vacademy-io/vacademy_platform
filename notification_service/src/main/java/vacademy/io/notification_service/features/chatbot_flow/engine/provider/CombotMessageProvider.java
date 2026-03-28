@@ -12,6 +12,7 @@ import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * COMBOT provider — uses Meta WhatsApp Cloud API format via Com.bot proxy.
@@ -25,6 +26,14 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final InstituteInternalService instituteInternalService;
+
+    /** Config cache: instituteId → {config, fetchedAt}. TTL = 5 minutes. */
+    private Map<String, CachedConfig> configCache = new ConcurrentHashMap<>();
+    private static final long CONFIG_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+    private record CachedConfig(ProviderConfig config, long fetchedAt) {
+        boolean isExpired() { return System.currentTimeMillis() - fetchedAt > CONFIG_TTL_MS; }
+    }
 
     @Override
     public boolean supports(String channelType) {
@@ -244,6 +253,12 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
     }
 
     private ProviderConfig resolveConfig(String instituteId) {
+        // Check cache first
+        CachedConfig cached = configCache.get(instituteId);
+        if (cached != null && !cached.isExpired()) {
+            return cached.config();
+        }
+
         try {
             InstituteInfoDTO institute = instituteInternalService.getInstituteByInstituteId(instituteId);
             String jsonString = institute.getSetting();
@@ -263,10 +278,11 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
             }
 
             String provider = whatsappSetting.path("provider").asText("META").toUpperCase();
+            ProviderConfig config;
 
             if ("COMBOT".equals(provider)) {
                 JsonNode combot = whatsappSetting.path("combot");
-                return new ProviderConfig(
+                config = new ProviderConfig(
                         combot.path("apiUrl").asText(combot.path("api_url").asText()),
                         combot.path("apiKey").asText(combot.path("api_key").asText()),
                         combot.path("phone_number_id").asText(combot.path("phoneNumberId").asText())
@@ -278,12 +294,17 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
                         whatsappSetting.path("accessToken").asText(whatsappSetting.path("access_token").asText())));
                 String phoneNumberId = meta.path("appId").asText(meta.path("phoneNumberId").asText(
                         whatsappSetting.path("appId").asText()));
-                return new ProviderConfig(
+                config = new ProviderConfig(
                         "https://graph.facebook.com/v22.0",
                         accessToken,
                         phoneNumberId
                 );
             }
+
+            // Cache the resolved config
+            configCache.put(instituteId, new CachedConfig(config, System.currentTimeMillis()));
+            return config;
+
         } catch (Exception e) {
             log.error("Failed to resolve provider config for institute {}: {}", instituteId, e.getMessage());
             return null;

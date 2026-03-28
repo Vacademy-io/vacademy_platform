@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Plus, ArrowClockwise, Trash, PaperPlaneRight, PencilSimple } from '@phosphor-icons/react';
+import { Plus, ArrowClockwise, Trash, PaperPlaneRight, PencilSimple, ArrowSquareOut, Info } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import { listTemplates, deleteTemplate, submitToMeta, syncTemplates, WhatsAppTemplateDTO } from '../-services/template-api';
+import { getWhatsAppProviderStatus } from '@/services/whatsapp-provider-service';
 import { TemplateBuilder } from './template-builder';
 
 export function TemplateListPage() {
@@ -12,7 +13,11 @@ export function TemplateListPage() {
     const [editingTemplate, setEditingTemplate] = useState<WhatsAppTemplateDTO | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [activeProvider, setActiveProvider] = useState<string>('');
     const instituteId = getInstituteId() || '';
+
+    // Meta/COMBOT can create templates via API; WATI must use WATI dashboard
+    const canCreateViaApi = activeProvider === 'META' || activeProvider === 'COMBOT' || activeProvider === '';
 
     const loadTemplates = async () => {
         setLoading(true);
@@ -23,7 +28,12 @@ export function TemplateListPage() {
         finally { setLoading(false); }
     };
 
-    useEffect(() => { loadTemplates(); }, []);
+    useEffect(() => {
+        loadTemplates();
+        getWhatsAppProviderStatus()
+            .then((status) => setActiveProvider(status.activeProvider || ''))
+            .catch(() => {});
+    }, []);
 
     const handleSync = async () => {
         setSyncing(true);
@@ -106,20 +116,47 @@ export function TemplateListPage() {
             <div className="flex items-center justify-between mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">WhatsApp Templates</h1>
-                    <p className="text-sm text-gray-500 mt-1">Create, manage, and submit templates for Meta approval</p>
+                    <p className="text-sm text-gray-500 mt-1">
+                        {canCreateViaApi
+                            ? 'Create, manage, and submit templates for Meta approval'
+                            : 'View synced templates. Create new templates in WATI Dashboard.'}
+                    </p>
                 </div>
                 <div className="flex gap-2">
                     <button onClick={handleSync} disabled={syncing}
                         className="flex items-center gap-1 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50">
                         <ArrowClockwise size={16} className={syncing ? 'animate-spin' : ''} />
-                        {syncing ? 'Syncing...' : 'Sync from Meta'}
+                        {syncing ? 'Syncing...' : 'Sync Templates'}
                     </button>
-                    <button onClick={() => setIsCreating(true)}
-                        className="flex items-center gap-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                        <Plus size={16} /> Create Template
-                    </button>
+
+                    {canCreateViaApi ? (
+                        <button onClick={() => setIsCreating(true)}
+                            className="flex items-center gap-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            <Plus size={16} /> Create Template
+                        </button>
+                    ) : (
+                        <a href="https://app.wati.io/template-messages" target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
+                            <ArrowSquareOut size={16} /> Create in WATI
+                        </a>
+                    )}
                 </div>
             </div>
+
+            {/* Provider info banner */}
+            {activeProvider === 'WATI' && (
+                <div className="flex items-start gap-2 p-3 mb-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <Info size={18} className="text-blue-500 mt-0.5 shrink-0" />
+                    <div className="text-xs text-blue-700">
+                        <p className="font-medium">WATI Provider Active</p>
+                        <p className="mt-0.5">
+                            Templates must be created in the <a href="https://app.wati.io/template-messages" target="_blank" rel="noopener noreferrer" className="underline font-medium">WATI Dashboard</a>.
+                            Once approved by Meta, click "Sync Templates" to import them here.
+                            You can then use them in chatbot flows and the WhatsApp inbox.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* Search */}
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
@@ -156,7 +193,7 @@ export function TemplateListPage() {
                                 )}
                             </div>
                             <div className="flex items-center gap-1 ml-3 shrink-0">
-                                {(t.status === 'DRAFT' || t.status === 'REJECTED') && (
+                                {canCreateViaApi && (t.status === 'DRAFT' || t.status === 'REJECTED') && (
                                     <>
                                         <button onClick={() => setEditingTemplate(t)} title="Edit"
                                             className="p-2 rounded hover:bg-gray-100">

@@ -1,0 +1,35 @@
+package vacademy.io.admin_core_service.features.notification.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class UnifiedSendResponse {
+
+    private String batchId;
+    private int total;
+    private int accepted;
+    private int failed;
+    private String status; // COMPLETED, PROCESSING, PARTIAL, FAILED
+
+    private List<RecipientResult> results;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RecipientResult {
+        private String phone;
+        private String email;
+        private boolean success;
+        private String status;
+        private String error;
+    }
+}

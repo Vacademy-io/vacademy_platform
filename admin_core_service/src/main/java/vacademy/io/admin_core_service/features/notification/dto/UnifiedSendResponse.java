@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.notification.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,6 +12,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class UnifiedSendResponse {
 
     private String batchId;
@@ -25,6 +27,7 @@ public class UnifiedSendResponse {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class RecipientResult {
         private String phone;
         private String email;

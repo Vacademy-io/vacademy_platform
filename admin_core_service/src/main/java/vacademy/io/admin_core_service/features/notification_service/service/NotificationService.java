@@ -56,6 +56,7 @@ public class NotificationService {
         }
 
         ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         try {
             return mapper.readValue(response.getBody(), UnifiedSendResponse.class);
         } catch (JsonProcessingException e) {
@@ -318,6 +319,7 @@ public class NotificationService {
                 null);
 
         ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         try {
             return mapper.readValue(response.getBody(), UnifiedSendResponse.class);
         } catch (JsonProcessingException e) {

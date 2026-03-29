@@ -50,38 +50,36 @@ export function ReplyBox({ phone }: Props) {
     const handleSendTemplate = useCallback(async (template: WhatsAppTemplateDTO) => {
         setSending(true);
         try {
-            // Build variables: use sample values, variable names, or count from body text
-            const variables: Record<string, string> = {};
-            if (template.bodySampleValues && template.bodySampleValues.length > 0) {
-                template.bodySampleValues.forEach((val, i) => {
-                    variables[String(i + 1)] = val;
-                });
-            } else if (template.bodyVariableNames && template.bodyVariableNames.length > 0) {
-                template.bodyVariableNames.forEach((name, i) => {
-                    variables[String(i + 1)] = name;
-                });
-            } else if (template.bodyText) {
-                // Count {{N}} placeholders in body text and fill with empty strings
-                const matches = template.bodyText.match(/\{\{\d+\}\}/g);
-                if (matches) {
-                    matches.forEach((_, i) => {
-                        variables[String(i + 1)] = '';
-                    });
-                }
-            }
+            // Count how many {{N}} params the template needs
+            const placeholderMatches = (template.bodyText || '').match(/\{\{\d+\}\}/g);
+            const paramCount = placeholderMatches ? placeholderMatches.length : 0;
 
-            // If template has params but all are empty, warn user
-            const paramCount = Object.keys(variables).length;
-            const hasEmptyParams = paramCount > 0 && Object.values(variables).every(v => !v);
-            if (hasEmptyParams) {
+            const variables: Record<string, string> = {};
+
+            if (paramCount > 0) {
+                // Build default values from variable names or sample values
+                const defaults: string[] = [];
+                for (let i = 0; i < paramCount; i++) {
+                    const varName = template.bodyVariableNames?.[i] || '';
+                    const sampleVal = template.bodySampleValues?.[i] || '';
+                    defaults.push(sampleVal || varName || '');
+                }
+
+                // Always prompt user for parameter values
+                const labels = defaults.map((d, i) => {
+                    const name = template.bodyVariableNames?.[i] || `param ${i + 1}`;
+                    return `${name}${d ? ` (e.g. ${d})` : ''}`;
+                }).join(', ');
+
                 const userInput = prompt(
-                    `Template "${template.name}" requires ${paramCount} parameter(s).\nEnter values (comma-separated):`
+                    `Template "${template.name}" requires ${paramCount} value(s):\n${labels}\n\nEnter values (comma-separated):`
                 );
-                if (userInput === null) { setSending(false); return; } // cancelled
+                if (userInput === null) { setSending(false); return; }
+
                 const parts = userInput.split(',').map(s => s.trim());
-                parts.forEach((val, i) => {
-                    if (i < paramCount) variables[String(i + 1)] = val || '';
-                });
+                for (let i = 0; i < paramCount; i++) {
+                    variables[String(i + 1)] = parts[i] || defaults[i] || '';
+                }
             }
 
             const response = await sendNotification({

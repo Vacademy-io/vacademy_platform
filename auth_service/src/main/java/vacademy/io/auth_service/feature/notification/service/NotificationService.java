@@ -132,6 +132,7 @@ public class NotificationService {
                 request);
 
         ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         try {
             return mapper.readValue(response.getBody(), UnifiedSendResponse.class);
         } catch (JsonProcessingException e) {

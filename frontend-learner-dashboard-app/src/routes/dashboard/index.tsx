@@ -73,6 +73,14 @@ import { MyOrdersWidget } from "./-components/MyOrdersWidget";
 import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidget";
 import { Preferences } from "@capacitor/preferences";
 import { AttendanceWidget } from "./-components/AttendanceWidget";
+import { usePlayTheme } from "@/hooks/use-play-theme";
+import { usePlayGamificationStore } from "@/stores/play-gamification-store";
+import { computeGamificationData } from "@/services/play-gamification";
+import { fetchLast7DaysProgress } from "./-lib/utils";
+import { StreakCounterWidget } from "./-components/play/StreakCounterWidget";
+import { XpDisplayWidget } from "./-components/play/XpDisplayWidget";
+import { XpHeaderPill } from "./-components/play/XpHeaderPill";
+import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWidget";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -99,6 +107,9 @@ export function DashboardComponent() {
   const [data, setData] = useState<DashbaordResponse | null>(null);
   const { setActiveItem } = useContentStore();
   const { getUserTimezone } = useServerTime();
+  const isPlayTheme = usePlayTheme();
+  const { setData: setGamificationData } = usePlayGamificationStore();
+  const { instituteId } = useInstituteFeatureStore();
 
   // Fetch study library data with React Query (5-minute cache)
   const { data: studyLibraryData } = useQuery(getStudyLibraryQuery(batchId));
@@ -253,6 +264,40 @@ export function DashboardComponent() {
     };
     initializeDashboard();
   }, [setNavHeading, trackPageView]);
+
+  // Refresh play gamification data when theme is active and data is ready
+  useEffect(() => {
+    if (!isPlayTheme || !data || !instituteId) return;
+
+    const refreshGamification = async () => {
+      try {
+        // Fetch 30 days of activity for streak calculation
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const userId = ""; // fetched inside fetchLast7DaysProgress from stored details
+        const activities = await fetchLast7DaysProgress({
+          user_id: userId,
+          start_date: thirtyDaysAgo.toISOString().slice(0, 10),
+          end_date: now.toISOString().slice(0, 10),
+        });
+
+        const gamificationData = computeGamificationData({
+          dashboard: data,
+          activities,
+          attendance: weeklyAttendance ?? null,
+          instituteId,
+        });
+
+        setGamificationData(gamificationData);
+      } catch (error) {
+        console.error("Failed to compute gamification data:", error);
+      }
+    };
+
+    refreshGamification();
+  }, [isPlayTheme, data, weeklyAttendance, instituteId, setGamificationData]);
 
   const handleJoinSession = async (session: SessionDetails) => {
     // Track live session join attempt
@@ -416,7 +461,8 @@ export function DashboardComponent() {
             </div>
           </div>
 
-          <div className="flex items-center">
+          <div className="flex items-center gap-2">
+            {isPlayTheme && <XpHeaderPill />}
             <div className="bg-card border rounded-lg px-4 py-2 shadow-sm">
               <div className="flex items-center text-muted-foreground gap-2">
                 <Calendar weight="duotone" size={16} className="text-primary" />
@@ -434,6 +480,15 @@ export function DashboardComponent() {
 
         {/* Dashboard Pins Panel */}
         <DashboardPinsPanel maxPins={3} />
+
+        {/* Play Theme Gamification Widgets */}
+        {isPlayTheme && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            <StreakCounterWidget />
+            <XpDisplayWidget />
+            <AchievementBadgesWidget />
+          </div>
+        )}
 
         {/* Recent System Notifications Widget */}
         <RecentSystemNotifications />

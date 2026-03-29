@@ -28,6 +28,7 @@ import {
     Send,
     CheckCircle2,
     XCircle,
+    type LucideIcon,
 } from 'lucide-react';
 import {
     sendAudienceMessage,
@@ -77,7 +78,7 @@ const CHANNELS: {
     value: Channel;
     label: string;
     description: string;
-    icon: React.ElementType;
+    icon: LucideIcon;
 }[] = [
     {
         value: 'WHATSAPP',

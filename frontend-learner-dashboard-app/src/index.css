@@ -4,6 +4,10 @@
 @import './styles/catalogue-themes.css';
 /* Catalogue Animations - Entrance, hover, scroll effects */
 @import './styles/catalogue-animations.css';
+/* Play Theme - Duolingo-inspired gamified skin */
+@import './styles/play-theme.css';
+/* Flaticon Uicons - Rounded bubbly icons for play theme */
+@import '@flaticon/flaticon-uicons/css/all/all';
 
 @tailwind base;
 @tailwind components;

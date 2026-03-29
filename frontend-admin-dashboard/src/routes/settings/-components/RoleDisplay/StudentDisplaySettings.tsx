@@ -383,6 +383,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             <SelectContent>
                                 <SelectItem value="default">default</SelectItem>
                                 <SelectItem value="vibrant">vibrant</SelectItem>
+                                <SelectItem value="play">play</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

@@ -1,0 +1,390 @@
+/* =====================================================================
+   Play Theme – Duolingo-inspired gamified skin
+   Applied via .ui-play class on <html> (mutually exclusive with .ui-vibrant)
+   ===================================================================== */
+
+/* ── Play Color Tokens ────────────────────────────────────────────── */
+.ui-play {
+  --play-gold: 45 100% 50%;       /* #FFD700 — XP / points */
+  --play-fire: 18 100% 60%;       /* #FF6B35 — streaks */
+  --play-green: 122 39% 49%;      /* #4CAF50 — progress / completion */
+  --play-purple: 291 76% 42%;     /* #9C27B0 — achievements */
+  --play-blue: 207 90% 54%;       /* #2196F3 — info / levels */
+  --play-radius-card: 16px;
+  --play-radius-btn: 12px;
+  --play-radius-badge: 999px;
+}
+
+/* ── Animations ───────────────────────────────────────────────────── */
+@keyframes play-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(-12deg); }
+  30% { transform: rotate(10deg); }
+  45% { transform: rotate(-8deg); }
+  60% { transform: rotate(6deg); }
+  75% { transform: rotate(-3deg); }
+}
+
+@keyframes play-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.85; }
+}
+
+@keyframes play-bounce-in {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.08); }
+  70% { transform: scale(0.95); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes play-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes play-xp-pop {
+  0% { transform: scale(0.5) translateY(8px); opacity: 0; }
+  60% { transform: scale(1.2) translateY(-4px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.play-wiggle { animation: play-wiggle 0.6s ease-in-out; }
+.play-pulse { animation: play-pulse 2s ease-in-out infinite; }
+.play-bounce-in { animation: play-bounce-in 0.5s ease-out; }
+.play-float { animation: play-float 3s ease-in-out infinite; }
+.play-xp-pop { animation: play-xp-pop 0.4s ease-out; }
+
+/* ── Global Rounding & Softness ───────────────────────────────────── */
+@layer components {
+
+  /* Cards: extra rounded, subtle colored shadow */
+  .ui-play .card,
+  .ui-play .Card,
+  .ui-play [class*="rounded-lg"] {
+    border-radius: var(--play-radius-card) !important;
+  }
+
+  .ui-play .card,
+  .ui-play .Card {
+    border-color: hsl(var(--primary-100)) !important;
+    box-shadow: 0 4px 16px hsl(var(--primary-200) / 0.25) !important;
+    transition: transform 180ms ease, box-shadow 180ms ease;
+  }
+
+  .ui-play .card:hover,
+  .ui-play .Card:hover {
+    transform: translateY(-2px) scale(1.01);
+    box-shadow: 0 8px 24px hsl(var(--primary-300) / 0.3) !important;
+  }
+
+  /* Badges: always pill */
+  .ui-play .badge,
+  .ui-play .Badge,
+  .ui-play .level-badge,
+  .ui-play .course-tag {
+    border-radius: var(--play-radius-badge) !important;
+    font-weight: 600;
+  }
+
+  .ui-play .course-tag {
+    background-color: hsl(var(--play-blue) / 0.12) !important;
+    color: hsl(var(--play-blue)) !important;
+    border-color: hsl(var(--play-blue) / 0.3) !important;
+  }
+
+  .ui-play .course-tag--secondary {
+    background-color: hsl(var(--play-purple) / 0.12) !important;
+    color: hsl(var(--play-purple)) !important;
+    border-color: hsl(var(--play-purple) / 0.3) !important;
+  }
+
+  .ui-play .course-tag--tertiary {
+    background-color: hsl(var(--play-green) / 0.12) !important;
+    color: hsl(var(--play-green)) !important;
+    border-color: hsl(var(--play-green) / 0.3) !important;
+  }
+
+  /* ── Buttons ────────────────────────────────────────────────────── */
+  .ui-play button.bg-primary-500,
+  .ui-play .btn,
+  .ui-play .my-button {
+    border-radius: var(--play-radius-btn) !important;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+    box-shadow: 0 4px 0 hsl(var(--primary-400));
+  }
+
+  .ui-play button.bg-primary-500:hover,
+  .ui-play .btn:hover,
+  .ui-play .my-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 0 hsl(var(--primary-400));
+  }
+
+  .ui-play button.bg-primary-500:active,
+  .ui-play .btn:active,
+  .ui-play .my-button:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 hsl(var(--primary-400));
+  }
+
+  /* ── Navbar ─────────────────────────────────────────────────────── */
+  .ui-play .navbar {
+    border-radius: 0 0 var(--play-radius-card) var(--play-radius-card);
+    border-bottom: 3px solid hsl(var(--primary-200));
+  }
+
+  .ui-play .navbar .text-base {
+    font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+
+  /* ── Sidebar ────────────────────────────────────────────────────── */
+  .ui-play .sidebar-content {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary-50)) 0%,
+      hsl(var(--background)) 100%
+    ) !important;
+  }
+
+  .ui-play .sidebar-content .bg-primary-50 {
+    background-color: hsl(var(--primary-100)) !important;
+    border-radius: var(--play-radius-badge) !important;
+  }
+
+  .ui-play .sidebar-content .hover\:bg-primary-50:hover {
+    background-color: hsl(var(--primary-200)) !important;
+    border-radius: var(--play-radius-badge) !important;
+    transform: scale(1.02);
+    transition: all 180ms ease;
+  }
+
+  .ui-play .sidebar-content a,
+  .ui-play .sidebar-content button {
+    border-radius: var(--play-radius-btn) !important;
+    transition: transform 150ms ease, background-color 150ms ease;
+  }
+
+  .ui-play .sidebar-content a:hover,
+  .ui-play .sidebar-content button:hover {
+    transform: scale(1.02);
+  }
+
+  .ui-play .sidebar-content .shadow-sm,
+  .ui-play .sidebar-content .shadow {
+    box-shadow: none !important;
+  }
+
+  /* ── Dashboard Stat Cards ───────────────────────────────────────── */
+  .ui-play .stat-card-inner {
+    border-radius: var(--play-radius-card) !important;
+    border-width: 2px !important;
+    box-shadow: 0 6px 0 hsl(var(--primary-200)) !important;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+
+  .ui-play .stat-card-inner:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 9px 0 hsl(var(--primary-200)) !important;
+  }
+
+  /* Per-category stat card colors (playful pastels) */
+  .ui-play .dashboard-container .stat-card--courses .stat-card-inner {
+    background-color: hsl(var(--play-blue) / 0.1) !important;
+    border-color: hsl(var(--play-blue) / 0.3) !important;
+    box-shadow: 0 6px 0 hsl(var(--play-blue) / 0.2) !important;
+  }
+
+  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner {
+    background-color: hsl(var(--play-gold) / 0.12) !important;
+    border-color: hsl(var(--play-gold) / 0.35) !important;
+    box-shadow: 0 6px 0 hsl(var(--play-gold) / 0.2) !important;
+  }
+
+  .ui-play .dashboard-container .stat-card--evaluations .stat-card-inner {
+    background-color: hsl(var(--play-purple) / 0.1) !important;
+    border-color: hsl(var(--play-purple) / 0.3) !important;
+    box-shadow: 0 6px 0 hsl(var(--play-purple) / 0.2) !important;
+  }
+
+  .ui-play .dashboard-container .stat-card--attendance .stat-card-inner {
+    background-color: hsl(var(--play-green) / 0.1) !important;
+    border-color: hsl(var(--play-green) / 0.3) !important;
+    box-shadow: 0 6px 0 hsl(var(--play-green) / 0.2) !important;
+  }
+
+  .ui-play .dashboard-container .stat-card--live .stat-card-inner {
+    background-color: hsl(var(--play-fire) / 0.1) !important;
+    border-color: hsl(var(--play-fire) / 0.3) !important;
+    box-shadow: 0 6px 0 hsl(var(--play-fire) / 0.2) !important;
+  }
+
+  /* Stat card icon chips: colored circles */
+  .ui-play .stat-card--courses .stat-card-icon {
+    background-color: hsl(var(--play-blue) / 0.2) !important;
+    color: hsl(var(--play-blue)) !important;
+    border-radius: 50% !important;
+  }
+  .ui-play .stat-card--assignments .stat-card-icon {
+    background-color: hsl(var(--play-gold) / 0.2) !important;
+    color: hsl(var(--play-gold)) !important;
+    border-radius: 50% !important;
+  }
+  .ui-play .stat-card--evaluations .stat-card-icon {
+    background-color: hsl(var(--play-purple) / 0.2) !important;
+    color: hsl(var(--play-purple)) !important;
+    border-radius: 50% !important;
+  }
+  .ui-play .stat-card--attendance .stat-card-icon {
+    background-color: hsl(var(--play-green) / 0.2) !important;
+    color: hsl(var(--play-green)) !important;
+    border-radius: 50% !important;
+  }
+  .ui-play .stat-card--live .stat-card-icon {
+    background-color: hsl(var(--play-fire) / 0.2) !important;
+    color: hsl(var(--play-fire)) !important;
+    border-radius: 50% !important;
+  }
+
+  /* Stat card title decorative dot */
+  .ui-play .stat-card-title {
+    position: relative;
+    padding-left: 18px;
+    font-weight: 700;
+  }
+
+  .ui-play .stat-card-title::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    transform: translateY(-50%);
+    border-radius: 50%;
+    background: hsl(var(--primary-400));
+  }
+
+  .ui-play .stat-card--courses .stat-card-title::before {
+    background: hsl(var(--play-blue));
+  }
+  .ui-play .stat-card--assignments .stat-card-title::before {
+    background: hsl(var(--play-gold));
+  }
+  .ui-play .stat-card--evaluations .stat-card-title::before {
+    background: hsl(var(--play-purple));
+  }
+  .ui-play .stat-card--attendance .stat-card-title::before {
+    background: hsl(var(--play-green));
+  }
+  .ui-play .stat-card--live .stat-card-title::before {
+    background: hsl(var(--play-fire));
+  }
+
+  /* ── Continue Learning Card ─────────────────────────────────────── */
+  .ui-play .continue-learning-card {
+    border-color: hsl(var(--play-green) / 0.3) !important;
+    border-radius: var(--play-radius-card) !important;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--play-green) / 0.05),
+      hsl(var(--background))
+    ) !important;
+  }
+
+  /* ── Course Cards ───────────────────────────────────────────────── */
+  .ui-play .course-card-image {
+    border-radius: var(--play-radius-card) var(--play-radius-card) 0 0 !important;
+  }
+
+  .ui-play .level-badge {
+    border-width: 2px !important;
+    border-radius: var(--play-radius-badge) !important;
+    font-weight: 700;
+  }
+
+  .ui-play .course-stats {
+    background: hsl(var(--primary-50));
+    border-color: hsl(var(--primary-100));
+    border-radius: var(--play-radius-btn);
+  }
+
+  /* ── Chips ──────────────────────────────────────────────────────── */
+  .ui-play .chip-secondary {
+    background-color: hsl(var(--play-purple) / 0.1) !important;
+    color: hsl(var(--play-purple)) !important;
+    border-color: hsl(var(--play-purple) / 0.3) !important;
+    border-radius: var(--play-radius-badge) !important;
+  }
+
+  .ui-play .chip-tertiary {
+    background-color: hsl(var(--play-green) / 0.1) !important;
+    color: hsl(var(--play-green)) !important;
+    border-color: hsl(var(--play-green) / 0.3) !important;
+    border-radius: var(--play-radius-badge) !important;
+  }
+
+  /* ── Background Surfaces ────────────────────────────────────────── */
+  .ui-play .bg-gray-50 {
+    background-color: hsl(var(--primary-50) / 0.5) !important;
+  }
+
+  .ui-play .bg-white\/80 {
+    background-color: hsl(var(--background) / 0.9) !important;
+  }
+
+  /* ── Dashboard User Avatar ──────────────────────────────────────── */
+  .ui-play .dashboard-user-avatar {
+    border: 3px solid hsl(var(--play-gold)) !important;
+    border-radius: 50% !important;
+    box-shadow: 0 0 0 3px hsl(var(--play-gold) / 0.2);
+  }
+
+  /* ── Course Detail Page ──────────────────────────────────────────── */
+  /* Section headers (subject/module/chapter accordions) */
+  .ui-play .group.flex.w-full.items-center.justify-between.rounded-lg {
+    border-radius: var(--play-radius-card) !important;
+    border-width: 2px !important;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+
+  .ui-play .group.flex.w-full.items-center.justify-between.rounded-lg:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px hsl(var(--primary-200) / 0.3);
+  }
+
+  /* Content items in course structure */
+  .ui-play [class*="border"][class*="rounded-lg"][class*="hover:bg-accent"] {
+    border-radius: var(--play-radius-btn) !important;
+    transition: all 150ms ease;
+  }
+
+  .ui-play [class*="border"][class*="rounded-lg"][class*="hover:bg-accent"]:hover {
+    transform: scale(1.01);
+    background-color: hsl(var(--primary-50)) !important;
+  }
+
+  /* Course enrollment card */
+  .ui-play .course-enrollment,
+  .ui-play [class*="enrollment"] {
+    border-radius: var(--play-radius-card) !important;
+  }
+
+  /* Certificate completion banner */
+  .ui-play [class*="certificate"] {
+    border-radius: var(--play-radius-card) !important;
+  }
+
+  /* ── Prevent double animations ──────────────────────────────────── */
+  .ui-play .animate-fade-in-up {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .ui-play .animate-fade-in-down {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+}

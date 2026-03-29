@@ -7,6 +7,7 @@ import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import LocalStorageUtils from "@/utils/localstorage";
 import { Star } from "@phosphor-icons/react";
 import { ProgressBar } from "@/components/ui/custom-progress-bar";
+import { ProgressRing } from "@/routes/dashboard/-components/play/ProgressRing";
 import { cn, toTitleCase } from "@/lib/utils";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
@@ -174,7 +175,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
             isCompleted && "[.ui-vibrant_&]:bg-emerald-50 dark:[.ui-vibrant_&]:bg-emerald-950/30",
             isCompleted && "[.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30",
 
-            "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:hover:shadow-md"
+            "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:hover:shadow-md",
+
+            // Play Styles - Rounded, bouncy, fun
+            "[.ui-play_&]:rounded-2xl [.ui-play_&]:border-2 [.ui-play_&]:shadow-[0_6px_0_hsl(var(--primary-200))]",
+            "[.ui-play_&]:hover:shadow-[0_9px_0_hsl(var(--primary-200))] [.ui-play_&]:hover:-translate-y-1",
+            "[.ui-play_&]:transition-all [.ui-play_&]:duration-150"
         )}>
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg pointer-events-none"></div>
@@ -228,10 +234,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         className={cn(
                             "flex-shrink-0 gap-1 px-2.5 py-0.5",
                             getLevelCustomClass(),
-                            // Default level logic: hidden by default, shown in vibrant mode
-                            isDefaultLevel && "hidden [.ui-vibrant_&]:inline-flex",
+                            // Default level logic: hidden by default, shown in vibrant/play mode
+                            isDefaultLevel && "hidden [.ui-vibrant_&]:inline-flex [.ui-play_&]:inline-flex",
                             // Vibrant mode override for alignment/style if needed
-                            "[.ui-vibrant_&]:shadow-sm"
+                            "[.ui-vibrant_&]:shadow-sm",
+                            // Play mode: pill badge
+                            "[.ui-play_&]:rounded-full [.ui-play_&]:shadow-sm [.ui-play_&]:font-bold"
                         )}
                     >
                         <LevelIcon size={12} className="text-current hidden [.ui-vibrant_&]:block" />
@@ -345,11 +353,22 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
                 {selectedTab === "PROGRESS" && (
                     <div className="space-y-1.5 pt-1">
-                        <div className="flex justify-between text-xs font-medium">
-                            <span>Progress</span>
-                            <span>{cappedPercentageCompleted.toFixed(0)}%</span>
+                        {/* Default / Vibrant: linear progress bar */}
+                        <div className="[.ui-play_&]:hidden">
+                            <div className="flex justify-between text-xs font-medium">
+                                <span>Progress</span>
+                                <span>{cappedPercentageCompleted.toFixed(0)}%</span>
+                            </div>
+                            <ProgressBar value={cappedPercentageCompleted} className="h-1.5" />
                         </div>
-                        <ProgressBar value={cappedPercentageCompleted} className="h-1.5" />
+                        {/* Play: circular progress ring */}
+                        <div className="hidden [.ui-play_&]:flex items-center gap-3">
+                            <ProgressRing value={cappedPercentageCompleted} size={44} strokeWidth={4} />
+                            <div className="flex flex-col">
+                                <span className="text-xs font-bold">{cappedPercentageCompleted.toFixed(0)}% Complete</span>
+                                <span className="text-[10px] text-muted-foreground">Keep going!</span>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
@@ -361,7 +380,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         // Vibrant Styles - Flat Button
                         !isCompleted && "[.ui-vibrant_&]:bg-indigo-600 [.ui-vibrant_&]:hover:bg-indigo-700 [.ui-vibrant_&]:text-white",
                         isCompleted && "[.ui-vibrant_&]:bg-emerald-600 [.ui-vibrant_&]:hover:bg-emerald-700 [.ui-vibrant_&]:text-white",
-                        "[.ui-vibrant_&]:shadow-md"
+                        "[.ui-vibrant_&]:shadow-md",
+                        // Play mode: rounded, 3D press effect
+                        "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold",
+                        "[.ui-play_&]:shadow-[0_4px_0_hsl(var(--primary-400))]",
+                        "[.ui-play_&]:hover:shadow-[0_6px_0_hsl(var(--primary-400))] [.ui-play_&]:hover:-translate-y-0.5",
+                        "[.ui-play_&]:active:shadow-[0_1px_0_hsl(var(--primary-400))] [.ui-play_&]:active:translate-y-0.5"
                     )}
                     onClick={() => handleViewCoureseDetails(courseId)}
                 >

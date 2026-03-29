@@ -68,7 +68,10 @@ export const CourseHeader = ({ courseData, showConfetti = false }: CourseHeaderP
                                         // Vibrant Styles - Flat Pastel
                                         "[.ui-vibrant_&]:bg-slate-50/95 dark:[.ui-vibrant_&]:bg-slate-900/95",
                                         "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
-                                        "[.ui-vibrant_&]:shadow-md"
+                                        "[.ui-vibrant_&]:shadow-md",
+                                        // Play Styles
+                                        "[.ui-play_&]:rounded-2xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20",
+                                        "[.ui-play_&]:shadow-[0_6px_0_hsl(var(--primary-200))]"
                                     )}>
                                         {/* Tags */}
                                         <div className="mb-4 flex flex-wrap gap-2">
@@ -80,7 +83,9 @@ export const CourseHeader = ({ courseData, showConfetti = false }: CourseHeaderP
                                                         "uppercase tracking-wide text-[10px] sm:text-xs font-semibold px-2.5 py-1",
                                                         // Vibrant Styles - Flat Pastel
                                                         "[.ui-vibrant_&]:bg-sky-100/50 [.ui-vibrant_&]:text-sky-700 dark:[.ui-vibrant_&]:bg-sky-900/30 dark:[.ui-vibrant_&]:text-sky-300",
-                                                        "[.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:border-sky-800/30 [.ui-vibrant_&]:border"
+                                                        "[.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:border-sky-800/30 [.ui-vibrant_&]:border",
+                                                        // Play Styles
+                                                        "[.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:border-2"
                                                     )}
                                                 >
                                                     {tag}

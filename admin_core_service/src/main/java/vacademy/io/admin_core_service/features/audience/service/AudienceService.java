@@ -2750,6 +2750,154 @@ public class AudienceService {
                 .build();
     }
 
+    /**
+     * Bulk submit simple leads (CSV import-friendly).
+     * <p>
+     * Loops through rows and delegates persistence to the existing single-row
+     * {@link #submitLead(SubmitLeadRequestDTO)} method.
+     * Returns per-row results so that one failing row does not block the others.
+     */
+    public BulkSubmitLeadResponseDTO bulkSubmitLead(BulkSubmitLeadRequestDTO request) {
+
+        if (request == null || CollectionUtils.isEmpty(request.getRows())) {
+            throw new VacademyException("rows cannot be empty");
+        }
+
+        String rootAudienceId = request.getAudienceId();
+
+        List<BulkSubmitLeadResultItemDTO> results = new ArrayList<>(request.getRows().size());
+        Set<String> dedupeKeys = new HashSet<>();
+
+        int success = 0;
+        int failed = 0;
+        int skipped = 0;
+
+        for (int i = 0; i < request.getRows().size(); i++) {
+            SubmitLeadRequestDTO row = request.getRows().get(i);
+
+            if (row == null) {
+                failed++;
+                results.add(BulkSubmitLeadResultItemDTO.builder()
+                        .index(i)
+                        .status("FAILED")
+                        .message("Row is null")
+                        .build());
+                continue;
+            }
+
+            // Support payloads where audience_id exists at the root only.
+            if (!StringUtils.hasText(row.getAudienceId())
+                    && StringUtils.hasText(rootAudienceId)) {
+                row.setAudienceId(rootAudienceId);
+            }
+
+            if (!StringUtils.hasText(row.getAudienceId())) {
+                failed++;
+                results.add(BulkSubmitLeadResultItemDTO.builder()
+                        .index(i)
+                        .status("FAILED")
+                        .message("audience_id is required (root or row)")
+                        .build());
+                continue;
+            }
+
+            // Best-effort dedupe by email within the upload payload.
+            String emailKey = "";
+            if (row.getUserDTO() != null && StringUtils.hasText(row.getUserDTO().getEmail())) {
+                emailKey = row.getUserDTO().getEmail().trim().toLowerCase();
+            }
+
+            String dedupeKey = row.getAudienceId().trim() + "|" + emailKey;
+
+            if (StringUtils.hasText(emailKey) && dedupeKeys.contains(dedupeKey)) {
+                skipped++;
+                results.add(BulkSubmitLeadResultItemDTO.builder()
+                        .index(i)
+                        .status("SKIPPED")
+                        .message("Duplicate email in upload payload")
+                        .build());
+                continue;
+            }
+            if (StringUtils.hasText(emailKey)) {
+                dedupeKeys.add(dedupeKey);
+            }
+
+            try {
+                String responseId = submitLead(row);
+
+                // submitLead returns the response ID on success, or an error message string
+                boolean isSuccess = responseId != null
+                        && !responseId.startsWith("Error")
+                        && !responseId.contains("already submitted");
+
+                if (responseId != null && responseId.contains("already submitted")) {
+                    skipped++;
+                    results.add(BulkSubmitLeadResultItemDTO.builder()
+                            .index(i)
+                            .status("SKIPPED")
+                            .message(responseId)
+                            .build());
+                } else if (isSuccess) {
+                    success++;
+                    results.add(BulkSubmitLeadResultItemDTO.builder()
+                            .index(i)
+                            .status("SUCCESS")
+                            .message("Lead submitted successfully")
+                            .audienceResponseId(responseId)
+                            .userId(row.getUserDTO() != null ? row.getUserDTO().getEmail() : null)
+                            .build());
+                } else {
+                    failed++;
+                    results.add(BulkSubmitLeadResultItemDTO.builder()
+                            .index(i)
+                            .status("FAILED")
+                            .message(responseId != null ? responseId : "Unknown error")
+                            .build());
+                }
+            } catch (VacademyException ve) {
+                String msg = ve.getMessage();
+                String normalizedMsg = msg != null ? msg.toLowerCase() : "";
+                boolean alreadySubmitted = normalizedMsg.contains("already submitted");
+
+                if (alreadySubmitted) {
+                    skipped++;
+                    results.add(BulkSubmitLeadResultItemDTO.builder()
+                            .index(i)
+                            .status("SKIPPED")
+                            .message(msg)
+                            .build());
+                } else {
+                    failed++;
+                    results.add(BulkSubmitLeadResultItemDTO.builder()
+                            .index(i)
+                            .status("FAILED")
+                            .message(msg)
+                            .build());
+                }
+            } catch (Exception e) {
+                failed++;
+                results.add(BulkSubmitLeadResultItemDTO.builder()
+                        .index(i)
+                        .status("FAILED")
+                        .message(e.getMessage())
+                        .build());
+            }
+        }
+
+        BulkSubmitLeadResponseDTO.SummaryDTO summary =
+                BulkSubmitLeadResponseDTO.SummaryDTO.builder()
+                        .totalRequested(results.size())
+                        .successful(success)
+                        .failed(failed)
+                        .skipped(skipped)
+                        .build();
+
+        return BulkSubmitLeadResponseDTO.builder()
+                .summary(summary)
+                .results(results)
+                .build();
+    }
+
     private String buildDefaultEnquiryEmailBody(String parentName, String studentName, String sessionName,
             String trackingId, String submissionTime, String username, String password, String portalUrl,
             String campaignName) {

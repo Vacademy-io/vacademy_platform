@@ -300,10 +300,14 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
         setFilteredCourses(filtered);
     }, [courses, searchValue]);
 
-    const handleViewCourse = (courseId: string) => {
+    const handleViewCourse = (course: DisplayCourse) => {
         navigate({
             to: '/study-library/courses/course-details',
-            search: { courseId: courseId },
+            search: {
+                courseId: course.courseId,
+                sessionId: course.sessionInfo?.sessionId,
+                levelId: course.levelInfo?.levelId,
+            },
         });
     };
 
@@ -530,7 +534,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                     <MyButton
                                         className="flex-1 text-sm"
                                         buttonType="primary"
-                                        onClick={() => handleViewCourse(course.courseId)}
+                                        onClick={() => handleViewCourse(course)}
                                     >
                                         View Course
                                     </MyButton>

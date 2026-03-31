@@ -13,6 +13,7 @@ import { SubjectMaterial } from './-components/subject-material';
 interface LevelSearchParams {
     courseId: string;
     levelId: string;
+    sessionId?: string;
 }
 
 const routeApi = getRouteApi('/study-library/courses/course-details/subjects/');

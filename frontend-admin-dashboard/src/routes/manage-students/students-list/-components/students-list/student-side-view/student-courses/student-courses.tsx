@@ -12,6 +12,10 @@ import { DeassignCourseDialog } from './deassign-course-dialog';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_LEVELS_BY_INSTITUTE } from '@/constants/urls';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useNavigate } from '@tanstack/react-router';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -19,6 +23,8 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
     const { selectedStudent } = useStudentSidebar();
     const instituteId = getInstituteId();
     const userId = isSubmissionTab ? selectedStudent?.id || '' : selectedStudent?.user_id || '';
+    const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
+    const navigate = useNavigate();
     const queryClient = useQueryClient();
 
     const [assignOpen, setAssignOpen] = useState(false);
@@ -99,6 +105,26 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         queryClient.invalidateQueries({ queryKey: ['GET_LEARNER_PACKAGES'] });
     };
 
+    const handleCourseClick = (course: PackageDetailDTO) => {
+        const courseId = course.id;
+        const levelId = course.level_id || 'DEFAULT';
+        let sessionId: string | undefined;
+
+        if (course.package_session_id) {
+            const batchDetails = getDetailsFromPackageSessionId({
+                packageSessionId: course.package_session_id,
+            });
+            if (batchDetails) {
+                sessionId = batchDetails.session.id;
+            }
+        }
+
+        navigate({
+            to: '/study-library/courses/course-details/subjects/',
+            search: { courseId, levelId, sessionId },
+        });
+    };
+
     const handleLevelFilter = (levelId: string | null) => {
         setSelectedLevelId(levelId);
         setProgressPage(0);
@@ -162,6 +188,12 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                 title="In Progress Courses"
                 courses={progressCourses?.content || []}
                 emptyMessage="No courses in progress"
+                onCourseClick={handleCourseClick}
+                getSessionName={(course) => {
+                    if (!course.package_session_id) return null;
+                    const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
+                    return details?.session.session_name || null;
+                }}
                 renderBadge={(course) => (
                     <div className="flex items-center gap-2">
                         {course.level_name && (
@@ -194,6 +226,12 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                 title="Completed Courses"
                 courses={completedCourses?.content || []}
                 emptyMessage="No completed courses"
+                onCourseClick={handleCourseClick}
+                getSessionName={(course) => {
+                    if (!course.package_session_id) return null;
+                    const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
+                    return details?.session.session_name || null;
+                }}
                 renderBadge={(course) => (
                     <div className="flex items-center gap-2">
                         {course.level_name && (
@@ -216,6 +254,12 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                 title="Past Courses"
                 courses={pastCourses?.content || []}
                 emptyMessage="No past courses"
+                onCourseClick={handleCourseClick}
+                getSessionName={(course) => {
+                    if (!course.package_session_id) return null;
+                    const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
+                    return details?.session.session_name || null;
+                }}
                 renderBadge={(course) => (
                     <div className="flex items-center gap-2">
                         {course.level_name && (
@@ -259,6 +303,8 @@ const CourseSection = ({
     page,
     totalPages,
     onPageChange,
+    onCourseClick,
+    getSessionName,
 }: {
     title: string;
     courses: PackageDetailDTO[];
@@ -268,6 +314,8 @@ const CourseSection = ({
     page: number;
     totalPages: number;
     onPageChange: (page: number) => void;
+    onCourseClick?: (course: PackageDetailDTO) => void;
+    getSessionName?: (course: PackageDetailDTO) => string | null;
 }) => {
     return (
         <div className="flex flex-col gap-4">
@@ -277,22 +325,31 @@ const CourseSection = ({
             <div className="flex flex-col gap-4">
                 {courses.length > 0 ? (
                     <>
-                        {courses.map((course) => (
+                        {courses.map((course) => {
+                            const sessionName = getSessionName?.(course);
+                            return (
                             <div
                                 key={course.id + (course.package_session_id || '')}
-                                className="flex flex-col rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                                className={`flex flex-col rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md ${onCourseClick ? 'cursor-pointer hover:border-primary-300' : ''}`}
+                                onClick={() => onCourseClick?.(course)}
                             >
                                 <div className="flex items-start justify-between">
                                     <div>
                                         <h4 className="font-semibold text-neutral-900">
                                             {course.package_name || 'Unnamed Course'}
                                         </h4>
+                                        {sessionName && (
+                                            <p className="mt-0.5 text-xs text-neutral-500">
+                                                {getTerminology(ContentTerms.Session, SystemTerms.Session)}: {sessionName}
+                                            </p>
+                                        )}
                                     </div>
                                     {renderBadge(course)}
                                 </div>
                                 {renderExtra?.(course)}
                             </div>
-                        ))}
+                            );
+                        })}
                         {totalPages > 1 && (
                             <div className="flex items-center justify-center gap-2 pt-2">
                                 <button

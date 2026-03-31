@@ -110,17 +110,22 @@ export const SubjectMaterial = () => {
 
     const courseId: string = searchParams.courseId || '';
     const levelId: string = searchParams.levelId || '';
+    const urlSessionId: string = searchParams.sessionId || '';
 
     const [sessionList, setSessionList] = useState<DropdownItemType[]>(
         searchParams.courseId ? getSessionFromPackage({ courseId: courseId, levelId: levelId }) : []
     );
-    const initialSession: DropdownItemType | undefined = {
-        id: sessionList[0]?.id || '',
-        name: sessionList[0]?.name || '',
+
+    const getInitialSession = (sessions: DropdownItemType[]): DropdownItemType | undefined => {
+        if (urlSessionId) {
+            const matched = sessions.find((s) => s.id === urlSessionId);
+            if (matched) return matched;
+        }
+        return sessions[0] ? { id: sessions[0].id, name: sessions[0].name } : undefined;
     };
 
     const [currentSession, setCurrentSession] = useState<DropdownItemType | undefined>(
-        () => initialSession
+        () => getInitialSession(sessionList)
     );
 
     useEffect(() => {
@@ -132,7 +137,7 @@ export const SubjectMaterial = () => {
     }, [searchParams.courseId, searchParams.levelId, getSessionFromPackage]);
 
     useEffect(() => {
-        setCurrentSession({ id: sessionList[0]?.id || '', name: sessionList[0]?.name || '' });
+        setCurrentSession(getInitialSession(sessionList));
     }, [sessionList]);
 
     const handleSessionChange = (value: DropdownValueType) => {

@@ -170,7 +170,7 @@ export const StudentSidebar = ({
     }, [category]);
 
     return (
-        <Sidebar side="right" className={cn('top-14 md:top-[72px]', className)}>
+        <Sidebar side="right" className={cn('!top-14 md:!top-[72px]', className)}>
             <SidebarContent
                 className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
             >

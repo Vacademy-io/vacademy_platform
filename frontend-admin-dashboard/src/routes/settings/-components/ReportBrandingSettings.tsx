@@ -364,7 +364,7 @@ const ReportBrandingSettingsSection = ({ settings, onChange }: Props) => {
                                 </Label>
                                 <Slider
                                     value={[s.watermark_opacity * 100]}
-                                    onValueChange={([v]) =>
+                                    onValueChange={([v = 5]) =>
                                         update({ watermark_opacity: v / 100 })
                                     }
                                     min={1}

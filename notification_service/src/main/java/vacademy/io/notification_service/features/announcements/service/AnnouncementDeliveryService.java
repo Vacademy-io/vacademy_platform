@@ -264,7 +264,11 @@ public class AnnouncementDeliveryService {
                         rateLimiter.acquire();
 
                     // Send email via unified send for consistent logging
-                    UnifiedSendRequest.UnifiedSendRequestBuilder requestBuilder = UnifiedSendRequest.builder()
+                    // previewText and fromEmail/fromName come directly from the announcement's
+                    // email medium config (populated from the template at announcement creation time).
+                    // We do NOT pass templateName here because admin_core_service templates
+                    // are in a different table than notification_service's notification_template.
+                    unifiedSendService.routeSync(UnifiedSendRequest.builder()
                             .instituteId(instituteId)
                             .channel("EMAIL")
                             .recipients(List.of(UnifiedSendRequest.Recipient.builder()
@@ -278,12 +282,8 @@ public class AnnouncementDeliveryService {
                                     .previewText(previewText)
                                     .source("announcement-service")
                                     .sourceId(announcement.getId())
-                                    .build());
-                    // Pass template name for preview text lookup from settingJson
-                    if (templateName != null && !templateName.isEmpty()) {
-                        requestBuilder.templateName(templateName);
-                    }
-                    unifiedSendService.routeSync(requestBuilder.build());
+                                    .build())
+                            .build());
 
                     // Only mark DELIVERED after successful send
                     message.setStatus(MessageStatus.DELIVERED);

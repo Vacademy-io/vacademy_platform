@@ -5,21 +5,60 @@ import { Label } from '@/components/ui/label';
 import { MyButton } from '@/components/design-system/button';
 import { Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { AssessmentSettingsData, DEFAULT_ASSESSMENT_SETTINGS } from '@/types/assessment-settings';
+import {
+    AssessmentSettingsData,
+    DEFAULT_ASSESSMENT_SETTINGS,
+    DEFAULT_REPORT_BRANDING,
+    ReportBrandingSettings,
+} from '@/types/assessment-settings';
 import { getAssessmentSettings, saveAssessmentSettings } from '@/services/assessment-settings';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import ReportBrandingSettingsSection from './ReportBrandingSettings';
+
+const DEFAULT_HEADER_HTML = `<div style="text-align:center; font-size:16px; font-weight:bold;">{{assessment_name}}</div>
+<div style="text-align:center; font-size:11px; color:#666;">Student Performance Analysis</div>`;
+
+const DEFAULT_FOOTER_HTML = `<div style="text-align:center; font-size:10px; color:#999;">This report is auto-generated. For queries, contact your institute administrator.</div>`;
 
 const AssessmentSettings = () => {
     const [settings, setSettings] = useState<AssessmentSettingsData>(DEFAULT_ASSESSMENT_SETTINGS);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+    const instituteDetails = useInstituteDetailsStore((s) => s.instituteDetails);
 
     useEffect(() => {
         const load = async () => {
             setLoading(true);
             try {
                 const data = await getAssessmentSettings(true);
-                setSettings(data);
+                // Pre-fill with institute defaults if branding hasn't been configured yet
+                const branding = data.reportBranding;
+                const isUnconfigured =
+                    branding.primary_color === DEFAULT_REPORT_BRANDING.primary_color &&
+                    !branding.watermark_text &&
+                    !branding.header_html &&
+                    !branding.footer_html &&
+                    !branding.logo_file_id;
+
+                if (isUnconfigured && instituteDetails) {
+                    const prefilled: ReportBrandingSettings = {
+                        ...branding,
+                        primary_color:
+                            (instituteDetails as any).institute_theme_code ||
+                            localStorage.getItem('theme-code') ||
+                            branding.primary_color,
+                        logo_file_id:
+                            (instituteDetails as any).institute_logo_file_id || null,
+                        watermark_text:
+                            (instituteDetails as any).institute_name || '',
+                        header_html: DEFAULT_HEADER_HTML,
+                        footer_html: DEFAULT_FOOTER_HTML,
+                    };
+                    setSettings({ ...data, reportBranding: prefilled });
+                } else {
+                    setSettings(data);
+                }
             } catch {
                 toast.error('Failed to load assessment settings');
             } finally {
@@ -27,7 +66,7 @@ const AssessmentSettings = () => {
             }
         };
         load();
-    }, []);
+    }, [instituteDetails]);
 
     const handleToggle = (key: keyof AssessmentSettingsData, field: string, value: boolean) => {
         setSettings((prev) => ({
@@ -97,8 +136,8 @@ const AssessmentSettings = () => {
                                 Enable Offline Entry
                             </Label>
                             <p className="text-xs text-gray-500">
-                                Shows the "Offline Entry" button on the assessment submissions
-                                page
+                                Shows the &quot;Offline Entry&quot; button on the assessment
+                                submissions page
                             </p>
                         </div>
                         <Switch
@@ -110,6 +149,22 @@ const AssessmentSettings = () => {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Report Branding Section */}
+            <div>
+                <h3 className="mb-3 text-base font-semibold">Assessment Report Branding</h3>
+                <p className="mb-4 text-sm text-gray-500">
+                    Customize the look and feel of PDF reports generated for students. These
+                    settings apply to all assessment reports across your institute.
+                </p>
+                <ReportBrandingSettingsSection
+                    settings={settings.reportBranding}
+                    onChange={(branding) => {
+                        setSettings((prev) => ({ ...prev, reportBranding: branding }));
+                        setHasChanges(true);
+                    }}
+                />
+            </div>
         </div>
     );
 };

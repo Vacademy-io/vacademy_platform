@@ -5,8 +5,7 @@ export const BASE_URL_LEARNER_DASHBOARD =
   import.meta.env.VITE_LEARNER_DASHBOARD_URL || "https://learner.vacademy.io";
 export const BASE_URL_TEACHER_DASHBOARD =
   import.meta.env.VITE_TEACHER_DASHBOARD_URL || "https://dash.vacademy.io";
-export const AI_SERVICE_BASE_URL =
-  `${BACKEND_BASE_URL}/ai-service`;
+export const AI_SERVICE_BASE_URL = `${BACKEND_BASE_URL}/ai-service`;
 //urls
 export const INSTITUTE_ID =
   import.meta.env.VITE_INSTITUTE_ID || "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";
@@ -52,9 +51,12 @@ export const START_ASSESSMENT = `${BASE_URL}/assessment-service/assessment/learn
 export const ASSESSMENT_SAVE = `${BASE_URL}/assessment-service/assessment/learner/status/update`;
 export const ASSESSMENT_SUBMIT = `${BASE_URL}/assessment-service/assessment/learner/status/submit`;
 export const RESTART_ASSESSMENT = `${BASE_URL}/assessment-service/assessment/learner/status/restart`;
-// export const GET_ASSESSMENT_RESULT = `${BASE_URL}/assessment-service/assessment/admin/get-student-report`;
-export const STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/admin/get-student-report`;
-export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/admin/participants/get-report-detail`;
+// Learner-scoped report endpoints (properly authorized)
+export const STUDENT_REPORT_URL = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/list`;
+export const STUDENT_REPORT_DETAIL_URL = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/detail`;
+export const LEARNER_REPORT_COMPARISON_URL = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/comparison`;
+export const LEARNER_OPTION_DISTRIBUTION_URL = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/option-distribution`;
+export const LEARNER_REPORT_LEADERBOARD_URL = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/leaderboard`;
 export const SURVEY_STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/survey/student-report`;
 export const GET_ASSESSMENT_DETAILS = `${BASE_URL}/assessment-service/assessment/create/v1/status`;
 export const GET_ASSESSMENT_MARKS = `${BASE_URL}/assessment-service/assessment/admin/init/total-marks`;
@@ -73,7 +75,7 @@ const ENROLL_API_BASE =
 export const ENROLL_USER_INVITE_PAYMENT_URL = `${ENROLL_API_BASE}/admin-core-service/v1/learner/enroll`;
 export const ENROLL_DETAILS_RESPONSE = `${BASE_URL}/admin-core-service/learner-invitation-response/record`;
 export const STUDENT_DETAIL_EDIT = `${BASE_URL}/admin-core-service/learner/info/v1/edit`;
-export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/student-report`;
+export const EXPORT_ASSESSMENT_REPORT = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/pdf`;
 export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessment/learner/manual-status/submit`;
 
 export const ADD_UPDATE_VIDEO_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-video-activity`;

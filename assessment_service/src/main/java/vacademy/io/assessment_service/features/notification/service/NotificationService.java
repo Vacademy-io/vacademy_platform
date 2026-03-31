@@ -47,4 +47,35 @@ public class NotificationService {
                 List.of(notificationDTO));
         return response.getBody();
     }
+
+    public void sendPushNotificationToUsers(String instituteId, List<String> userIds, String title, String body, java.util.Map<String, String> data) {
+        java.util.Map<String, Object> request = new java.util.HashMap<>();
+        request.put("institute_id", instituteId);
+        request.put("user_ids", userIds);
+        request.put("title", title);
+        request.put("body", body);
+        request.put("data", data != null ? data : java.util.Map.of());
+
+        internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                NotificationConstant.PUSH_SEND_TO_USERS,
+                request);
+    }
+
+    public void sendSystemAlertToUsers(String instituteId, List<String> userIds, String title, String body) {
+        java.util.Map<String, Object> request = new java.util.HashMap<>();
+        request.put("institute_id", instituteId);
+        request.put("user_ids", userIds);
+        request.put("title", title);
+        request.put("body", body);
+
+        internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                NotificationConstant.SYSTEM_ALERT_SEND_TO_USERS,
+                request);
+    }
 }

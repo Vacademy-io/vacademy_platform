@@ -130,9 +130,18 @@ public class AdminManualEvaluationManager {
             Optional<Section> section = sectionRepository.findById(sectionId); // Finding section (replace Object with actual return type)
             if (section.isEmpty()) throw new VacademyException("Section Not Found");
 
+            Double maxMarksPerQuestion = section.get().getMarksPerQuestion();
+
             for (ManualSubmitMarksRequest.SubmitMarksDto dto : entry.getValue()) {
                 Optional<Question> questionOptional = questionRepository.findById(dto.getQuestionId());
                 if (questionOptional.isEmpty()) throw new VacademyException("Question Not Found");
+
+                double questionMarks = dto.getMarks() != null ? dto.getMarks() : 0;
+                // Derive status from marks when admin doesn't explicitly send it
+                String resolvedStatus = dto.getStatus();
+                if (resolvedStatus == null) {
+                    resolvedStatus = deriveStatusFromMarks(questionMarks, maxMarksPerQuestion);
+                }
 
                 Optional<QuestionWiseMarks> existingEntry = questionWiseMarksService.getQuestionWiseMarkForAssessmentIdAndSectionIdAndQuestionIdAndAttemptId(
                         assessment.getId(), attempt.getId(), section.get().getId(), questionOptional.get().getId()
@@ -141,22 +150,22 @@ public class AdminManualEvaluationManager {
                 if (existingEntry.isPresent()) {
                     // Update existing entry
                     QuestionWiseMarks existingMarks = existingEntry.get();
-                    existingMarks.setMarks(dto.getMarks() != null ? dto.getMarks() : 0);
-                    existingMarks.setStatus(dto.getStatus() != null ? dto.getStatus() : QuestionResponseEnum.PENDING.name());
+                    existingMarks.setMarks(questionMarks);
+                    existingMarks.setStatus(resolvedStatus);
                     allQuestionAttempts.add(existingMarks);
-                    totalMarks += dto.getMarks() != null ? dto.getMarks() : 0;
+                    totalMarks += questionMarks;
                 } else {
                     // Create new entry
                     allQuestionAttempts.add(QuestionWiseMarks.builder()
                             .assessment(assessment)
                             .section(section.get())
                             .question(questionOptional.get())
-                            .marks(dto.getMarks() != null ? dto.getMarks() : 0)
-                            .status(dto.getStatus() != null ? dto.getStatus() : QuestionResponseEnum.PENDING.name())
+                            .marks(questionMarks)
+                            .status(resolvedStatus)
                             .studentAttempt(attempt)
                             .build());
 
-                    totalMarks += dto.getMarks() != null ? dto.getMarks() : 0;
+                    totalMarks += questionMarks;
                 }
             }
         }
@@ -166,6 +175,29 @@ public class AdminManualEvaluationManager {
         return totalMarks;
     }
 
+
+    /**
+     * Derives question status from awarded marks when admin doesn't explicitly provide status.
+     * Uses section's marksPerQuestion to distinguish CORRECT from PARTIAL_CORRECT.
+     */
+    private String deriveStatusFromMarks(double marks, Double maxMarksPerQuestion) {
+        if (marks < 0) {
+            return QuestionResponseEnum.INCORRECT.name();
+        }
+        if (marks == 0) {
+            // Admin explicitly submitted 0 marks — treat as incorrect (not unanswered)
+            return QuestionResponseEnum.INCORRECT.name();
+        }
+        // marks > 0
+        if (maxMarksPerQuestion != null && maxMarksPerQuestion > 0 && marks >= maxMarksPerQuestion) {
+            return QuestionResponseEnum.CORRECT.name();
+        }
+        if (maxMarksPerQuestion != null && maxMarksPerQuestion > 0 && marks < maxMarksPerQuestion) {
+            return QuestionResponseEnum.PARTIAL_CORRECT.name();
+        }
+        // No max marks info — positive marks, assume correct
+        return QuestionResponseEnum.CORRECT.name();
+    }
 
     public ResponseEntity<String> updateAttemptSet(CustomUserDetails userDetails, String attemptId, String setId) {
         try {

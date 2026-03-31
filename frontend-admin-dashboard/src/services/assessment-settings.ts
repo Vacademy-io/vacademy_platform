@@ -6,6 +6,7 @@ import {
     AssessmentSettingsRequest,
     AssessmentSettingsResponse,
     DEFAULT_ASSESSMENT_SETTINGS,
+    DEFAULT_REPORT_BRANDING,
 } from '@/types/assessment-settings';
 
 const SETTINGS_KEY = 'ASSESSMENT_SETTING';
@@ -28,6 +29,10 @@ const mergeWithDefaults = (settings: Partial<AssessmentSettingsData>): Assessmen
         offlineEntry: {
             ...DEFAULT_ASSESSMENT_SETTINGS.offlineEntry,
             ...settings?.offlineEntry,
+        },
+        reportBranding: {
+            ...DEFAULT_REPORT_BRANDING,
+            ...settings?.reportBranding,
         },
     };
 };

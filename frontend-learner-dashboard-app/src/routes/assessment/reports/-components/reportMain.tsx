@@ -89,20 +89,6 @@ const AssessmentReportList = ({
 
     fetchInstituteDetails();
   }, []);
-  const handleViewReport = (report: Report) => {
-    navigate({
-      to: `/assessment/reports/student-report`,
-      search: {
-        assessmentId: report.assessment_id,
-        attemptId: report.attempt_id,
-      },
-      state: {
-        report,
-        evaluationType: report.evaluation_type,
-      } as any,
-    });
-  };
-
   const handleViewAIReport = (report: Report) => {
     navigate({
       to: `/assessment/reports/ai-report`,
@@ -110,6 +96,20 @@ const AssessmentReportList = ({
         assessmentId: report.assessment_id,
         assessmentName: report.assessment_name,
       },
+    });
+  };
+
+  const handleViewComparison = (report: Report) => {
+    navigate({
+      to: `/assessment/reports/comparison`,
+      search: {
+        assessmentId: report.assessment_id,
+        attemptId: report.attempt_id,
+      },
+      state: {
+        report,
+        assessmentName: report.assessment_name,
+      } as any,
     });
   };
 
@@ -288,11 +288,11 @@ const AssessmentReportList = ({
                     View AI Report
                   </MyButton>
                   <Button
-                    variant="secondary"
+                    variant="outline"
                     className="w-full md:w-auto min-w-[120px]"
-                    onClick={() => handleViewReport(report)}
+                    onClick={() => handleViewComparison(report)}
                   >
-                    View Report
+                    Report
                   </Button>
                 </div>
               </div>

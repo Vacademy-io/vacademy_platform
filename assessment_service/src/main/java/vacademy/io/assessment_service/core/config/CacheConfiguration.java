@@ -21,6 +21,23 @@ public class CacheConfiguration {
                         .expireAfterWrite(5, TimeUnit.MINUTES)
                         .maximumSize(10_000)
                         .recordStats());
+
+        // Register the comparison cache with 15-min TTL
+        cacheManager.registerCustomCache("comparisonData",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(15, TimeUnit.MINUTES)
+                        .maximumSize(5_000)
+                        .recordStats()
+                        .build());
+
+        // Report branding cache — 5 min TTL, small size (one per institute)
+        cacheManager.registerCustomCache("reportBranding",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(5, TimeUnit.MINUTES)
+                        .maximumSize(500)
+                        .recordStats()
+                        .build());
+
         return cacheManager;
     }
 }

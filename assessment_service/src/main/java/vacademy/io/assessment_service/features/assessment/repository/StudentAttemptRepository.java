@@ -44,7 +44,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 ),
                 RankedAttempts AS (
                     SELECT *,
-                           DENSE_RANK() OVER (ORDER BY achievedMarks DESC, completionTimeInSeconds ASC) AS rank
+                           DENSE_RANK() OVER (ORDER BY achievedMarks DESC NULLS LAST, completionTimeInSeconds ASC NULLS LAST) AS rank
                     FROM FilteredAttempts
                 ),
                 TotalParticipants AS (
@@ -61,7 +61,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     rank,
                     ROUND(CAST(100.0 * (1.0 - (CAST(rank - 1 AS FLOAT) / NULLIF(t.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile
                 FROM RankedAttempts ra, TotalParticipants t
-                ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
+                ORDER BY achievedMarks DESC NULLS LAST, completionTimeInSeconds ASC NULLS LAST
             """,
             countQuery = """
                                 WITH RankedAttemptsRaw AS (
@@ -120,7 +120,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 ),
                 RankedAttempts AS (
                     SELECT *,
-                           DENSE_RANK() OVER (ORDER BY achievedMarks DESC, completionTimeInSeconds ASC) AS rank
+                           DENSE_RANK() OVER (ORDER BY achievedMarks DESC NULLS LAST, completionTimeInSeconds ASC NULLS LAST) AS rank
                     FROM FilteredAttempts
                 ),
                 TotalParticipants AS (
@@ -143,7 +143,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                 )) @@ plainto_tsquery('simple', :name)
                                 OR ra.studentName ILIKE :name || '%'
                                )
-                ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
+                ORDER BY achievedMarks DESC NULLS LAST, completionTimeInSeconds ASC NULLS LAST
             """, countQuery = """
             WITH RankedAttemptsRaw AS (
                                     SELECT
@@ -161,7 +161,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                 ),
                                 RankedAttempts AS (
                                     SELECT *,
-                                           DENSE_RANK() OVER (ORDER BY achievedMarks DESC, completionTimeInSeconds ASC) AS rank
+                                           DENSE_RANK() OVER (ORDER BY achievedMarks DESC NULLS LAST, completionTimeInSeconds ASC NULLS LAST) AS rank
                                     FROM FilteredAttempts
                                 ),
                                 TotalParticipants AS (
@@ -250,7 +250,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 ai.duration AS durationInMin,
                 ai.subject_id AS subjectId,
                 COUNT(la.userId) AS totalParticipants,
-                COALESCE(AVG(la.totalTime), 0) AS averageDuration,
+                COALESCE(AVG(la.totalTime) FILTER (WHERE la.totalTime IS NOT NULL AND la.totalTime > 0), 0) AS averageDuration,
                 COALESCE(AVG(la.achievedMarks), 0) AS averageMarks,
                 COUNT(CASE WHEN la.attemptStatus = 'ENDED' THEN 1 END) AS totalAttempted,
                 COUNT(CASE WHEN la.attemptStatus = 'LIVE' THEN 1 END) AS totalOngoing
@@ -463,7 +463,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     startTime,
                     subjectId,
                     submitTime,
-                    DENSE_RANK() OVER (ORDER BY achievedMarks DESC, completionTimeInSeconds ASC) AS rank,
+                    DENSE_RANK() OVER (ORDER BY achievedMarks DESC NULLS LAST, completionTimeInSeconds ASC NULLS LAST) AS rank,
                     (SELECT totalParticipants FROM TotalParticipants) AS totalParticipants
                 FROM RankedAttempts
                 WHERE rn = 1
@@ -529,7 +529,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                 aur.status,
                                 sa.submit_time,
                                 ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn,
-                                DENSE_RANK() OVER (ORDER BY sa.total_marks DESC, sa.total_time_in_seconds ASC) AS rank
+                                DENSE_RANK() OVER (ORDER BY sa.total_marks DESC NULLS LAST, sa.total_time_in_seconds ASC NULLS LAST) AS rank
                             FROM student_attempt sa
                             JOIN assessment_user_registration aur ON aur.id = sa.registration_id
                             WHERE aur.assessment_id = :assessmentId
@@ -552,7 +552,7 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                             ROUND(CAST(100.0 * (1.0 - (CAST(ra.rank - 1 AS FLOAT) / NULLIF(t.totalParticipants * 1.0, 0))) AS NUMERIC), 2) AS percentile
                         FROM RankedAttempts as ra,TotalParticipants as t
                         WHERE rn = 1
-                        ORDER BY achievedMarks DESC, completionTimeInSeconds ASC
+                        ORDER BY achievedMarks DESC NULLS LAST, completionTimeInSeconds ASC NULLS LAST
             """, nativeQuery = true)
     public List<LeaderBoardDto> findLeaderBoardForAssessmentAndInstituteId(@Param("assessmentId") String assessmentId,
                                                                            @Param("instituteId") String instituteId,

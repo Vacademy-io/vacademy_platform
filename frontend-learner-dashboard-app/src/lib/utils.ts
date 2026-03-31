@@ -31,8 +31,183 @@ export function convertCapitalToTitleCase(str: string) {
 }
 
 export function parseHtmlToString(html: string) {
+  if (!html) return "";
+  // Decode HTML entities (handles double-encoded content like &lt;span&gt;)
+  const decoded = decodeHtmlEntities(html);
+  // Parse and extract clean text, handling KaTeX/MathML
+  return extractCleanText(decoded);
+}
+
+/**
+ * Decodes HTML entities repeatedly until stable.
+ * Handles double-encoded content like &amp;lt;span&amp;gt; → <span>
+ */
+function decodeHtmlEntities(text: string): string {
+  if (!text) return "";
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = text;
+  let decoded = textarea.value;
+  // Decode again if still has encoded entities
+  if (decoded.includes("&lt;") || decoded.includes("&gt;") || decoded.includes("&amp;")) {
+    textarea.innerHTML = decoded;
+    decoded = textarea.value;
+  }
+  return decoded;
+}
+
+/**
+ * Extracts clean readable text from HTML that may contain KaTeX/MathML.
+ * For KaTeX: extracts data-latex attribute or annotation text.
+ * For regular HTML: uses textContent.
+ */
+function extractCleanText(html: string): string {
+  if (!html.includes("<")) return html;
+
   const doc = new DOMParser().parseFromString(html, "text/html");
-  return doc.body.textContent || doc.body.innerText || "";
+
+  // Replace each math-inline or katex span with its LaTeX source
+  const mathInlines = doc.querySelectorAll('span.math-inline, span.katex');
+  mathInlines.forEach((el) => {
+    // Try data-latex attribute first (most reliable)
+    const latex = el.getAttribute("data-latex");
+    if (latex) {
+      el.replaceWith(` ${latex} `);
+      return;
+    }
+    // Try annotation tag
+    const annotation = el.querySelector('annotation[encoding="application/x-tex"]');
+    if (annotation?.textContent) {
+      el.replaceWith(` ${annotation.textContent} `);
+      return;
+    }
+  });
+
+  // Also handle any remaining MathML that wasn't inside katex spans
+  const mathElements = doc.querySelectorAll("math");
+  mathElements.forEach((el) => {
+    const annotation = el.querySelector('annotation[encoding="application/x-tex"]');
+    if (annotation?.textContent) {
+      el.replaceWith(` ${annotation.textContent} `);
+    } else {
+      el.replaceWith(` ${el.textContent || ""} `);
+    }
+  });
+
+  const text = doc.body.textContent || doc.body.innerText || "";
+  return latexToPlainText(text.replace(/\s+/g, " ").trim());
+}
+
+/**
+ * Converts LaTeX math notation to readable plain text with Unicode.
+ * e.g. \frac{3}{y} → 3/y, x^{2} → x², \sqrt{4} → √(4)
+ */
+function latexToPlainText(text: string): string {
+  if (!text || !text.includes("\\")) return text;
+
+  let r = text;
+
+  // \frac{a}{b} → a/b
+  while (r.includes("\\frac{")) {
+    const idx = r.indexOf("\\frac{");
+    const numEnd = findMatchingBrace(r, idx + 5);
+    if (numEnd < 0) break;
+    const numerator = r.substring(idx + 6, numEnd);
+    if (numEnd + 1 >= r.length || r[numEnd + 1] !== "{") break;
+    const denEnd = findMatchingBrace(r, numEnd + 1);
+    if (denEnd < 0) break;
+    const denominator = r.substring(numEnd + 2, denEnd);
+    r = r.substring(0, idx) + numerator + "/" + denominator + r.substring(denEnd + 1);
+  }
+
+  // \sqrt{x} → √(x)
+  while (r.includes("\\sqrt{")) {
+    const idx = r.indexOf("\\sqrt{");
+    const end = findMatchingBrace(r, idx + 5);
+    if (end < 0) break;
+    const content = r.substring(idx + 6, end);
+    r = r.substring(0, idx) + "√(" + content + ")" + r.substring(end + 1);
+  }
+
+  // Superscripts: ^{2} → ²
+  const superscripts: Record<string, string> = {
+    "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+    "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+    "n": "ⁿ", "i": "ⁱ",
+  };
+
+  while (r.includes("^{")) {
+    const idx = r.indexOf("^{");
+    const end = findMatchingBrace(r, idx + 1);
+    if (end < 0) break;
+    const exp = r.substring(idx + 2, end);
+    let sup = "";
+    let allConverted = true;
+    for (const c of exp) {
+      if (superscripts[c]) {
+        sup += superscripts[c];
+      } else {
+        allConverted = false;
+        break;
+      }
+    }
+    r = allConverted
+      ? r.substring(0, idx) + sup + r.substring(end + 1)
+      : r.substring(0, idx) + "^(" + exp + ")" + r.substring(end + 1);
+  }
+
+  // Simple ^n for single chars
+  for (const [ch, sup] of Object.entries(superscripts)) {
+    r = r.split("^" + ch).join(sup);
+  }
+
+  // Subscripts: _{n} → ₍n₎
+  while (r.includes("_{")) {
+    const idx = r.indexOf("_{");
+    const end = findMatchingBrace(r, idx + 1);
+    if (end < 0) break;
+    const sub = r.substring(idx + 2, end);
+    r = r.substring(0, idx) + "₍" + sub + "₎" + r.substring(end + 1);
+  }
+
+  // Common LaTeX commands → symbols
+  const replacements: [string, string][] = [
+    ["\\times", "×"], ["\\div", "÷"], ["\\pm", "±"],
+    ["\\leq", "≤"], ["\\geq", "≥"], ["\\neq", "≠"],
+    ["\\infty", "∞"], ["\\pi", "π"], ["\\theta", "θ"],
+    ["\\alpha", "α"], ["\\beta", "β"], ["\\gamma", "γ"],
+    ["\\delta", "δ"], ["\\lambda", "λ"], ["\\mu", "μ"],
+    ["\\sigma", "σ"], ["\\omega", "ω"], ["\\phi", "φ"],
+    ["\\rightarrow", "→"], ["\\leftarrow", "←"],
+    ["\\Rightarrow", "⇒"], ["\\Leftarrow", "⇐"],
+    ["\\cdot", "·"], ["\\ldots", "…"], ["\\dots", "…"],
+    ["\\sum", "Σ"], ["\\prod", "Π"], ["\\int", "∫"],
+    ["\\log", "log"], ["\\ln", "ln"],
+    ["\\sin", "sin"], ["\\cos", "cos"], ["\\tan", "tan"],
+  ];
+  for (const [from, to] of replacements) {
+    r = r.split(from).join(to);
+  }
+
+  // Remove \text{}, \mathrm{}, \left, \right etc.
+  r = r.replace(/\\(text|mathrm|mathit|mathbf|left|right|Big|big)\b/g, "");
+
+  // Remove remaining grouping braces
+  r = r.replace(/\{/g, "").replace(/\}/g, "");
+
+  // Clean spacing commands
+  r = r.replace(/\\[,;!]/g, " ").replace(/\\\s/g, " ");
+
+  return r.replace(/\s+/g, " ").trim();
+}
+
+function findMatchingBrace(s: string, openIdx: number): number {
+  if (openIdx < 0 || openIdx >= s.length || s[openIdx] !== "{") return -1;
+  let depth = 1;
+  for (let i = openIdx + 1; i < s.length; i++) {
+    if (s[i] === "{") depth++;
+    else if (s[i] === "}") { depth--; if (depth === 0) return i; }
+  }
+  return -1;
 }
 
 /**

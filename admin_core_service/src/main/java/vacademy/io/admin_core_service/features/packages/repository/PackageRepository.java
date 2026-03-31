@@ -119,6 +119,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             CROSS JOIN LATERAL unnest(string_to_array(p.comma_separated_tags, ',')) AS t(tag)
             WHERE pi.institute_id = :instituteId
             AND p.status = 'ACTIVE'
+            AND p.is_course_published_to_catalaouge = true
             AND p.comma_separated_tags IS NOT NULL
             AND p.comma_separated_tags != ''
             AND TRIM(t.tag) != ''

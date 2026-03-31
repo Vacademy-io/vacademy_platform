@@ -118,7 +118,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN package p ON pi.package_id = p.id
             CROSS JOIN LATERAL unnest(string_to_array(p.comma_separated_tags, ',')) AS t(tag)
             WHERE pi.institute_id = :instituteId
-            AND p.status != 'DELETED'
+            AND p.status = 'ACTIVE'
             AND p.comma_separated_tags IS NOT NULL
             AND p.comma_separated_tags != ''
             AND TRIM(t.tag) != ''

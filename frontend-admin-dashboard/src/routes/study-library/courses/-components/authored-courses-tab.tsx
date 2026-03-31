@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MyButton } from '@/components/design-system/button';
+import { Button } from '@/components/ui/button';
 import {
     PaperPlaneTilt,
     Eye,
@@ -10,6 +11,7 @@ import {
     CircleNotch,
     TrashSimple,
     ClockCounterClockwise,
+    PaperPlaneRight,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
@@ -147,6 +149,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
     const [filteredCourses, setFilteredCourses] = useState<DisplayCourse[]>([]);
     const [copyingCourseId, setCopyingCourseId] = useState<string | null>(null);
     const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null);
+    const [submittingCourseId, setSubmittingCourseId] = useState<string | null>(null);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState<string | null>(null);
     const [historyDialogCourseId, setHistoryDialogCourseId] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState<number>(0);
@@ -210,10 +213,12 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
     const submitReviewMutation = useMutation({
         mutationFn: submitForReview,
         onSuccess: () => {
+            setSubmittingCourseId(null);
             toast.success('Course submitted for review');
             refetch();
         },
         onError: (error: Error) => {
+            setSubmittingCourseId(null);
             toast.error(error.message || 'Failed to submit for review');
         },
     });
@@ -313,6 +318,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
     };
 
     const handleSubmitForReview = (courseId: string) => {
+        setSubmittingCourseId(courseId);
         submitReviewMutation.mutate(courseId);
     };
 
@@ -525,58 +531,66 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                 </span>
 
                                 {/* Action Buttons */}
-                                <div className="mt-3 flex gap-2 sm:mt-4">
+                                <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4">
                                     {/* View Course Button */}
-                                    <MyButton
-                                        className="flex-1 text-sm"
-                                        buttonType="primary"
+                                    <Button
+                                        variant="default"
+                                        size="sm"
+                                        className="bg-primary-500 text-white hover:bg-primary-600"
                                         onClick={() => handleViewCourse(course.courseId)}
                                     >
+                                        <Eye size={16} />
                                         View Course
-                                    </MyButton>
+                                    </Button>
 
                                     {/* Additional Actions for Draft courses */}
                                     {course.status === 'DRAFT' && !isAdmin && (
                                         <>
                                             {/* Submit for Review */}
-                                            <MyButton
+                                            <Button
+                                                variant="default"
+                                                size="sm"
+                                                className="bg-green-600 text-white hover:bg-green-700"
                                                 onClick={() => handleSubmitForReview(course.courseId)}
-                                                className="flex size-9 items-center justify-center rounded-md border-2 border-green-500 bg-green-600 text-white transition-colors hover:border-green-600 hover:bg-green-700 active:scale-95 [&_svg]:text-white"
-                                                disabled={submitReviewMutation.isPending}
-                                                title="Submit for Review"
+                                                disabled={submittingCourseId === course.courseId}
                                             >
-                                                {submitReviewMutation.isPending ? (
-                                                    <CircleNotch size={18} className="animate-spin" />
+                                                {submittingCourseId === course.courseId ? (
+                                                    <CircleNotch size={16} className="animate-spin" />
                                                 ) : (
-                                                    <PaperPlaneTilt size={18} weight="fill" />
+                                                    <PaperPlaneRight size={16} weight="fill" />
                                                 )}
-                                            </MyButton>
+                                                Submit for Review
+                                            </Button>
 
                                             {/* History */}
-                                            <MyButton
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="size-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                                                 onClick={() => setHistoryDialogCourseId(course.courseId)}
-                                                className="flex size-9 items-center justify-center rounded-md border-2 border-blue-500 bg-blue-600 text-white transition-colors hover:border-blue-600 hover:bg-blue-700 active:scale-95 [&_svg]:text-white"
                                                 title="View History"
                                             >
-                                                <ClockCounterClockwise size={18} weight="fill" />
-                                            </MyButton>
+                                                <ClockCounterClockwise size={16} weight="fill" />
+                                            </Button>
                                         </>
                                     )}
 
                                     {/* Copy Button for Published courses */}
                                     {course.status === 'ACTIVE' && !isAdmin && canCreateCopy(course) && (
-                                        <MyButton
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                                             onClick={() => handleCopyToEdit(course)}
-                                            className="flex size-9 items-center justify-center rounded-md border border-blue-200 bg-blue-50 text-blue-600 transition-colors hover:border-blue-300 hover:bg-blue-100 active:scale-95"
                                             disabled={copyingCourseId === course.courseId}
-                                            title="Copy to Edit"
                                         >
                                             {copyingCourseId === course.courseId ? (
-                                                <CircleNotch size={18} className="animate-spin" />
+                                                <CircleNotch size={16} className="animate-spin" />
                                             ) : (
-                                                <Copy size={18} />
+                                                <Copy size={16} />
                                             )}
-                                        </MyButton>
+                                            Copy to Edit
+                                        </Button>
                                     )}
 
                                     {/* Delete Button */}
@@ -590,8 +604,14 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                             }
                                         }}
                                     >
-                                        <AlertDialogTrigger className="flex size-9 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-500 transition-colors hover:border-red-300 hover:bg-red-100 active:scale-95">
-                                            <TrashSimple size={18} />
+                                        <AlertDialogTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="size-8 text-red-500 hover:bg-red-50 hover:text-red-600"
+                                            >
+                                                <TrashSimple size={16} />
+                                            </Button>
                                         </AlertDialogTrigger>
                                         <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md">
                                             <AlertDialogHeader>

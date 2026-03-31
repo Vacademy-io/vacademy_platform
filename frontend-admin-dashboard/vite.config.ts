@@ -63,6 +63,107 @@ export default defineConfig({
         // }),
         svgr({ include: '**/*.svg' }),
         flowbiteReact(),
+        // Replace CORS-blocked easy-email default images with local SVG placeholders.
+        // Each preset thumbnail (IMAGE_08–IMAGE_71) maps to a unique wireframe SVG.
+        {
+            name: 'easy-email-placeholder-images',
+            transform(code: string, id: string) {
+                if (!id.includes('node_modules') || !code.includes('easy-email-m-ryan.vercel.app')) return;
+                // UUID prefix → local SVG path (67 preset thumbnails + 5 block defaults)
+                const urlMap: Record<string, string> = {
+                    '06ca521d': '/email-editor/presets/preset-59.png',
+                    'e22f78f2': '/email-editor/presets/attr-panel-1.png',
+                    '3e952a6e': '/email-editor/presets/attr-panel-2.png',
+                    'Fi_vI4vy': '/email-editor/presets/attr-panel-3.png',
+                    '0046b247': '/email-editor/presets/preset-8.png',
+                    'be34fb18': '/email-editor/presets/preset-9.png',
+                    '6a1e6292': '/email-editor/presets/preset-10.png',
+                    '39b25f35': '/email-editor/presets/preset-11.png',
+                    'eaa83007': '/email-editor/presets/preset-12.png',
+                    '9dec87bb': '/email-editor/presets/preset-13.png',
+                    'd285da5e': '/email-editor/presets/preset-14.png',
+                    'f69f48af': '/email-editor/presets/preset-15.png',
+                    '9cce6b16': '/email-editor/presets/preset-16.png',
+                    'd9795c1d': '/email-editor/presets/preset-17.png',
+                    '82f6f893': '/email-editor/presets/preset-18.png',
+                    'f1ece227': '/email-editor/presets/preset-19.png',
+                    '585b48f6': '/email-editor/presets/preset-20.png',
+                    '9755d667': '/email-editor/presets/preset-21.png',
+                    '7487ce49': '/email-editor/presets/preset-22.png',
+                    'c3463b9e': '/email-editor/presets/preset-23.png',
+                    '1f45e84a': '/email-editor/presets/preset-24.png',
+                    '6b8b234e': '/email-editor/presets/preset-25.png',
+                    'aa50c2c9': '/email-editor/presets/preset-26.png',
+                    '9e935e54': '/email-editor/presets/preset-27.png',
+                    '799564d8': '/email-editor/presets/preset-28.png',
+                    'af34a548': '/email-editor/presets/preset-29.png',
+                    '84014a93': '/email-editor/presets/preset-30.png',
+                    'dd1584fb': '/email-editor/presets/preset-31.png',
+                    '76e3d8e2': '/email-editor/presets/preset-32.png',
+                    '898b791e': '/email-editor/presets/preset-33.png',
+                    '49662d27': '/email-editor/presets/preset-34.png',
+                    'd2905fb1': '/email-editor/presets/preset-35.png',
+                    '9c3e9949': '/email-editor/presets/preset-36.png',
+                    '1865e3a6': '/email-editor/presets/preset-37.png',
+                    '2a6d82e2': '/email-editor/presets/preset-38.png',
+                    '9f97bda2': '/email-editor/presets/preset-39.png',
+                    'b8f00c77': '/email-editor/presets/preset-40.png',
+                    '5fc6be85': '/email-editor/presets/preset-41.png',
+                    'f6c9c054': '/email-editor/presets/preset-42.png',
+                    '80e108b0': '/email-editor/presets/preset-43.png',
+                    '14b9e878': '/email-editor/presets/preset-44.png',
+                    'b42f3cd8': '/email-editor/presets/preset-45.png',
+                    'e737972a': '/email-editor/presets/preset-46.png',
+                    '0e3ae071': '/email-editor/presets/preset-47.png',
+                    '0ec46619': '/email-editor/presets/preset-48.png',
+                    '01830aec': '/email-editor/presets/preset-49.png',
+                    '9f1cee25': '/email-editor/presets/preset-50.png',
+                    'e138143f': '/email-editor/presets/preset-51.png',
+                    'ac75b655': '/email-editor/presets/preset-52.png',
+                    '3c505a1b': '/email-editor/presets/preset-53.png',
+                    '7f98eeec': '/email-editor/presets/preset-54.png',
+                    'a7f5ae44': '/email-editor/presets/preset-55.png',
+                    'efdeeced': '/email-editor/presets/preset-56.png',
+                    '425c6017': '/email-editor/presets/preset-57.png',
+                    '858ea699': '/email-editor/presets/preset-58.png',
+                    '199eacfa': '/email-editor/presets/preset-60.png',
+                    'f43b67dc': '/email-editor/presets/preset-61.png',
+                    '318e911c': '/email-editor/presets/preset-62.png',
+                    'ed70ddb1': '/email-editor/presets/preset-63.png',
+                    'fb7dd6fa': '/email-editor/presets/preset-64.png',
+                    '7bf8c363': '/email-editor/presets/preset-65.png',
+                    '0330a1e9': '/email-editor/presets/preset-66.png',
+                    'a7deb6bc': '/email-editor/presets/preset-67.png',
+                    '52c50319': '/email-editor/presets/preset-68.png',
+                    '9994cef3': '/email-editor/presets/preset-69.png',
+                    'e5dd7a7e': '/email-editor/presets/preset-70.png',
+                    '53277265': '/email-editor/presets/preset-71.png',
+                };
+                let result = code;
+                // Replace each known URL by matching UUID prefix
+                for (const [prefix, localPath] of Object.entries(urlMap)) {
+                    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const re = new RegExp(
+                        'https://easy-email-m-ryan\\.vercel\\.app/images/' + escaped + '[^"\'\\s)]*',
+                        'g'
+                    );
+                    result = result.replace(re, localPath);
+                }
+                // Catch any remaining URLs → generic placeholder
+                result = result.replace(
+                    /https:\/\/easy-email-m-ryan\.vercel\.app\/images\/[^"'\s)]+/g,
+                    '/email-editor/placeholder-image.png'
+                );
+                // Base URL (href links)
+                result = result.replace(
+                    /https:\/\/easy-email-m-ryan\.vercel\.app\//g,
+                    '/'
+                );
+                if (result !== code) {
+                    return { code: result, map: null };
+                }
+            },
+        },
         // Bundle analyzer - generates stats.html after build
         visualizer({
             filename: 'dist/stats.html',
@@ -318,6 +419,11 @@ export default defineConfig({
             'pako',
             '@tanstack/react-router',
             '@tanstack/router-devtools',
+            // easy-email editor deps — pin for deterministic CSS order
+            'easy-email-core',
+            'easy-email-editor',
+            'react-final-form',
+            'mjml-browser',
         ],
         esbuildOptions: {
             target: 'esnext',

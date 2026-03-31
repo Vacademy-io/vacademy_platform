@@ -214,6 +214,7 @@ public class UnifiedSendService implements SendChannelRouter {
         // Resolve email template if templateName is provided (look up from notification_template)
         String templateSubject = opts.getEmailSubject();
         String templateBody = opts.getEmailBody();
+        String previewText = opts.getPreviewText();
 
         if (request.getTemplateName() != null && !request.getTemplateName().isEmpty()) {
             try {
@@ -224,6 +225,22 @@ public class UnifiedSendService implements SendChannelRouter {
                     NotificationTemplate tmpl = templateOpt.get();
                     if (tmpl.getSubject() != null) templateSubject = tmpl.getSubject();
                     if (tmpl.getContent() != null) templateBody = tmpl.getContent();
+                    // Read previewText from template's settingJson
+                    if (previewText == null && tmpl.getSettingJson() != null) {
+                        try {
+                            Object settingObj = tmpl.getSettingJson();
+                            if (settingObj instanceof Map) {
+                                Object pt = ((Map<?, ?>) settingObj).get("previewText");
+                                if (pt != null) previewText = pt.toString();
+                            } else if (settingObj instanceof String) {
+                                Map<String, Object> settings = objectMapper.readValue((String) settingObj, Map.class);
+                                Object pt = settings.get("previewText");
+                                if (pt != null) previewText = pt.toString();
+                            }
+                        } catch (Exception ex) {
+                            log.debug("Could not parse previewText from settingJson: {}", ex.getMessage());
+                        }
+                    }
                     log.debug("Resolved email template '{}' for institute {}",
                             request.getTemplateName(), request.getInstituteId());
                 } else {
@@ -232,6 +249,25 @@ public class UnifiedSendService implements SendChannelRouter {
                 }
             } catch (Exception e) {
                 log.warn("Failed to resolve email template '{}': {}", request.getTemplateName(), e.getMessage());
+            }
+        }
+
+        // Inject preview text as hidden div at the start of the email body
+        if (previewText != null && !previewText.isEmpty() && templateBody != null) {
+            // HTML-escape to prevent XSS injection
+            String safeText = previewText
+                    .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    .replace("\"", "&quot;").replace("'", "&#39;");
+            String previewHtml = "<div style=\"display:none;font-size:1px;color:#333333;line-height:1px;"
+                    + "max-height:0px;max-width:0px;opacity:0;overflow:hidden;\">"
+                    + safeText + "</div>";
+            // Insert after <body> tag if present, otherwise prepend
+            if (templateBody.toLowerCase().contains("<body")) {
+                // quoteReplacement prevents $1/$2 in preview text from corrupting the regex replacement
+                String escaped = java.util.regex.Matcher.quoteReplacement(previewHtml);
+                templateBody = templateBody.replaceFirst("(?i)(<body[^>]*>)", "$1" + escaped);
+            } else {
+                templateBody = previewHtml + templateBody;
             }
         }
 

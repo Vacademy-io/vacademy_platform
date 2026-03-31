@@ -75,6 +75,7 @@ public class UnifiedSendRequest {
         private String emailSubject;
         private String emailBody;
         private String emailType; // UTILITY_EMAIL, PROMOTIONAL_EMAIL, TRANSACTIONAL_EMAIL
+        private String previewText; // Hidden preview text shown in inbox before opening
         @JsonProperty("fromEmail")
         private String fromEmail;
         @JsonProperty("fromName")

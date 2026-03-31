@@ -8,6 +8,7 @@ export interface MessageTemplate {
     isDefault: boolean;
     templateType?: 'marketing' | 'utility' | 'transactional';
     mjml?: string; // MJML JSON data for email templates (editor state)
+    previewText?: string; // Email preview text shown in inbox before opening
     createdAt: string;
     updatedAt: string;
     createdBy?: string;
@@ -23,6 +24,7 @@ export interface CreateTemplateRequest {
     isDefault?: boolean;
     templateType?: 'marketing' | 'utility' | 'transactional';
     mjml?: string; // MJML JSON data for email templates (editor state)
+    previewText?: string; // Email preview text shown in inbox before opening
 }
 
 export interface UpdateTemplateRequest {
@@ -35,6 +37,7 @@ export interface UpdateTemplateRequest {
     isDefault?: boolean;
     templateType?: 'marketing' | 'utility' | 'transactional';
     mjml?: string; // MJML JSON data for email templates (editor state)
+    previewText?: string; // Email preview text shown in inbox before opening
 }
 
 export interface TemplateListResponse {

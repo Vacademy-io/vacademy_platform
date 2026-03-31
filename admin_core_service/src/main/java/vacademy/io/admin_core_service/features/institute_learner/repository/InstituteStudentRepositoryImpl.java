@@ -71,6 +71,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                 ssigm.destination_package_session_id AS destinationPackageSessionId,
                 ssigm.user_plan_id AS userPlanId,
                 up.enroll_invite_id AS enrollInviteId,
+                ei.name AS enrollInviteName,
                 ssigm.desired_level_id AS desiredLevelId,
                 ssigm.sub_org_id AS subOrgId,
                 sub_org.name AS subOrgName,
@@ -89,6 +90,8 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                 AND cfv.custom_field_id = cf.id
             LEFT JOIN user_plan up
                 ON up.id = ssigm.user_plan_id
+            LEFT JOIN enroll_invite ei
+                ON ei.id = up.enroll_invite_id
             LEFT JOIN LATERAL (
                 SELECT pl.payment_status
                 FROM payment_log pl
@@ -125,8 +128,8 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
                      ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, 
-                     ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id,
-                     ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles
+                     ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name,
+                     ssigm.desired_level_id, ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles
             """;
 
     /**
@@ -411,6 +414,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             public String getPaymentOptionJson() { return str("paymentoptionjson"); }
             public String getDestinationPackageSessionId() { return str("destinationpackagesessionid"); }
             public String getEnrollInviteId() { return str("enrollinviteid"); }
+            public String getEnrollInviteName() { return str("enrollinvitename"); }
             public Double getPaymentAmount() { return dblVal("paymentamount"); }
             public String getSource() { return str("source"); }
             public String getType() { return str("type"); }

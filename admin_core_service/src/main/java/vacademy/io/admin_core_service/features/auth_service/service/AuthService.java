@@ -114,10 +114,19 @@ public class AuthService {
 
     public UserDTO createUserFromAuthServiceForLearnerEnrollment(UserDTO userDTO, String instituteId,
             boolean sendCred) {
+        return createUserFromAuthServiceForLearnerEnrollment(userDTO, instituteId, sendCred, null);
+    }
+
+    public UserDTO createUserFromAuthServiceForLearnerEnrollment(UserDTO userDTO, String instituteId,
+            boolean sendCred, String loginUrl) {
         try {
             String url = StudentConstants.addLearnerRoute
                     + "?instituteId=" + instituteId
                     + "&isNotify=" + sendCred;
+
+            if (loginUrl != null && !loginUrl.isBlank()) {
+                url += "&loginUrl=" + java.net.URLEncoder.encode(loginUrl, java.nio.charset.StandardCharsets.UTF_8);
+            }
 
             userDTO.setRootUser(true);
             ObjectMapper objectMapper = new ObjectMapper();

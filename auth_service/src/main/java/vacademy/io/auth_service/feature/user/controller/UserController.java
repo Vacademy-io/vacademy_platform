@@ -60,9 +60,10 @@ public class UserController {
     @Transactional
     public ResponseEntity<UserDTO> createOrGetExistingLearner(@RequestBody UserDTO userDTO,
             @RequestParam(name = "instituteId", required = false) String instituteId,
-            @RequestParam(name = "isNotify", required = false, defaultValue = "true") boolean isNotify) {
+            @RequestParam(name = "isNotify", required = false, defaultValue = "true") boolean isNotify,
+            @RequestParam(name = "loginUrl", required = false) String loginUrl) {
         try {
-            User user = authService.createUserForLearnerEnrollment(userDTO, instituteId, isNotify);
+            User user = authService.createUserForLearnerEnrollment(userDTO, instituteId, isNotify, loginUrl);
             UserDTO res = new UserDTO(user, userDTO);
             res.setPassword(user.getPassword());
             return ResponseEntity.ok(res);

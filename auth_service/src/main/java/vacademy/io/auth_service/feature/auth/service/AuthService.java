@@ -370,6 +370,11 @@ public class AuthService {
      */
     @Transactional
     public User createUserForLearnerEnrollment(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail) {
+        return createUserForLearnerEnrollment(registerRequest, instituteId, sendWelcomeMail, null);
+    }
+
+    @Transactional
+    public User createUserForLearnerEnrollment(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail, String overrideLoginUrl) {
         String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
         Optional<User> optionalUser = Optional.empty();
 
@@ -460,9 +465,9 @@ public class AuthService {
         user = userRepository.save(user);
         if (sendWelcomeMail) {
             if (isAlreadyPresent) {
-                sendLearnerEnrollmentExistingUserEmail(user, instituteId, userRoleSet);
+                sendLearnerEnrollmentExistingUserEmail(user, instituteId, userRoleSet, overrideLoginUrl);
             } else {
-                sendLearnerEnrollmentNewUserEmail(user, instituteId, userRoleSet);
+                sendLearnerEnrollmentNewUserEmail(user, instituteId, userRoleSet, overrideLoginUrl);
             }
         }
         return user;
@@ -472,6 +477,10 @@ public class AuthService {
      * Sends enrollment email to a NEW learner.
      */
     public void sendLearnerEnrollmentNewUserEmail(User user, String instituteId, Set<UserRole> roles) {
+        sendLearnerEnrollmentNewUserEmail(user, instituteId, roles, null);
+    }
+
+    public void sendLearnerEnrollmentNewUserEmail(User user, String instituteId, Set<UserRole> roles, String overrideLoginUrl) {
         InstituteInfoDTO instituteInfoDTO = null;
         boolean isLearner = false;
         if (roles != null) {
@@ -498,6 +507,10 @@ public class AuthService {
                     loginUrl = defaultLearnerPortalUrl;
             }
         }
+        // Package-level overrideLoginUrl takes priority over institute settings
+        if (StringUtils.hasText(overrideLoginUrl)) {
+            loginUrl = overrideLoginUrl;
+        }
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
         genericEmailRequest.setTo(user.getEmail());
         genericEmailRequest.setBody(NotificationEmailBody.createLearnerEnrollmentNewUserEmailBody(
@@ -511,6 +524,10 @@ public class AuthService {
      * Sends enrollment email to an EXISTING learner with retained credentials.
      */
     public void sendLearnerEnrollmentExistingUserEmail(User user, String instituteId, Set<UserRole> roles) {
+        sendLearnerEnrollmentExistingUserEmail(user, instituteId, roles, null);
+    }
+
+    public void sendLearnerEnrollmentExistingUserEmail(User user, String instituteId, Set<UserRole> roles, String overrideLoginUrl) {
         if (user == null || user.getEmail() == null) {
             throw new IllegalArgumentException("User or user email must not be null");
         }
@@ -539,6 +556,10 @@ public class AuthService {
                 else
                     loginUrl = defaultLearnerPortalUrl;
             }
+        }
+        // Package-level overrideLoginUrl takes priority over institute settings
+        if (StringUtils.hasText(overrideLoginUrl)) {
+            loginUrl = overrideLoginUrl;
         }
         String fullName = user.getFullName() != null ? user.getFullName() : "User";
         String username = user.getUsername() != null ? user.getUsername() : "N/A";

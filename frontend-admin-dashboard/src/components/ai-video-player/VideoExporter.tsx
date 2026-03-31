@@ -399,7 +399,7 @@ export async function exportVideo(
         const mp4Blob = new Blob([outputData], { type: 'video/mp4' });
 
         // Clean up FFmpeg filesystem
-        const cleanupPromises: Promise<void>[] = [];
+        const cleanupPromises: Promise<unknown>[] = [];
         for (let i = 0; i < totalFrames; i++) {
             cleanupPromises.push(
                 ffmpeg.deleteFile(`frame_${String(i).padStart(6, '0')}.png`).catch(() => {})

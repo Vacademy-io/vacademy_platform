@@ -35,4 +35,8 @@ public class LearnerPackageFilterDTO {
      * If null/empty, no parent/child filter is applied.
      */
     private String packageSessionFilter;
+    /** Optional academic session IDs to filter by. When null or empty, no session filter is applied. */
+    private List<String> sessionIds;
+    /** When true, pagination is based on distinct packages instead of package sessions. */
+    private Boolean packageView;
 }

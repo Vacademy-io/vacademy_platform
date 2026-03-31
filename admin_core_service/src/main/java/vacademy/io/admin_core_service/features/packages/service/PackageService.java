@@ -52,7 +52,6 @@ public class PackageService {
 
         Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-        Page<PackageDetailProjection> learnerPackageDetail = null;
 
         // Use package_session_filter from request only (no institute-level default)
         String effectiveFilter = null;
@@ -65,61 +64,120 @@ public class PackageService {
             }
         }
 
-        if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
-            learnerPackageDetail = packageRepository.getCatalogPackageDetail(
+        Page<PackageDetailProjection> learnerPackageDetail;
+        long totalForPagination;
+
+        if (Boolean.TRUE.equals(learnerPackageFilterDTO.getPackageView())) {
+            // Package-view mode: paginate by distinct packages
+            Page<String> packageIdPage = packageRepository.getDistinctPackageIds(
+                    false, // isPublishedOnly — admin endpoint shows all
                     learnerPackageFilterDTO.getSearchByName(),
-                    learnerPackageFilterDTO.getFacultyIds(),
                     instituteId,
+                    Optional.ofNullable(learnerPackageFilterDTO.getLevelIds()).orElse(List.of()),
                     List.of(PackageStatusEnum.ACTIVE.name()),
-                    learnerPackageFilterDTO.getPackageTypes(),
+                    Optional.ofNullable(learnerPackageFilterDTO.getPackageTypes()).orElse(List.of()),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    Optional.ofNullable(learnerPackageFilterDTO.getFacultyIds()).orElse(List.of()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    Optional.ofNullable(learnerPackageFilterDTO.getTag()).orElse(List.of()),
                     List.of(LevelStatusEnum.ACTIVE.name()),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    List.of(QuestionStatusEnum.ACTIVE.name()),
-                    List.of(QuestionStatusEnum.ACTIVE.name()),
-                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
-                    List.of(ChapterStatus.ACTIVE.name()),
-                    learnerPackageFilterDTO.getPackageIds(),
-                    learnerPackageFilterDTO.getPackageSessionIds(),
+                    Optional.ofNullable(learnerPackageFilterDTO.getSessionIds()).orElse(List.of()),
+                    Optional.ofNullable(learnerPackageFilterDTO.getPackageIds()).orElse(List.of()),
+                    Optional.ofNullable(learnerPackageFilterDTO.getPackageSessionIds()).orElse(List.of()),
                     effectiveFilter,
+                    learnerPackageFilterDTO.getCreatedByUserId(),
                     pageable);
+
+            if (packageIdPage.isEmpty()) {
+                return new PageImpl<>(List.of(), pageable, 0);
+            }
+
+            totalForPagination = packageIdPage.getTotalElements();
+            List<String> pagePackageIds = packageIdPage.getContent();
+            Pageable unpaged = PageRequest.of(0, Integer.MAX_VALUE, thisSort);
+
+            learnerPackageDetail = fetchAdminDetail(learnerPackageFilterDTO, instituteId,
+                    effectiveFilter, pagePackageIds, unpaged);
         } else {
-            learnerPackageDetail = packageRepository.getCatalogPackageDetail(
-                    instituteId,
-                    learnerPackageFilterDTO.getLevelIds(),
-                    List.of(PackageStatusEnum.ACTIVE.name()),
-                    learnerPackageFilterDTO.getPackageTypes(),
-                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                    learnerPackageFilterDTO.getFacultyIds(),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    learnerPackageFilterDTO.getTag(),
-                    List.of(LevelStatusEnum.ACTIVE.name()),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    List.of(QuestionStatusEnum.ACTIVE.name()),
-                    List.of(QuestionStatusEnum.ACTIVE.name()),
-                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
-                    List.of(ChapterStatus.ACTIVE.name()),
-                    learnerPackageFilterDTO.getPackageIds(),
-                    learnerPackageFilterDTO.getPackageSessionIds(),
-                    effectiveFilter,
-                    pageable);
+            // Default mode: paginate by session
+            totalForPagination = -1;
+            learnerPackageDetail = fetchAdminDetail(learnerPackageFilterDTO, instituteId,
+                    effectiveFilter, null, pageable);
         }
 
-        // Get all instructor userIds
-        List<String> instructorIds = learnerPackageDetail.getContent().stream()
+        // Map projections to DTOs with instructors
+        List<PackageDetailDTO> dtos = mapProjectionsToDTOs(learnerPackageDetail.getContent());
+
+        long total = totalForPagination >= 0 ? totalForPagination : learnerPackageDetail.getTotalElements();
+        return new PageImpl<>(dtos, pageable, total);
+    }
+
+    private Page<PackageDetailProjection> fetchAdminDetail(
+            LearnerPackageFilterDTO filterDTO,
+            String instituteId,
+            String effectiveFilter,
+            List<String> overridePackageIds,
+            Pageable pageable) {
+
+        List<String> packageIds = overridePackageIds != null ? overridePackageIds : filterDTO.getPackageIds();
+
+        if (StringUtils.hasText(filterDTO.getSearchByName())) {
+            return packageRepository.getCatalogPackageDetail(
+                    filterDTO.getSearchByName(),
+                    filterDTO.getFacultyIds(),
+                    instituteId,
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    filterDTO.getPackageTypes(),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    List.of(LevelStatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
+                    packageIds,
+                    filterDTO.getPackageSessionIds(),
+                    effectiveFilter,
+                    filterDTO.getSessionIds(),
+                    pageable);
+        } else {
+            return packageRepository.getCatalogPackageDetail(
+                    instituteId,
+                    filterDTO.getLevelIds(),
+                    List.of(PackageStatusEnum.ACTIVE.name()),
+                    filterDTO.getPackageTypes(),
+                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                    filterDTO.getFacultyIds(),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    filterDTO.getTag(),
+                    List.of(LevelStatusEnum.ACTIVE.name()),
+                    List.of(StatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(QuestionStatusEnum.ACTIVE.name()),
+                    List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                    List.of(ChapterStatus.ACTIVE.name()),
+                    packageIds,
+                    filterDTO.getPackageSessionIds(),
+                    effectiveFilter,
+                    filterDTO.getSessionIds(),
+                    pageable);
+        }
+    }
+
+    private List<PackageDetailDTO> mapProjectionsToDTOs(List<PackageDetailProjection> projections) {
+        List<String> instructorIds = projections.stream()
                 .map(PackageDetailProjection::getFacultyUserIds)
                 .filter(Objects::nonNull)
                 .flatMap(List::stream)
                 .distinct()
                 .collect(Collectors.toList());
 
-        // Fetch instructor details
         List<UserDTO> userDTOS = authService.getUsersFromAuthServiceByUserIds(instructorIds);
-        Map<String, UserDTO> userMap = userDTOS.stream().collect(Collectors.toMap(UserDTO::getId, Function.identity()));
+        Map<String, UserDTO> userMap = userDTOS.stream()
+                .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
 
-        // Map projections to DTOs
-        List<PackageDetailDTO> dtos = learnerPackageDetail.getContent().stream().map(projection -> {
+        return projections.stream().map(projection -> {
             List<UserDTO> instructors = Optional.ofNullable(projection.getFacultyUserIds())
                     .orElse(List.of()).stream()
                     .map(userMap::get)
@@ -152,8 +210,6 @@ public class PackageService {
                     projection.getReadTimeInMinutes(),
                     projection.getPackageType());
         }).toList();
-
-        return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
     }
 
     @Transactional(readOnly = true)

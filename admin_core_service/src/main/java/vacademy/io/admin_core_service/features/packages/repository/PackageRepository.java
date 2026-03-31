@@ -702,6 +702,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         ) OR
                         LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
                     )
+                    AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
+                    AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                 GROUP BY
                     p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
@@ -709,7 +711,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.course_depth, p.course_html_description, p.package_type, p.created_at, p.created_by_user_id,
                     ps_read_time.total_read_time_minutes
             """, countQuery = """
-                SELECT COUNT(DISTINCT p.id)
+                SELECT COUNT(DISTINCT ps.id)
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
                 JOIN level l ON l.id = ps.level_id
@@ -738,6 +740,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         ) OR
                         LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
                     )
+                    AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
+                    AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
             """, nativeQuery = true)
     Page<PackageDetailProjection> getCatalogPackageDetail(
             @Param("name") String name,
@@ -753,6 +757,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
             @Param("createdByUserId") String createdByUserId,
+            @Param("sessionIds") List<String> sessionIds,
+            @Param("packageIds") List<String> packageIds,
             Pageable pageable);
 
     @Query(value = """
@@ -902,6 +908,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
                     )
                 )
+                AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
 
             GROUP BY
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
@@ -958,6 +965,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                     WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
                                 )
                             )
+                            AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
                         """, nativeQuery = true)
     Page<PackageDetailProjection> getCatalogPackageDetail(
             @Param("name") String name,
@@ -976,6 +984,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("packageIds") List<String> packageIds,
             @Param("packageSessionIds") List<String> packageSessionIds,
             @Param("packageSessionFilter") String packageSessionFilter,
+            @Param("sessionIds") List<String> sessionIds,
             Pageable pageable);
 
     @Query(value = """
@@ -1205,6 +1214,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             WHERE tag ILIKE ANY (array[:#{#tags}])
                         )
                     )
+                    AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
 
                 GROUP BY
                     p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
@@ -1260,6 +1270,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                 WHERE tag ILIKE ANY (array[:#{#tags}])
                             )
                         )
+                        AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
                     """, nativeQuery = true)
     Page<PackageDetailProjection> getCatalogPackageDetail(
             @Param("instituteId") String instituteId,
@@ -1279,6 +1290,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("packageIds") List<String> packageIds,
             @Param("packageSessionIds") List<String> packageSessionIds,
             @Param("packageSessionFilter") String packageSessionFilter,
+            @Param("sessionIds") List<String> sessionIds,
             Pageable pageable);
 
     @Query(value = """
@@ -1400,6 +1412,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             SELECT 1 FROM faculty_subject_package_session_mapping f
                             WHERE f.package_session_id = ps.id
                             AND f.user_id IN (:facultyIds)
+                            AND f.subject_id IS NULL
                             AND (
                                 :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
                                 OR f.status IN (:facultyPackageSessionStatus)
@@ -1413,6 +1426,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             WHERE tag ILIKE ANY (array[:#{#tags}])
                         )
                     )
+                    AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
+                    AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                 GROUP BY
                     p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
@@ -1420,7 +1435,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.course_depth, p.course_html_description, p.package_type, p.created_at, p.created_by_user_id,
                     ps_read_time.total_read_time_minutes
             """, countQuery = """
-                SELECT COUNT(DISTINCT p.id)
+                SELECT COUNT(DISTINCT ps.id)
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
                 JOIN level l ON l.id = ps.level_id
@@ -1447,6 +1462,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             SELECT 1 FROM faculty_subject_package_session_mapping f
                             WHERE f.package_session_id = ps.id
                             AND f.user_id IN (:facultyIds)
+                            AND f.subject_id IS NULL
                             AND (
                                 :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
                                 OR f.status IN (:facultyPackageSessionStatus)
@@ -1460,6 +1476,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             WHERE tag ILIKE ANY (array[:#{#tags}])
                         )
                     )
+                    AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
+                    AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
             """, nativeQuery = true)
     Page<PackageDetailProjection> getOpenCatalogPackageDetail(
             @Param("instituteId") String instituteId,
@@ -1476,6 +1494,157 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("createdByUserId") String createdByUserId,
+            @Param("sessionIds") List<String> sessionIds,
+            @Param("packageIds") List<String> packageIds,
+            Pageable pageable);
+
+    /**
+     * Lightweight query to get paginated distinct package IDs with all filters.
+     * Used by packageView mode to determine which packages to show on a page,
+     * before fetching full session-level detail for those packages.
+     * Uses GROUP BY instead of DISTINCT so ORDER BY p.created_at works in PostgreSQL.
+     */
+    @Query(value = """
+            SELECT p.id
+            FROM package p
+            JOIN package_session ps ON ps.package_id = p.id
+            JOIN level l ON l.id = ps.level_id
+            JOIN package_institute pi ON pi.package_id = p.id
+            LEFT JOIN faculty_subject_package_session_mapping fspm
+                ON fspm.package_session_id = ps.id
+                AND fspm.subject_id IS NULL
+                AND (
+                    :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                    OR fspm.status IN (:facultyPackageSessionStatus)
+                )
+            WHERE
+                (:isPublishedOnly = false OR p.is_course_published_to_catalaouge = true)
+                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+                AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
+                AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
+                AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
+                AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
+                AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
+                AND (
+                    CAST(:packageSessionFilter AS VARCHAR) IS NULL
+                    OR :packageSessionFilter = ''
+                    OR (:packageSessionFilter = 'PARENTS_ONLY' AND COALESCE(ps.is_parent, false) = true)
+                    OR (:packageSessionFilter = 'CHILDREN_ONLY' AND ps.parent_id IS NOT NULL)
+                )
+                AND (
+                    :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+                    OR EXISTS (
+                        SELECT 1 FROM faculty_subject_package_session_mapping f
+                        WHERE f.package_session_id = ps.id
+                        AND f.user_id IN (:facultyIds)
+                        AND f.subject_id IS NULL
+                        AND (
+                            :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                            OR f.status IN (:facultyPackageSessionStatus)
+                        )
+                    )
+                )
+                AND (
+                    :#{#tags == null || #tags.isEmpty()} = true
+                    OR EXISTS (
+                        SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                        WHERE tag ILIKE ANY (array[:#{#tags}])
+                    )
+                )
+                AND (
+                    :name IS NULL OR
+                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                    EXISTS (
+                        SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                    ) OR
+                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+                )
+            GROUP BY p.id, p.created_at
+            """, countQuery = """
+            SELECT COUNT(DISTINCT p.id)
+            FROM package p
+            JOIN package_session ps ON ps.package_id = p.id
+            JOIN level l ON l.id = ps.level_id
+            JOIN package_institute pi ON pi.package_id = p.id
+            LEFT JOIN faculty_subject_package_session_mapping fspm
+                ON fspm.package_session_id = ps.id
+                AND fspm.subject_id IS NULL
+                AND (
+                    :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                    OR fspm.status IN (:facultyPackageSessionStatus)
+                )
+            WHERE
+                (:isPublishedOnly = false OR p.is_course_published_to_catalaouge = true)
+                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+                AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
+                AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
+                AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
+                AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
+                AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
+                AND (
+                    CAST(:packageSessionFilter AS VARCHAR) IS NULL
+                    OR :packageSessionFilter = ''
+                    OR (:packageSessionFilter = 'PARENTS_ONLY' AND COALESCE(ps.is_parent, false) = true)
+                    OR (:packageSessionFilter = 'CHILDREN_ONLY' AND ps.parent_id IS NOT NULL)
+                )
+                AND (
+                    :#{#facultyIds == null || #facultyIds.isEmpty()} = true
+                    OR EXISTS (
+                        SELECT 1 FROM faculty_subject_package_session_mapping f
+                        WHERE f.package_session_id = ps.id
+                        AND f.user_id IN (:facultyIds)
+                        AND f.subject_id IS NULL
+                        AND (
+                            :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                            OR f.status IN (:facultyPackageSessionStatus)
+                        )
+                    )
+                )
+                AND (
+                    :#{#tags == null || #tags.isEmpty()} = true
+                    OR EXISTS (
+                        SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                        WHERE tag ILIKE ANY (array[:#{#tags}])
+                    )
+                )
+                AND (
+                    :name IS NULL OR
+                    LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                    LOWER(l.level_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
+                    EXISTS (
+                        SELECT 1 FROM unnest(string_to_array(p.comma_separated_tags, ',')) AS tag
+                        WHERE LOWER(tag) LIKE LOWER(CONCAT('%', :name, '%'))
+                    ) OR
+                    LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
+                )
+            """, nativeQuery = true)
+    Page<String> getDistinctPackageIds(
+            @Param("isPublishedOnly") boolean isPublishedOnly,
+            @Param("name") String name,
+            @Param("instituteId") String instituteId,
+            @Param("levelIds") List<String> levelIds,
+            @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
+            @Param("packageSessionStatus") List<String> packageSessionStatus,
+            @Param("facultyIds") List<String> facultyIds,
+            @Param("facultyPackageSessionStatus") List<String> facultyPackageSessionStatus,
+            @Param("tags") List<String> tags,
+            @Param("levelStatus") List<String> levelStatus,
+            @Param("sessionIds") List<String> sessionIds,
+            @Param("packageIds") List<String> packageIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("packageSessionFilter") String packageSessionFilter,
             @Param("createdByUserId") String createdByUserId,
             Pageable pageable);
 

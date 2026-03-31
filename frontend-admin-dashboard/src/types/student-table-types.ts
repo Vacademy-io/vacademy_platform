@@ -74,6 +74,7 @@ export interface StudentTable {
     parents_to_mother_mobile_number: string;
     destination_package_session_id: string;
     enroll_invite_id: string;
+    enroll_invite_name: string | null;
     payment_status: string;
     custom_fields: Record<string, string | null>;
     sub_org_name?: string;

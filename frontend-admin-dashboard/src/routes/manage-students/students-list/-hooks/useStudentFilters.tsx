@@ -529,6 +529,8 @@ export const useStudentFilters = () => {
 
         const gendersToApply = columnFilters.find((filter) => filter.id === 'gender')?.value.map((option) => option.label) || [];
         const rolesToApply = columnFilters.find((filter) => filter.id === 'sub_org_user_types')?.value.map((option) => option.id) || [];
+        const enrollInviteFilter = columnFilters.find((filter) => filter.id === 'enroll_invite_ids');
+        const enrollInviteIds = enrollInviteFilter?.value.map((opt) => opt.id) || [];
 
         const newFilters: StudentFilterRequest = {
             name: searchFilter,
@@ -543,6 +545,7 @@ export const useStudentFilters = () => {
             sort_columns: {},
             payment_statuses: paymentStatuses,
             type: learnerType,
+            ...(enrollInviteIds.length > 0 ? { enroll_invite_ids: enrollInviteIds } : {}),
             ...customFieldParams,
         };
 

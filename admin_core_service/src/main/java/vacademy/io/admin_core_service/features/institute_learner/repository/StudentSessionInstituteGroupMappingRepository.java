@@ -304,13 +304,14 @@ public interface StudentSessionInstituteGroupMappingRepository
   // -------------------------------------------------------------------------
 
   /**
-   * Count active members in a sub-organization for a specific package session
-   * Used to validate member count limits against payment plan restrictions
+   * Count active learner members in a sub-organization for a specific package session.
+   * Excludes ROOT_ADMIN from the count — only SUBORG_LEARNER seats are validated.
    */
   @Query("SELECT COUNT(s) FROM StudentSessionInstituteGroupMapping s " +
       "WHERE s.subOrg.id = :subOrgId " +
       "AND s.packageSession.id = :packageSessionId " +
-      "AND s.status = :status")
+      "AND s.status = :status " +
+      "AND (s.commaSeparatedOrgRoles IS NULL OR s.commaSeparatedOrgRoles NOT LIKE '%ROOT_ADMIN%')")
   long countBySubOrgIdAndPackageSessionIdAndStatus(
       @Param("subOrgId") String subOrgId,
       @Param("packageSessionId") String packageSessionId,

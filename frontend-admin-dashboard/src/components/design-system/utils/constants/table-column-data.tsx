@@ -346,6 +346,15 @@ export const myColumns: ColumnDef<StudentTable>[] = [
         enableHiding: true,
     },
     {
+        accessorKey: 'enroll_invite_name',
+        size: 180,
+        minSize: 120,
+        maxSize: 280,
+        header: 'Invite',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="enroll_invite_name" />,
+        enableHiding: true,
+    },
+    {
         accessorKey: 'institute_enrollment_number',
         size: 160,
         minSize: 120,

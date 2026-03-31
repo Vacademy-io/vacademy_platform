@@ -302,14 +302,8 @@ export const CourseStructureDetails = ({
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
         try {
-            // Use current institute's roles only (not all institutes) so that e.g. a user
-            // with TEACHER+STUDENT in this institute gets Teacher display settings and
-            // sees the tabs they enabled in Teacher settings.
-            const rolesInner = getRolesForCurrentInstitute();
-            const isAdminRoleInner = rolesInner.includes('ADMIN');
-            const roleKeyInner = isAdminRoleInner
-                ? ADMIN_DISPLAY_SETTINGS_KEY
-                : TEACHER_DISPLAY_SETTINGS_KEY;
+            // Use getActiveRoleDisplaySettingsKey which handles ADMIN, TEACHER, and custom roles (faculty)
+            const roleKeyInner = getActiveRoleDisplaySettingsKey();
             const cached = getDisplaySettingsFromCache(roleKeyInner);
             if (cached) {
                 setRoleDisplay(cached);

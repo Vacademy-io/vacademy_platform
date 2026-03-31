@@ -223,8 +223,9 @@ public class UnifiedSendService implements SendChannelRouter {
                                 request.getInstituteId(), request.getTemplateName(), "EMAIL");
                 if (templateOpt.isPresent()) {
                     NotificationTemplate tmpl = templateOpt.get();
-                    if (tmpl.getSubject() != null) templateSubject = tmpl.getSubject();
-                    if (tmpl.getContent() != null) templateBody = tmpl.getContent();
+                    // Only override subject/body from template if NOT already provided via SendOptions
+                    if (templateSubject == null && tmpl.getSubject() != null) templateSubject = tmpl.getSubject();
+                    if (templateBody == null && tmpl.getContent() != null) templateBody = tmpl.getContent();
                     // Read previewText from template's settingJson
                     if (previewText == null && tmpl.getSettingJson() != null) {
                         try {

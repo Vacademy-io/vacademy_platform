@@ -169,6 +169,8 @@ public class AnnouncementDeliveryService {
         String fromEmail = (String) emailConfig.get("fromEmail");
         String fromName = (String) emailConfig.get("fromName");
         String resolvedEmailType = determineEmailType((String) emailConfig.get("emailType"));
+        String templateName = (String) emailConfig.get("template");
+        String previewText = (String) emailConfig.get("previewText");
         
         log.info("Delivering announcement {} via email with type: {}, from: {}, subject: {}", 
                  announcement.getId(), resolvedEmailType, fromEmail, subject);
@@ -262,6 +264,10 @@ public class AnnouncementDeliveryService {
                         rateLimiter.acquire();
 
                     // Send email via unified send for consistent logging
+                    // previewText and fromEmail/fromName come directly from the announcement's
+                    // email medium config (populated from the template at announcement creation time).
+                    // We do NOT pass templateName here because admin_core_service templates
+                    // are in a different table than notification_service's notification_template.
                     unifiedSendService.routeSync(UnifiedSendRequest.builder()
                             .instituteId(instituteId)
                             .channel("EMAIL")
@@ -273,6 +279,7 @@ public class AnnouncementDeliveryService {
                                     .emailType(resolvedEmailType)
                                     .fromEmail(fromEmail)
                                     .fromName(fromName)
+                                    .previewText(previewText)
                                     .source("announcement-service")
                                     .sourceId(announcement.getId())
                                     .build())

@@ -100,6 +100,11 @@ public class SlideController {
         return ResponseEntity.ok(slideService.getSlides(chapterId));
     }
 
+    @GetMapping("/slide")
+    public ResponseEntity<SlideDTO> getSlideById(@RequestParam String slideId) {
+        return ResponseEntity.ok(slideService.getSlideDTOById(slideId));
+    }
+
     @GetMapping("/slide-counts-by-source-type")
     public ResponseEntity<List<SlideTypeReadTimeProjection>> getSlideCountsBySourceType(
         @RequestParam String packageSessionId

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CheckCircle2, Copy, Check, Code2, Link2 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { CheckCircle2, Copy, Check, Code2, Link2, Download, Loader2, X } from 'lucide-react';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
-import { ContentType, getContentTypeLabel } from '../-services/video-generation';
+import { useVideoExporter } from '@/components/ai-video-player/VideoExporter';
+import { ContentType, getContentTypeLabel, requiresAudio } from '../-services/video-generation';
 import { LatexRenderer } from './LatexRenderer';
 
 interface VideoResultProps {
@@ -28,6 +29,8 @@ export function VideoResult({
 }: VideoResultProps) {
     const [copiedUrl, setCopiedUrl] = useState(false);
     const [copiedEmbed, setCopiedEmbed] = useState(false);
+    const { startExport, cancelExport, progress: exportProgress, isExporting } = useVideoExporter();
+    const showDownload = contentType === 'VIDEO' || requiresAudio(contentType);
 
     // Build the shareable URL
     const baseUrl = window.location.origin;
@@ -83,6 +86,11 @@ export function VideoResult({
                         wordsUrl={wordsUrl}
                         width={1920}
                         height={1080}
+                        onDownloadClick={
+                            showDownload && !isExporting
+                                ? () => startExport(htmlUrl, audioUrl, { fps: 15 })
+                                : undefined
+                        }
                     />
                 </div>
             </div>
@@ -190,6 +198,67 @@ export function VideoResult({
                                 </PopoverContent>
                             </Popover>
                         </div>
+
+                        {/* Download as Video */}
+                        {showDownload && (
+                            <div className="space-y-1.5">
+                                <label className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                    <Download className="size-3.5" />
+                                    Download Video
+                                </label>
+                                {isExporting && exportProgress ? (
+                                    <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-muted-foreground">
+                                                {exportProgress.message}
+                                            </span>
+                                            <button
+                                                onClick={cancelExport}
+                                                className="rounded p-0.5 text-muted-foreground hover:text-destructive"
+                                            >
+                                                <X className="size-3.5" />
+                                            </button>
+                                        </div>
+                                        <Progress value={exportProgress.percent} className="h-1.5" />
+                                        <p className="text-[10px] text-muted-foreground">
+                                            {exportProgress.phase === 'capturing' && exportProgress.totalFrames
+                                                ? `Frame ${exportProgress.currentFrame} / ${exportProgress.totalFrames}`
+                                                : exportProgress.phase === 'encoding'
+                                                  ? 'Encoding MP4...'
+                                                  : ''}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full h-9 gap-2 shadow-sm justify-start"
+                                        onClick={() => startExport(htmlUrl, audioUrl, { fps: 15 })}
+                                        disabled={isExporting}
+                                    >
+                                        {isExporting ? (
+                                            <Loader2 className="size-4 animate-spin" />
+                                        ) : (
+                                            <Download className="size-4" />
+                                        )}
+                                        Download as MP4
+                                    </Button>
+                                )}
+                                {exportProgress?.phase === 'error' && (
+                                    <div className="space-y-1.5 rounded-md border border-destructive/30 bg-destructive/5 p-2">
+                                        <p className="text-xs text-destructive">{exportProgress.message}</p>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 text-xs"
+                                            onClick={() => startExport(htmlUrl, audioUrl, { fps: 15 })}
+                                        >
+                                            Retry
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

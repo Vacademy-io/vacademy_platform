@@ -27,6 +27,7 @@ import {
     HelpCircle,
     CheckCircle2,
     XCircle,
+    Download,
 } from 'lucide-react';
 import {
     Entry,
@@ -102,6 +103,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     height = 1080,
     onEntryChange,
     onComplete,
+    onDownloadClick,
 }) => {
     // Core state
     const [entries, setEntries] = useState<Entry[]>([]);
@@ -2167,6 +2169,17 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                     />
                                 )}
                             </>
+                        )}
+
+                        {/* Download button (only when callback provided) */}
+                        {onDownloadClick && navigationMode === 'time_driven' && (
+                            <button
+                                onClick={onDownloadClick}
+                                style={btnStyle}
+                                title="Download as video"
+                            >
+                                <Download className="size-5 text-white" />
+                            </button>
                         )}
 
                         {/* Fullscreen button */}

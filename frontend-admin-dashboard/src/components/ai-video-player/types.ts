@@ -140,6 +140,7 @@ export interface AIContentPlayerProps {
     height?: number;
     onEntryChange?: (index: number, entry: Entry) => void;
     onComplete?: () => void;
+    onDownloadClick?: () => void; // Optional - shows download button in controls
 }
 
 /**

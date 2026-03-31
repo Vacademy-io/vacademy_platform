@@ -16,4 +16,8 @@ public class AssignmentSlideActivityLogDTO {
     private Timestamp dateSubmitted;
 
     private Double marks;
+
+    private String feedback;
+
+    private String checkedFileId;
 }

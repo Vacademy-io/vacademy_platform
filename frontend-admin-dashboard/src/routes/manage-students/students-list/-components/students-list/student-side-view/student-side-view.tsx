@@ -11,7 +11,7 @@ import { StudentOverview } from './student-overview/student-overview';
 import { StudentCourses } from './student-courses/student-courses';
 import { StudentLearningProgress } from './student-learning-progress/student-learning-progress';
 import { StudentTestRecord } from './student-test-records/student-test-record';
-import { StudentEmailNotifications } from './student-email-notifications/student-email-notifications';
+import { StudentCommunicationTimeline } from './student-email-notifications/student-communication-timeline';
 import { StudentMembership } from './student-membership/student-membership';
 import { StudentUserTagging } from './student-user-tagging/student-user-tagging';
 import { StudentFiles } from './student-files/student-files';
@@ -602,7 +602,7 @@ export const StudentSidebar = ({
                             )}
                         {category === 'notifications' &&
                             tabSettings?.notificationTab &&
-                            !isEnrollRequestStudentList && <StudentEmailNotifications />}
+                            !isEnrollRequestStudentList && <StudentCommunicationTimeline />}
                         {category === 'membership' &&
                             tabSettings?.membershipTab &&
                             !isEnrollRequestStudentList && (

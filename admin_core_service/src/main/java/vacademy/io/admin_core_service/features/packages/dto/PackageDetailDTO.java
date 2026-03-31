@@ -37,8 +37,10 @@ public class PackageDetailDTO {
     private Long readTimeInMinutes;
     private String packageType;
     private Integer validityInDays;
+    private String sessionId;
+    private String sessionName;
 
-    public PackageDetailDTO(String id, String packageName, String thumbnailFileId, Boolean isCoursePublishedToCatalaouge, String coursePreviewImageMediaId, String courseBannerMediaId, String courseMediaId, String whyLearnHtml, String whoShouldLearnHtml, String aboutTheCourseHtml, String commaSeparetedTags, Integer courseDepth, String courseHtmlDescriptionHtml, Double percentageCompleted, Double rating, String packageSessionId, String packageSessionName, String levelId, String levelName, String dripConditionJson, List<UserDTO> instructors, List<String> levelIds, Long readTimeInMinutes, String packageType) {
+    public PackageDetailDTO(String id, String packageName, String thumbnailFileId, Boolean isCoursePublishedToCatalaouge, String coursePreviewImageMediaId, String courseBannerMediaId, String courseMediaId, String whyLearnHtml, String whoShouldLearnHtml, String aboutTheCourseHtml, String commaSeparetedTags, Integer courseDepth, String courseHtmlDescriptionHtml, Double percentageCompleted, Double rating, String packageSessionId, String packageSessionName, String levelId, String levelName, String dripConditionJson, List<UserDTO> instructors, List<String> levelIds, Long readTimeInMinutes, String packageType, String sessionId, String sessionName) {
         this.id = id;
         this.packageName = packageName;
         this.thumbnailFileId = thumbnailFileId;
@@ -63,5 +65,7 @@ public class PackageDetailDTO {
         this.levelIds = levelIds;
         this.readTimeInMinutes = readTimeInMinutes;
         this.packageType = packageType;
+        this.sessionId = sessionId;
+        this.sessionName = sessionName;
     }
 }

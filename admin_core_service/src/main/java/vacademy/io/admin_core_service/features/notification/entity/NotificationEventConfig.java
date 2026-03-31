@@ -38,8 +38,12 @@ public class NotificationEventConfig {
     @Column(name = "template_type", length = 50, nullable = false)
     private NotificationTemplateType templateType;
 
-    @Column(name = "template_id", length = 255, nullable = false)
+    @Column(name = "template_id", length = 255)
     private String templateId;
+
+    /** Template name for unified send — replaces templateId for new callers */
+    @Column(name = "template_name", length = 255)
+    private String templateName;
 
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;

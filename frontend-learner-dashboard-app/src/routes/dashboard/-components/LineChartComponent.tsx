@@ -5,6 +5,7 @@ import { UserActivityArray } from "../-types/dashboard-data-types";
 import { formatTimeFromMillis, millisToMinutes } from "@/helpers/formatTimeFromMiliseconds";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, TrendingUp, Users } from "lucide-react";
+import { usePlayTheme } from "@/hooks/use-play-theme";
 
 const chartConfig = {
     avg_daily_time_minutes: {
@@ -26,6 +27,14 @@ export interface ChartDataType {
 }
 
 export const LineChartComponent = ({ userActivity }: { userActivity: UserActivityArray }) => {
+    const isPlay = usePlayTheme();
+
+    // Play mode chart colors
+    const userLineColor = isPlay ? "#58CC02" : "hsl(var(--primary))";
+    const batchLineColor = isPlay ? "#CE82FF" : "hsl(var(--muted-foreground))";
+    const gridColor = isPlay ? "#E5E5E5" : "hsl(var(--border))";
+    const bgColor = "hsl(var(--background))";
+
     // Transform API data to chart data format and preserve original millisecond values
     const chartData = userActivity.map(item => ({
         activity_date: item.activity_date,
@@ -59,11 +68,11 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             {/* Enhanced Header with Performance Metrics */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
                 <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-primary/10 rounded-lg">
+                    <div className="p-2 bg-primary/10 rounded-lg [.ui-play_&]:bg-primary/20 [.ui-play_&]:rounded-xl">
                         <TrendingUp size={18} className="text-primary" />
                     </div>
                     <div className="min-w-0">
-                        <h3 className="text-base sm:text-lg font-semibold text-foreground">Learning Progress Trend</h3>
+                        <h3 className="text-base sm:text-lg font-semibold text-foreground [.ui-play_&]:font-black">Learning Progress Trend</h3>
                         <p className="text-xs sm:text-sm text-muted-foreground flex items-center space-x-1">
                             <Calendar size={12} className="flex-shrink-0" />
                             <span>Weekly learning activity comparison</span>
@@ -72,21 +81,21 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
-                    <Badge className={`${performanceStatus.color} border text-xs sm:text-sm font-medium px-2 sm:px-3 py-1`}>
+                    <Badge className={`${performanceStatus.color} border text-xs sm:text-sm font-medium px-2 sm:px-3 py-1 [.ui-play_&]:font-black [.ui-play_&]:rounded-full [.ui-play_&]:shadow-[0_2px_0_rgba(0,0,0,0.1)]`}>
                         {performanceStatus.text}
                     </Badge>
                     {chartData.length > 0 && (
-                        <div className="hidden md:flex items-center space-x-4 bg-gray-50/80 rounded-lg px-3 sm:px-4 py-2 border border-gray-200/60">
+                        <div className="hidden md:flex items-center space-x-4 bg-gray-50/80 rounded-lg px-3 sm:px-4 py-2 border border-gray-200/60 [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl">
                             <div className="flex items-center space-x-2 text-xs sm:text-sm">
                                 <div className="w-2 sm:w-3 h-2 sm:h-3 rounded-full bg-primary-500"></div>
-                                <span className="text-gray-600 font-medium">
+                                <span className="text-gray-600 font-medium [.ui-play_&]:text-primary [.ui-play_&]:font-bold">
                                     Avg: {formatTimeFromMillis(avgUserTime * 60 * 1000, 'minutes')}
                                 </span>
                             </div>
-                            <div className="w-px h-3 sm:h-4 bg-gray-300"></div>
+                            <div className="w-px h-3 sm:h-4 bg-gray-300 [.ui-play_&]:bg-primary-200"></div>
                             <div className="flex items-center space-x-2 text-xs sm:text-sm">
-                                <Users size={12} className="text-gray-400" />
-                                <span className="text-gray-600 font-medium">
+                                <Users size={12} className="text-gray-400 [.ui-play_&]:text-primary-400" />
+                                <span className="text-gray-600 font-medium [.ui-play_&]:text-primary [.ui-play_&]:font-bold">
                                     {formatTimeFromMillis(avgBatchTime * 60 * 1000, 'minutes')}
                                 </span>
                             </div>
@@ -96,7 +105,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             </div>
 
             {/* Enhanced Legend */}
-            <div className="flex flex-wrap items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-muted/30 rounded-lg sm:rounded-xl border border-border">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-muted/30 rounded-lg sm:rounded-xl border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl">
                 <div className="flex items-center space-x-2">
                     <div className="w-3 sm:w-4 h-0.5 sm:h-1 rounded-full bg-primary shadow-sm"></div>
                     <span className="text-xs sm:text-sm font-medium text-foreground">Your Study Time</span>
@@ -116,7 +125,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                 {/* Background pattern */}
                 <div className="absolute inset-0 rounded-lg sm:rounded-xl bg-transparent"></div>
 
-                <div className="relative bg-white/50 backdrop-blur-sm rounded-lg sm:rounded-xl border border-gray-200/40 p-2 sm:p-4 overflow-hidden w-full max-w-full">
+                <div className="relative bg-white/50 backdrop-blur-sm rounded-lg sm:rounded-xl border border-gray-200/40 p-2 sm:p-4 overflow-hidden w-full max-w-full [.ui-play_&]:bg-white [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))]">
                     <ResponsiveContainer width="100%" height={280}>
                         <ChartContainer config={chartConfig} className="w-full h-full overflow-hidden">
                             <LineChart
@@ -134,7 +143,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                 <CartesianGrid
                                     vertical={false}
                                     strokeDasharray="3 3"
-                                    stroke="hsl(var(--border))"
+                                    stroke={gridColor}
                                     opacity={0.3}
                                     className="animate-gentle-pulse"
                                 />
@@ -239,20 +248,20 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                     dataKey="avg_daily_time_minutes_batch"
                                     type="monotone"
                                     name="Batch Average"
-                                    stroke="hsl(var(--muted-foreground))" // Use CSS variable
-                                    strokeWidth={2}
-                                    strokeDasharray="8 4"
+                                    stroke={batchLineColor}
+                                    strokeWidth={isPlay ? 3 : 2}
+                                    strokeDasharray={isPlay ? "6 3" : "8 4"}
                                     dot={{
-                                        fill: "hsl(var(--muted-foreground))", // Use CSS variable
-                                        r: 3,
+                                        fill: batchLineColor,
+                                        r: isPlay ? 4 : 3,
                                         strokeWidth: 2,
-                                        stroke: "hsl(var(--background))" // Use background token
+                                        stroke: bgColor
                                     }}
                                     activeDot={{
-                                        r: 5,
-                                        stroke: "hsl(var(--muted-foreground))", // Use CSS variable
+                                        r: isPlay ? 7 : 5,
+                                        stroke: batchLineColor,
                                         strokeWidth: 3,
-                                        fill: "hsl(var(--background))",
+                                        fill: bgColor,
                                         className: "animate-gentle-pulse"
                                     }}
                                 />
@@ -262,20 +271,20 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                     dataKey="avg_daily_time_minutes"
                                     type="monotone"
                                     name="Your Time"
-                                    stroke="hsl(var(--primary))" // Use CSS variable
-                                    strokeWidth={3}
+                                    stroke={userLineColor}
+                                    strokeWidth={isPlay ? 4 : 3}
                                     fill="none"
                                     dot={{
-                                        fill: "hsl(var(--primary))", // Use CSS variable
-                                        r: 4,
+                                        fill: userLineColor,
+                                        r: isPlay ? 5 : 4,
                                         strokeWidth: 3,
-                                        stroke: "hsl(var(--background))"
+                                        stroke: bgColor
                                     }}
                                     activeDot={{
-                                        r: 6,
-                                        stroke: "hsl(var(--primary))", // Use CSS variable
+                                        r: isPlay ? 8 : 6,
+                                        stroke: userLineColor,
                                         strokeWidth: 3,
-                                        fill: "hsl(var(--background))",
+                                        fill: bgColor,
                                         className: "animate-gentle-pulse"
                                     }}
                                 />
@@ -288,32 +297,32 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             {/* Performance Insights */}
             {chartData.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border">
-                        <div className="flex items-center space-x-2 mb-2">
+                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))]">
+                        <div className="flex items-center space-x-2 mb-1">
                             <TrendingUp size={14} className="text-primary-600" />
-                            <span className="text-xs sm:text-sm font-semibold text-gray-900">Consistency</span>
+                            <span className="text-xs sm:text-sm font-semibold text-gray-900 [.ui-play_&]:font-black">Consistency</span>
                         </div>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-sm font-bold text-gray-800 [.ui-play_&]:text-primary">
                             {chartData.filter(d => d.avg_daily_time_minutes > 0).length}/{chartData.length} active days
                         </p>
                     </div>
 
-                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border">
-                        <div className="flex items-center space-x-2 mb-2">
+                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))]">
+                        <div className="flex items-center space-x-2 mb-1">
                             <Clock size={14} className="text-success-600" />
-                            <span className="text-xs sm:text-sm font-semibold text-gray-900">Peak Day</span>
+                            <span className="text-xs sm:text-sm font-semibold text-gray-900 [.ui-play_&]:font-black">Peak Day</span>
                         </div>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-sm font-bold text-gray-800 [.ui-play_&]:text-primary">
                             {formatTimeFromMillis(Math.max(...chartData.map(d => d.time_spent_by_user_millis)), 'minutes')}
                         </p>
                     </div>
 
-                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border">
-                        <div className="flex items-center space-x-2 mb-2">
+                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))]">
+                        <div className="flex items-center space-x-2 mb-1">
                             <Users size={14} className="text-info-600" />
-                            <span className="text-xs sm:text-sm font-semibold text-gray-900">Vs Batch</span>
+                            <span className="text-xs sm:text-sm font-semibold text-gray-900 [.ui-play_&]:font-black">Vs Batch</span>
                         </div>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-sm font-bold text-gray-800 [.ui-play_&]:text-primary">
                             {performanceRatio > 1 ? '+' : ''}{((performanceRatio - 1) * 100).toFixed(0)}% difference
                         </p>
                     </div>

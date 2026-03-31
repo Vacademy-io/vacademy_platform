@@ -35,6 +35,7 @@ export type StudentDashboardWidgetId =
   | "myMembership"
   | "myBooks"
   | "upcomingLiveClasses"
+  | "myOrders"
   | "custom";
 
 export interface StudentDashboardWidgetConfig {
@@ -119,7 +120,7 @@ export interface StudentAllCoursesSettings {
 }
 
 // UI
-export type StudentUIType = "default" | "vibrant";
+export type StudentUIType = "default" | "vibrant" | "play";
 
 export interface StudentUISettings {
   type: StudentUIType;

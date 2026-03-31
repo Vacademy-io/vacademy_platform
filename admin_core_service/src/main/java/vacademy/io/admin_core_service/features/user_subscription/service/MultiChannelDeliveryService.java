@@ -146,7 +146,7 @@ public class MultiChannelDeliveryService {
         notificationDTO.setUsers(List.of(notificationToUser));
 
         try {
-            notificationService.sendEmailToUsers(notificationDTO, instituteId);
+            notificationService.sendEmailViaUnified(notificationDTO, instituteId);
             log.info("Successfully queued email for user {}.", targetUser.getEmail());
         } catch (Exception e) {
             log.error("Failed to send email benefit to user {}: {}", targetUser.getId(), e.getMessage(), e);
@@ -280,7 +280,7 @@ public class MultiChannelDeliveryService {
         notificationDTO.setUsers(List.of(notificationToUser));
 
         try {
-            notificationService.sendEmailToUsers(notificationDTO, instituteId);
+            notificationService.sendEmailViaUnified(notificationDTO, instituteId);
             log.info("Successfully queued generic referral email for user {}.", targetUser.getEmail());
         } catch (Exception e) {
             log.error("Failed to send generic referral email to user {}: {}", targetUser.getId(), e.getMessage(), e);

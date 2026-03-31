@@ -59,6 +59,8 @@ export interface AllCourseFilters {
     package_ids?: string[];
     package_session_ids?: string[];
     package_session_filter?: 'PARENTS_ONLY' | 'CHILDREN_ONLY' | null;
+    session_ids: string[];
+    package_view: boolean;
 }
 
 // Add types for API response and course item
@@ -106,6 +108,8 @@ export interface CourseItem {
     level_id: string;
     level_name: string;
     instructors: CourseInstructor[];
+    session_id?: string;
+    session_name?: string;
 }
 
 export interface AllCoursesApiResponse {
@@ -261,6 +265,8 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             package_ids: filters?.package_ids || [],
             package_session_ids: filters?.package_session_ids || [],
             package_session_filter: null,
+            session_ids: [],
+            package_view: true,
         };
     });
 
@@ -356,6 +362,8 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             package_ids: [],
             package_session_ids: [],
             package_session_filter: null,
+            session_ids: [],
+            package_view: true,
         });
         setSearchValue('');
     };
@@ -513,6 +521,8 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             package_ids: selectedFilters.package_ids,
             package_session_ids: selectedFilters.package_session_ids,
             package_session_filter: selectedFilters.package_session_filter,
+            session_ids: selectedFilters.session_ids,
+            package_view: selectedFilters.package_view,
         };
     }, [selectedFilters]);
 

@@ -63,4 +63,8 @@ public interface PackageDetailProjection {
     String getPackageType();
 
     Integer getValidityInDays();
+
+    String getSessionId();
+
+    String getSessionName();
 }

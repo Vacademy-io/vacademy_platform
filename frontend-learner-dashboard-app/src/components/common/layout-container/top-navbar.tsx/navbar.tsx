@@ -168,7 +168,7 @@ export function Navbar() {
     );
     // Return a simplified navbar without role-dependent features
     return (
-      <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap">
+      <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b-[3px] [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none">
         <LogoutSidebar />
 
         {/* Left Section */}
@@ -178,7 +178,7 @@ export function Navbar() {
               <TooltipTrigger asChild>
                 <button
                   onClick={handleGoBack}
-                  className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
+                  className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
                 >
                   <ArrowLeft className="w-4 h-4 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200" />
                 </button>
@@ -273,7 +273,7 @@ export function Navbar() {
                 )}
               </div>
               <div className="h-7 md:h-8 w-px bg-primary-200/50 dark:bg-neutral-700" />
-              <h1 className="text-base md:text-lg font-semibold text-primary-900 dark:text-primary-100 truncate max-w-[60vw] md:max-w-none">
+              <h1 className="text-base md:text-lg font-semibold text-primary-900 dark:text-primary-100 truncate max-w-[60vw] md:max-w-none [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
                 {navHeading || "Dashboard"}
               </h1>
             </div>
@@ -285,7 +285,7 @@ export function Navbar() {
           <SystemAlertsBar />
           <div className="flex items-center gap-2">
             <div className="h-6 w-px bg-primary-200/50 dark:bg-neutral-700" />
-            <Student className="w-4 h-4 md:w-5 md:h-5 text-primary-600 dark:text-primary-400" />
+            <Student className="w-4 h-4 md:w-5 md:h-5 text-primary-600 dark:text-primary-400 [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary/10 [.ui-play_&]:p-1.5 [.ui-play_&]:w-7 [.ui-play_&]:h-7" />
             <span className="text-xs md:text-sm font-medium text-primary-700 dark:text-primary-300">
               User
             </span>
@@ -297,7 +297,7 @@ export function Navbar() {
 
   return (
     <div
-      className={`navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap ${isIOS ? "mt-10" : ""}`}
+      className={`navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b-[3px] [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none ${isIOS ? "mt-10" : ""}`}
     >
       <LogoutSidebar />
 
@@ -323,7 +323,7 @@ export function Navbar() {
           <SidebarTrigger>
             <div
               onClick={() => {}}
-              className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
+              className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
             >
               <FiSidebar className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
             </div>
@@ -365,7 +365,7 @@ export function Navbar() {
             <div className="flex items-center gap-2">
               <div className="w-1 h-6 bg-primary-600 dark:bg-primary-500 rounded-full shadow-sm"></div>
               <div className="relative">
-                <h1 className="text-sm md:text-base font-semibold text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-[60vw] md:max-w-none">
+                <h1 className="text-sm md:text-base font-semibold text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-[60vw] md:max-w-none [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
                   {navHeading}
                 </h1>
                 <div className="absolute -bottom-0.5 left-0 right-0 h-px bg-primary-300/50 dark:bg-neutral-700"></div>
@@ -385,7 +385,7 @@ export function Navbar() {
             <TooltipTrigger asChild>
               <Button
                 variant="outline"
-                className="h-8 md:h-10 rounded-full px-2 md:px-3 py-1.5 md:py-2 flex items-center gap-1.5 md:gap-2"
+                className="h-8 md:h-10 rounded-full px-2 md:px-3 py-1.5 md:py-2 flex items-center gap-1.5 md:gap-2 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20 [.ui-play_&]:font-bold"
                 onClick={handleNavigateToAdmin}
               >
                 <Student className="h-4 w-4 md:h-5 md:w-5" />
@@ -403,7 +403,7 @@ export function Navbar() {
 
         {/* Menu Button (always visible) */}
         <button
-          className="group relative flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200"
+          className="group relative flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary/10 [.ui-play_&]:p-1.5 [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
           onClick={() => {
             setSidebarOpen();
           }}

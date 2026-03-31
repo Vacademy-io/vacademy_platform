@@ -103,7 +103,8 @@ public class UserOperationService {
         }
 
         notificationDTO.setUsers(notifyUsers);
-        return notificationService.sendEmailToUsers(notificationDTO, instituteId);
+        notificationService.sendEmailViaUnified(notificationDTO, instituteId);
+        return "Notification sent successfully";
     }
 
     public String updateUserPassword(UserCredentials userCredentials, CustomUserDetails userDetails) {
@@ -131,7 +132,7 @@ public class UserOperationService {
         genericEmailRequest.setSubject("Your Updated Account Credentials for Accessing the App");
         genericEmailRequest.setBody(emailBody);
 
-        if (!notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId)) {
+        if (!notificationService.sendGenericHtmlMailViaUnifiedAsBoolean(genericEmailRequest, instituteId)) {
             throw new VacademyException("Email not sent");
         }
 

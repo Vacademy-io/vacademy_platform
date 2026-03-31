@@ -53,11 +53,11 @@ export const ChapterSidebarComponent = ({
     }, [studyLibraryData, modulesWithChaptersData]);
 
     return (
-        <div className={`flex w-full flex-col gap-2 sm:gap-4 ${open ? "px-4 sm:px-6 lg:px-8" : "px-3 sm:px-4 lg:px-6"}`}>
+        <div className={`flex w-full flex-col gap-2 sm:gap-4 [.ui-play_&]:rounded-2xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 ${open ? "px-4 sm:px-6 lg:px-8" : "px-3 sm:px-4 lg:px-6"}`}>
             {/* Breadcrumb */}
             <div className="flex flex-wrap items-center gap-1 sm:gap-2 text-xs sm:text-sm">
                 <p
-                    className={`cursor-pointer text-neutral-500 hover:text-primary-600 transition-colors duration-200 ${open ? "visible" : "hidden sm:visible"}`}
+                    className={`cursor-pointer text-neutral-500 hover:text-primary-600 transition-colors duration-200 [.ui-play_&]:font-semibold ${open ? "visible" : "hidden sm:visible"}`}
                     onClick={handleSubjectRoute}
                 >
                     {toTitleCase(subjectName)}
@@ -65,7 +65,7 @@ export const ChapterSidebarComponent = ({
                 <ChevronRightIcon
                     className={`size-3 sm:size-4 text-neutral-400 ${open ? "visible" : "hidden sm:visible"}`}
                 />
-                <p className="cursor-pointer text-primary-600 font-medium">
+                <p className="cursor-pointer text-primary-600 font-medium [.ui-play_&]:font-black">
                     {open ? toTitleCase(moduleName) : truncateString(toTitleCase(moduleName), window.innerWidth < 640 ? 12 : 10)}
                 </p>
             </div>
@@ -98,7 +98,7 @@ export const ChapterSidebarComponent = ({
                                 M{index + 1}
                             </div>
                             <p
-                                className={`font-medium transition-colors duration-200 text-xs sm:text-sm ${open ? "visible" : "hidden sm:visible"}`}
+                                className={`font-medium transition-colors duration-200 text-xs sm:text-sm [.ui-play_&]:font-black ${open ? "visible" : "hidden sm:visible"}`}
                             >
                                 {truncateString(toTitleCase(moduleWithChapters.module.module_name), window.innerWidth < 640 ? 20 : 15)}
                             </p>

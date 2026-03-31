@@ -111,12 +111,28 @@ export const QuestionPapersList = ({
                 studyLibraryAssignmentForm?.setValue('uploaded_question_paper', id);
                 studyLibraryAssignmentForm?.setValue(
                     `adaptive_marking_for_each_question`,
-                    transformQuestionsData.map((question) => ({
-                        questionId: question.questionId,
-                        questionName: question.questionName,
-                        questionType: question.questionType,
-                        newQuestion: true,
-                    }))
+                    transformQuestionsData.map((question) => {
+                        let rawOptions: { id?: string; name?: string }[] = [];
+                        if (question.questionType === 'MCQS' || question.questionType === 'CMCQS') {
+                            rawOptions = question.singleChoiceOptions || question.csingleChoiceOptions || [];
+                        } else if (question.questionType === 'MCQM' || question.questionType === 'CMCQM') {
+                            rawOptions = question.multipleChoiceOptions || question.cmultipleChoiceOptions || [];
+                        } else if (question.questionType === 'TRUE_FALSE') {
+                            rawOptions = question.trueFalseOptions || [];
+                        }
+                        return {
+                            questionId: question.questionId,
+                            questionName: question.questionName,
+                            questionType: question.questionType,
+                            newQuestion: true,
+                            options: rawOptions
+                                .filter((opt) => opt.id || opt.name)
+                                .map((opt) => ({
+                                    id: opt.id || '',
+                                    text: { content: opt.name || '' },
+                                })),
+                        };
+                    })
                 );
             }
             if (sectionsForm && index !== undefined) {

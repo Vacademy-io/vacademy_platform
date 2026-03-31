@@ -10,6 +10,6 @@ import vacademy.io.admin_core_service.features.learner_tracking.entity.Assignmen
 public interface AssignmentSlideTrackedRepository extends JpaRepository<AssignmentSlideTracked,String> {
     @Modifying
     @Transactional
-    @Query("DELETE FROM VideoTracked v WHERE v.activityLog.id = :activityId")
+    @Query("DELETE FROM AssignmentSlideTracked a WHERE a.activityLog.id = :activityId")
     void deleteByActivityId(@Param("activityId") String activityId);
 }

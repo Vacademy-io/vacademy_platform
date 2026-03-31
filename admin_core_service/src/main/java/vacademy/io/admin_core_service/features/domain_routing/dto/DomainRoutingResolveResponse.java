@@ -38,4 +38,5 @@ public class DomainRoutingResolveResponse {
     private String learnerPortalUrl;
     private String instructorPortalUrl;
     private boolean convertUsernamePasswordToLowercase;
+    private String subOrgId;
 }

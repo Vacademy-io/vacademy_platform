@@ -30,7 +30,10 @@ export const CertificateCompletionBanner = ({
                 "mb-4 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm animate-fade-in-up",
                 // Vibrant Styles - Flat Pastel
                 "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20",
-                "[.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30 [.ui-vibrant_&]:shadow-sm"
+                "[.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30 [.ui-vibrant_&]:shadow-sm",
+                // Play Styles — solid green, bold, Duolingo-style
+                "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:border-[#46a302] [.ui-play_&]:text-white [.ui-play_&]:rounded-2xl [.ui-play_&]:font-extrabold",
+                "[.ui-play_&]:shadow-[0_4px_0_#46a302]"
             )}>
                 <div className="flex items-center gap-4">
                     {/* Left Side - Certificate Icon and Content */}
@@ -39,7 +42,9 @@ export const CertificateCompletionBanner = ({
                         <div className={cn(
                             "flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center shadow-lg",
                             // Vibrant Styles - Flat Icon
-                            "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-emerald-600 [.ui-vibrant_&]:shadow-md"
+                            "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-emerald-600 [.ui-vibrant_&]:shadow-md",
+                            // Play Styles
+                            "[.ui-play_&]:bg-white [.ui-play_&]:text-[#58cc02] [.ui-play_&]:shadow-[0_3px_0_#d4d4d4] [.ui-play_&]:rounded-xl"
                         )}>
                             <GraduationCap size={20} className="text-white" />
                         </div>

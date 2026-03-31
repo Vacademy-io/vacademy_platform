@@ -16,6 +16,10 @@ import vacademy.io.admin_core_service.features.audience.enums.CampaignStatusEnum
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.audience.entity.AudienceCommunication;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceCommunicationRepository;
+import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendRequest;
+import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendResponse;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.common.auth.dto.ParentWithChildDTO;
@@ -72,6 +76,9 @@ public class AudienceService {
 
     @Autowired
     private AudienceResponseRepository audienceResponseRepository;
+
+    @Autowired
+    private AudienceCommunicationRepository audienceCommunicationRepository;
 
     @Autowired
     private InstituteCustomFiledService instituteCustomFiledService;
@@ -434,7 +441,7 @@ public class AudienceService {
                         emailRequest.setBody(defaultEmailBody);
 
                         try {
-                            notificationService.sendGenericHtmlMail(emailRequest, instituteIdForNotification);
+                            notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteIdForNotification);
                             logger.info("Sent default email to respondent: {}", userForNotification.getEmail());
                         } catch (Exception ex) {
                             logger.error("Failed to send default email to {}: {}", userForNotification.getEmail(),
@@ -471,7 +478,7 @@ public class AudienceService {
                         adminEmailRequest.setBody(adminEmailBody);
 
                         try {
-                            notificationService.sendGenericHtmlMail(adminEmailRequest, instituteIdForNotification);
+                            notificationService.sendGenericHtmlMailViaUnified(adminEmailRequest, instituteIdForNotification);
                             logger.info("Sent default admin notification to: {}", trimmedEmail);
                         } catch (Exception ex) {
                             logger.error("Failed to send admin notification to {}: {}", trimmedEmail, ex.getMessage());
@@ -838,7 +845,7 @@ public class AudienceService {
                 adminEmailRequest.setBody(adminEmailBody);
 
                 try {
-                    notificationService.sendGenericHtmlMail(adminEmailRequest, instituteIdForNotification);
+                    notificationService.sendGenericHtmlMailViaUnified(adminEmailRequest, instituteIdForNotification);
                     logger.info("Sent default admin notification to: {}", trimmedEmail);
                 } catch (Exception ex) {
                     logger.error("Failed to send admin notification to {}: {}", trimmedEmail, ex.getMessage());
@@ -2576,7 +2583,7 @@ public class AudienceService {
             emailRequest.setSubject("Enquiry Submitted Successfully - " + campaignName + " - " + trackingId);
             emailRequest.setBody(defaultEmailBody);
 
-            notificationService.sendGenericHtmlMail(emailRequest, instituteId);
+            notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
         }
     }
 
@@ -2745,6 +2752,449 @@ public class AudienceService {
                         .build();
 
         return BulkSubmitLeadWithEnquiryResponseDTO.builder()
+                .summary(summary)
+                .results(results)
+                .build();
+    }
+
+    /**
+     * Send a message (WhatsApp, Email, Push, or System Alert) to leads in an audience campaign.
+     * Resolves per-recipient template variables from system fields and custom field values.
+     */
+    public SendAudienceMessageResponseDTO sendAudienceMessage(SendAudienceMessageRequestDTO request) {
+        // 1. Validate audience exists
+        Audience audience = audienceRepository.findById(request.getAudienceId())
+                .orElseThrow(() -> new VacademyException("Audience not found: " + request.getAudienceId()));
+
+        // 2. Fetch all leads for this audience (TODO: apply filters from request.getFilters())
+        List<AudienceResponse> allResponses = audienceResponseRepository.findByAudienceId(request.getAudienceId());
+        if (CollectionUtils.isEmpty(allResponses)) {
+            throw new VacademyException("No leads found for audience: " + request.getAudienceId());
+        }
+
+        String channel = request.getChannel();
+
+        // 3. Batch-fetch user details for leads that have a userId (needed for contact resolution)
+        List<String> userIds = allResponses.stream()
+                .map(AudienceResponse::getUserId)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<String, UserDTO> userMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            try {
+                List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(userIds);
+                if (users != null) {
+                    for (UserDTO u : users) {
+                        userMap.put(u.getId(), u);
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to fetch user details for audience message, proceeding without: {}", e.getMessage());
+            }
+        }
+
+        // 4. Filter leads that have the required contact info for the channel
+        List<AudienceResponse> eligibleResponses = new ArrayList<>();
+        int skipped = 0;
+
+        for (AudienceResponse resp : allResponses) {
+            UserDTO userDTO = StringUtils.hasText(resp.getUserId()) ? userMap.get(resp.getUserId()) : null;
+            boolean hasContact = false;
+            switch (channel) {
+                case "WHATSAPP":
+                    hasContact = StringUtils.hasText(resp.getParentMobile())
+                            || (userDTO != null && StringUtils.hasText(userDTO.getMobileNumber()));
+                    break;
+                case "EMAIL":
+                    hasContact = StringUtils.hasText(resp.getParentEmail())
+                            || (userDTO != null && StringUtils.hasText(userDTO.getEmail()));
+                    break;
+                case "PUSH":
+                case "SYSTEM_ALERT":
+                    hasContact = StringUtils.hasText(resp.getUserId());
+                    break;
+                default:
+                    hasContact = true;
+            }
+            if (hasContact) {
+                eligibleResponses.add(resp);
+            } else {
+                skipped++;
+            }
+        }
+
+        if (eligibleResponses.isEmpty()) {
+            throw new VacademyException("No leads have the required contact info for channel: " + channel);
+        }
+
+        // 5. Batch-fetch custom field values for all response IDs
+        List<String> responseIds = eligibleResponses.stream()
+                .map(AudienceResponse::getId)
+                .collect(Collectors.toList());
+
+        // Map: responseId -> (fieldId -> value)
+        Map<String, Map<String, String>> customFieldMap = new HashMap<>();
+        if (!responseIds.isEmpty()) {
+            List<CustomFieldValues> cfValues = customFieldValuesRepository
+                    .findBySourceTypeAndSourceIdIn("AUDIENCE_RESPONSE", responseIds);
+            for (CustomFieldValues cfv : cfValues) {
+                customFieldMap
+                        .computeIfAbsent(cfv.getSourceId(), k -> new HashMap<>())
+                        .put(cfv.getCustomFieldId(), cfv.getValue());
+            }
+        }
+
+        // 6. Build recipients with resolved variables
+        Map<String, String> variableMapping = request.getVariableMapping();
+        List<UnifiedSendRequest.Recipient> recipients = new ArrayList<>();
+
+        for (AudienceResponse resp : eligibleResponses) {
+            UserDTO userDTO = StringUtils.hasText(resp.getUserId()) ? userMap.get(resp.getUserId()) : null;
+            Map<String, String> cfForResp = customFieldMap.getOrDefault(resp.getId(), Collections.emptyMap());
+
+            // Resolve template variables
+            Map<String, String> resolvedVars = new HashMap<>();
+            if (variableMapping != null) {
+                for (Map.Entry<String, String> entry : variableMapping.entrySet()) {
+                    String templateVar = entry.getKey();
+                    String source = entry.getValue();
+                    String resolved = resolveVariable(source, resp, userDTO, cfForResp, audience);
+                    if (resolved != null) {
+                        resolvedVars.put(templateVar, resolved);
+                    }
+                }
+            }
+
+            // Determine recipient name
+            String recipientName = userDTO != null && StringUtils.hasText(userDTO.getFullName())
+                    ? userDTO.getFullName()
+                    : resp.getParentName();
+
+            UnifiedSendRequest.Recipient.RecipientBuilder recipientBuilder = UnifiedSendRequest.Recipient.builder()
+                    .name(recipientName)
+                    .variables(resolvedVars);
+
+            switch (channel) {
+                case "WHATSAPP":
+                    String phone = StringUtils.hasText(resp.getParentMobile())
+                            ? resp.getParentMobile()
+                            : (userDTO != null ? userDTO.getMobileNumber() : null);
+                    if (phone != null && phone.startsWith("+")) {
+                        phone = phone.substring(1);
+                    }
+                    recipientBuilder.phone(phone);
+                    break;
+                case "EMAIL":
+                    String email = StringUtils.hasText(resp.getParentEmail())
+                            ? resp.getParentEmail()
+                            : (userDTO != null ? userDTO.getEmail() : null);
+                    recipientBuilder.email(email);
+                    break;
+                case "PUSH":
+                case "SYSTEM_ALERT":
+                    recipientBuilder.userId(resp.getUserId());
+                    break;
+            }
+
+            recipients.add(recipientBuilder.build());
+        }
+
+        // 7. Build UnifiedSendRequest
+        UnifiedSendRequest.SendOptions.SendOptionsBuilder optsBuilder = UnifiedSendRequest.SendOptions.builder()
+                .source("AUDIENCE")
+                .sourceId(request.getAudienceId());
+
+        if ("EMAIL".equals(channel) && StringUtils.hasText(request.getSubject())) {
+            optsBuilder.emailSubject(request.getSubject());
+        }
+        if (StringUtils.hasText(request.getBody())) {
+            if ("EMAIL".equals(channel)) {
+                optsBuilder.emailBody(request.getBody());
+            } else if ("PUSH".equals(channel) || "SYSTEM_ALERT".equals(channel)) {
+                optsBuilder.pushBody(request.getBody());
+            }
+        }
+        if (StringUtils.hasText(request.getEmailType())) {
+            optsBuilder.emailType(request.getEmailType());
+        }
+        if (("PUSH".equals(channel) || "SYSTEM_ALERT".equals(channel)) && StringUtils.hasText(request.getSubject())) {
+            optsBuilder.pushTitle(request.getSubject());
+        }
+
+        UnifiedSendRequest sendRequest = UnifiedSendRequest.builder()
+                .instituteId(request.getInstituteId())
+                .channel(channel)
+                .templateName(request.getTemplateName())
+                .languageCode(request.getLanguageCode() != null ? request.getLanguageCode() : "en")
+                .recipients(recipients)
+                .options(optsBuilder.build())
+                .build();
+
+        // 8. Call notification service
+        UnifiedSendResponse sendResponse;
+        try {
+            sendResponse = notificationService.sendUnified(sendRequest);
+        } catch (Exception e) {
+            logger.error("Failed to send audience message for audience {}: {}", request.getAudienceId(), e.getMessage(), e);
+            throw new VacademyException("Failed to send message: " + e.getMessage());
+        }
+
+        // 9. Save AudienceCommunication record
+        String variableMappingJson = null;
+        String filtersJson = null;
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            if (variableMapping != null) {
+                variableMappingJson = mapper.writeValueAsString(variableMapping);
+            }
+            if (request.getFilters() != null) {
+                filtersJson = mapper.writeValueAsString(request.getFilters());
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to serialize variable mapping or filters: {}", e.getMessage());
+        }
+
+        AudienceCommunication communication = AudienceCommunication.builder()
+                .instituteId(request.getInstituteId())
+                .audienceId(request.getAudienceId())
+                .channel(channel)
+                .templateName(request.getTemplateName())
+                .subject(request.getSubject())
+                .body(request.getBody())
+                .variableMapping(variableMappingJson)
+                .filters(filtersJson)
+                .recipientCount(recipients.size())
+                .successful(sendResponse.getAccepted())
+                .failed(sendResponse.getFailed())
+                .skipped(skipped)
+                .batchId(sendResponse.getBatchId())
+                .status(sendResponse.getStatus())
+                .createdBy(request.getCreatedBy())
+                .build();
+
+        audienceCommunicationRepository.save(communication);
+
+        // 10. Return response
+        return SendAudienceMessageResponseDTO.builder()
+                .communicationId(communication.getId())
+                .recipientCount(recipients.size())
+                .accepted(sendResponse.getAccepted())
+                .failed(sendResponse.getFailed())
+                .batchId(sendResponse.getBatchId())
+                .status(sendResponse.getStatus())
+                .build();
+    }
+
+    /**
+     * Resolve a single variable from the variableMapping source descriptor.
+     */
+    private String resolveVariable(String source, AudienceResponse response, UserDTO userDTO,
+                                   Map<String, String> customFields, Audience audience) {
+        if (source == null) return null;
+
+        if (source.startsWith("system:")) {
+            String field = source.substring("system:".length());
+            switch (field) {
+                case "full_name":
+                    return userDTO != null && StringUtils.hasText(userDTO.getFullName())
+                            ? userDTO.getFullName() : response.getParentName();
+                case "email":
+                    return userDTO != null && StringUtils.hasText(userDTO.getEmail())
+                            ? userDTO.getEmail() : response.getParentEmail();
+                case "mobile_number":
+                    return userDTO != null && StringUtils.hasText(userDTO.getMobileNumber())
+                            ? userDTO.getMobileNumber() : response.getParentMobile();
+                case "city":
+                    return userDTO != null ? userDTO.getCity() : null;
+                case "region":
+                    return userDTO != null ? userDTO.getRegion() : null;
+                case "campaign_name":
+                    return audience.getCampaignName();
+                case "submitted_at":
+                    return response.getSubmittedAt() != null ? response.getSubmittedAt().toString() : null;
+                case "source_type":
+                    return response.getSourceType();
+                default:
+                    logger.warn("Unknown system variable: {}", field);
+                    return null;
+            }
+        } else if (source.startsWith("custom:")) {
+            String fieldId = source.substring("custom:".length());
+            return customFields.get(fieldId);
+        }
+
+        // If no prefix, treat as literal
+        return source;
+    }
+
+    /**
+     * Retrieve paginated communication history for an audience campaign.
+     */
+    public Page<AudienceCommunicationDTO> getCommunications(String audienceId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AudienceCommunication> comms = audienceCommunicationRepository
+                .findByAudienceIdOrderByCreatedAtDesc(audienceId, pageable);
+        return comms.map(c -> AudienceCommunicationDTO.builder()
+                .id(c.getId())
+                .channel(c.getChannel())
+                .templateName(c.getTemplateName())
+                .subject(c.getSubject())
+                .recipientCount(c.getRecipientCount())
+                .successful(c.getSuccessful())
+                .failed(c.getFailed())
+                .skipped(c.getSkipped())
+                .batchId(c.getBatchId())
+                .status(c.getStatus())
+                .createdBy(c.getCreatedBy())
+                .createdAt(c.getCreatedAt())
+                .build());
+    }
+
+    /**
+     * Bulk submit simple leads (CSV import-friendly).
+     * <p>
+     * Loops through rows and delegates persistence to the existing single-row
+     * {@link #submitLead(SubmitLeadRequestDTO)} method.
+     * Returns per-row results so that one failing row does not block the others.
+     */
+    public BulkSubmitLeadResponseDTO bulkSubmitLead(BulkSubmitLeadRequestDTO request) {
+
+        if (request == null || CollectionUtils.isEmpty(request.getRows())) {
+            throw new VacademyException("rows cannot be empty");
+        }
+
+        String rootAudienceId = request.getAudienceId();
+
+        List<BulkSubmitLeadResultItemDTO> results = new ArrayList<>(request.getRows().size());
+        Set<String> dedupeKeys = new HashSet<>();
+
+        int success = 0;
+        int failed = 0;
+        int skipped = 0;
+
+        for (int i = 0; i < request.getRows().size(); i++) {
+            SubmitLeadRequestDTO row = request.getRows().get(i);
+
+            if (row == null) {
+                failed++;
+                results.add(BulkSubmitLeadResultItemDTO.builder()
+                        .index(i)
+                        .status("FAILED")
+                        .message("Row is null")
+                        .build());
+                continue;
+            }
+
+            // Support payloads where audience_id exists at the root only.
+            if (!StringUtils.hasText(row.getAudienceId())
+                    && StringUtils.hasText(rootAudienceId)) {
+                row.setAudienceId(rootAudienceId);
+            }
+
+            if (!StringUtils.hasText(row.getAudienceId())) {
+                failed++;
+                results.add(BulkSubmitLeadResultItemDTO.builder()
+                        .index(i)
+                        .status("FAILED")
+                        .message("audience_id is required (root or row)")
+                        .build());
+                continue;
+            }
+
+            // Best-effort dedupe by email within the upload payload.
+            String emailKey = "";
+            if (row.getUserDTO() != null && StringUtils.hasText(row.getUserDTO().getEmail())) {
+                emailKey = row.getUserDTO().getEmail().trim().toLowerCase();
+            }
+
+            String dedupeKey = row.getAudienceId().trim() + "|" + emailKey;
+
+            if (StringUtils.hasText(emailKey) && dedupeKeys.contains(dedupeKey)) {
+                skipped++;
+                results.add(BulkSubmitLeadResultItemDTO.builder()
+                        .index(i)
+                        .status("SKIPPED")
+                        .message("Duplicate email in upload payload")
+                        .build());
+                continue;
+            }
+            if (StringUtils.hasText(emailKey)) {
+                dedupeKeys.add(dedupeKey);
+            }
+
+            try {
+                String responseId = submitLead(row);
+
+                // submitLead returns the response ID on success, or an error message string
+                boolean isSuccess = responseId != null
+                        && !responseId.startsWith("Error")
+                        && !responseId.contains("already submitted");
+
+                if (responseId != null && responseId.contains("already submitted")) {
+                    skipped++;
+                    results.add(BulkSubmitLeadResultItemDTO.builder()
+                            .index(i)
+                            .status("SKIPPED")
+                            .message(responseId)
+                            .build());
+                } else if (isSuccess) {
+                    success++;
+                    results.add(BulkSubmitLeadResultItemDTO.builder()
+                            .index(i)
+                            .status("SUCCESS")
+                            .message("Lead submitted successfully")
+                            .audienceResponseId(responseId)
+                            .userId(row.getUserDTO() != null ? row.getUserDTO().getEmail() : null)
+                            .build());
+                } else {
+                    failed++;
+                    results.add(BulkSubmitLeadResultItemDTO.builder()
+                            .index(i)
+                            .status("FAILED")
+                            .message(responseId != null ? responseId : "Unknown error")
+                            .build());
+                }
+            } catch (VacademyException ve) {
+                String msg = ve.getMessage();
+                String normalizedMsg = msg != null ? msg.toLowerCase() : "";
+                boolean alreadySubmitted = normalizedMsg.contains("already submitted");
+
+                if (alreadySubmitted) {
+                    skipped++;
+                    results.add(BulkSubmitLeadResultItemDTO.builder()
+                            .index(i)
+                            .status("SKIPPED")
+                            .message(msg)
+                            .build());
+                } else {
+                    failed++;
+                    results.add(BulkSubmitLeadResultItemDTO.builder()
+                            .index(i)
+                            .status("FAILED")
+                            .message(msg)
+                            .build());
+                }
+            } catch (Exception e) {
+                failed++;
+                results.add(BulkSubmitLeadResultItemDTO.builder()
+                        .index(i)
+                        .status("FAILED")
+                        .message(e.getMessage())
+                        .build());
+            }
+        }
+
+        BulkSubmitLeadResponseDTO.SummaryDTO summary =
+                BulkSubmitLeadResponseDTO.SummaryDTO.builder()
+                        .totalRequested(results.size())
+                        .successful(success)
+                        .failed(failed)
+                        .skipped(skipped)
+                        .build();
+
+        return BulkSubmitLeadResponseDTO.builder()
                 .summary(summary)
                 .results(results)
                 .build();

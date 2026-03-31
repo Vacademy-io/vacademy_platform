@@ -103,4 +103,9 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
         @Query("SELECT psl FROM PackageSessionLearnerInvitationToPaymentOption psl " +
                         "WHERE psl.cpoId = :cpoId AND psl.status != 'DELETED'")
         List<PackageSessionLearnerInvitationToPaymentOption> findByCpoId(@Param("cpoId") String cpoId);
+
+        @Query(value = "SELECT DISTINCT psl.package_session_id FROM package_session_learner_invitation_to_payment_option psl " +
+                        "WHERE psl.enroll_invite_id IN (:enrollInviteIds) " +
+                        "AND psl.status != 'DELETED'", nativeQuery = true)
+        List<String> findPackageSessionIdsByEnrollInviteIds(@Param("enrollInviteIds") List<String> enrollInviteIds);
 }

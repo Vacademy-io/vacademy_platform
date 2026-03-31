@@ -87,6 +87,34 @@ export const allocateSelectedPayment = async (
     );
 };
 
+// ─── Apply Manual Discount (per installment) ─────────────────────────────
+
+export interface ApplyManualDiscountRequest {
+    student_fee_payment_id: string;
+    user_id: string;
+    discount_amount: number;
+    discount_reason?: string;
+}
+
+export interface ApplyManualDiscountResponse {
+    student_fee_payment_id: string;
+    user_id: string;
+    discount_amount: number;
+    discount_reason?: string;
+    status: string;
+    amount_due: number;
+}
+
+export const applyManualDiscount = async (
+    body: ApplyManualDiscountRequest
+): Promise<ApplyManualDiscountResponse> => {
+    const response = await authenticatedAxiosInstance.patch<ApplyManualDiscountResponse>(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/discount/apply`,
+        body
+    );
+    return response.data;
+};
+
 // ─── Generate Invoice for Selected Installments ────────────────────────────
 
 export interface GenerateInvoiceResponse {
@@ -161,10 +189,16 @@ export const sendInvoiceEmail = async (
         primaryColor,
     });
 
-    await authenticatedAxiosInstance.post(`${NOTIFICATION_SERVICE_BASE}/send-html-email`, {
-        to: email,
-        subject: `Fee Invoice - ${studentName}`,
-        body: htmlBody,
+    await authenticatedAxiosInstance.post(`${NOTIFICATION_SERVICE_BASE}/send`, {
+        instituteId: '',
+        channel: 'EMAIL',
+        recipients: [{ email }],
+        options: {
+            emailSubject: `Fee Invoice - ${studentName}`,
+            emailBody: htmlBody,
+            emailType: 'UTILITY_EMAIL',
+            source: 'fee-invoice',
+        },
     });
 };
 
@@ -189,9 +223,15 @@ export const sendPaymentLinkEmail = async (
         primaryColor,
     });
 
-    await authenticatedAxiosInstance.post(`${NOTIFICATION_SERVICE_BASE}/send-html-email`, {
-        to: email,
-        subject: `Payment Link - ${feeName}`,
-        body: htmlBody,
+    await authenticatedAxiosInstance.post(`${NOTIFICATION_SERVICE_BASE}/send`, {
+        instituteId: '',
+        channel: 'EMAIL',
+        recipients: [{ email }],
+        options: {
+            emailSubject: `Payment Link - ${feeName}`,
+            emailBody: htmlBody,
+            emailType: 'UTILITY_EMAIL',
+            source: 'payment-link',
+        },
     });
 };

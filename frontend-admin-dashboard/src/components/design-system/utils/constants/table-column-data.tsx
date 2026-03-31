@@ -346,6 +346,15 @@ export const myColumns: ColumnDef<StudentTable>[] = [
         enableHiding: true,
     },
     {
+        accessorKey: 'enroll_invite_name',
+        size: 180,
+        minSize: 120,
+        maxSize: 280,
+        header: 'Invite',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="enroll_invite_name" />,
+        enableHiding: true,
+    },
+    {
         accessorKey: 'institute_enrollment_number',
         size: 160,
         minSize: 120,
@@ -932,7 +941,7 @@ export const ActivityStatsColumns: ColumnDef<ActivityStatsColumnsType>[] = [
             // Create a regular function to handle the click
             const handleClick = () => {
                 const store = useActivityStatsStore.getState();
-                store.openDialog(row.original.user_id);
+                store.openDialog(row.original.user_id, row.original.full_name);
             };
 
             return (

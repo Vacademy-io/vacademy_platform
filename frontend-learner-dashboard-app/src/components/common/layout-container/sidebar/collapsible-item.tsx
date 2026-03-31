@@ -22,7 +22,7 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                 <CollapsibleTrigger asChild>
                     <SidebarMenuButton tooltip={title} isActive={isChildActive} size="default">
                         {icon && React.createElement(icon, {
-                            weight: "duotone",
+                            weight: isChildActive ? "fill" : "duotone",
                             className: "size-4"
                         })}
                         <span>{title}</span>

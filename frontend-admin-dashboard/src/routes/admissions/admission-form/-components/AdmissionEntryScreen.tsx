@@ -45,7 +45,6 @@ const DATE_RANGES = [
 ];
 
 const OVERALL_STATUSES = [
-    { id: 'ENQUIRY', label: 'Enquiry' },
     { id: 'APPLICATION', label: 'Application' },
     { id: 'ADMISSION', label: 'Admission' },
 ];
@@ -146,14 +145,16 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             }));
     }, [allBatches, selectedSessionId]);
 
-    const [fromSource, setFromSource] = useState('From Enquiry');
     const [searchBy, setSearchBy] = useState('Student Name');
     const [searchValue, setSearchValue] = useState('');
     const [searchResults, setSearchResults] = useState<any[] | null>(null);
     const [isSearching, setIsSearching] = useState(false);
     const [totalResponses, setTotalResponses] = useState(0);
 
-    const [statusFilters, setStatusFilters] = useState<{ id: string; label: string }[]>([]);
+    // Default to Admission on initial load.
+    const [statusFilters, setStatusFilters] = useState<{ id: string; label: string }[]>([
+        { id: 'ADMISSION', label: 'Admission' },
+    ]);
     const [sourceFilters, setSourceFilters] = useState<{ id: string; label: string }[]>([]);
     const [dateRangeFilters, setDateRangeFilters] = useState<{ id: string; label: string }[]>([]);
     const [packageSessionFilters, setPackageSessionFilters] = useState<{ id: string; label: string }[]>([]);
@@ -316,10 +317,6 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             // session_id is mandatory
             if (selectedSessionId) body.session_id = selectedSessionId;
 
-            // "from" field: ENQUIRY or APPLICATION (NOT "source")
-            if (fromSource === 'From Enquiry') body.from = 'ENQUIRY';
-            else if (fromSource === 'From Application') body.from = 'APPLICATION';
-
             // search_by + search_text (NOT "search")
             if (searchValue.trim()) {
                 body.search_by = SEARCH_BY_MAP[searchBy] || 'STUDENT_NAME';
@@ -374,14 +371,13 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
     };
 
     const handleSelectResult = (item: any) => {
-        const sourceType = fromSource === 'From Enquiry' ? 'ENQUIRY' : 'APPLICATION';
-        const sourceId =
-            sourceType === 'APPLICATION'
-                ? item.applicant_id || item.application_id || item.admission_id || item.id || ''
-                : item.enquiry_id || item.admission_id || item.id || '';
+        const sourceType = item.status === 'APPLICATION' ? 'APPLICATION' : 'ENQUIRY';
+        const sourceId = sourceType === 'APPLICATION'
+            ? item.applicant_id || item.application_id || item.admission_id || item.id || ''
+            : item.enquiry_id || item.admission_id || item.id || '';
 
-        const isEnquiry = sourceType === 'ENQUIRY' || item.status === 'ENQUIRY';
-        const isApplication = sourceType === 'APPLICATION' || item.status === 'APPLICATION';
+        const isEnquiry = sourceType === 'ENQUIRY';
+        const isApplication = sourceType === 'APPLICATION';
 
         navigateToForm({
             id: sourceId,
@@ -535,23 +531,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                     <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Search Criteria</h2>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                    <div className="flex flex-col gap-1.5 flex-1">
-                        <label className="text-xs font-medium text-gray-600">FROM <span className="text-red-500">*</span></label>
-                        <select
-                            value={fromSource}
-                            onChange={(e) => {
-                                setFromSource(e.target.value);
-                                setSearchResults(null);
-                                setSearchValue('');
-                            }}
-                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
-                        >
-                            <option value="From Enquiry">From Enquiry</option>
-                            <option value="From Application">From Application</option>
-                        </select>
-                    </div>
-
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
                     <div className="flex flex-col gap-1.5 flex-1">
                         <label className="text-xs font-medium text-gray-600">Search By</label>
                         <select
@@ -560,11 +540,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
                         >
                             <option value="Student Name">Student Name</option>
-                            {fromSource === 'From Enquiry' ? (
-                                <option value="Enquiry No">Enquiry No</option>
-                            ) : (
-                                <option value="Application No">Application No</option>
-                            )}
+                            <option value="Application No">Application No</option>
                             <option value="Parent Mobile">Parent Mobile</option>
                         </select>
                     </div>

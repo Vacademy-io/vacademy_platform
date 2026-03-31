@@ -124,11 +124,11 @@ public class LiveSessionNotificationProcessor {
                     if (channels.contains("EMAIL")) {
                         if (sn.getType().equals(NotificationTypeEnum.BEFORE_LIVE.name())) {
                             NotificationDTO notification = buildBeforeLiveEmailNotification(session, sn, schedule, rows);
-                            notificationService.sendEmailToUsers(notification, session.getInstituteId());
+                            notificationService.sendEmailViaUnified(notification, session.getInstituteId());
                         }
                         if (sn.getType().equals(NotificationTypeEnum.ON_LIVE.name())) {
                             NotificationDTO notification = buildOnLiveEmailNotification(session, sn, schedule, rows);
-                            notificationService.sendEmailToUsers(notification, session.getInstituteId());
+                            notificationService.sendEmailViaUnified(notification, session.getInstituteId());
                         }
                     }
 
@@ -139,7 +139,7 @@ public class LiveSessionNotificationProcessor {
                                 ? "Live Class Started" : "Live Class Starting Soon";
                         String pushBody = sessionTitle + (sn.getType().equals(NotificationTypeEnum.ON_LIVE.name())
                                 ? " has started – Join now!" : " begins shortly. Get ready!");
-                        notificationService.sendPushNotificationToUsers(
+                        notificationService.sendPushViaUnified(
                                 session.getInstituteId(), userIds, pushTitle, pushBody,
                                 Map.of("sessionId", session.getId(), "type", "LIVE_CLASS"));
                     }
@@ -151,7 +151,7 @@ public class LiveSessionNotificationProcessor {
                                 ? "Live Class Started" : "Live Class Starting Soon";
                         String alertBody = sessionTitle + (sn.getType().equals(NotificationTypeEnum.ON_LIVE.name())
                                 ? " has started – Join now!" : " begins shortly.");
-                        notificationService.sendSystemAlertToUsers(
+                        notificationService.sendSystemAlertViaUnified(
                                 session.getInstituteId(), userIds, alertTitle, alertBody);
                     }
                 }
@@ -378,7 +378,7 @@ public class LiveSessionNotificationProcessor {
 
             if (!rows.isEmpty()) {
                 NotificationDTO notification = buildDeleteEmailNotification(session, schedule, rows);
-                notificationService.sendEmailToUsers(notification, instituteId);
+                notificationService.sendEmailViaUnified(notification, instituteId);
                 System.out.println("Delete notification sent for session: " + sessionId + " to " + rows.size() + " participants");
             }
         } catch (Exception ex) {
@@ -423,7 +423,7 @@ public class LiveSessionNotificationProcessor {
 
                 if (!rows.isEmpty()) {
                     NotificationDTO notification = buildDeleteEmailNotification(session, schedule, rows);
-                    notificationService.sendEmailToUsers(notification, instituteId);
+                    notificationService.sendEmailViaUnified(notification, instituteId);
                     System.out.println("Delete notification sent for schedule: " + scheduleId + " to " + rows.size() + " participants");
                 }
             } catch (Exception ex) {
@@ -520,7 +520,7 @@ public class LiveSessionNotificationProcessor {
 
             // Build and send notification
             NotificationDTO notification = buildOnCreateEmailNotification(session, selectedSchedule, rows);
-            notificationService.sendEmailToUsers(notification, session.getInstituteId());
+            notificationService.sendEmailViaUnified(notification, session.getInstituteId());
 
             System.out.println("ON_CREATE notification sent for session: " + sessionId + " to " + rows.size() + " participants");
 
@@ -735,12 +735,12 @@ public class LiveSessionNotificationProcessor {
             String body = "You have been marked as " + status + " for " + sessionTitle;
 
             if (channels.contains("PUSH_NOTIFICATION")) {
-                notificationService.sendPushNotificationToUsers(
+                notificationService.sendPushViaUnified(
                         session.getInstituteId(), List.of(userId), title, body,
                         Map.of("sessionId", sessionId, "type", "ATTENDANCE", "status", status));
             }
             if (channels.contains("SYSTEM_NOTIFICATION")) {
-                notificationService.sendSystemAlertToUsers(
+                notificationService.sendSystemAlertViaUnified(
                         session.getInstituteId(), List.of(userId), title, body);
             }
             if (channels.contains("EMAIL")) {
@@ -769,7 +769,7 @@ public class LiveSessionNotificationProcessor {
                     u.setChannelId(student.getEmail());
 
                     dto.setUsers(List.of(u));
-                    notificationService.sendEmailToUsers(dto, session.getInstituteId());
+                    notificationService.sendEmailViaUnified(dto, session.getInstituteId());
                 }
             }
         } catch (Exception e) {

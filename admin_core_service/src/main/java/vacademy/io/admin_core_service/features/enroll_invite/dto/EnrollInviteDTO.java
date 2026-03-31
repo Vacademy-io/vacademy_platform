@@ -30,4 +30,13 @@ public class EnrollInviteDTO {
     private String settingJson;
     private String shortUrl;
     private String subOrgId;
+    private SubOrgInfoDTO subOrg;
+
+    @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class SubOrgInfoDTO {
+        private String id;
+        private String name;
+        private String logoFileId;
+    }
 }

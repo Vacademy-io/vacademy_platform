@@ -3,8 +3,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Trash, X } from '@phosphor-icons/react';
-import { WORKFLOW_NODE_TYPES, TRIGGER_EVENTS } from '@/types/workflow/workflow-types';
+import { WORKFLOW_NODE_TYPES } from '@/types/workflow/workflow-types';
 import { VariablePicker } from './variable-picker';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
+import {
+    getQueryKeysQuery,
+    getTriggerEventsCatalogQuery,
+    getTemplatesByTypeQuery,
+} from '@/services/workflow-service';
 
 export function NodeConfigPanel() {
     const selectedNodeId = useWorkflowBuilderStore((s) => s.selectedNodeId);
@@ -13,6 +20,16 @@ export function NodeConfigPanel() {
     const updateNodeName = useWorkflowBuilderStore((s) => s.updateNodeName);
     const removeNode = useWorkflowBuilderStore((s) => s.removeNode);
     const selectNode = useWorkflowBuilderStore((s) => s.selectNode);
+
+    // Fetch institute data for template queries
+    const { data: instituteData } = useSuspenseQuery(useInstituteQuery());
+    const instituteId = instituteData?.id ?? '';
+
+    // Fetch catalog data
+    const { data: queryKeys } = useQuery(getQueryKeysQuery());
+    const { data: triggerEvents } = useQuery(getTriggerEventsCatalogQuery());
+    const { data: emailTemplates } = useQuery(getTemplatesByTypeQuery(instituteId, 'EMAIL'));
+    const { data: whatsappTemplates } = useQuery(getTemplatesByTypeQuery(instituteId, 'WHATSAPP'));
 
     const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
@@ -34,6 +51,10 @@ export function NodeConfigPanel() {
     const handleConfigChange = (key: string, value: unknown) => {
         updateNodeConfig(selectedNode.id, { ...data.config, [key]: value });
     };
+
+    // Derived values for catalog lookups
+    const selectedQueryKey = queryKeys?.find((q) => q.key === (data.config.prebuiltKey as string));
+    const selectedTriggerEvent = triggerEvents?.find((e) => e.key === (data.config.triggerEvent as string));
 
     return (
         <div className="flex h-full flex-col overflow-y-auto">
@@ -66,117 +87,166 @@ export function NodeConfigPanel() {
                     />
                 </div>
 
-                {/* Trigger-specific config */}
+                {/* Trigger-specific config — upgraded with catalog dropdown */}
                 {data.nodeType === 'TRIGGER' && (
                     <div>
                         <Label className="text-xs">Trigger Event</Label>
                         <select
                             className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                            value={
-                                (data.config.triggerEvent as string) ?? ''
-                            }
+                            value={(data.config.triggerEvent as string) ?? ''}
                             onChange={(e) =>
-                                handleConfigChange(
-                                    'triggerEvent',
-                                    e.target.value
-                                )
+                                handleConfigChange('triggerEvent', e.target.value)
                             }
                         >
                             <option value="">Select event...</option>
-                            {TRIGGER_EVENTS.map((event) => (
-                                <option key={event} value={event}>
-                                    {event.replace(/_/g, ' ')}
+                            {triggerEvents?.map((ev) => (
+                                <option key={ev.key} value={ev.key}>
+                                    {ev.label}
                                 </option>
                             ))}
                         </select>
+                        {selectedTriggerEvent && (
+                            <p className="mt-1 text-[10px] text-gray-400">{selectedTriggerEvent.description}</p>
+                        )}
                     </div>
                 )}
 
-                {/* Email node config */}
+                {/* Email node config — upgraded with template dropdown + dynamic params */}
                 {data.nodeType === 'SEND_EMAIL' && (
                     <>
                         <div>
-                            <Label className="text-xs">Template Name</Label>
-                            <Input
-                                value={
-                                    (data.config.templateName as string) ?? ''
-                                }
-                                onChange={(e) =>
-                                    handleConfigChange(
-                                        'templateName',
-                                        e.target.value
-                                    )
-                                }
-                                className="mt-1"
-                                placeholder="Email template name"
-                            />
+                            <Label className="text-xs">Email Template</Label>
+                            <select
+                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={(data.config.templateName as string) ?? ''}
+                                onChange={(e) => {
+                                    handleConfigChange('templateName', e.target.value);
+                                    const tmpl = emailTemplates?.find((t) => t.name === e.target.value);
+                                    if (tmpl?.dynamic_parameters) {
+                                        try {
+                                            const params = JSON.parse(tmpl.dynamic_parameters);
+                                            handleConfigChange('_templateParams', params);
+                                        } catch {
+                                            // ignore parse errors
+                                        }
+                                    }
+                                }}
+                            >
+                                <option value="">Select template...</option>
+                                {emailTemplates?.map((t) => (
+                                    <option key={t.id} value={t.name}>
+                                        {t.name} {t.subject ? `— ${t.subject}` : ''}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                         <div>
-                            <Label className="text-xs">
-                                Recipient Expression (SpEL)
-                            </Label>
-                            <Input
-                                value={
-                                    (data.config.recipientExpression as string) ??
-                                    ''
-                                }
-                                onChange={(e) =>
-                                    handleConfigChange(
-                                        'recipientExpression',
-                                        e.target.value
-                                    )
-                                }
-                                className="mt-1"
-                                placeholder="#ctx['email']"
+                            <Label className="text-xs">Recipients (list expression)</Label>
+                            <VariablePicker
+                                value={(data.config.on as string) ?? ''}
+                                onChange={(v) => handleConfigChange('on', v)}
+                                placeholder="Pick a list of recipients..."
+                                nodeId={selectedNode.id}
                             />
                         </div>
+                        {/* Dynamic template parameters */}
+                        {data.config._templateParams && typeof data.config._templateParams === 'object' && (
+                            <div className="space-y-2 border-t pt-2 mt-2">
+                                <Label className="text-[10px] uppercase text-gray-400">Template Variables</Label>
+                                {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => (
+                                    <div key={key}>
+                                        <Label className="text-xs">{label || key}</Label>
+                                        <VariablePicker
+                                            value={((data.config.templateVars as Record<string, string>)?.[key]) ?? ''}
+                                            onChange={(v) => {
+                                                const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: v };
+                                                handleConfigChange('templateVars', vars);
+                                            }}
+                                            placeholder={`Value for ${label || key}...`}
+                                            nodeId={selectedNode.id}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </>
                 )}
 
-                {/* WhatsApp node config */}
+                {/* WhatsApp node config — upgraded with template dropdown + dynamic params */}
                 {data.nodeType === 'SEND_WHATSAPP' && (
                     <>
                         <div>
-                            <Label className="text-xs">Template Name</Label>
-                            <Input
-                                value={
-                                    (data.config.templateName as string) ?? ''
-                                }
-                                onChange={(e) =>
-                                    handleConfigChange(
-                                        'templateName',
-                                        e.target.value
-                                    )
-                                }
-                                className="mt-1"
-                                placeholder="WhatsApp template name"
-                            />
+                            <Label className="text-xs">WhatsApp Template</Label>
+                            <select
+                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={(data.config.templateName as string) ?? ''}
+                                onChange={(e) => {
+                                    handleConfigChange('templateName', e.target.value);
+                                    const tmpl = whatsappTemplates?.find((t) => t.name === e.target.value);
+                                    if (tmpl?.dynamic_parameters) {
+                                        try {
+                                            const params = JSON.parse(tmpl.dynamic_parameters);
+                                            handleConfigChange('_templateParams', params);
+                                        } catch {
+                                            // ignore parse errors
+                                        }
+                                    }
+                                }}
+                            >
+                                <option value="">Select template...</option>
+                                {whatsappTemplates?.map((t) => (
+                                    <option key={t.id} value={t.name}>
+                                        {t.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                         <div>
-                            <Label className="text-xs">
-                                Phone Expression (SpEL)
-                            </Label>
-                            <Input
-                                value={
-                                    (data.config.phoneExpression as string) ??
-                                    ''
-                                }
-                                onChange={(e) =>
-                                    handleConfigChange(
-                                        'phoneExpression',
-                                        e.target.value
-                                    )
-                                }
-                                className="mt-1"
-                                placeholder="#ctx['phone']"
+                            <Label className="text-xs">Recipients (list expression)</Label>
+                            <VariablePicker
+                                value={(data.config.on as string) ?? ''}
+                                onChange={(v) => handleConfigChange('on', v)}
+                                placeholder="Pick a list of recipients..."
+                                nodeId={selectedNode.id}
                             />
                         </div>
+                        {/* Dynamic template parameters */}
+                        {data.config._templateParams && typeof data.config._templateParams === 'object' && (
+                            <div className="space-y-2 border-t pt-2 mt-2">
+                                <Label className="text-[10px] uppercase text-gray-400">Template Variables</Label>
+                                {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => (
+                                    <div key={key}>
+                                        <Label className="text-xs">{label || key}</Label>
+                                        <VariablePicker
+                                            value={((data.config.templateVars as Record<string, string>)?.[key]) ?? ''}
+                                            onChange={(v) => {
+                                                const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: v };
+                                                handleConfigChange('templateVars', vars);
+                                            }}
+                                            placeholder={`Value for ${label || key}...`}
+                                            nodeId={selectedNode.id}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </>
                 )}
 
-                {/* HTTP Request config */}
+                {/* HTTP Request config — upgraded with type toggle */}
                 {data.nodeType === 'HTTP_REQUEST' && (
                     <>
+                        <div>
+                            <Label className="text-xs">Request Type</Label>
+                            <select
+                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={(data.config.requestType as string) ?? 'EXTERNAL'}
+                                onChange={(e) => handleConfigChange('requestType', e.target.value)}
+                            >
+                                <option value="EXTERNAL">External API</option>
+                                <option value="INTERNAL">Internal Service</option>
+                            </select>
+                        </div>
                         <div>
                             <Label className="text-xs">URL</Label>
                             <Input
@@ -185,7 +255,11 @@ export function NodeConfigPanel() {
                                     handleConfigChange('url', e.target.value)
                                 }
                                 className="mt-1"
-                                placeholder="https://api.example.com/endpoint"
+                                placeholder={
+                                    (data.config.requestType as string) === 'INTERNAL'
+                                        ? '/admin-core-service/v1/...'
+                                        : 'https://api.example.com/endpoint'
+                                }
                             />
                         </div>
                         <div>
@@ -211,24 +285,54 @@ export function NodeConfigPanel() {
                     </>
                 )}
 
-                {/* Query node config */}
+                {/* Query node config — upgraded with catalog dropdown + dynamic params */}
                 {data.nodeType === 'QUERY' && (
-                    <div>
-                        <Label className="text-xs">Prebuilt Query Key</Label>
-                        <Input
-                            value={
-                                (data.config.prebuiltKey as string) ?? ''
-                            }
-                            onChange={(e) =>
-                                handleConfigChange(
-                                    'prebuiltKey',
-                                    e.target.value
-                                )
-                            }
-                            className="mt-1"
-                            placeholder="e.g., GET_LEARNER_DETAILS"
-                        />
-                    </div>
+                    <>
+                        <div>
+                            <Label className="text-xs">Query</Label>
+                            <select
+                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={(data.config.prebuiltKey as string) ?? ''}
+                                onChange={(e) => handleConfigChange('prebuiltKey', e.target.value)}
+                            >
+                                <option value="">Select a query...</option>
+                                {queryKeys?.map((q) => (
+                                    <option key={q.key} value={q.key}>
+                                        {q.label}
+                                    </option>
+                                ))}
+                            </select>
+                            {selectedQueryKey && (
+                                <p className="mt-1 text-[10px] text-gray-400">{selectedQueryKey.description}</p>
+                            )}
+                        </div>
+                        {/* Dynamic required params */}
+                        {selectedQueryKey?.required_params && selectedQueryKey.required_params.length > 0 && (
+                            <div className="space-y-2 border-t pt-2 mt-2">
+                                <Label className="text-[10px] uppercase text-gray-400">Required Parameters</Label>
+                                {selectedQueryKey.required_params.map((param) => (
+                                    <div key={param}>
+                                        <Label className="text-xs">{param}</Label>
+                                        <VariablePicker
+                                            value={(data.config[param] as string) ?? ''}
+                                            onChange={(v) => handleConfigChange(param, v)}
+                                            placeholder={`Pick value for ${param}...`}
+                                            nodeId={selectedNode.id}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <div>
+                            <Label className="text-xs">Result Key</Label>
+                            <Input
+                                value={(data.config.resultKey as string) ?? 'queryResult'}
+                                onChange={(e) => handleConfigChange('resultKey', e.target.value)}
+                                className="mt-1"
+                                placeholder="queryResult"
+                            />
+                        </div>
+                    </>
                 )}
 
                 {/* Delay node config */}

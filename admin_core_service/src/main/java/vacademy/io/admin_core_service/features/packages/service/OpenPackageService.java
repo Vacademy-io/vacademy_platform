@@ -20,10 +20,7 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -44,47 +41,96 @@ public class OpenPackageService {
 
                 Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
                 Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-                Page<PackageDetailProjection> learnerPackageDetail = null;
-                if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
-                        learnerPackageDetail = packageRepository.getCatalogPackageDetail(
-                                        learnerPackageFilterDTO.getSearchByName(),
+
+                Page<PackageDetailProjection> learnerPackageDetail;
+
+                if (Boolean.TRUE.equals(learnerPackageFilterDTO.getPackageView())) {
+                        // Package-view mode: fetch ALL sessions, group by package, paginate in Java
+                        Pageable unpaged = PageRequest.of(0, 10000, thisSort);
+                        learnerPackageDetail = fetchOpenDetail(learnerPackageFilterDTO, instituteId, null, unpaged);
+
+                        List<PackageDetailDTO> allDtos = mapProjectionsToDTOs(learnerPackageDetail.getContent());
+
+                        // Group by package ID preserving order
+                        Map<String, List<PackageDetailDTO>> grouped = new LinkedHashMap<>();
+                        for (PackageDetailDTO dto : allDtos) {
+                                grouped.computeIfAbsent(dto.getId(), k -> new ArrayList<>()).add(dto);
+                        }
+
+                        // Paginate by distinct packages
+                        List<String> allPackageIds = new ArrayList<>(grouped.keySet());
+                        int totalPackages = allPackageIds.size();
+                        int fromIndex = Math.min(pageNo * pageSize, totalPackages);
+                        int toIndex = Math.min(fromIndex + pageSize, totalPackages);
+                        List<String> pagePackageIds = allPackageIds.subList(fromIndex, toIndex);
+
+                        // Collect all session rows for packages on this page
+                        List<PackageDetailDTO> pageDtos = new ArrayList<>();
+                        for (String pkgId : pagePackageIds) {
+                                pageDtos.addAll(grouped.get(pkgId));
+                        }
+
+                        return new CustomPage<>(pageDtos, pageable, totalPackages);
+                } else {
+                        // Default mode: paginate by session
+                        learnerPackageDetail = fetchOpenDetail(learnerPackageFilterDTO, instituteId, null, pageable);
+
+                        List<PackageDetailDTO> dtos = mapProjectionsToDTOs(learnerPackageDetail.getContent());
+                        return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
+                }
+        }
+
+        private Page<PackageDetailProjection> fetchOpenDetail(
+                        LearnerPackageFilterDTO filterDTO,
+                        String instituteId,
+                        List<String> packageIds,
+                        Pageable pageable) {
+                if (StringUtils.hasText(filterDTO.getSearchByName())) {
+                        return packageRepository.getCatalogPackageDetail(
+                                        filterDTO.getSearchByName(),
                                         instituteId,
                                         List.of(PackageStatusEnum.ACTIVE.name()),
-                                        learnerPackageFilterDTO.getPackageTypes(),
+                                        filterDTO.getPackageTypes(),
                                         List.of(PackageSessionStatusEnum.ACTIVE.name(),
                                                         PackageSessionStatusEnum.HIDDEN.name()),
-                                        List.of (LevelStatusEnum.ACTIVE.name()),
+                                        List.of(LevelStatusEnum.ACTIVE.name()),
                                         List.of(StatusEnum.ACTIVE.name()),
                                         List.of(StatusEnum.ACTIVE.name()),
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                                         List.of(ChapterStatus.ACTIVE.name()),
-                                        learnerPackageFilterDTO.getCreatedByUserId(),
+                                        filterDTO.getCreatedByUserId(),
+                                        filterDTO.getSessionIds(),
+                                        packageIds,
                                         pageable);
                 } else {
-                        learnerPackageDetail = packageRepository.getOpenCatalogPackageDetail(
+                        return packageRepository.getOpenCatalogPackageDetail(
                                         instituteId,
-                                        learnerPackageFilterDTO.getLevelIds(),
+                                        filterDTO.getLevelIds(),
                                         List.of(PackageStatusEnum.ACTIVE.name()),
-                                        learnerPackageFilterDTO.getPackageTypes(),
+                                        filterDTO.getPackageTypes(),
                                         List.of(PackageSessionStatusEnum.ACTIVE.name(),
                                                         PackageSessionStatusEnum.HIDDEN.name()),
-                                        learnerPackageFilterDTO.getFacultyIds(),
+                                        filterDTO.getFacultyIds(),
                                         List.of(StatusEnum.ACTIVE.name()),
-                                        learnerPackageFilterDTO.getTag(),
+                                        filterDTO.getTag(),
                                         List.of(LevelStatusEnum.ACTIVE.name()),
                                         List.of(StatusEnum.ACTIVE.name()),
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                                         List.of(ChapterStatus.ACTIVE.name()),
-                                        learnerPackageFilterDTO.getCreatedByUserId(),
+                                        filterDTO.getCreatedByUserId(),
+                                        filterDTO.getSessionIds(),
+                                        packageIds,
                                         pageable);
                 }
+        }
 
+        private List<PackageDetailDTO> mapProjectionsToDTOs(List<PackageDetailProjection> projections) {
                 // Get all instructor userIds (faculty first; fallback to createdByUserId when no faculty mapped)
-                List<String> instructorIds = learnerPackageDetail.getContent().stream()
+                List<String> instructorIds = projections.stream()
                                 .map(proj -> {
                                         List<String> ids = Optional.ofNullable(proj.getFacultyUserIds()).orElse(List.of());
                                         if (!ids.isEmpty()) return ids;
@@ -94,13 +140,11 @@ public class OpenPackageService {
                                 .distinct()
                                 .collect(Collectors.toList());
 
-                // Fetch instructor details
                 List<UserDTO> userDTOS = authService.getUsersFromAuthServiceByUserIds(instructorIds);
                 Map<String, UserDTO> userMap = userDTOS.stream()
                                 .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
 
-                // Map projections to DTOs (instructors = faculty list, or single creator as fallback)
-                List<PackageDetailDTO> dtos = learnerPackageDetail.getContent().stream().map(projection -> {
+                return projections.stream().map(projection -> {
                         List<String> instructorIdList = Optional.ofNullable(projection.getFacultyUserIds()).orElse(List.of());
                         if (instructorIdList.isEmpty() && projection.getCreatedByUserId() != null) {
                                 instructorIdList = List.of(projection.getCreatedByUserId());
@@ -133,10 +177,11 @@ public class OpenPackageService {
                                         projection.getDripConditionJson(),
                                         instructors,
                                         projection.getLevelIds(),
-                                        projection.getReadTimeInMinutes(), projection.getPackageType());
+                                        projection.getReadTimeInMinutes(),
+                                        projection.getPackageType(),
+                                        projection.getSessionId(),
+                                        projection.getSessionName());
                 }).toList();
-
-                return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
         }
 
         public PackageDetailDTO getPackageDetailById(
@@ -191,7 +236,9 @@ public class OpenPackageService {
                                 instructors,
                                 projection.getLevelIds(),
                                 getReadTimeInMinutes(packageId),
-                                projection.getPackageType());
+                                projection.getPackageType(),
+                                projection.getSessionId(),
+                                projection.getSessionName());
 
                 return dto;
         }

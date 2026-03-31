@@ -132,6 +132,7 @@
     "jwt-decode": "^4.0.0",
     "katex": "^0.16.19",
     "lottie-react": "^2.4.1",
+    "@flaticon/flaticon-uicons": "^3.3.1",
     "lucide-react": "^0.469.0",
     "mathquill4quill": "^2.4.0",
     "mermaid": "^11.12.2",

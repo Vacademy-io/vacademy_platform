@@ -57,6 +57,7 @@ public class DomainRoutingAdminService {
                                                 request.getConvertUsernamePasswordToLowercase() != null
                                                                 ? request.getConvertUsernamePasswordToLowercase()
                                                                 : false)
+                                .subOrgId(request.getSubOrgId() == null ? null : request.getSubOrgId().trim())
                                 .build();
                 return repository.save(entity);
         }
@@ -111,6 +112,7 @@ public class DomainRoutingAdminService {
                                         request.getConvertUsernamePasswordToLowercase() != null
                                                         ? request.getConvertUsernamePasswordToLowercase()
                                                         : false);
+                        existing.setSubOrgId(request.getSubOrgId() == null ? null : request.getSubOrgId().trim());
                         return repository.save(existing);
                 });
         }

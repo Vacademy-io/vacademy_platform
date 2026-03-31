@@ -42,6 +42,12 @@ public class AssignmentSlide {
     @Column(name = "comma_separated_media_ids")
     private String commaSeparatedMediaIds;
 
+    @Column(name = "total_marks")
+    private Double totalMarks;
+
+    @Column(name = "passing_marks")
+    private Double passingMarks;
+
     @OneToMany(mappedBy = "assignmentSlide", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AssignmentSlideQuestion> assignmentSlideQuestions;
 
@@ -66,6 +72,8 @@ public class AssignmentSlide {
         this.endDate = dto.getEndDate();
         this.reAttemptCount = dto.getReAttemptCount();
         this.commaSeparatedMediaIds = dto.getCommaSeparatedMediaIds();
+        this.totalMarks = dto.getTotalMarks();
+        this.passingMarks = dto.getPassingMarks();
         if (dto.getQuestions() != null) {
             this.assignmentSlideQuestions = dto.getQuestions().stream()
                     .map(question -> new AssignmentSlideQuestion(question, this))

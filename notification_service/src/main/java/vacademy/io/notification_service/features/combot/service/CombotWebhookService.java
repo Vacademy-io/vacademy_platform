@@ -21,6 +21,7 @@ import vacademy.io.notification_service.features.combot.entity.ChannelFlowConfig
 import vacademy.io.notification_service.features.combot.entity.ChannelToInstituteMapping;
 import vacademy.io.notification_service.features.combot.action.dto.FlowContext;
 import vacademy.io.notification_service.features.combot.action.service.FlowActionRouter;
+import vacademy.io.notification_service.features.chatbot_flow.engine.ChatbotFlowEngine;
 import vacademy.io.notification_service.features.combot.enums.CombotNotificationType;
 import vacademy.io.notification_service.features.combot.enums.WhatsAppMessageType;
 import vacademy.io.notification_service.features.combot.repository.ChannelFlowConfigRepository;
@@ -64,6 +65,10 @@ public class CombotWebhookService {
     @Autowired
     @Lazy
     private CombotMessagingService messagingService;
+
+    @Autowired
+    @Lazy
+    private ChatbotFlowEngine chatbotFlowEngine;
 
     // ========================================================================
     // 1️⃣ OUTGOING MESSAGE LOGGING
@@ -236,8 +241,11 @@ public class CombotWebhookService {
                 String userText = extractMessageText(message);
                 String messageId = (String) message.get(CombotWebhookKeys.MESSAGE_ID);
 
+                // Extract sender name from contacts[0].profile.name
+                String senderName = extractSenderName(value);
+
                 // Log Incoming
-                logIncomingMessage(messageId, userPhone, userText, receivingPhoneId);
+                logIncomingMessage(messageId, userPhone, userText, receivingPhoneId, senderName);
 
                 // --- KEYWORD CHECK FOR OPT OUT ---
                 if (isOptOutKeyword(userText)) {
@@ -253,7 +261,22 @@ public class CombotWebhookService {
                     continue; // Stop flow processing
                 }
 
-                // 3. Find Context & Process Flow (Existing logic)
+                // 3. NEW: Try chatbot flow engine (graph-based) first
+                String msgType = message.get(CombotWebhookKeys.TYPE) != null
+                        ? message.get(CombotWebhookKeys.TYPE).toString() : "text";
+                String btnId = extractInteractiveButtonId(message);
+                String btnPayload = extractButtonPayload(message);
+                String listId = extractListReplyId(message);
+
+                boolean handledByNewFlow = chatbotFlowEngine.handleIncomingMessage(
+                        instituteId, channelType, userPhone, userText, receivingPhoneId,
+                        msgType, btnId, btnPayload, listId);
+                if (handledByNewFlow) {
+                    log.info("Message handled by chatbot flow engine: phone={}", userPhone);
+                    continue; // Skip legacy ChannelFlowConfig processing
+                }
+
+                // 4. Fall back to legacy ChannelFlowConfig (Existing logic)
                 Optional<NotificationLog> lastLogOpt = notificationLogRepository
                         .findTopByChannelIdAndSenderBusinessChannelIdAndNotificationTypeOrderByNotificationDateDesc(
                                 userPhone, receivingPhoneId, CombotNotificationType.WHATSAPP_OUTGOING.getType());
@@ -791,7 +814,8 @@ public class CombotWebhookService {
 
     // --- Log & Extraction Helpers ---
 
-    private void logIncomingMessage(String messageId, String fromPhone, String text, String receivingChannelId) {
+    private void logIncomingMessage(String messageId, String fromPhone, String text,
+                                     String receivingChannelId, String senderName) {
         try {
             NotificationLog logEntry = new NotificationLog();
             logEntry.setNotificationType(CombotNotificationType.WHATSAPP_INCOMING.getType());
@@ -801,6 +825,9 @@ public class CombotWebhookService {
             logEntry.setBody(text);
             logEntry.setSenderBusinessChannelId(receivingChannelId);
             logEntry.setNotificationDate(LocalDateTime.now());
+            if (senderName != null && !senderName.isBlank()) {
+                logEntry.setSenderName(senderName);
+            }
 
             // Find last outgoing message to this user to get userId
             Optional<NotificationLog> lastOutgoingOpt = notificationLogRepository
@@ -817,6 +844,21 @@ public class CombotWebhookService {
         } catch (Exception e) {
             log.error("Failed to log incoming message from {}", fromPhone, e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractSenderName(Map<String, Object> value) {
+        try {
+            List<Map<String, Object>> contacts = (List<Map<String, Object>>) value.get("contacts");
+            if (contacts != null && !contacts.isEmpty()) {
+                Map<String, Object> contact = contacts.get(0);
+                Map<String, Object> profile = (Map<String, Object>) contact.get("profile");
+                if (profile != null) {
+                    return (String) profile.get("name");
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private String extractPhoneNumberId(Map<String, Object> value) {
@@ -869,6 +911,46 @@ public class CombotWebhookService {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractInteractiveButtonId(Map<String, Object> message) {
+        try {
+            String type = (String) message.get(CombotWebhookKeys.TYPE);
+            if ("interactive".equals(type)) {
+                Map<String, Object> interactive = (Map<String, Object>) message.get("interactive");
+                if (interactive != null && interactive.containsKey("button_reply")) {
+                    return (String) ((Map<String, Object>) interactive.get("button_reply")).get("id");
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractButtonPayload(Map<String, Object> message) {
+        try {
+            String type = (String) message.get(CombotWebhookKeys.TYPE);
+            if ("button".equals(type)) {
+                Map<String, Object> button = (Map<String, Object>) message.get("button");
+                if (button != null) return (String) button.get("payload");
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractListReplyId(Map<String, Object> message) {
+        try {
+            String type = (String) message.get(CombotWebhookKeys.TYPE);
+            if ("interactive".equals(type)) {
+                Map<String, Object> interactive = (Map<String, Object>) message.get("interactive");
+                if (interactive != null && interactive.containsKey("list_reply")) {
+                    return (String) ((Map<String, Object>) interactive.get("list_reply")).get("id");
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private Map<String, List<String>> parseJsonMap(String json) {

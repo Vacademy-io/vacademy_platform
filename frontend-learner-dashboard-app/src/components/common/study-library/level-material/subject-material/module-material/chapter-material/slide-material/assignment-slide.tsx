@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -8,15 +8,158 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { FileUploader } from "./file-uploader";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { SUBMIT_ASSIGNMENT_SLIDE_ANSWERS } from "@/constants/urls";
+import { SUBMIT_ASSIGNMENT_SLIDE_ANSWERS, GET_ASSIGNMENT_ACTIVITY_LOGS } from "@/constants/urls";
+import { getPublicUrl } from "@/services/upload_file";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/constants/getUserId";
 import { MyInput } from "@/components/design-system/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
-// import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import "katex/dist/katex.min.css";
+import katex from "katex";
+
+/** Returns an SVG icon string based on file extension / MIME type */
+const getFileIconSvg = (fileName: string, mimeType: string): string => {
+  const name = fileName.toLowerCase();
+  const type = mimeType.toLowerCase();
+
+  // PDF
+  if (type.includes("pdf") || name.endsWith(".pdf")) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12l-2 4h4l-2 4"/></svg>`;
+  }
+  // Images
+  if (type.includes("image") || /\.(jpg|jpeg|png|gif|svg|webp|bmp)$/i.test(name)) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+  }
+  // Word docs
+  if (/\.(doc|docx)$/i.test(name) || type.includes("word")) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
+  }
+  // Spreadsheets
+  if (/\.(xls|xlsx|csv)$/i.test(name) || type.includes("sheet") || type.includes("excel")) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><rect x="8" y="12" width="8" height="6" rx="1"/></svg>`;
+  }
+  // Video
+  if (type.includes("video") || /\.(mp4|mov|avi|webm|mkv)$/i.test(name)) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`;
+  }
+  // Audio
+  if (type.includes("audio") || /\.(mp3|wav|ogg|aac|flac)$/i.test(name)) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+  }
+  // Archive
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(name)) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>`;
+  }
+  // Generic file
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+};
+
+/** Download arrow icon */
+const downloadIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+
+/** Get human-readable file size label from extension */
+const getFileTypeLabel = (fileName: string, mimeType: string): string => {
+  const name = fileName.toLowerCase();
+  const type = mimeType.toLowerCase();
+  if (type.includes("pdf") || name.endsWith(".pdf")) return "PDF";
+  if (/\.(jpg|jpeg)$/i.test(name) || type.includes("jpeg")) return "JPEG";
+  if (name.endsWith(".png") || type.includes("png")) return "PNG";
+  if (/\.(doc|docx)$/i.test(name) || type.includes("word")) return "Word";
+  if (/\.(xls|xlsx)$/i.test(name) || type.includes("sheet")) return "Excel";
+  if (/\.(ppt|pptx)$/i.test(name) || type.includes("presentation")) return "PPT";
+  if (name.endsWith(".csv")) return "CSV";
+  if (/\.(mp4|mov|avi|webm)$/i.test(name) || type.includes("video")) return "Video";
+  if (/\.(mp3|wav|ogg)$/i.test(name) || type.includes("audio")) return "Audio";
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(name)) return "Archive";
+  return "File";
+};
+
+/** Renders HTML content with KaTeX math support and enhanced attachment rendering */
+const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: string }) => {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    // Re-render math-inline/math-display spans with data-latex attributes
+    const mathSpans = ref.current.querySelectorAll(
+      "span.math-inline[data-latex], span.math-display[data-latex], div.math-display[data-latex], span[data-latex], div[data-latex]"
+    );
+    mathSpans.forEach((span) => {
+      const latex = span.getAttribute("data-latex");
+      if (!latex) return;
+      const isDisplay = span.classList.contains("math-display");
+      try {
+        katex.render(latex, span as HTMLElement, {
+          throwOnError: false,
+          displayMode: isDisplay,
+        });
+      } catch {
+        // Keep original content on failure
+      }
+    });
+
+    // Enhance attachment links with file icons and better styling
+    const attachmentLinks = ref.current.querySelectorAll('a[data-attachment="true"]');
+    attachmentLinks.forEach((link) => {
+      if (link.getAttribute("data-enhanced")) return;
+      link.setAttribute("data-enhanced", "true");
+
+      const anchor = link as HTMLAnchorElement;
+      const fileName = anchor.getAttribute("name") || anchor.textContent?.trim() || "File";
+      const mimeType = anchor.getAttribute("type") || "";
+      const typeLabel = getFileTypeLabel(fileName, mimeType);
+      const iconSvg = getFileIconSvg(fileName, mimeType);
+
+      // Replace inline styles with a clean card-like look
+      anchor.removeAttribute("style");
+      anchor.style.cssText = `
+        display: flex; align-items: center; gap: 12px;
+        background: #f9fafb; padding: 12px 16px; border-radius: 10px;
+        border: 1px solid #e5e7eb; text-decoration: none; color: #111827;
+        transition: all 0.15s ease; cursor: pointer; max-width: 400px;
+      `;
+
+      // Build enhanced inner HTML
+      anchor.innerHTML = `
+        <span style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 8px; background: #f3f4f6; flex-shrink: 0;">
+          ${iconSvg}
+        </span>
+        <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1;">
+          <span style="font-size: 14px; font-weight: 500; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            ${fileName}
+          </span>
+          <span style="font-size: 12px; color: #6b7280;">
+            ${typeLabel}
+          </span>
+        </span>
+        <span style="flex-shrink: 0; display: flex; align-items: center;">
+          ${downloadIconSvg}
+        </span>
+      `;
+
+      // Hover effect
+      anchor.addEventListener("mouseenter", () => {
+        anchor.style.background = "#f3f4f6";
+        anchor.style.borderColor = "#d1d5db";
+      });
+      anchor.addEventListener("mouseleave", () => {
+        anchor.style.background = "#f9fafb";
+        anchor.style.borderColor = "#e5e7eb";
+      });
+    });
+  }, [html]);
+
+  return (
+    <div
+      ref={ref}
+      className={className}
+      dangerouslySetInnerHTML={{ __html: html || "" }}
+    />
+  );
+};
 
 interface QuestionResponseMap {
   [key: string]: {
@@ -37,10 +180,13 @@ interface Question {
   text_data: {
     content: string;
   };
-  question_type: string;
+  question_type?: string;
+  question_order?: number;
   options?: Option[];
-  re_attempt_count: number;
+  re_attempt_count?: number;
   options_json?: string;
+  status?: string;
+  new_question?: boolean;
 }
 
 interface AssignmentSlideProps {
@@ -55,6 +201,8 @@ interface AssignmentSlideProps {
     live_date: string;
     end_date: string;
     re_attempt_count: number;
+    total_marks?: number | null;
+    passing_marks?: number | null;
     questions?: Question[];
   };
   onUpload: (
@@ -79,6 +227,30 @@ const AssignmentSlide = ({
   const [numericValuesMap, setNumericValuesMap] = useState<
     Record<string, string>
   >({});
+
+  // Fetch grading results for this assignment
+  const slideId = activeItem?.id || '';
+  const { data: gradingData } = useQuery({
+    queryKey: ['ASSIGNMENT_GRADING_RESULTS', slideId],
+    queryFn: async () => {
+      const userId = await getUserId();
+      const response = await authenticatedAxiosInstance.get(GET_ASSIGNMENT_ACTIVITY_LOGS, {
+        params: { userId, slideId, pageNo: 0, pageSize: 1 },
+      });
+      return response.data;
+    },
+    enabled: !!slideId,
+    staleTime: 30 * 1000,
+  });
+
+  // Extract latest graded submission
+  const latestSubmission = gradingData?.content?.[0]?.assignment_slides?.[0];
+  const gradedMarks = latestSubmission?.marks ?? null;
+  const gradedFeedback = latestSubmission?.feedback ?? null;
+  const checkedFileId = latestSubmission?.checked_file_id ?? null;
+  const totalMarks = assignmentData.total_marks;
+  const passingMarks = assignmentData.passing_marks;
+  const isPassed = gradedMarks != null && passingMarks != null ? gradedMarks >= passingMarks : null;
 
   // Constants for numeric input
   const isDecimal = false;
@@ -246,7 +418,7 @@ const AssignmentSlide = ({
       };
 
       const urlParams = new URLSearchParams(window.location.search);
-      const slideId = urlParams.get("slideId") || "";
+      const slideId = urlParams.get("slideId") || activeItem?.id || "";
       const userId = await getUserId();
       return authenticatedAxiosInstance.post(
         SUBMIT_ASSIGNMENT_SLIDE_ANSWERS,
@@ -278,210 +450,107 @@ const AssignmentSlide = ({
     submitAssignmentMutation.mutate();
   };
 
+  // Render MCQ options (shared for MCQS, MCQM, TRUE_FALSE)
+  const renderOptions = (question: Question, isMultiSelect: boolean) => {
+    const currentResponse = questionResponses[question.id]?.value || "";
+    const qType = question.question_type || "";
+
+    if (!question.options?.length) return null;
+
+    return (
+      <div className="space-y-4">
+        {question.options.map((option, optIndex) => {
+          const isSelected = isMultiSelect
+            ? Array.isArray(currentResponse) && currentResponse.includes(option.id)
+            : typeof currentResponse === "string" && currentResponse === option.id;
+
+          return (
+            <div
+              key={option.id}
+              className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full cursor-pointer ${
+                isSelected ? "border-primary-500 bg-primary-50" : "border-gray-200"
+              }`}
+              onClick={() => {
+                if (isMultiSelect) {
+                  const currentValues = Array.isArray(currentResponse) ? currentResponse : [];
+                  const newValues = currentValues.includes(option.id)
+                    ? currentValues.filter((id) => id !== option.id)
+                    : [...currentValues, option.id];
+                  handleResponseChange(question.id, newValues, qType);
+                } else {
+                  handleResponseChange(question.id, option.id, qType);
+                }
+              }}
+            >
+              <div className="relative flex items-center">
+                <div
+                  className={`w-6 h-6 border rounded-md flex items-center justify-center ${
+                    isSelected ? "bg-green-500 border-green-500" : "border-gray-300"
+                  }`}
+                >
+                  {isSelected && <span className="text-white font-bold">✔</span>}
+                </div>
+              </div>
+              <label className={`flex-grow text-sm ${isSelected ? "font-semibold" : "text-gray-700"}`}>
+                {qType === "TRUE_FALSE" ? (
+                  <HtmlWithKatex html={option.text.content} className="inline" />
+                ) : (
+                  <>
+                    {String.fromCharCode(65 + optIndex)}.{" "}
+                    <HtmlWithKatex html={option.text.content} className="inline" />
+                  </>
+                )}
+              </label>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   // Render question based on type
   const renderQuestion = (question: Question, index: number) => {
     if (!question.text_data?.content) return null;
 
     const currentResponse = questionResponses[question.id]?.value || "";
+    const qType = question.question_type || "";
 
     return (
       <div className="mb-6">
         <div className="flex justify-between items-start mb-4">
-          <h3 className="text-md font-medium">
-            {index + 1}. {question.text_data.content}
+          <h3 className="text-md font-medium flex gap-1">
+            <span className="min-w-fit">{index + 1}.</span>
+            <HtmlWithKatex html={question.text_data.content} />
           </h3>
-          <div className="text-sm text-gray-500">
-            <div>Type: {getQuestionTypeDisplay(question.question_type)}</div>
-            <div>Attempts: {question.re_attempt_count || "Unlimited"}</div>
-          </div>
+          {qType && (
+            <div className="text-sm text-gray-500 min-w-fit ml-4">
+              <div>Type: {getQuestionTypeDisplay(qType)}</div>
+              {question.re_attempt_count != null && (
+                <div>Attempts: {question.re_attempt_count || "Unlimited"}</div>
+              )}
+            </div>
+          )}
         </div>
 
         {(() => {
-          switch (question.question_type) {
+          switch (qType) {
             case "MCQS":
-              return (
-                <div className="space-y-4">
-                  {question.options?.map((option, optIndex) => (
-                    <div
-                      key={option.id}
-                      className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full ${
-                        Array.isArray(currentResponse) &&
-                        currentResponse.includes(option.id)
-                          ? "border-primary-500 bg-primary-50"
-                          : "border-gray-200"
-                      }`}
-                      onClick={() => {
-                        const currentValues = Array.isArray(currentResponse)
-                          ? currentResponse
-                          : [];
-                        const newValues = currentValues.includes(option.id)
-                          ? currentValues.filter((id) => id !== option.id)
-                          : [...currentValues, option.id];
-                        handleResponseChange(
-                          question.id,
-                          newValues,
-                          question.question_type
-                        );
-                      }}
-                    >
-                      <div className="relative flex items-center">
-                        <div
-                          className={`w-6 h-6 border rounded-md flex items-center justify-center ${
-                            Array.isArray(currentResponse) &&
-                            currentResponse.includes(option.id)
-                              ? "bg-green-500 border-green-500"
-                              : "border-gray-300"
-                          }`}
-                        >
-                          {Array.isArray(currentResponse) &&
-                            currentResponse.includes(option.id) && (
-                              <span className="text-white font-bold">✔</span>
-                            )}
-                        </div>
-                      </div>
+              return renderOptions(question, false);
 
-                      <label
-                        className={`flex-grow text-sm ${
-                          Array.isArray(currentResponse) &&
-                          currentResponse.includes(option.id)
-                            ? "font-semibold"
-                            : "text-gray-700"
-                        }`}
-                      >
-                        {String.fromCharCode(65 + optIndex)}.{" "}
-                        {option.text.content}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              );
             case "TRUE_FALSE":
-              return (
-                <div className="space-y-4">
-                  {question.options?.map((option, optIndex) => (
-                    <div
-                      key={option.id}
-                      className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full ${
-                        typeof currentResponse === "string" &&
-                        currentResponse === option.id
-                          ? "border-primary-500 bg-primary-50"
-                          : "border-gray-200"
-                      }`}
-                      onClick={() =>
-                        handleResponseChange(
-                          question.id,
-                          option.id,
-                          question.question_type
-                        )
-                      }
-                    >
-                      <div className="relative flex items-center">
-                        <div
-                          className={`w-6 h-6 border rounded-md flex items-center justify-center ${
-                            typeof currentResponse === "string" &&
-                            currentResponse === option.id
-                              ? "bg-green-500 border-green-500"
-                              : "border-gray-300"
-                          }`}
-                        >
-                          {typeof currentResponse === "string" &&
-                            currentResponse === option.id && (
-                              <span className="text-white font-bold">✔</span>
-                            )}
-                        </div>
-                      </div>
-
-                      <label
-                        className={`flex-grow text-sm ${
-                          typeof currentResponse === "string" &&
-                          currentResponse === option.id
-                            ? "font-semibold"
-                            : "text-gray-700"
-                        }`}
-                      >
-                        {question.question_type === "TRUE_FALSE"
-                          ? option.text.content
-                          : `${String.fromCharCode(65 + optIndex)}. ${
-                              option.text.content
-                            }`}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              );
+              return renderOptions(question, false);
 
             case "MCQM":
-              return (
-                <div className="space-y-4">
-                  {question.options?.map((option, optIndex) => (
-                    <div
-                      key={option.id}
-                      className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full ${
-                        Array.isArray(currentResponse) &&
-                        currentResponse.includes(option.id)
-                          ? "border-primary-500 bg-primary-50"
-                          : "border-gray-200"
-                      }`}
-                      onClick={() => {
-                        const currentValues = Array.isArray(currentResponse)
-                          ? currentResponse
-                          : [];
-                        const newValues = currentValues.includes(option.id)
-                          ? currentValues.filter((id) => id !== option.id)
-                          : [...currentValues, option.id];
-                        handleResponseChange(
-                          question.id,
-                          newValues,
-                          question.question_type
-                        );
-                      }}
-                    >
-                      <div className="relative flex items-center">
-                        <div
-                          className={`w-6 h-6 border rounded-md flex items-center justify-center ${
-                            Array.isArray(currentResponse) &&
-                            currentResponse.includes(option.id)
-                              ? "bg-green-500 border-green-500"
-                              : "border-gray-300"
-                          }`}
-                        >
-                          {Array.isArray(currentResponse) &&
-                            currentResponse.includes(option.id) && (
-                              <span className="text-white font-bold">✔</span>
-                            )}
-                        </div>
-                      </div>
-
-                      <label
-                        className={`flex-grow text-sm ${
-                          Array.isArray(currentResponse) &&
-                          currentResponse.includes(option.id)
-                            ? "font-semibold"
-                            : "text-gray-700"
-                        }`}
-                      >
-                        {String.fromCharCode(65 + optIndex)}.{" "}
-                        {option.text.content}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              );
+              return renderOptions(question, true);
 
             case "ONE_WORD":
               return (
                 <div className="w-full max-w-md">
                   <MyInput
                     inputType="text"
-                    input={
-                      typeof currentResponse === "string" ? currentResponse : ""
-                    }
+                    input={typeof currentResponse === "string" ? currentResponse : ""}
                     onChangeFunction={(e) =>
-                      handleResponseChange(
-                        question.id,
-                        e.target.value,
-                        question.question_type
-                      )
+                      handleResponseChange(question.id, e.target.value, qType)
                     }
                     inputPlaceholder="Type your one-word answer"
                     className="text-xl py-4 font-medium w-full"
@@ -496,15 +565,9 @@ const AssignmentSlide = ({
               return (
                 <div className="w-full">
                   <Textarea
-                    value={
-                      typeof currentResponse === "string" ? currentResponse : ""
-                    }
+                    value={typeof currentResponse === "string" ? currentResponse : ""}
                     onChange={(e) =>
-                      handleResponseChange(
-                        question.id,
-                        e.target.value,
-                        question.question_type
-                      )
+                      handleResponseChange(question.id, e.target.value, qType)
                     }
                     placeholder="Type your answer..."
                     className="min-h-[200px] text-base"
@@ -526,9 +589,7 @@ const AssignmentSlide = ({
                         handleNumericChange(question.id, e.target.value)
                       }
                       inputPlaceholder={
-                        isDecimal
-                          ? "Enter decimal value"
-                          : "Enter integer value"
+                        isDecimal ? "Enter decimal value" : "Enter integer value"
                       }
                       inputMode="numeric"
                       className="text-xl py-4 font-medium w-full max-w-md"
@@ -546,9 +607,7 @@ const AssignmentSlide = ({
                             key={num}
                             variant="outline"
                             className="h-14 text-xl font-medium"
-                            onClick={() =>
-                              handleKeyPress(question.id, num.toString())
-                            }
+                            onClick={() => handleKeyPress(question.id, num.toString())}
                           >
                             {num}
                           </Button>
@@ -565,9 +624,7 @@ const AssignmentSlide = ({
                             variant="outline"
                             className="h-14 text-xl font-medium"
                             onClick={() => handleKeyPress(question.id, ".")}
-                            disabled={numericValuesMap[question.id]?.includes(
-                              "."
-                            )}
+                            disabled={numericValuesMap[question.id]?.includes(".")}
                           >
                             .
                           </Button>
@@ -575,14 +632,11 @@ const AssignmentSlide = ({
                         <Button
                           variant="outline"
                           className="h-14 text-xl font-medium"
-                          onClick={() =>
-                            handleKeyPress(question.id, "backspace")
-                          }
+                          onClick={() => handleKeyPress(question.id, "backspace")}
                         >
                           ←
                         </Button>
                       </div>
-
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         <Button
                           variant="outline"
@@ -598,11 +652,9 @@ const AssignmentSlide = ({
               );
 
             default:
-              return (
-                <p className="text-sm text-gray-500">
-                  Question type not supported: {question.question_type}
-                </p>
-              );
+              // No question_type — display as read-only text question
+              // (student answers via file upload)
+              return null;
           }
         })()}
       </div>
@@ -614,7 +666,7 @@ const AssignmentSlide = ({
       <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
         <CardHeader className="space-y-2">
           <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
-            {assignmentData.text_data?.content || activeItem?.title}
+            <HtmlWithKatex html={assignmentData.text_data?.content || activeItem?.title || ""} />
           </CardTitle>
           <CardDescription className="text-sm sm:text-base text-gray-600">
             <div className="flex flex-col space-y-1 mt-2">
@@ -635,13 +687,10 @@ const AssignmentSlide = ({
         </CardHeader>
         <CardContent>
           {assignmentData.parent_rich_text?.content && (
-            <div className="prose max-w-none text-gray-700 text-sm sm:text-base">
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: assignmentData.parent_rich_text.content,
-                }}
-              />
-            </div>
+            <HtmlWithKatex
+              html={assignmentData.parent_rich_text.content}
+              className="prose max-w-none text-gray-700 text-sm sm:text-base"
+            />
           )}
         </CardContent>
       </Card>
@@ -720,6 +769,56 @@ const AssignmentSlide = ({
         <div className="mt-4 p-3 sm:p-4 bg-gray-50 text-gray-800 rounded-md text-sm sm:text-base border border-gray-200">
           Error: {submitError}
         </div>
+      )}
+
+      {/* Grading Results */}
+      {gradedMarks != null && (
+        <Card className="mt-4 sm:mt-6 bg-white shadow-sm">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
+              Results
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl font-bold text-gray-900">
+                  {gradedMarks}{totalMarks != null ? ` / ${totalMarks}` : ''}
+                </span>
+                {isPassed != null && (
+                  <span className={`rounded-full px-3 py-1 text-sm font-medium ${
+                    isPassed
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-red-100 text-red-700'
+                  }`}>
+                    {isPassed ? 'Passed' : 'Not Passed'}
+                  </span>
+                )}
+              </div>
+              {gradedFeedback && (
+                <div className="rounded-md bg-gray-50 p-3 border border-gray-200">
+                  <p className="text-xs font-medium text-gray-500 mb-1">Feedback</p>
+                  <p className="text-sm text-gray-700">{gradedFeedback}</p>
+                </div>
+              )}
+              {checkedFileId && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const url = await getPublicUrl(checkedFileId);
+                      if (url) window.open(url, '_blank');
+                    } catch (err) {
+                      console.error('Failed to get checked copy URL:', err);
+                    }
+                  }}
+                  className="flex items-center gap-2 w-fit rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  Download Checked Answer Copy
+                </button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

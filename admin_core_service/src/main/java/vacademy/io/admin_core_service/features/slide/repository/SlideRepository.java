@@ -2138,4 +2138,69 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("assignmentQuestionStatusList") List<String> assignmentQuestionStatusList,
             @Param("quizQuestionStatusList") List<String> quizQuestionStatusList);
 
+    @Query(value = """
+            SELECT json_agg(slide_data) AS slides FROM (
+                SELECT json_build_object(
+                    'id', s.id,
+                    'title', s.title,
+                    'status', s.status,
+                    'is_loaded', true,
+                    'new_slide', false,
+                    'source_id', s.source_id,
+                    'description', s.description,
+                    'slide_order', 0,
+                    'source_type', s.source_type,
+                    'assignment_slide', CASE WHEN s.source_type = 'ASSIGNMENT' THEN (
+                        SELECT json_build_object(
+                            'id', a.id,
+                            'live_date', a.live_date,
+                            'end_date', a.end_date,
+                            'comma_separated_media_ids', a.comma_separated_media_ids,
+                            're_attempt_count', a.re_attempt_count,
+                            'total_marks', a.total_marks,
+                            'passing_marks', a.passing_marks,
+                            'text_data', CASE WHEN a.text_id IS NOT NULL THEN json_build_object(
+                                'id', rt_text.id, 'type', rt_text.type, 'content', rt_text.content
+                            ) ELSE NULL END,
+                            'parent_rich_text', CASE WHEN a.parent_rich_text_id IS NOT NULL THEN json_build_object(
+                                'id', rt_parent.id, 'type', rt_parent.type, 'content', rt_parent.content
+                            ) ELSE NULL END,
+                            'questions', COALESCE((
+                                SELECT json_agg(json_build_object(
+                                    'id', q.id,
+                                    'question_order', q.question_order,
+                                    'status', q.status,
+                                    'question_type', q.question_type,
+                                    'text_data', CASE WHEN q.text_id IS NOT NULL THEN json_build_object(
+                                        'id', rtq.id, 'type', rtq.type, 'content', rtq.content
+                                    ) ELSE NULL END,
+                                    'options', COALESCE((
+                                        SELECT json_agg(json_build_object(
+                                            'id', o.id,
+                                            'text', json_build_object('id', rto.id, 'type', rto.type, 'content', rto.content)
+                                        ) ORDER BY o.id)
+                                        FROM assignment_slide_question_options o
+                                        LEFT JOIN rich_text_data rto ON rto.id = o.text_id
+                                        WHERE o.assignment_slide_question_id = q.id
+                                    ), CAST('[]' AS json))
+                                ) ORDER BY q.question_order)
+                                FROM assignment_slide_question q
+                                LEFT JOIN rich_text_data rtq ON rtq.id = q.text_id
+                                WHERE q.assignment_slide_id = a.id AND q.status IN (:questionStatus)
+                            ), CAST('[]' AS json))
+                        )
+                        FROM assignment_slide a
+                        LEFT JOIN rich_text_data rt_text ON rt_text.id = a.text_id
+                        LEFT JOIN rich_text_data rt_parent ON rt_parent.id = a.parent_rich_text_id
+                        WHERE a.id = s.source_id
+                    ) ELSE NULL END
+                ) AS slide_data
+                FROM slide s
+                WHERE s.id = :slideId
+            ) AS result
+            """, nativeQuery = true)
+    String getSlideBySlideId(
+            @Param("slideId") String slideId,
+            @Param("questionStatus") List<String> questionStatus);
+
 }

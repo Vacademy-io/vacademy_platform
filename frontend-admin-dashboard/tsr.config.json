@@ -2,5 +2,6 @@
     "routesDirectory": "./src/routes",
     "generatedRouteTree": "./src/routeTree.gen.ts",
     "routeFileIgnorePrefix": "-",
+    "routeFileIgnorePattern": ".*/(components|hooks|utils|services|dialogs|shared|viewer|admin|non-admin)/.*",
     "quoteStyle": "double"
 }

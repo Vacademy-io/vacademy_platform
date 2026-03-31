@@ -35,6 +35,8 @@ import {
     ExternalLink,
     Check,
     X,
+    ImageIcon,
+    FileText,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { useFileUpload } from '@/hooks/use-file-upload';
@@ -49,6 +51,7 @@ import {
 import { toast } from 'sonner';
 import {
     GenerateVideoRequest,
+    ReferenceFile,
     LANGUAGES,
     VOICE_GENDERS,
     TTS_PROVIDERS,
@@ -129,10 +132,15 @@ export function PromptInput({
         outro?: { enabled: boolean; duration_seconds?: number };
         watermark?: { enabled: boolean; position?: string };
     } | null>(null);
+    const [attachments, setAttachments] = useState<
+        Array<{ fileId: string; fileName: string; fileType: 'image' | 'pdf'; url: string; previewUrl?: string }>
+    >([]);
+    const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
+    const attachmentInputRef = useRef<HTMLInputElement>(null);
     const { data: modelsList } = useAIModelsList();
-    const { uploadFile } = useFileUpload();
+    const { uploadFile, getPublicUrl: getFilePublicUrl } = useFileUpload();
 
     useEffect(() => {
         if (textareaRef.current) {
@@ -189,7 +197,16 @@ export function PromptInput({
 
     const handleSubmit = () => {
         if (!prompt.trim() || isGenerating || disabled) return;
-        onGenerate({ prompt: prompt.trim(), ...options });
+        const referenceFiles: ReferenceFile[] = attachments.map((a) => ({
+            url: a.url,
+            name: a.fileName,
+            type: a.fileType,
+        }));
+        onGenerate({
+            prompt: prompt.trim(),
+            ...options,
+            ...(referenceFiles.length > 0 ? { reference_files: referenceFiles } : {}),
+        });
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -236,6 +253,95 @@ export function PromptInput({
         } finally {
             setIsPdfProcessing(false);
         }
+    };
+
+    const MAX_ATTACHMENTS = 10;
+    const MAX_FILE_SIZE_MB = 50;
+
+    const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        e.target.value = '';
+
+        const remaining = MAX_ATTACHMENTS - attachments.length;
+        if (remaining <= 0) {
+            toast.error(`Maximum ${MAX_ATTACHMENTS} files allowed`);
+            return;
+        }
+
+        const filesToProcess = Array.from(files).slice(0, remaining);
+        if (filesToProcess.length < files.length) {
+            toast.warning(`Only ${remaining} more file(s) can be added (max ${MAX_ATTACHMENTS})`);
+        }
+
+        setIsUploadingAttachment(true);
+        let successCount = 0;
+        let failCount = 0;
+
+        try {
+            for (const file of filesToProcess) {
+                if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+                    toast.error(`${file.name} exceeds ${MAX_FILE_SIZE_MB}MB limit`);
+                    failCount++;
+                    continue;
+                }
+
+                const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                const fileType: 'image' | 'pdf' = ext === 'pdf' ? 'pdf' : 'image';
+
+                try {
+                    const fileId = await uploadFile({
+                        file,
+                        setIsUploading: () => {},
+                        userId: getUserId(),
+                        source: 'AI_VIDEO_REFERENCE',
+                        sourceId: 'ADMIN',
+                        publicUrl: true,
+                    });
+                    if (!fileId) {
+                        failCount++;
+                        continue;
+                    }
+
+                    const url = await getFilePublicUrl(fileId);
+                    if (!url) {
+                        failCount++;
+                        continue;
+                    }
+
+                    const previewUrl = fileType === 'image' ? URL.createObjectURL(file) : undefined;
+
+                    setAttachments((prev) => [
+                        ...prev,
+                        { fileId, fileName: file.name, fileType, url, previewUrl },
+                    ]);
+                    successCount++;
+                } catch {
+                    failCount++;
+                }
+            }
+
+            if (successCount > 0 && failCount === 0) {
+                toast.success(`${successCount} file(s) attached`);
+            } else if (successCount > 0 && failCount > 0) {
+                toast.warning(`${successCount} attached, ${failCount} failed`);
+            } else if (failCount > 0) {
+                toast.error(`Failed to upload ${failCount} file(s)`);
+            }
+        } catch (error) {
+            console.error('Attachment upload error:', error);
+            toast.error('Failed to upload attachments');
+        } finally {
+            setIsUploadingAttachment(false);
+        }
+    };
+
+    const removeAttachment = (fileId: string) => {
+        setAttachments((prev) => {
+            const removed = prev.find((a) => a.fileId === fileId);
+            if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+            return prev.filter((a) => a.fileId !== fileId);
+        });
     };
 
     const updateOption = <K extends keyof typeof options>(key: K, value: (typeof options)[K]) => {
@@ -714,9 +820,47 @@ export function PromptInput({
                     </Button>
                 </div>
 
+                {/* Attachments bar */}
+                {attachments.length > 0 && (
+                    <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-2 py-1.5">
+                        <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                            Refs ({attachments.length})
+                        </span>
+                        <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
+                            {attachments.map((a) => (
+                                <div
+                                    key={a.fileId}
+                                    className="group flex shrink-0 items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs"
+                                    title={a.fileName}
+                                >
+                                    {a.fileType === 'image' ? (
+                                        a.previewUrl ? (
+                                            <img src={a.previewUrl} alt={a.fileName} className="size-6 rounded object-cover" />
+                                        ) : (
+                                            <ImageIcon className="size-4 text-blue-500" />
+                                        )
+                                    ) : (
+                                        <FileText className="size-4 text-red-500" />
+                                    )}
+                                    <span className="max-w-[100px] truncate">{a.fileName}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => removeAttachment(a.fileId)}
+                                        className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                                        aria-label={`Remove ${a.fileName}`}
+                                    >
+                                        <X className="size-3.5" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Prompt Input */}
                 <div className="relative flex items-end gap-2 rounded-lg border bg-muted/30 p-1.5 shadow-sm transition-all focus-within:border-ring/50 focus-within:ring-1 focus-within:ring-ring">
-                    <div className="flex shrink-0 flex-col items-center justify-end pb-1">
+                    <div className="flex shrink-0 flex-col items-center justify-end gap-0.5 pb-1">
+                        {/* Hidden file inputs */}
                         <input
                             ref={pdfInputRef}
                             type="file"
@@ -725,18 +869,43 @@ export function PromptInput({
                             onChange={handlePdfUpload}
                             disabled={isPdfProcessing || isGenerating || disabled}
                         />
+                        <input
+                            ref={attachmentInputRef}
+                            type="file"
+                            accept=".pdf,.png,.jpg,.jpeg,.webp"
+                            multiple
+                            className="hidden"
+                            onChange={handleAttachmentUpload}
+                            disabled={isUploadingAttachment || isGenerating || disabled}
+                        />
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="size-8 text-muted-foreground hover:text-foreground"
+                            className="size-8 text-muted-foreground hover:text-blue-600"
+                            onClick={() => attachmentInputRef.current?.click()}
+                            disabled={isUploadingAttachment || isGenerating || disabled}
+                            title="Attach reference images or PDFs (used as context + visuals)"
+                            aria-label="Attach reference files"
+                        >
+                            {isUploadingAttachment ? (
+                                <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                                <Paperclip className="size-4" />
+                            )}
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-muted-foreground hover:text-orange-600"
                             onClick={() => pdfInputRef.current?.click()}
                             disabled={isPdfProcessing || isGenerating || disabled}
-                            title="Upload PDF as prompt"
+                            title="Extract PDF text and use as prompt (replaces current text)"
+                            aria-label="Extract PDF as prompt"
                         >
                             {isPdfProcessing ? (
                                 <Loader2 className="size-4 animate-spin" />
                             ) : (
-                                <Paperclip className="size-4" />
+                                <FileText className="size-4" />
                             )}
                         </Button>
                     </div>
@@ -762,7 +931,7 @@ export function PromptInput({
                             value={prompt}
                             onChange={(e) => onPromptChange(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="Describe the video you want to create..."
+                            placeholder="Describe what you want to create... (attach images/PDFs with the clip icon)"
                             className="max-h-[160px] min-h-[36px] min-w-0 flex-1 resize-none border-0 bg-transparent p-0 text-sm placeholder:text-muted-foreground/70 focus-visible:ring-0 focus-visible:ring-offset-0"
                             disabled={isGenerating || disabled}
                             rows={1}

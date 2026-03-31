@@ -16,19 +16,70 @@ import {
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { MyButton } from '@/components/design-system/button';
-import { X } from '@phosphor-icons/react';
+import { X, Copy, Check } from '@phosphor-icons/react';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
+import { toast } from 'sonner';
 import { QuestionPaperUpload } from '@/routes/assessment/question-papers/-components/QuestionPaperUpload';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { QuestionPapersTabs } from '@/routes/assessment/question-papers/-components/QuestionPapersTabs';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import { ReverseProgressBar } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+// import { ReverseProgressBar } from '@/components/ui/progress';
+import { RichContentRenderer } from '@/routes/assessment/assessment-list/offline-entry/$assessmentId/-components/RichContentRenderer';
+import { useQuery } from '@tanstack/react-query';
+import { getSlideActivityStats } from '@/services/study-library/slide-operations/slide-activity-stats';
+
+const QUESTION_TYPE_LABELS: Record<string, string> = {
+    MCQS: 'Single Choice',
+    MCQM: 'Multiple Choice',
+    TRUE_FALSE: 'True / False',
+    ONE_WORD: 'One Word',
+    LONG_ANSWER: 'Long Answer',
+    NUMERIC: 'Numeric',
+    CMCQS: 'Comprehension (Single)',
+    CMCQM: 'Comprehension (Multiple)',
+};
+
+const ShareAssignmentLink = ({ slideId }: { slideId: string }) => {
+    const { instituteDetails } = useInstituteDetailsStore();
+    const [copied, setCopied] = useState(false);
+    const learnerBaseUrl = instituteDetails?.learner_portal_base_url || BASE_URL_LEARNER_DASHBOARD;
+    const withProtocol = learnerBaseUrl.startsWith('http') ? learnerBaseUrl : `https://${learnerBaseUrl}`;
+    const normalizedBase = withProtocol.replace(/\/+$/, '');
+    const assignmentLink = `${normalizedBase}/assignment/${slideId}`;
+
+    const handleCopy = () => {
+        navigator.clipboard
+            .writeText(assignmentLink)
+            .then(() => {
+                setCopied(true);
+                toast.success('Link copied to clipboard');
+                setTimeout(() => setCopied(false), 2000);
+            })
+            .catch(() => toast.error('Failed to copy link'));
+    };
+
+    return (
+        <div className="flex flex-col gap-2">
+            <h1 className="font-semibold">Share Assignment</h1>
+            <div className="flex items-center gap-3">
+                <span className="max-w-[400px] truncate rounded-md border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm text-neutral-600">
+                    {assignmentLink}
+                </span>
+                <MyButton
+                    type="button"
+                    scale="small"
+                    buttonType="secondary"
+                    layoutVariant="icon"
+                    onClick={handleCopy}
+                    title="Copy link"
+                >
+                    {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
+                </MyButton>
+            </div>
+        </div>
+    );
+};
 
 const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) => {
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -49,9 +100,19 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
     });
 
     const adaptive_marking_for_each_question = form.getValues('adaptive_marking_for_each_question');
-    const { watch, getValues } = form;
-    const totalParticipants = Number(getValues('totalParticipants')) || 0;
-    const submittedParticipants = Number(getValues('submittedParticipants')) || 0;
+    const { watch } = form;
+
+    // Fetch live participant stats from activity API
+    const { data: activityStats } = useQuery({
+        ...getSlideActivityStats({
+            slideId: activeItem.id,
+            page: 0,
+            size: 1,
+        }),
+        enabled: !!activeItem.id,
+    });
+
+    const totalParticipants = activityStats?.totalElements ?? 0;
 
     useEffect(() => {
         const subscription = watch(() => {
@@ -69,27 +130,7 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
     return (
         <div key={`assignment-${activeItem.id}`} className="flex size-full flex-col gap-8">
             <FormProvider {...form}>
-                {/* <FormField
-                    control={form.control}
-                    name="task"
-                    render={({ field: { onChange, value, ...field } }) => (
-                        <FormItem>
-                            <FormControl>
-                                <MyInput
-                                    inputType="text"
-                                    label="Task Name"
-                                    inputPlaceholder="Add Title"
-                                    input={value}
-                                    onChangeFunction={onChange}
-                                    required={false}
-                                    size="large"
-                                    className="w-96"
-                                    {...field}
-                                />
-                            </FormControl>
-                        </FormItem>
-                    )}
-                /> */}
+                {/* Task Description */}
                 <div className="flex flex-col gap-6">
                     <h1 className="-mb-5">Task Description</h1>
                     <FormField
@@ -108,6 +149,8 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                         )}
                     />
                 </div>
+
+                {/* Live Date Range */}
                 <div>
                     <h1 className="mb-3 font-semibold">Live Date Range</h1>
                     <div className="flex items-center gap-6">
@@ -155,6 +198,8 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                         />
                     </div>
                 </div>
+
+                {/* Reattempt Count */}
                 <FormField
                     control={form.control}
                     name="reattemptCount"
@@ -183,6 +228,74 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                         </FormItem>
                     )}
                 />
+
+                {/* Marks Configuration */}
+                <div>
+                    <h1 className="mb-3 font-semibold">Marks</h1>
+                    <div className="flex items-center gap-6">
+                        <FormField
+                            control={form.control}
+                            name="totalMarks"
+                            render={({ field: { onChange, value, ...field } }) => (
+                                <FormItem>
+                                    <FormControl>
+                                        <MyInput
+                                            inputType="number"
+                                            label="Total Marks"
+                                            inputPlaceholder="e.g. 100"
+                                            input={value?.toString() ?? ''}
+                                            onChangeFunction={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+                                            required={false}
+                                            size="large"
+                                            className="w-48"
+                                            {...field}
+                                            min={0}
+                                            onKeyDown={(e) => {
+                                                if (['e', 'E', '-', '+'].includes(e.key)) {
+                                                    e.preventDefault();
+                                                }
+                                            }}
+                                            onWheel={(e) => e.currentTarget.blur()}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="passingMarks"
+                            render={({ field: { onChange, value, ...field } }) => (
+                                <FormItem>
+                                    <FormControl>
+                                        <MyInput
+                                            inputType="number"
+                                            label="Passing Marks (optional)"
+                                            inputPlaceholder="e.g. 40"
+                                            input={value?.toString() ?? ''}
+                                            onChangeFunction={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+                                            required={false}
+                                            size="large"
+                                            className="w-48"
+                                            {...field}
+                                            min={0}
+                                            onKeyDown={(e) => {
+                                                if (['e', 'E', '-', '+'].includes(e.key)) {
+                                                    e.preventDefault();
+                                                }
+                                            }}
+                                            onWheel={(e) => e.currentTarget.blur()}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                    </div>
+                </div>
+
+                {/* Share Assignment Link */}
+                <ShareAssignmentLink slideId={activeItem.id} />
+
+                {/* Upload Question Paper */}
                 <div className="flex flex-wrap items-center justify-start gap-5">
                     <h3>Upload Question Paper</h3>
                     <AlertDialog
@@ -293,53 +406,75 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                         </DialogContent>
                     </Dialog>
                 </div>
+
+                {/* Questions List */}
                 {Boolean(adaptive_marking_for_each_question?.length) && (
-                    <div>
-                        <h1 className="mb-4 text-primary-500">Adaptive Marking Rules</h1>
-                        <Table>
-                            <TableHeader className="bg-primary-200">
-                                <TableRow>
-                                    <TableHead>Q.No.</TableHead>
-                                    <TableHead>Question</TableHead>
-                                    <TableHead>Question Type</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody className="bg-neutral-50">
-                                {adaptive_marking_for_each_question?.map((question, idx) => {
-                                    return (
-                                        <TableRow key={idx}>
-                                            <TableCell>{idx + 1}</TableCell>
-                                            <TableCell
-                                                dangerouslySetInnerHTML={{
-                                                    __html: question.questionName || '',
-                                                }}
+                    <div className="flex flex-col gap-4">
+                        <div className="flex items-center justify-between">
+                            <h1 className="font-semibold text-primary-500">
+                                Questions ({adaptive_marking_for_each_question.length})
+                            </h1>
+                        </div>
+                        <div className="flex flex-col gap-4">
+                            {adaptive_marking_for_each_question.map((question, idx) => (
+                                <div
+                                    key={idx}
+                                    className="rounded-lg border border-neutral-200 bg-white shadow-sm"
+                                >
+                                    {/* Question header */}
+                                    <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
+                                        <div className="flex gap-3">
+                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-semibold text-primary-600">
+                                                {idx + 1}
+                                            </span>
+                                            <RichContentRenderer
+                                                html={question.questionName || ''}
+                                                className="whitespace-pre-line pt-0.5 text-sm leading-relaxed text-neutral-800"
                                             />
-                                            <TableCell>{question.questionType}</TableCell>
-                                        </TableRow>
-                                    );
-                                })}
-                            </TableBody>
-                        </Table>
+                                        </div>
+                                        {question.questionType && (
+                                            <Badge
+                                                variant="outline"
+                                                className="shrink-0 border-primary-200 bg-primary-50 text-xs text-primary-600"
+                                            >
+                                                {QUESTION_TYPE_LABELS[question.questionType] ||
+                                                    question.questionType}
+                                            </Badge>
+                                        )}
+                                    </div>
+
+                                    {/* Options */}
+                                    {question.options && question.options.length > 0 && (
+                                        <div className="grid grid-cols-1 gap-2 px-4 py-3 sm:grid-cols-2">
+                                            {question.options.map((opt, optIdx) => (
+                                                <div
+                                                    key={opt.id || optIdx}
+                                                    className="flex items-start gap-2 rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
+                                                >
+                                                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-xs font-medium text-neutral-600">
+                                                        {String.fromCharCode(65 + optIdx)}
+                                                    </span>
+                                                    <RichContentRenderer
+                                                        html={opt.text.content || ''}
+                                                        className="text-sm text-neutral-700"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
+
                 <Separator />
+
+                {/* Responses */}
                 <div className="flex flex-col gap-4">
                     <h1 className="font-semibold">Responses</h1>
                     <div className="flex flex-col gap-2 text-sm">
                         <span>Total Participants: {totalParticipants}</span>
-                        <div className="flex items-center justify-between">
-                            <span>Submitted By: {submittedParticipants}</span>
-                            <span>Pending: {totalParticipants - submittedParticipants}</span>
-                        </div>
-                        <ReverseProgressBar
-                            value={parseFloat(
-                                (
-                                    ((totalParticipants - submittedParticipants) /
-                                        totalParticipants) *
-                                    100
-                                ).toFixed(2)
-                            )}
-                        />
                     </div>
                 </div>
             </FormProvider>

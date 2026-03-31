@@ -281,7 +281,7 @@ public class LearnerAuthManager {
                 emailRequest.setSubject("Welcome to " + instituteName);
                 emailRequest.setBody(NotificationEmailBody.createWelcomeEmailBody(instituteName, user.getFullName(),
                                 user.getUsername(), user.getPassword(), learnerLoginUrl, theme));
-                notificationService.sendGenericHtmlMail(emailRequest, instituteId);
+                notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
         }
 
         public JwtResponseDto loginUser(AuthRequestDto authRequestDTO) {

@@ -141,7 +141,43 @@ export const SlideMaterial = ({
         return sub?.visible !== false;
     }, [roleDisplay]);
     const { items, activeItem, setActiveItem } = useContentStore();
-    const editor = useMemo(() => createYooptaEditor(), []);
+    const editor = useMemo(() => {
+        const ed = createYooptaEditor();
+        // Monkey-patch: wrap Slate's focus to suppress "Cannot resolve a DOM node"
+        // errors that happen when Yoopta internally calls focus/toDOMNode during
+        // paste operations before React has committed the new DOM.
+        const origFocus = ed.focus?.bind(ed);
+        if (origFocus) {
+            ed.focus = () => {
+                try {
+                    return origFocus();
+                } catch (e: any) {
+                    if (e?.message?.includes?.('Cannot resolve a DOM node from Slate node')) {
+                        console.warn('[Yoopta] Suppressed DOM resolve error during focus:', e.message);
+                        return;
+                    }
+                    throw e;
+                }
+            };
+        }
+        return ed;
+    }, []);
+    // Suppress "Cannot resolve a DOM node from Slate node" errors that bubble
+    // up from the Yoopta vendor bundle during paste operations.  This is a
+    // known Slate race condition where the DOM hasn't updated yet.  The error
+    // is non-fatal — the paste still succeeds — so we swallow it to prevent
+    // Sentry noise and React error-boundary crashes.
+    useEffect(() => {
+        const handler = (event: ErrorEvent): void => {
+            if (event.error?.message?.includes?.('Cannot resolve a DOM node from Slate node')) {
+                event.preventDefault();
+                console.warn('[Yoopta] Suppressed vendor DOM resolve error during paste');
+            }
+        };
+        window.addEventListener('error', handler);
+        return () => window.removeEventListener('error', handler);
+    }, []);
+
     const selectionRef = useRef<HTMLDivElement | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [slideTitle, setSlideTitle] = useState('');
@@ -577,14 +613,17 @@ export const SlideMaterial = ({
         // Delay focus until after React re-renders the DOM with the new editor state.
         // Calling editor.focus() synchronously after setEditorValue causes
         // "Cannot resolve a DOM node from Slate node" because the DOM hasn't updated yet.
+        // Use requestAnimationFrame + setTimeout to ensure the DOM paint has completed.
         setTimeout(() => {
-            try {
-                editor.focus();
-            } catch (e) {
-                // Suppress focus errors — editor will still be functional
-                console.warn('Editor focus failed (DOM not ready):', e);
-            }
-        }, 100);
+            requestAnimationFrame(() => {
+                try {
+                    editor.focus();
+                } catch (e) {
+                    // Suppress focus errors — editor will still be functional
+                    console.warn('Editor focus failed (DOM not ready):', e);
+                }
+            });
+        }, 300);
 
         // Capture initial HTML for DOC slides to detect unsaved changes later.
         // IMPORTANT: We must capture AFTER Yoopta has loaded the content, because
@@ -969,7 +1008,7 @@ export const SlideMaterial = ({
 
         // Handle HTML_VIDEO slides (AI-generated videos)
         if (activeItem.source_type === 'HTML_VIDEO') {
-            setContent(<VideoSlidePreview activeItem={activeItem} />);
+            setContent(<VideoSlidePreview key={activeItem.id} activeItem={activeItem} />);
             return;
         }
 
@@ -1053,7 +1092,7 @@ export const SlideMaterial = ({
                     />
                 );
             } else {
-                setContent(<VideoSlidePreview activeItem={activeItem} />);
+                setContent(<VideoSlidePreview key={activeItem.id} activeItem={activeItem} />);
             }
 
             return;
@@ -1075,7 +1114,7 @@ export const SlideMaterial = ({
                     return;
                 }
 
-                setContent(<StudyLibraryAssignmentPreview activeItem={activeItem} />);
+                setContent(<StudyLibraryAssignmentPreview key={activeItem.id} activeItem={activeItem} />);
             } catch (error) {
                 console.error('Error rendering assignment preview:', error);
                 const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1580,19 +1619,19 @@ export const SlideMaterial = ({
         }
 
         if (activeItem.source_type?.toUpperCase() === 'QUESTION') {
-            setContent(<StudyLibraryQuestionsPreview activeItem={activeItem} />);
+            setContent(<StudyLibraryQuestionsPreview key={activeItem.id} activeItem={activeItem} />);
             return;
         }
 
         // Handle AUDIO slides
         if (activeItem.source_type?.toUpperCase() === 'AUDIO') {
-            setContent(<AudioSlidePreview activeItem={activeItem} isLearnerView={isLearnerView} />);
+            setContent(<AudioSlidePreview key={activeItem.id} activeItem={activeItem} isLearnerView={isLearnerView} />);
             return;
         }
 
         // Handle SCORM slides
         if (activeItem.source_type?.toUpperCase() === 'SCORM') {
-            setContent(<ScormSlidePreview activeItem={activeItem} isLearnerView={isLearnerView} />);
+            setContent(<ScormSlidePreview key={activeItem.id} activeItem={activeItem} isLearnerView={isLearnerView} />);
             return;
         }
 

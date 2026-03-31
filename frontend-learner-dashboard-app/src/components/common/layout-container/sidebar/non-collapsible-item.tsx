@@ -15,10 +15,11 @@ export const NonCollapsibleItem = ({ icon, title, to, onClick }: SidebarItemProp
                 isActive={isActive}
                 tooltip={title}
                 size="default"
+                className=""
             >
                 <Link to={to} onClick={onClick}>
                     {icon && React.createElement(icon, {
-                        weight: "duotone",
+                        weight: isActive ? "fill" : "duotone",
                         className: "size-4"
                     })}
                     <span>{title}</span>

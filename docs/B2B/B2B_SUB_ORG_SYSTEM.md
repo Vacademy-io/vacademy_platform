@@ -1356,3 +1356,170 @@ LEARNER APP:
    - Configured during sub-org creation (Step 3)
    - Applied when user enrolls via the org-level invite
    - Ensures sub-org admins get correct auth service roles (not just STUDENT)
+
+---
+
+## Recent Changes (V183+)
+
+### 1. Domain Routing Sub-Org Support
+
+**Migration:** V183 — `ALTER TABLE institute_domain_routing ADD COLUMN sub_org_id VARCHAR(255)`
+
+When an `InstituteDomainRouting` entry has a `sub_org_id` set, the resolve endpoint overrides branding from the sub-org institute. Each field is only overridden if the sub-org has non-null data; otherwise parent's value is preserved:
+- `instituteLogoFileId` — sub-org logo if set, else parent
+- `instituteName` — sub-org name if set, else parent
+- `instituteThemeCode` — sub-org theme if set, else parent
+- `subOrgId` — always returned in the response
+
+**Files changed:**
+- `InstituteDomainRouting.java` — added `subOrgId` field
+- `DomainRoutingUpsertRequest.java` / `DomainRoutingResolveResponse.java` — added `subOrgId`
+- `DomainRoutingService.java` — sub-org branding override logic
+- `DomainRoutingAdminService.java` — persist `subOrgId` on create/update
+
+---
+
+### 2. SUBORG_LEARNER Invite Type
+
+**New enum value:** `EnrollInviteTag.SUBORG_LEARNER`
+
+During sub-org creation (`createSubOrgWithSubscription`), a **SUBORG_LEARNER** invite is auto-created per package session:
+
+```
+For each PS in the sub-org:
+  EnrollInvite {
+    tag = 'SUBORG_LEARNER',
+    sub_org_id = subOrgId,
+    institute_id = parentInstituteId,
+    status = 'ACTIVE',
+    vendor/currency/validity = same as org-level invite
+  }
+  → linked to PS via PSLIPO
+```
+
+**Purpose:** This invite serves as the FSPSSM `ENROLL_INVITE` access reference and enables invite-scoped learner filtering.
+
+**Distinction from existing invites:**
+| Invite Type | Tag | Created When | Purpose |
+|-------------|-----|-------------|---------|
+| Org-level | `SUB_ORG` | Sub-org creation | Sub-org admin enrollment + payment |
+| Scoped | `SUB_ORG` | After admin payment | Learner enrollment (FREE) |
+| **Learner** | `SUBORG_LEARNER` | Sub-org creation | FSPSSM access reference + learner enrollment |
+
+**Files changed:**
+- `EnrollInviteTag.java` — added `SUBORG_LEARNER`
+- `SubOrgSubscriptionService.java` — creates SUBORG_LEARNER invite per PS
+
+---
+
+### 3. FSPSSM ENROLL_INVITE Auto-Discovery
+
+When a sub-org admin enrolls (via add-member OR self-enrollment via invite link), the system auto-discovers all invites with `sub_org_id` for that PS and creates FSPSSM entries:
+
+```
+syncFacultyMappingForSubOrgAdmin(user, packageSessionId, subOrgId, orgRoles):
+  1. Creates FSPSSM: access_type=PACKAGE_SESSION, access_id=packageSessionId
+  2. Queries: SELECT id FROM enroll_invite WHERE sub_org_id=:subOrgId
+             AND linked to :packageSessionId via PSLIPO AND status='ACTIVE'
+  3. For each invite found → creates FSPSSM: access_type=ENROLL_INVITE, access_id=inviteId
+```
+
+Both enrollment paths create these entries:
+- `SubOrgLearnerService.enrollLearnerToSubOrg()` → `syncFacultyMappingForSubOrgAdmin()`
+- `LearnerEnrollRequestService.postProcessSubOrgEnrollment()` → inline auto-discovery
+
+**Files changed:**
+- `SubOrgLearnerService.java` — rewritten `syncFacultyMappingForSubOrgAdmin` with auto-discovery
+- `LearnerEnrollRequestService.java` — added ENROLL_INVITE entries in `postProcessSubOrgEnrollment`
+- `EnrollInviteRepository.java` — added `findInviteIdsForSubOrgAndPackageSession`
+
+---
+
+### 4. Faculty Access Filtering (API-Level)
+
+#### 4a. Institute Details API — Package Session Filtering
+
+`GET /institute/v1/details` (`InstituteInitManager`):
+- If user has active FSPSSM entries → `hasFacultyAssignedPermission` returns true
+- Filters package sessions to only accessible ones via `findAccessIdsByUserIdAndInstituteId`
+- **Bug fix:** `hasFacultyAssignedPermission` now falls back to checking FSPSSM directly (Spring Security `getAuthorities()` does not include JWT `permissions`)
+
+#### 4b. Enroll Invite API — Invite Filtering
+
+`POST /v1/enroll-invite/get-enroll-invite` (`EnrollInviteService`):
+- Queries FSPSSM for `access_type='ENROLL_INVITE'` entries for the user
+- Post-filters results to only those invite IDs
+- Non-faculty users see all invites (backward compatible)
+- **Bug fix:** Query fixed from `'EnrollInvite'` → `'ENROLL_INVITE'` to match DB values
+
+#### 4c. Learner List API — Invite-Scoped Learner Filtering
+
+`POST /institute/institute_learner/get/v2/all` (`StudentListManager`):
+- `applyFacultyAccessFilter()` auto-injects for users with active FSPSSM entries
+- Restricts `packageSessionIds` to accessible set
+- For PS with ENROLL_INVITE access: `up.enroll_invite_id IN (:accessibleInviteIds)`
+- For PS without invite access: shows all learners
+- Applied to both v1/all and v2/all endpoints
+
+**Filtering logic:**
+```
+User has FSPSSM: PS=[ps1], ENROLL_INVITE=[inv1, inv2]
+inv1 and inv2 belong to ps1 (via PSLIPO)
+→ For ps1: WHERE up.enroll_invite_id IN ('inv1','inv2')
+→ For other PS: no invite filter (show all)
+```
+
+**Files changed:**
+- `InstituteInitManager.java` — FSPSSM fallback for `hasFacultyAssignedPermission`
+- `FacultySubjectPackageSessionMappingRepository.java` — fixed `'ENROLL_INVITE'` string
+- `StudentListFilter.java` — added `enrollInviteIds`, `enrollInvitePackageSessionIds`
+- `StudentListManager.java` — `applyFacultyAccessFilter`, FSPSSM fallback for permission check
+- `InstituteStudentRepositoryCustom.java` / `InstituteStudentRepositoryImpl.java` — invite WHERE clause, null-safe dynamic SQL, Tuple-based result mapping
+- `PackageSessionLearnerInvitationToPaymentOptionRepository.java` — added `findPackageSessionIdsByEnrollInviteIds`
+
+---
+
+### 5. Sub-Org Info in Enroll Invite API
+
+The open learner enroll invite API returns a nested `sub_org` object when the invite has a `subOrgId`:
+
+```json
+{
+  "sub_org_id": "uuid",
+  "sub_org": {
+    "id": "uuid",
+    "name": "DPS Sagar",
+    "logo_file_id": "file-uuid"
+  }
+}
+```
+
+**Learner frontend** (`enroll-form.tsx`) prefers sub-org logo/name over parent institute on the enrollment page.
+
+**Files changed:**
+- `EnrollInviteDTO.java` — added `SubOrgInfoDTO` nested class
+- `EnrollInviteService.java` — populates sub-org info from Institute entity
+- `enroll-form.tsx` — prefers `inviteData.sub_org.logo_file_id` / `.name`
+
+---
+
+### 6. Sub-Org Branding in Credential Emails
+
+When a learner is enrolled via an invite that has a `subOrgId`, credential/enrollment notification emails use:
+- Sub-org institute name (instead of parent)
+- Sub-org theme color (if set, otherwise parent's)
+
+**File changed:**
+- `DynamicNotificationService.java` — overrides `instituteName` and `themeColor` from sub-org institute when `enrollInvite.subOrgId` is present
+
+---
+
+### Key Bug Fixes
+
+1. **`hasFacultyAssignedPermission` false negative:** Spring Security `getAuthorities()` returns DB roles, not JWT `permissions`. Fixed with FSPSSM fallback — if user has active FSPSSM entries, they're treated as faculty. Affects `InstituteInitManager` and `StudentListManager`.
+
+2. **`'EnrollInvite'` vs `'ENROLL_INVITE'` string mismatch:** `findEnrollInviteAccessIdsByUserIdAndInstituteId` query used `'EnrollInvite'` but DB stores `'ENROLL_INVITE'`. Fixed in `FacultySubjectPackageSessionMappingRepository`.
+
+3. **`StudentListV2ProjectionMapping` undefined:** The custom repo used `entityManager.createNativeQuery(sql, "StudentListV2ProjectionMapping")` but no `@SqlResultSetMapping` was defined. Fixed by using `Tuple.class` + manual mapping.
+
+4. **PostgreSQL null type errors in dynamic SQL:** Custom repo WHERE clauses like `(:gender IS NULL OR s.gender IN (:gender))` failed when the list param was null. Fixed by conditionally building WHERE clauses via `addListFilter()` helper — only adds when list is non-null and non-empty.

@@ -118,7 +118,7 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         sessionBody.put("startTime", formattedTime);
 
         String url = apiBase + "/meeting/api/v2/" + orgId + "/sdk/session";
-        log.info("[Zoho SDK] Creating SDK session for institute={}, orgId={}, presenter={}", instituteId, orgId,
+        log.debug("[Zoho SDK] Creating SDK session for institute={}, orgId={}, presenter={}", instituteId, orgId,
                 presenterZuid);
 
         JsonNode response = webClientBuilder.build()
@@ -220,7 +220,7 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         participantBody.put("name", participantName);
         participantBody.put("email", participantEmail);
 
-        log.info("[Zoho] Registering participant {} for meeting {}", participantEmail, providerMeetingId);
+        log.debug("[Zoho] Registering participant {} for meeting {}", participantEmail, providerMeetingId);
 
         JsonNode response = webClientBuilder.build()
                 .post().uri(url)
@@ -277,7 +277,7 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
 
         // Fetch upcoming sessions (paginate — stop once startTime is past our window)
         String url = apiBase + "/api/v2/" + userId + "/sessions.json?listtype=upcoming&index=1&count=50";
-        log.info("[Zoho Availability] Fetching upcoming sessions for userId={}", userId);
+        log.debug("[Zoho Availability] Fetching upcoming sessions for userId={}", userId);
 
         JsonNode response = webClientBuilder.build()
                 .get().uri(url)
@@ -342,7 +342,7 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         // Correct Zoho Recording API:
         // https://meeting.zoho.in/api/v2/{zsoid}/recordings/{meetingKey}.json
         String url = apiBase + "/api/v2/" + userId + "/recordings/" + providerMeetingId + ".json";
-        log.info("[Zoho Recordings] Calling URL: {}", url);
+        log.debug("[Zoho Recordings] Calling URL: {}", url);
 
         JsonNode response = webClientBuilder.build()
                 .get().uri(url)
@@ -356,7 +356,7 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
                 .bodyToMono(JsonNode.class)
                 .block();
 
-        log.info("[Zoho Recordings] Raw response for meetingKey={}: {}", providerMeetingId, response);
+        log.debug("[Zoho Recordings] Raw response for meetingKey={}: {}", providerMeetingId, response);
         return parseRecordingsResponse(response, providerMeetingId);
     }
 
@@ -450,7 +450,7 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
             return list;
         }
 
-        log.info("[Zoho Recordings] Parsing {} recording(s) for meetingId={}", node.size(), meetingId);
+        log.debug("[Zoho Recordings] Parsing {} recording(s) for meetingId={}", node.size(), meetingId);
         for (JsonNode rec : node) {
             // erecordingId is Zoho's primary recording identifier; recordingId is a
             // fallback
@@ -478,7 +478,7 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
                     .startTime(rec.path("startTime").asText(null))
                     .providerMeetingId(meetingId)
                     .build());
-            log.info("[Zoho Recordings] Parsed recording: id={}, downloadUrl={}, durationSecs={}",
+            log.debug("[Zoho Recordings] Parsed recording: id={}, downloadUrl={}, durationSecs={}",
                     recId, rec.path("downloadUrl").asText("N/A"), durationSecs);
         }
         return list;

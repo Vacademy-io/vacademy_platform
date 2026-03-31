@@ -69,9 +69,19 @@ import { cn } from "@/lib/utils";
 import { getChatbotSettings } from "@/services/chatbot-settings";
 import { MyMembershipWidget } from "./-components/MyMembershipWidget";
 import { MyBooksWidget } from "./-components/MyBooksWidget";
+import { MyOrdersWidget } from "./-components/MyOrdersWidget";
 import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidget";
 import { Preferences } from "@capacitor/preferences";
 import { AttendanceWidget } from "./-components/AttendanceWidget";
+import { playIllustrations } from "@/assets/play-illustrations";
+import { usePlayTheme } from "@/hooks/use-play-theme";
+import { usePlayGamificationStore } from "@/stores/play-gamification-store";
+import { computeGamificationData } from "@/services/play-gamification";
+import { fetchLast7DaysProgress } from "./-lib/utils";
+import { StreakCounterWidget } from "./-components/play/StreakCounterWidget";
+import { XpDisplayWidget } from "./-components/play/XpDisplayWidget";
+import { XpHeaderPill } from "./-components/play/XpHeaderPill";
+import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWidget";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -98,6 +108,9 @@ export function DashboardComponent() {
   const [data, setData] = useState<DashbaordResponse | null>(null);
   const { setActiveItem } = useContentStore();
   const { getUserTimezone } = useServerTime();
+  const isPlayTheme = usePlayTheme();
+  const { setData: setGamificationData } = usePlayGamificationStore();
+  const { instituteId } = useInstituteFeatureStore();
 
   // Fetch study library data with React Query (5-minute cache)
   const { data: studyLibraryData } = useQuery(getStudyLibraryQuery(batchId));
@@ -202,9 +215,12 @@ export function DashboardComponent() {
       .catch(() => setWidgetConfigs(null));
   }, [setNavHeading, trackPageView]);
 
+  const OPT_IN_WIDGETS: Set<StudentDashboardWidgetConfig["id"]> = new Set(["myOrders"]);
+
   const isWidgetVisible = (id: StudentDashboardWidgetConfig["id"]) => {
     const cfg = widgetConfigs?.find((w) => w.id === id);
-    return cfg ? cfg.visible !== false : true;
+    if (!cfg) return !OPT_IN_WIDGETS.has(id);
+    return cfg.visible !== false;
   };
 
   const getWidgetOrder = (id: StudentDashboardWidgetConfig["id"]) => {
@@ -249,6 +265,40 @@ export function DashboardComponent() {
     };
     initializeDashboard();
   }, [setNavHeading, trackPageView]);
+
+  // Refresh play gamification data when theme is active and data is ready
+  useEffect(() => {
+    if (!isPlayTheme || !data || !instituteId) return;
+
+    const refreshGamification = async () => {
+      try {
+        // Fetch 30 days of activity for streak calculation
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const userId = ""; // fetched inside fetchLast7DaysProgress from stored details
+        const activities = await fetchLast7DaysProgress({
+          user_id: userId,
+          start_date: thirtyDaysAgo.toISOString().slice(0, 10),
+          end_date: now.toISOString().slice(0, 10),
+        });
+
+        const gamificationData = computeGamificationData({
+          dashboard: data,
+          activities,
+          attendance: weeklyAttendance ?? null,
+          instituteId,
+        });
+
+        setGamificationData(gamificationData);
+      } catch (error) {
+        console.error("Failed to compute gamification data:", error);
+      }
+    };
+
+    refreshGamification();
+  }, [isPlayTheme, data, weeklyAttendance, instituteId, setGamificationData]);
 
   const handleJoinSession = async (session: SessionDetails) => {
     // Track live session join attempt
@@ -412,7 +462,8 @@ export function DashboardComponent() {
             </div>
           </div>
 
-          <div className="flex items-center">
+          <div className="flex items-center gap-2">
+            {isPlayTheme && <XpHeaderPill />}
             <div className="bg-card border rounded-lg px-4 py-2 shadow-sm">
               <div className="flex items-center text-muted-foreground gap-2">
                 <Calendar weight="duotone" size={16} className="text-primary" />
@@ -458,27 +509,9 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/courses" });
                       }}
                       isLoading={isLoading}
-                      className="[.ui-vibrant_&]:bg-sky-50 [.ui-vibrant_&]:border-sky-200 dark:[.ui-vibrant_&]:bg-sky-950/30 dark:[.ui-vibrant_&]:border-sky-800/50"
-                      iconClassName="[.ui-vibrant_&]:text-sky-600 dark:[.ui-vibrant_&]:text-sky-300 [.ui-vibrant_&]:bg-sky-100 dark:[.ui-vibrant_&]:bg-sky-500/20"
-                    />
-                  ),
-                },
-                {
-                  id: "thisWeekAttendance" as const,
-                  className: "",
-                  render: (
-                    <StatCard
-                      title="Attendance %"
-                      count={
-                        Math.round(weeklyAttendance?.attendancePercentage ?? 0)
-                      }
-                      icon={Clock}
-                      onClick={() =>
-                        navigate({ to: "/learning-centre/attendance" })
-                      }
-                      isLoading={isLoadingAttendance}
-                      className="[.ui-vibrant_&]:bg-emerald-50 [.ui-vibrant_&]:border-emerald-200 dark:[.ui-vibrant_&]:bg-emerald-950/30 dark:[.ui-vibrant_&]:border-emerald-800/50"
-                      iconClassName="[.ui-vibrant_&]:text-emerald-600 dark:[.ui-vibrant_&]:text-emerald-300 [.ui-vibrant_&]:bg-emerald-100 dark:[.ui-vibrant_&]:bg-emerald-500/20"
+                      className="[.ui-vibrant_&]:bg-sky-50 [.ui-vibrant_&]:border-sky-200 dark:[.ui-vibrant_&]:bg-sky-950/30 dark:[.ui-vibrant_&]:border-sky-800/50 [.ui-play_&]:!bg-[#5B9BD5] [.ui-play_&]:!shadow-[0_5px_0_#3D7AB5] [.ui-play_&]:text-white"
+                      iconClassName="[.ui-vibrant_&]:text-sky-600 dark:[.ui-vibrant_&]:text-sky-300 [.ui-vibrant_&]:bg-sky-100 dark:[.ui-vibrant_&]:bg-sky-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
+                      illustration={playIllustrations.Course}
                     />
                   ),
                 },
@@ -494,8 +527,9 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/live-class" })
                       }
                       isLoading={isLoadingLiveSessions}
-                      className="[.ui-vibrant_&]:bg-rose-50 [.ui-vibrant_&]:border-rose-200 dark:[.ui-vibrant_&]:bg-rose-950/30 dark:[.ui-vibrant_&]:border-rose-800/50"
-                      iconClassName="[.ui-vibrant_&]:text-rose-600 dark:[.ui-vibrant_&]:text-rose-300 [.ui-vibrant_&]:bg-rose-100 dark:[.ui-vibrant_&]:bg-rose-500/20"
+                      className="[.ui-vibrant_&]:bg-rose-50 [.ui-vibrant_&]:border-rose-200 dark:[.ui-vibrant_&]:bg-rose-950/30 dark:[.ui-vibrant_&]:border-rose-800/50 [.ui-play_&]:!bg-[#E91E63] [.ui-play_&]:!shadow-[0_5px_0_#AD1457] [.ui-play_&]:text-white"
+                      iconClassName="[.ui-vibrant_&]:text-rose-600 dark:[.ui-vibrant_&]:text-rose-300 [.ui-vibrant_&]:bg-rose-100 dark:[.ui-vibrant_&]:bg-rose-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
+                      illustration={playIllustrations.LiveClass}
                     />
                   ),
                 },
@@ -515,8 +549,9 @@ export function DashboardComponent() {
                         navigate({ to: "/assessment/examination" });
                       }}
                       isLoading={isLoading}
-                      className="[.ui-vibrant_&]:bg-amber-50 [.ui-vibrant_&]:border-amber-200 dark:[.ui-vibrant_&]:bg-amber-950/30 dark:[.ui-vibrant_&]:border-amber-800/50"
-                      iconClassName="[.ui-vibrant_&]:text-amber-600 dark:[.ui-vibrant_&]:text-amber-300 [.ui-vibrant_&]:bg-amber-100 dark:[.ui-vibrant_&]:bg-amber-500/20"
+                      className="[.ui-vibrant_&]:bg-amber-50 [.ui-vibrant_&]:border-amber-200 dark:[.ui-vibrant_&]:bg-amber-950/30 dark:[.ui-vibrant_&]:border-amber-800/50 [.ui-play_&]:!bg-[#8E44AD] [.ui-play_&]:!shadow-[0_5px_0_#6C3483] [.ui-play_&]:text-white"
+                      iconClassName="[.ui-vibrant_&]:text-amber-600 dark:[.ui-vibrant_&]:text-amber-300 [.ui-vibrant_&]:bg-amber-100 dark:[.ui-vibrant_&]:bg-amber-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
+                      illustration={playIllustrations.Certificate}
                     />
                   ),
                 },
@@ -534,21 +569,6 @@ export function DashboardComponent() {
                   id: "learningAnalytics" as const,
                   className: "sm:col-span-2 lg:col-span-4",
                   render: <PastLearningInsights />,
-                },
-                {
-                  id: "dailyProgress" as const,
-                  className: "",
-                  render: null,
-                },
-                {
-                  id: "activityTrend" as const,
-                  className: "",
-                  render: null,
-                },
-                {
-                  id: "liveClasses" as const,
-                  className: "",
-                  render: null,
                 },
                 {
                   id: "thisWeekAttendance" as const,
@@ -620,6 +640,11 @@ export function DashboardComponent() {
                   className: "sm:col-span-2",
                   render: <MyBooksWidget />,
                 },
+                {
+                  id: "myOrders" as const,
+                  className: "sm:col-span-2 lg:col-span-4",
+                  render: <MyOrdersWidget />,
+                },
               ]
                 .filter((w) => isWidgetVisible(w.id) && w.render)
                 .sort((a, b) => getWidgetOrder(a.id) - getWidgetOrder(b.id))
@@ -647,6 +672,15 @@ export function DashboardComponent() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Play Theme Gamification Widgets — at bottom */}
+            {isPlayTheme && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <StreakCounterWidget />
+                <XpDisplayWidget />
+                <AchievementBadgesWidget />
+              </div>
             )}
 
             {/* Explore Buttons Section */}

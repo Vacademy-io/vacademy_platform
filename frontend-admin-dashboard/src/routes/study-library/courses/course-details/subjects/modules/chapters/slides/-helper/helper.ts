@@ -442,18 +442,20 @@ export const convertToAssignmentSlideBackendFormat = (assignmentSlide: Assignmen
     return {
         id: assignmentSlide.id,
         parent_rich_text: {
-            id: '',
+            id: assignmentSlide.parentRichTextId || '',
             type: 'RICH_TEXT',
             content: assignmentSlide.taskDescription,
         },
         text_data: {
-            id: '',
+            id: assignmentSlide.textDataId || '',
             type: 'TEXT',
             content: assignmentSlide.task,
         },
         live_date: convertedStartDate,
         end_date: convertedEndDate,
         re_attempt_count: assignmentSlide.reattemptCount,
+        total_marks: assignmentSlide.totalMarks ?? null,
+        passing_marks: assignmentSlide.passingMarks ?? null,
         comma_separated_media_ids: '',
         questions: assignmentSlide.adaptive_marking_for_each_question.map((question, idx) => {
             return {
@@ -467,6 +469,14 @@ export const convertToAssignmentSlideBackendFormat = (assignmentSlide: Assignmen
                 status: 'ACTIVE',
                 question_type: question.questionType,
                 new_question: question.newQuestion,
+                ...(question.options?.length
+                    ? {
+                          options: question.options.map((opt) => ({
+                              id: opt.id,
+                              text: { content: opt.text.content },
+                          })),
+                      }
+                    : {}),
             };
         }),
     };
@@ -714,9 +724,13 @@ const transformAssignmentSlide = (assignment: AssignmentSlide) => {
         id: assignment?.id,
         task: parseHtmlToString(assignment?.text_data?.content || ''),
         taskDescription: assignment?.parent_rich_text?.content || '',
+        parentRichTextId: assignment?.parent_rich_text?.id || '',
+        textDataId: assignment?.text_data?.id || '',
         startDate: convertDateFormat(assignment?.live_date || ''),
         endDate: convertDateFormat(assignment?.end_date || ''),
         reattemptCount: String(assignment?.re_attempt_count || 0),
+        totalMarks: assignment?.total_marks ?? undefined,
+        passingMarks: assignment?.passing_marks ?? undefined,
         uploaded_question_paper: null,
         adaptive_marking_for_each_question:
             assignment?.questions?.map((question) => {
@@ -725,6 +739,10 @@ const transformAssignmentSlide = (assignment: AssignmentSlide) => {
                     questionName: question?.text_data?.content || '',
                     questionType: question?.question_type || '',
                     newQuestion: question?.new_question || false,
+                    options: question?.options?.map((opt: { id: string; text: { content: string } }) => ({
+                        id: opt.id || '',
+                        text: { content: opt.text?.content || '' },
+                    })),
                 };
             }) || [],
         totalParticipants: 0,

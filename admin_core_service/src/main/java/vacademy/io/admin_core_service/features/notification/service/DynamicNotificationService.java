@@ -11,7 +11,12 @@ import vacademy.io.admin_core_service.features.notification.enums.NotificationEv
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceType;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationTemplateType;
 import vacademy.io.admin_core_service.features.notification.repository.NotificationEventConfigRepository;
+import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendRequest;
+import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendResponse;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
+import vacademy.io.admin_core_service.features.institute.entity.Template;
+import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.service.CouponCodeService;
@@ -21,6 +26,9 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.PackageEntity;
+
+import java.util.HashMap;
+import java.util.Map;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.List;
@@ -33,6 +41,8 @@ public class DynamicNotificationService {
     private final NotificationEventConfigRepository configRepository;
     private final PackageSessionRepository packageSessionRepository;
     private final SendUniqueLinkService sendUniqueLinkService;
+    private final NotificationService notificationService;
+    private final TemplateRepository templateRepository;
     private final LearnerInvitationLinkService learnerInvitationLinkService;
     private final InstituteService instituteService;
     private final WatiContactAttributeService watiContactAttributeService;
@@ -80,6 +90,21 @@ public class DynamicNotificationService {
                     packageSession.getLevel() != null ? packageSession.getLevel().getLevelName() : "",
                     packageSession.getSession() != null ? packageSession.getSession().getSessionName() : "");
 
+            // Override institute name/theme with sub-org info if the invite has a subOrgId
+            if (enrollInvite != null && enrollInvite.getSubOrgId() != null && !enrollInvite.getSubOrgId().isEmpty()) {
+                try {
+                    Institute subOrgInstitute = getInstituteFromId(enrollInvite.getSubOrgId());
+                    if (subOrgInstitute != null) {
+                        templateVars.setInstituteName(subOrgInstitute.getInstituteName());
+                        if (subOrgInstitute.getInstituteThemeCode() != null) {
+                            templateVars.setThemeColor(subOrgInstitute.getInstituteThemeCode().trim());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Could not resolve sub-org institute for subOrgId={}: {}", enrollInvite.getSubOrgId(), e.getMessage());
+                }
+            }
+
             // Populate referral and invitation templates for dynamic notifications
             try {
                 String invitationLink = learnerInvitationLinkService
@@ -93,7 +118,10 @@ public class DynamicNotificationService {
                 templateVars.setShortReferralLink(shortRefLink);
                 templateVars.setRefCode(refCode);
                 templateVars.setInviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "");
-                templateVars.setThemeColor(getThemeColorFromInstitute(getInstituteFromId(instituteId)));
+                // Only set theme color from parent institute if not already set by sub-org
+                if (templateVars.getThemeColor() == null || templateVars.getThemeColor().isEmpty()) {
+                    templateVars.setThemeColor(getThemeColorFromInstitute(getInstituteFromId(instituteId)));
+                }
                 templateVars.setName(user.getFullName() != null ? user.getFullName() : user.getUsername());
             } catch (Exception e) {
                 log.warn("Error populating referral variables for dynamic notification user {}: {}", user.getId(),
@@ -105,9 +133,9 @@ public class DynamicNotificationService {
             // correct {{short_referral_link}} contact attribute already set.
             updateWatiContactAttributes(getInstituteFromId(instituteId), user, templateVars.getShortReferralLink());
 
-            // 6. Process each configuration
+            // 6. Process each configuration — use unified send API (falls back to legacy on error)
             for (NotificationEventConfig config : configs) {
-                sendNotificationByType(config, instituteId, user, templateVars, enrollInvite);
+                sendNotificationViaUnifiedApi(config, instituteId, user, templateVars);
             }
 
         } catch (Exception e) {
@@ -174,6 +202,95 @@ public class DynamicNotificationService {
         } catch (Exception e) {
             log.error("Error sending {} notification with template: {}",
                     config.getTemplateType(), config.getTemplateId(), e);
+        }
+    }
+
+    /**
+     * Unified send path — sends via notification-service's /v1/send endpoint.
+     * Uses templateName when available (new path), falls back to templateId lookup (legacy).
+     * Notification service resolves template content + variables from its own DB.
+     */
+    private void sendNotificationViaUnifiedApi(
+            NotificationEventConfig config,
+            String instituteId,
+            UserDTO user,
+            NotificationTemplateVariables templateVars) {
+
+        try {
+            // Resolve template name: prefer templateName (new), fall back to templateId → Template.name (legacy)
+            String templateName = config.getTemplateName();
+            Template template = null;
+            if (templateName == null || templateName.isBlank()) {
+                template = templateRepository.findById(config.getTemplateId())
+                        .orElseThrow(() -> new VacademyException("Template not found: " + config.getTemplateId()));
+                templateName = template.getName();
+            }
+
+            Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(templateVars);
+
+            String channel;
+            UnifiedSendRequest.SendOptions.SendOptionsBuilder optsBuilder = UnifiedSendRequest.SendOptions.builder()
+                    .source("event:" + config.getEventName())
+                    .sourceId(config.getSourceId());
+
+            UnifiedSendRequest.Recipient.RecipientBuilder recipientBuilder = UnifiedSendRequest.Recipient.builder()
+                    .userId(user.getId())
+                    .name(user.getFullName())
+                    .variables(variables);
+
+            switch (config.getTemplateType()) {
+                case WHATSAPP:
+                    channel = "WHATSAPP";
+                    String phone = user.getMobileNumber();
+                    if (phone != null) phone = phone.replaceAll("[^0-9]", "");
+                    recipientBuilder.phone(phone);
+                    break;
+
+                case EMAIL:
+                    channel = "EMAIL";
+                    recipientBuilder.email(user.getEmail());
+                    // For email: if templateName is set, notification service resolves content.
+                    // For legacy (templateId only), pass content from admin-core's Template entity.
+                    if (template != null) {
+                        optsBuilder
+                                .emailSubject(template.getSubject())
+                                .emailBody(template.getContent());
+                    }
+                    optsBuilder.emailType("UTILITY_EMAIL");
+                    break;
+
+                case PUSH:
+                    channel = "PUSH";
+                    recipientBuilder.userId(user.getId());
+                    String pushBody = template != null ? template.getContent() : "";
+                    optsBuilder.pushTitle("Notification").pushBody(pushBody);
+                    break;
+
+                default:
+                    log.warn("Unsupported template type for unified send: {}", config.getTemplateType());
+                    return;
+            }
+
+            UnifiedSendRequest request = UnifiedSendRequest.builder()
+                    .instituteId(instituteId)
+                    .channel(channel)
+                    .templateName(templateName)
+                    .languageCode("en")
+                    .recipients(java.util.List.of(recipientBuilder.build()))
+                    .options(optsBuilder.build())
+                    .build();
+
+            UnifiedSendResponse response = notificationService.sendUnified(request);
+            log.info("Unified send result for {} template {}: accepted={}, failed={}",
+                    config.getTemplateType(), templateName,
+                    response.getAccepted(), response.getFailed());
+
+        } catch (Exception e) {
+            log.error("Error sending via unified API for template {}: {}",
+                    config.getTemplateId(), e.getMessage(), e);
+            // Fallback to old path
+            log.info("Falling back to legacy send path for template {}", config.getTemplateId());
+            sendNotificationByType(config, instituteId, user, templateVars, null);
         }
     }
 
@@ -294,9 +411,9 @@ public class DynamicNotificationService {
             // Update WATI contact attributes if configured
             updateWatiContactAttributes(institute, user, couponShortUrl);
 
-            // Process each configuration
+            // Process each configuration via unified send
             for (NotificationEventConfig config : configs) {
-                sendNotificationByType(config, instituteId, user, templateVars, enrollInvite);
+                sendNotificationViaUnifiedApi(config, instituteId, user, templateVars);
             }
 
         } catch (Exception e) {
@@ -457,7 +574,7 @@ public class DynamicNotificationService {
             templateVars.getCustomFields().put("parent_name", user.getFullName());
 
             for (NotificationEventConfig config : configs) {
-                sendNotificationByType(config, instituteId, user, templateVars, null);
+                sendNotificationViaUnifiedApi(config, instituteId, user, templateVars);
             }
 
         } catch (Exception e) {

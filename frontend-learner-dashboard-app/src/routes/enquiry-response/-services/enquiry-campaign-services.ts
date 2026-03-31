@@ -193,6 +193,7 @@ export interface SubmitEnquiryRequest {
   enquiry: {
     enquiry_status: "NEW";
     mode: "ONLINE";
+    parent_relation_with_child?: "FATHER" | "MOTHER" | "GUARDIAN";
     reference_source?: string;
   };
 }
@@ -273,6 +274,7 @@ export const handleSubmitEnquiryWithLead = (
   studentName: string,
   studentDob: string,
   studentGender: string,
+  parentRelationWithChild: string,
   parentName: string,
   parentEmail: string,
   parentMobile: string,
@@ -342,6 +344,8 @@ export const handleSubmitEnquiryWithLead = (
   const enquiry = {
     enquiry_status: "NEW" as const,
     mode: "ONLINE" as const,
+    parent_relation_with_child:
+      (parentRelationWithChild as "FATHER" | "MOTHER" | "GUARDIAN") || undefined,
     reference_source: "WEBSITE",
   };
 

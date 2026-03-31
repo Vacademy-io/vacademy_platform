@@ -74,8 +74,8 @@ export const ChatbotFloatingButton = () => {
                timeoutRef.current = setTimeout(cycleMessages, 2000);
              }, 6000); // Show long prompt for 6s
           } else {
-             // Continue cycle
-             cycleMessages();
+             // Continue cycle after a short delay to avoid sync recursion
+             timeoutRef.current = setTimeout(cycleMessages, 100);
           }
           return next;
         });

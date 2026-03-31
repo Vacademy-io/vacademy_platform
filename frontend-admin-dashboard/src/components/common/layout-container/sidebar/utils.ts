@@ -248,6 +248,16 @@ export const SidebarItemsData: SidebarItemsType[] = [
         category: 'CRM',
         subItems: [
             {
+                subItem: 'WhatsApp Inbox',
+                subItemLink: '/communication/inbox',
+                subItemId: 'whatsapp-inbox',
+            },
+            {
+                subItem: 'WhatsApp Templates',
+                subItemLink: '/communication/whatsapp-templates',
+                subItemId: 'whatsapp-templates',
+            },
+            {
                 subItem: 'Create Announcement',
                 subItemLink: '/announcement/create',
                 subItemId: 'announcement-create',
@@ -285,6 +295,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItem: 'Workflows',
                 subItemLink: '/workflow/list',
                 subItemId: 'workflow-list',
+            },
+            {
+                subItem: 'Chatbot Flows',
+                subItemLink: '/automation/chatbot-flows',
+                subItemId: 'chatbot-flows',
             },
             {
                 subItem: 'Website Builder',

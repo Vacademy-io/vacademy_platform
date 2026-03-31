@@ -301,8 +301,8 @@ public class SendEmailNodeHandler implements NodeHandler {
 
                     List<NotificationDTO> finalBatchList = new ArrayList<>(regularBatchMap.values());
                     try {
-                        String result = notificationService.sendEmailToUsersMultiple(finalBatchList, finalInstituteId);
-                        emailResults.add(result);
+                        notificationService.sendEmailToUsersMultipleViaUnified(finalBatchList, finalInstituteId);
+                        emailResults.add("SUCCESS: Dispatched " + finalBatchList.size() + " batches");
                         log.info("Successfully dispatched {} regular email batches.", finalBatchList.size());
                     } catch (Exception e) {
                         log.error("Error sending regular email batch request", e);
@@ -346,7 +346,7 @@ public class SendEmailNodeHandler implements NodeHandler {
                 if (!attachmentBatchMap.isEmpty()) {
                     List<AttachmentNotificationDTO> finalAttachmentList = new ArrayList<>(attachmentBatchMap.values());
                     try {
-                        notificationService.sendAttachmentEmail(finalAttachmentList, finalInstituteId);
+                        notificationService.sendAttachmentEmailViaUnified(finalAttachmentList, finalInstituteId);
                         emailResults.add("Attachment batch send successful.");
                         log.info("Successfully dispatched {} attachment email batches.", finalAttachmentList.size());
                     } catch (Exception e) {

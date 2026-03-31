@@ -4,6 +4,8 @@ export const assignmentFormSchema = z.object({
     id: z.string(),
     task: z.string(),
     taskDescription: z.string().optional(),
+    parentRichTextId: z.string().optional(),
+    textDataId: z.string().optional(),
     startDate: z.string(),
     endDate: z.string(),
     reattemptCount: z.string(),
@@ -14,8 +16,20 @@ export const assignmentFormSchema = z.object({
             questionName: z.string(),
             questionType: z.string(),
             newQuestion: z.boolean().optional(),
+            options: z
+                .array(
+                    z.object({
+                        id: z.string(),
+                        text: z.object({
+                            content: z.string(),
+                        }),
+                    })
+                )
+                .optional(),
         })
     ),
+    totalMarks: z.number().optional(),
+    passingMarks: z.number().optional(),
     totalParticipants: z.number().optional(),
     submittedParticipants: z.number().optional(),
 });

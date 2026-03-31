@@ -2294,7 +2294,7 @@ public class ApplicantService {
                                 emailRequest.setSubject(emailTypeLabel + " Submitted Successfully - " + sessionName);
                                 emailRequest.setBody(emailBody);
 
-                                notificationService.sendGenericHtmlMail(emailRequest, instituteId);
+                                notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
                                 logger.info("Sent default application confirmation email to: {}",
                                                 parentUser.getEmail());
                         }

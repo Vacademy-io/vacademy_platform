@@ -40,7 +40,7 @@ public class LearnerInvitationNotification {
                 }).toList();
 
                 notificationDTO.setUsers(users);
-                notificationService.sendEmailToUsers(notificationDTO,instituteId);
+                notificationService.sendEmailViaUnified(notificationDTO,instituteId);
             } catch (Exception e) {
                 System.err.println("Error sending invitation emails: " + e.getMessage());
             }
@@ -55,7 +55,7 @@ public class LearnerInvitationNotification {
                 genericEmailRequest.setSubject("Response recorded for " + instituteName);
                 genericEmailRequest.setTo(email);
                 genericEmailRequest.setBody(LearnerInvitationEmailBody.getLearnerStatusUpdateEmailBody(instituteName));
-                notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
+                notificationService.sendGenericHtmlMailViaUnified(genericEmailRequest, instituteId);
             } catch (Exception e) {
                 System.err.println("Error sending invitation response email: " + e.getMessage());
             }
@@ -81,7 +81,7 @@ public class LearnerInvitationNotification {
                 }).toList();
 
                 notificationDTO.setUsers(users);
-                notificationService.sendEmailToUsers(notificationDTO,instituteId);
+                notificationService.sendEmailViaUnified(notificationDTO,instituteId);
             } catch (Exception e) {
                 System.err.println("Error sending invitation emails: " + e.getMessage());
             }

@@ -1103,7 +1103,10 @@ export const CourseStructureDetails = ({
                       "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                       // Vibrant Styles
                       "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
-                      "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:hover:border-primary/40"
+                      "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:hover:border-primary/40",
+                      // Play Styles — solid, bold, Duolingo-style
+                      "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
+                      "[.ui-play_&]:shadow-[0_3px_0_#1a3d6d] [.ui-play_&]:hover:bg-[#1a3d6d] [.ui-play_&]:hover:text-white"
                     )}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -1172,7 +1175,9 @@ export const CourseStructureDetails = ({
                                 className={cn(
                                   "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                                   // Vibrant Styles
-                                  "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
+                                  "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
+                                  // Play Styles — solid, bold, Duolingo-style
+                                  "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#1cb0f6] [.ui-play_&]:hover:text-white"
                                 )}
                               >
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1283,7 +1288,10 @@ export const CourseStructureDetails = ({
                                             }`,
                                             // Vibrant Styles
                                             !isChapterLocked &&
-                                              "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
+                                              "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
+                                            // Play Styles — solid, bold, Duolingo-style
+                                            !isChapterLocked &&
+                                              "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ffc800] [.ui-play_&]:hover:text-[#3c3c3c]"
                                           )}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -1466,7 +1474,9 @@ export const CourseStructureDetails = ({
                                                         getSlideStyling() +
                                                           " rounded-md",
                                                         // Vibrant Styles
-                                                        "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:border-primary/20 [.ui-vibrant_&]:transition-colors"
+                                                        "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:border-primary/20 [.ui-vibrant_&]:transition-colors",
+                                                        // Play Styles — solid, bold, Duolingo-style
+                                                        "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ce82ff] [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
                                                       )}
                                                       onClick={
                                                         isSlideClickable() &&
@@ -1606,7 +1616,10 @@ export const CourseStructureDetails = ({
                   <CollapsibleTrigger
                     className={cn(
                       "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                      "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20"
+                      "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
+                      // Play Styles — solid, bold, Duolingo-style
+                      "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
+                      "[.ui-play_&]:shadow-[0_3px_0_#1a3d6d] [.ui-play_&]:hover:bg-[#1a3d6d] [.ui-play_&]:hover:text-white"
                     )}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -1640,7 +1653,7 @@ export const CourseStructureDetails = ({
                               open={isModuleOpen}
                               onOpenChange={() => toggleModule(mod.module.id)}
                             >
-                              <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-blue-50/70 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                              <CollapsibleTrigger className={cn("group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-blue-50/70 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#1cb0f6] [.ui-play_&]:hover:text-white")}>
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
                                   {isModuleOpen ? (
                                     <CaretDown
@@ -1723,11 +1736,14 @@ export const CourseStructureDetails = ({
                                       >
                                         <CollapsibleTrigger
                                           disabled={isChapterLocked}
-                                          className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
-                                            isChapterLocked
-                                              ? "cursor-not-allowed opacity-60"
-                                              : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                                          }`}
+                                          className={cn(
+                                            `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                              isChapterLocked
+                                                ? "cursor-not-allowed opacity-60"
+                                                : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                                            }`,
+                                            !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ffc800] [.ui-play_&]:hover:text-[#3c3c3c]"
+                                          )}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                             {isChapterOpen ? (
@@ -1852,10 +1868,11 @@ export const CourseStructureDetails = ({
                                                 (slide, sIdx) => (
                                                   <div
                                                     key={slide.id}
-                                                    className={
+                                                    className={cn(
                                                       getSlideStyling() +
-                                                      " rounded-md"
-                                                    }
+                                                      " rounded-md",
+                                                      "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ce82ff] [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
+                                                    )}
                                                     onClick={
                                                       isSlideClickable()
                                                         ? () => {
@@ -2266,7 +2283,10 @@ export const CourseStructureDetails = ({
                   <CollapsibleTrigger
                     className={cn(
                       "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                      "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20"
+                      "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
+                      // Play Styles — solid, bold, Duolingo-style
+                      "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
+                      "[.ui-play_&]:shadow-[0_3px_0_#1a3d6d] [.ui-play_&]:hover:bg-[#1a3d6d] [.ui-play_&]:hover:text-white"
                     )}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -2298,7 +2318,7 @@ export const CourseStructureDetails = ({
                             open={isModuleOpen}
                             onOpenChange={() => toggleModule(mod.module.id)}
                           >
-                            <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#1cb0f6] [.ui-play_&]:hover:text-white")}>
                               <div className="flex min-w-0 flex-1 items-center gap-2">
                                 {isModuleOpen ? (
                                   <CaretDown size={16} className="shrink-0 text-neutral-500" />
@@ -2332,7 +2352,7 @@ export const CourseStructureDetails = ({
                                         getSlidesWithChapterId(ch.id);
                                       }}
                                     >
-                                      <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer">
+                                      <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ffc800] [.ui-play_&]:hover:text-[#3c3c3c]")}>
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                           {isChapterOpen ? (
                                             <CaretDown size={14} className="shrink-0 text-neutral-500" />
@@ -2364,8 +2384,9 @@ export const CourseStructureDetails = ({
                                               (slide, sIdx) => (
                                                 <div
                                                   key={slide.id}
-                                                  className={getSlideStyling(
-                                                    "sm"
+                                                  className={cn(
+                                                    getSlideStyling("sm"),
+                                                    "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ce82ff] [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
                                                   )}
                                                   onClick={() => {
                                                     handleSlideNavigation(

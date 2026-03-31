@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
-import { MoreVertical, Edit2, Trash2, Code, Code2, UserPlus } from 'lucide-react';
-import { useState } from 'react';
+import { MoreVertical, Edit2, Trash2, Code, Code2, UserPlus, Upload, MessageSquare } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -26,6 +26,9 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useNavigate } from '@tanstack/react-router';
 import { ApiIntegrationDialog } from '../api-integration-dialog/ApiIntegrationDialog';
 import { EmbedCodeDialog } from '../embed-code-dialog/EmbedCodeDialog';
+import { LeadBulkImportDialog } from '../campaign-users/LeadBulkImportDialog';
+import { SendMessageDialog } from '../campaign-users/SendMessageDialog';
+import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
 
 interface AudienceCampaignCardMenuOptionsProps {
     campaign: CampaignItem;
@@ -41,7 +44,18 @@ export const AudienceCampaignCardMenuOptions = ({
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
     const [openApiDialog, setOpenApiDialog] = useState(false);
     const [openEmbedDialog, setOpenEmbedDialog] = useState(false);
+    const [openBulkImportDialog, setOpenBulkImportDialog] = useState(false);
+    const [openSendMessageDialog, setOpenSendMessageDialog] = useState(false);
     const { instituteDetails } = useInstituteDetailsStore();
+    const bulkImportCustomFields = useMemo(
+        () =>
+            parseCustomFieldsFromJson(
+                campaign.institute_custom_fields
+                    ? JSON.stringify(campaign.institute_custom_fields)
+                    : undefined
+            ),
+        [campaign.institute_custom_fields]
+    );
 
     const instituteId = instituteDetails?.id || campaign.institute_id;
     const campaignId = campaign.campaign_id || campaign.id || campaign.audience_id;
@@ -131,6 +145,14 @@ export const AudienceCampaignCardMenuOptions = ({
                         <UserPlus className="mr-2 size-4" />
                         Add Response
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setOpenBulkImportDialog(true)}>
+                        <Upload className="mr-2 size-4" />
+                        Bulk Import CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setOpenSendMessageDialog(true)}>
+                        <MessageSquare className="mr-2 size-4" />
+                        Send Message
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => setOpenApiDialog(true)}>
                         <Code className="mr-2 size-4" />
@@ -189,6 +211,29 @@ export const AudienceCampaignCardMenuOptions = ({
                 onClose={() => setOpenEmbedDialog(false)}
                 campaign={campaign}
             />
+
+            {campaignId && (
+                <LeadBulkImportDialog
+                    open={openBulkImportDialog}
+                    onOpenChange={setOpenBulkImportDialog}
+                    campaignId={campaignId}
+                    campaignName={campaign.campaign_name || 'Campaign'}
+                    instituteId={instituteId || ''}
+                    customFields={bulkImportCustomFields}
+                />
+            )}
+
+            {campaignId && (
+                <SendMessageDialog
+                    open={openSendMessageDialog}
+                    onOpenChange={setOpenSendMessageDialog}
+                    campaignId={campaignId}
+                    campaignName={campaign.campaign_name || 'Campaign'}
+                    instituteId={instituteId || ''}
+                    customFields={bulkImportCustomFields}
+                    leadCount={0}
+                />
+            )}
         </>
     );
 };

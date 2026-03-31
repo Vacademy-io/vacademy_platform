@@ -893,6 +893,18 @@ public class SlideService {
         return mapToSlideDTOList(jsonSlides);
     }
 
+    public SlideDTO getSlideDTOById(String slideId) {
+        String jsonSlides = slideRepository.getSlideBySlideId(
+                slideId,
+                List.of(QuestionStatusEnum.ACTIVE.name())
+        );
+        List<SlideDTO> slides = mapToSlideDTOList(jsonSlides);
+        if (slides.isEmpty()) {
+            throw new VacademyException("Slide not found");
+        }
+        return slides.get(0);
+    }
+
     public List<SlideDTO> mapToSlideDTOList(String jsonSlides) {
         if (!StringUtils.hasText(jsonSlides)) {
             return List.of();

@@ -4,7 +4,7 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import EmptyInvitePage from '@/assets/svgs/empty-invite-page.svg';
 import { Button } from '@/components/ui/button';
 import { Pagination, PaginationContent, PaginationItem } from '@/components/ui/pagination';
-import { ChevronLeft, ChevronRight, Download, UserPlus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Upload, UserPlus, MessageSquare } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
 import { useCampaignUsers } from '../../-hooks/useCampaignUsers';
 import {
@@ -18,6 +18,10 @@ import { CustomFieldSetupItem } from '../../-services/get-custom-field-setup';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { toast } from 'sonner';
 import { fetchCampaignLeads } from '../../-services/get-campaign-users';
+import { LeadBulkImportDialog } from './LeadBulkImportDialog';
+import { SendMessageDialog } from './SendMessageDialog';
+import { CommunicationHistory } from './CommunicationHistory';
+import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
 
 // Helper function to generate key from name
 const generateKeyFromName = (name: string): string =>
@@ -42,7 +46,13 @@ export const CampaignUsersTable = ({
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
     const [isDownloading, setIsDownloading] = useState(false);
+    const [showBulkImportDialog, setShowBulkImportDialog] = useState(false);
+    const [showSendMessageDialog, setShowSendMessageDialog] = useState(false);
     const navigate = useNavigate();
+    const bulkImportCustomFields = useMemo(
+        () => parseCustomFieldsFromJson(customFieldsJson),
+        [customFieldsJson]
+    );
 
     // Reset page when campaign changes
     useEffect(() => {
@@ -484,6 +494,22 @@ export const CampaignUsersTable = ({
                         <Button
                             variant="outline"
                             size="sm"
+                            onClick={() => setShowSendMessageDialog(true)}
+                        >
+                            <MessageSquare className="mr-2 size-4" />
+                            Send Message
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowBulkImportDialog(true)}
+                        >
+                            <Upload className="mr-2 size-4" />
+                            Import CSV
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
                             onClick={handleDownload}
                             disabled={isDownloading || !tableData?.total_elements}
                         >
@@ -541,6 +567,27 @@ export const CampaignUsersTable = ({
                     </PaginationContent>
                 </Pagination>
             )}
+
+            <CommunicationHistory campaignId={campaignId} />
+
+            <LeadBulkImportDialog
+                open={showBulkImportDialog}
+                onOpenChange={setShowBulkImportDialog}
+                campaignId={campaignId}
+                campaignName={campaignName || 'Campaign'}
+                instituteId={instituteId || ''}
+                customFields={bulkImportCustomFields}
+            />
+
+            <SendMessageDialog
+                open={showSendMessageDialog}
+                onOpenChange={setShowSendMessageDialog}
+                campaignId={campaignId}
+                campaignName={campaignName || 'Campaign'}
+                instituteId={instituteId || ''}
+                customFields={bulkImportCustomFields}
+                leadCount={tableData?.total_elements || 0}
+            />
         </div>
     );
 };

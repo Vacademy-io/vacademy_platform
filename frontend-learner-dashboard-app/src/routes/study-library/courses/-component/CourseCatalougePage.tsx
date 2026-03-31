@@ -521,7 +521,7 @@ const CourseCatalougePage: React.FC = () => {
           {/* Tab Navigation */}
           <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md mb-3">
             <div className="p-2 sm:p-3">
-              <TabsList className="bg-muted/50 dark:bg-neutral-900 justify-start p-0.5 w-full grid grid-cols-3 gap-0.5 sm:w-auto sm:flex sm:flex-row">
+              <TabsList className="bg-muted/50 dark:bg-neutral-900 justify-start p-0.5 w-full grid grid-cols-3 gap-0.5 sm:w-auto sm:flex sm:flex-row [.ui-play_&]:!bg-white [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-2xl [.ui-play_&]:p-1.5 [.ui-play_&]:gap-1.5 [.ui-play_&]:shadow-[0_3px_0_hsl(var(--primary-200))]">
                 {visibleTabs.map((t) => (
                   <TabsTrigger
                     key={t.value}
@@ -535,12 +535,21 @@ const CourseCatalougePage: React.FC = () => {
                       "[.ui-vibrant_&]:data-[state=active]:bg-indigo-100/50 [.ui-vibrant_&]:data-[state=active]:text-indigo-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-indigo-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-indigo-300",
                       t.value !== "COMPLETED" &&
                       t.value !== "PROGRESS" &&
-                      "[.ui-vibrant_&]:data-[state=active]:bg-slate-100/50 [.ui-vibrant_&]:data-[state=active]:text-slate-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-slate-800/50 dark:[.ui-vibrant_&]:data-[state=active]:text-slate-300"
+                      "[.ui-vibrant_&]:data-[state=active]:bg-slate-100/50 [.ui-vibrant_&]:data-[state=active]:text-slate-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-slate-800/50 dark:[.ui-vibrant_&]:data-[state=active]:text-slate-300",
+                      // Play Styles — solid, bold, Duolingo-style
+                      "[.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:text-xs",
+                      t.value === "COMPLETED" &&
+                      "[.ui-play_&]:data-[state=active]:!bg-[#58cc02] [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-[0_3px_0_#46a302]",
+                      t.value === "PROGRESS" &&
+                      "[.ui-play_&]:data-[state=active]:!bg-[#1cb0f6] [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-[0_3px_0_#1899d6]",
+                      t.value !== "COMPLETED" &&
+                      t.value !== "PROGRESS" &&
+                      "[.ui-play_&]:data-[state=active]:!bg-[#ce82ff] [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-[0_3px_0_#a568cc]"
                     )}
                   >
                     <span className="inline-flex items-center gap-1">
                       {/* Icon (visible only in vibrant mode via CSS) */}
-                      <span className="hidden [.ui-vibrant_&]:inline">
+                      <span className="hidden [.ui-vibrant_&]:inline [.ui-play_&]:inline">
                         {t.value === "ALL" && <IconBooks size={14} />}
                         {t.value === "PROGRESS" && <IconChartBar size={14} />}
                         {t.value === "COMPLETED" && <IconCheck size={14} />}

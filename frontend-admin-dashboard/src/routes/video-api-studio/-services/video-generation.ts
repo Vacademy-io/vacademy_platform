@@ -1,7 +1,7 @@
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 
 export type VideoStage = 'PENDING' | 'SCRIPT' | 'TTS' | 'WORDS' | 'HTML' | 'RENDER';
-export type VideoStatusType = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+export type VideoStatusType = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'STALLED';
 
 export type VoiceGender = 'female' | 'male';
 export type TtsProvider = 'edge' | 'google';
@@ -117,6 +117,12 @@ export const CONTENT_TYPES = [
 
 export type QualityTier = 'free' | 'standard' | 'premium' | 'ultra';
 
+export interface ReferenceFile {
+    url: string;
+    name: string;
+    type: 'image' | 'pdf';
+}
+
 export interface GenerateVideoRequest {
     prompt: string;
     content_type?: ContentType; // NEW: Default "VIDEO"
@@ -130,6 +136,7 @@ export interface GenerateVideoRequest {
     model: string;
     quality_tier: QualityTier;
     video_id?: string; // Optional: auto-generated if not provided
+    reference_files?: ReferenceFile[];
 }
 
 export const QUALITY_TIERS: Array<{
@@ -215,6 +222,8 @@ export interface VideoUrls {
     avatar_url?: string | null;
     status: VideoStatusType;
     current_stage: VideoStage;
+    updated_at?: string | null;
+    error_message?: string | null;
 }
 
 export interface VideoStatusResponse {
@@ -537,6 +546,7 @@ function mapRemoteStatus(status: string): HistoryItem['status'] {
     switch (status.toUpperCase()) {
         case 'COMPLETED': return 'completed';
         case 'FAILED':    return 'failed';
+        case 'STALLED':   return 'failed';
         case 'IN_PROGRESS': return 'generating';
         case 'PENDING':   return 'pending';
         default:          return 'pending';

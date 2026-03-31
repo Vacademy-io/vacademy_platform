@@ -19,3 +19,4 @@ nltk
 rembg
 pgvector>=0.3.0
 websockets>=12.0
+pdfplumber>=0.10.0

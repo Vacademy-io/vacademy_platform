@@ -7,6 +7,8 @@ import useStore from "./sidebar/useSidebar";
 import { ChatbotSidePanel } from "@/components/chatbot/ChatbotSidePanel";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import { useChatbotContext } from "@/components/chatbot/useChatbotContext";
+import { usePlayTheme } from "@/hooks/use-play-theme";
+import { PlayBottomNav } from "./PlayBottomNav";
 
 interface LayoutContainerProps {
     children?: React.ReactNode;
@@ -30,6 +32,7 @@ export const LayoutContainer = ({
     const { isOpen: chatbotIsOpen } = useChatbotContext();
     const { panelWidth, setIsDockedMode } = useChatbotPanelStore();
     const [isMobile, setIsMobile] = useState(false);
+    const isPlayTheme = usePlayTheme();
 
     // Detect mobile viewport
     useEffect(() => {
@@ -68,7 +71,7 @@ export const LayoutContainer = ({
                 }}
             >
                 <Navbar />
-                <div className={cn("m-3 md:m-5 max-w-full overflow-x-hidden", className)}>
+                <div className={cn("m-3 md:m-5 max-w-full overflow-x-hidden", isPlayTheme && isMobile && "pb-20", className)}>
                     {children}
                 </div>
             </SidebarInset>
@@ -81,6 +84,8 @@ export const LayoutContainer = ({
                     <ChatbotSidePanel />
                 </div>
             )}
+            {/* Play theme: mobile bottom tab bar */}
+            {isPlayTheme && isMobile && <PlayBottomNav />}
         </>
     );
 };

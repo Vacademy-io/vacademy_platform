@@ -49,6 +49,8 @@ public interface InstituteStudentRepositoryCustom {
             Map<String, List<String>> customFieldFilters,
             LocalDate startDate,
             LocalDate endDate,
+            List<String> enrollInviteIds,
+            List<String> enrollInvitePackageSessionIds,
             Pageable pageable);
     
     /**
@@ -90,5 +92,7 @@ public interface InstituteStudentRepositoryCustom {
             Map<String, List<String>> customFieldFilters,
             LocalDate startDate,
             LocalDate endDate,
+            List<String> enrollInviteIds,
+            List<String> enrollInvitePackageSessionIds,
             Pageable pageable);
 }

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.notification_service.features.chatbot_flow.engine.ChatbotFlowEngine;
 import vacademy.io.notification_service.features.combot.action.dto.FlowContext;
 import vacademy.io.notification_service.features.combot.action.service.FlowActionRouter;
 import vacademy.io.notification_service.features.combot.entity.ChannelFlowConfig;
@@ -35,10 +36,11 @@ public class WebhookEventProcessor {
     private final FlowActionRouter flowActionRouter;
     private final ChannelToInstituteMappingRepository channelMappingRepository;
     private final ChannelFlowConfigRepository flowConfigRepository;
+    private final ChatbotFlowEngine chatbotFlowEngine;
 
     // Notification types for webhook events
     private static final String WHATSAPP_STATUS_EVENT = "WHATSAPP_STATUS_EVENT";
-    private static final String WHATSAPP_INCOMING_MESSAGE = "WHATSAPP_INCOMING_MESSAGE";
+    private static final String WHATSAPP_INCOMING_MESSAGE = "WHATSAPP_MESSAGE_INCOMING";
     private static final String WHATSAPP_VERIFICATION = "WHATSAPP_VERIFICATION";
 
     /**
@@ -96,6 +98,11 @@ public class WebhookEventProcessor {
 
         // Business channel ID - identifies which business account
         notificationLog.setSenderBusinessChannelId(event.getBusinessChannelId());
+
+        // Sender name from WhatsApp profile (for inbox display)
+        if (event.getSenderName() != null && !event.getSenderName().isBlank()) {
+            notificationLog.setSenderName(event.getSenderName());
+        }
 
         // Notification date from event timestamp
         if (event.getTimestamp() != null) {
@@ -235,7 +242,18 @@ public class WebhookEventProcessor {
             String instituteId = mapping.getInstituteId();
             String channelType = mapping.getChannelType();
 
-            // 2. Get flow config for this channel
+            // 1b. NEW: Try chatbot flow engine first (graph-based flows)
+            boolean handledByNewFlow = chatbotFlowEngine.handleIncomingMessage(
+                    instituteId, channelType, event.getPhoneNumber(), event.getMessageText(),
+                    businessChannelId, event.getMessageType(),
+                    event.getButtonId(), event.getButtonPayload(), event.getListReplyId());
+            if (handledByNewFlow) {
+                log.info("Message handled by chatbot flow engine for phone={} via {}",
+                        maskPhoneNumber(event.getPhoneNumber()), event.getVendor());
+                return;
+            }
+
+            // 2. Fall back to legacy: Get flow config for this channel
             Optional<ChannelFlowConfig> configOpt = flowConfigRepository
                     .findByInstituteIdAndChannelTypeAndIsActiveTrue(instituteId, channelType);
 
@@ -309,72 +327,6 @@ public class WebhookEventProcessor {
             log.error("Error routing incoming message: {}", e.getMessage(), e);
         }
     }
-
-    // private void routeIncomingMessage(UnifiedWebhookEvent event) {
-    // String businessChannelId = event.getBusinessChannelId();
-    //
-    // if (businessChannelId == null || businessChannelId.isBlank()) {
-    // log.debug("No businessChannelId available, skipping action routing");
-    // return;
-    // }
-    //
-    // try {
-    // // 1. Get institute from channel mapping
-    // Optional<ChannelToInstituteMapping> mappingOpt =
-    // channelMappingRepository.findById(businessChannelId);
-    // if (mappingOpt.isEmpty()) {
-    // log.debug("No channel mapping found for businessChannelId={}",
-    // businessChannelId);
-    // return;
-    // }
-    //
-    // ChannelToInstituteMapping mapping = mappingOpt.get();
-    // String instituteId = mapping.getInstituteId();
-    // String channelType = mapping.getChannelType();
-    //
-    // // 2. Get flow config for this channel
-    // Optional<ChannelFlowConfig> configOpt = flowConfigRepository
-    // .findByInstituteIdAndChannelTypeAndIsActiveTrue(instituteId, channelType);
-    //
-    // if (configOpt.isEmpty()) {
-    // log.debug("No active flow config for instituteId={}, channelType={}",
-    // instituteId, channelType);
-    // return;
-    // }
-    //
-    // ChannelFlowConfig config = configOpt.get();
-    //
-    // // 3. Check if action_template_config exists
-    // if (config.getActionTemplateConfig() == null ||
-    // config.getActionTemplateConfig().isBlank()) {
-    // log.debug("No action_template_config for instituteId={}", instituteId);
-    // return;
-    // }
-    //
-    // // 4. Build flow context
-    // FlowContext flowContext = FlowContext.builder()
-    // .phoneNumber(event.getPhoneNumber())
-    // .instituteId(instituteId)
-    // .businessChannelId(businessChannelId)
-    // .channelType(channelType)
-    // .messageText(event.getMessageText())
-    // .build();
-    //
-    // // 5. Route actions
-    // boolean actionsExecuted = flowActionRouter.routeActions(
-    // config.getActionTemplateConfig(),
-    // event.getMessageText(),
-    // flowContext);
-    //
-    // if (actionsExecuted) {
-    // log.info("Actions executed for phone={} from WATI webhook",
-    // maskPhoneNumber(event.getPhoneNumber()));
-    // }
-    //
-    // } catch (Exception e) {
-    // log.error("Error routing incoming message: {}", e.getMessage(), e);
-    // }
-    // }
 
     private void handleUnknownEvent(UnifiedWebhookEvent event, NotificationLog logEntry) {
         log.warn("Unknown event type received - vendor={}, businessChannel={}, logId={}",

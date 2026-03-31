@@ -201,4 +201,17 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
     Optional<EnrollInvite> findScopedInviteForSubOrgAndPackageSession(
             @Param("subOrgId") String subOrgId,
             @Param("packageSessionId") String packageSessionId);
+
+    @Query(value = """
+        SELECT DISTINCT ei.id FROM enroll_invite ei
+        JOIN package_session_learner_invitation_to_payment_option pslipo
+          ON pslipo.enroll_invite_id = ei.id
+        WHERE ei.sub_org_id = :subOrgId
+        AND pslipo.package_session_id = :packageSessionId
+        AND ei.status = 'ACTIVE'
+    """, nativeQuery = true)
+    List<String> findInviteIdsForSubOrgAndPackageSession(
+            @Param("subOrgId") String subOrgId,
+            @Param("packageSessionId") String packageSessionId);
+
 }

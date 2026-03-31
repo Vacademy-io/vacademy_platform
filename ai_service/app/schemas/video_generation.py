@@ -3,8 +3,15 @@ Schemas for AI Video Generation API.
 """
 from __future__ import annotations
 
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, List, Literal
 from pydantic import BaseModel, Field
+
+
+class ReferenceFileItem(BaseModel):
+    """A reference file (image or PDF) attached to a generation request."""
+    url: str = Field(..., description="Public S3 URL of the file")
+    name: str = Field(..., description="Original filename (e.g., 'diagram.png')")
+    type: Literal["image", "pdf"] = Field(..., description="File type: 'image' or 'pdf'")
 
 
 # Content types supported by the generation pipeline
@@ -78,7 +85,11 @@ class VideoGenerationRequest(BaseModel):
         default=None,
         description="URL of a face/portrait image for the speaking avatar. If not provided, a default teacher image is used. Only applies to VIDEO content type."
     )
-    
+    reference_files: Optional[List[ReferenceFileItem]] = Field(
+        default=None,
+        description="List of reference files (images/PDFs) to include in generation"
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -92,7 +103,11 @@ class VideoGenerationRequest(BaseModel):
                 "target_duration": "5 minutes",
                 "voice_gender": "female",
                 "tts_provider": "edge",
-                "avatar_image_url": None
+                "avatar_image_url": None,
+                "reference_files": [
+                    {"url": "https://bucket.s3.amazonaws.com/file1.png", "name": "diagram.png", "type": "image"},
+                    {"url": "https://bucket.s3.amazonaws.com/file2.pdf", "name": "notes.pdf", "type": "pdf"}
+                ]
             }
         }
 
@@ -170,15 +185,17 @@ class VideoStatusResponse(BaseModel):
 
 class VideoUrlsResponse(BaseModel):
     """Response for video HTML and audio URLs."""
-    
+
     video_id: str
     html_url: Optional[str] = Field(None, description="URL to HTML timeline file (time_based_frame.json)")
     audio_url: Optional[str] = Field(None, description="URL to audio file (narration.mp3)")
     words_url: Optional[str] = Field(None, description="URL to time-synced words JSON for captions")
     avatar_url: Optional[str] = Field(None, description="URL to avatar talking-head video (MP4)")
-    status: str = Field(..., description="Current video generation status")
+    status: str = Field(..., description="Current video generation status (PENDING, IN_PROGRESS, COMPLETED, FAILED, STALLED)")
     current_stage: str = Field(..., description="Current generation stage")
-    
+    updated_at: Optional[str] = Field(None, description="Last time the record was updated (ISO 8601)")
+    error_message: Optional[str] = Field(None, description="Error message if generation failed or stalled")
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -188,7 +205,9 @@ class VideoUrlsResponse(BaseModel):
                 "words_url": "https://bucket.s3.amazonaws.com/ai-videos/quantum-entanglement-101/audio/words.json",
                 "avatar_url": None,
                 "status": "COMPLETED",
-                "current_stage": "HTML"
+                "current_stage": "HTML",
+                "updated_at": "2024-01-15T10:35:00Z",
+                "error_message": None
             }
         }
 

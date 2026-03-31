@@ -36,6 +36,7 @@ public interface StudentListV2Projection {
     String getPaymentOptionJson();
     String getDestinationPackageSessionId();
     String getEnrollInviteId();
+    String getEnrollInviteName();
 
     // ---- ADDED FIELDS ----
     Double getPaymentAmount();

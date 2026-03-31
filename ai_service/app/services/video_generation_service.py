@@ -103,6 +103,7 @@ class VideoGenerationService:
         generate_avatar: bool = False,
         avatar_image_url: Optional[str] = None,
         quality_tier: str = "ultra",
+        reference_files: Optional[list] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -217,6 +218,7 @@ class VideoGenerationService:
                     generate_avatar=generate_avatar,
                     avatar_image_url=avatar_image_url,
                     quality_tier=quality_tier,
+                    reference_files=reference_files,
                 ):
                     # If we get an error event, log it and check if we should stop
                     if event.get("type") == "error":
@@ -279,6 +281,7 @@ class VideoGenerationService:
         generate_avatar: bool = False,
         avatar_image_url: Optional[str] = None,
         quality_tier: str = "ultra",
+        reference_files: Optional[list] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -491,10 +494,35 @@ class VideoGenerationService:
                         if self.s3_service.download_file(branding_meta_url, branding_meta_path):
                             logger.info(f"[VideoGenService] Successfully downloaded branding_meta.json")
         
+        # ── Process reference files (images/PDFs) ──
+        reference_context = None
+        if reference_files:
+            try:
+                from .reference_file_service import ReferenceFileService
+                ref_svc = ReferenceFileService(
+                    openrouter_key=openrouter_key,
+                    s3_service=self.s3_service,
+                )
+                # Try cached first (for resume)
+                reference_context = ReferenceFileService.load_cached(run_dir)
+                if reference_context:
+                    logger.info(f"[VideoGenService] Loaded cached reference context from {run_dir}")
+                else:
+                    logger.info(f"[VideoGenService] Processing {len(reference_files)} reference files...")
+                    reference_context = ref_svc.process(reference_files, run_dir)
+                    logger.info(
+                        f"[VideoGenService] Reference context ready: "
+                        f"{len(reference_context.text_context)} chars text, "
+                        f"{len(reference_context.embeddable_images)} images"
+                    )
+            except Exception as e:
+                logger.warning(f"[VideoGenService] Reference file processing failed (non-fatal): {e}")
+                reference_context = None
+
         # Calculate percentage per stage
         total_stages = target_stage_idx - start_stage_idx + 1
         percentage_per_stage = 80 / total_stages if total_stages > 0 else 80  # Save 20% for final processing
-        
+
         # Update status to IN_PROGRESS at starting stage
         self.repository.update_stage(video_id, self.STAGES[start_stage_idx], "IN_PROGRESS")
         
@@ -599,7 +627,8 @@ class VideoGenerationService:
                     style_config=style_config,
                     content_type=content_type,
                     generate_avatar=generate_avatar,
-                    avatar_image_url=avatar_image_url
+                    avatar_image_url=avatar_image_url,
+                    reference_context=reference_context.to_dict() if reference_context else None,
                 )
                 
                 with ThreadPoolExecutor() as executor:
@@ -636,7 +665,27 @@ class VideoGenerationService:
                 
                 if outputs and "run_dir" in outputs:
                     run_dir = outputs["run_dir"]
-                    
+
+                # ── Validate required outputs for this stage ──
+                # If the pipeline returned but critical output files are missing,
+                # treat it as a stage failure instead of silently continuing.
+                _required_outputs = {
+                    "script": ["script_path"],
+                    "tts": ["audio_path"],
+                    "words": ["words_json"],
+                    "html": ["timeline_json"],
+                    "avatar": ["avatar_video_path"],
+                    "render": ["video_path"],
+                }
+                _expected = _required_outputs.get(stage_pipeline_name, [])
+                _missing = [k for k in _expected if not outputs or not outputs.get(k)]
+                if _missing and not pipeline_error:
+                    pipeline_error = (
+                        f"Stage '{stage_pipeline_name}' finished but missing required outputs: "
+                        f"{_missing}. The stage may have failed silently."
+                    )
+                    logger.error(f"[VideoGenService] {pipeline_error}")
+
             except Exception as e:
                 import traceback
                 pipeline_error = str(e)

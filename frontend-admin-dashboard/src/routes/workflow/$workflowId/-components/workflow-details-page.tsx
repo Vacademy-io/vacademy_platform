@@ -8,7 +8,7 @@ import { ExecutionHistoryTab } from './execution-history-tab';
 import { ExecutionFlowViewer } from './execution-flow-viewer';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from '@phosphor-icons/react';
+import { ArrowLeft, PencilSimple } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -118,6 +118,15 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                             >
                                 {workflow.status}
                             </Badge>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5"
+                                onClick={() => navigate({ to: `/workflow/${workflowId}/edit` })}
+                            >
+                                <PencilSimple size={14} />
+                                Edit
+                            </Button>
                         </div>
                         <p className="mt-2 text-neutral-600">{workflow.description}</p>
 

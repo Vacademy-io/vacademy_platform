@@ -273,7 +273,14 @@ export function QuestionComponent({
                         <div className="">
                             {processHtmlString(question.question.content).map((item, index) => {
                                 if (item.type === 'text') {
-                                    return <span key={index}>{item.content}</span>;
+                                    return (
+                                        <span
+                                            key={index}
+                                            dangerouslySetInnerHTML={{
+                                                __html: item.content,
+                                            }}
+                                        />
+                                    );
                                 } else if (item.type === 'image') {
                                     return renderImage(item.content, index);
                                 } else if (item.type === 'formula') {
@@ -316,9 +323,10 @@ export function QuestionComponent({
                                         <span
                                             key={item.content.slice(0, 10) + index}
                                             id="text-content"
-                                        >
-                                            {item.content}
-                                        </span>
+                                            dangerouslySetInnerHTML={{
+                                                __html: item.content,
+                                            }}
+                                        />
                                     );
                                 } else if (item.type === 'image') {
                                     return (

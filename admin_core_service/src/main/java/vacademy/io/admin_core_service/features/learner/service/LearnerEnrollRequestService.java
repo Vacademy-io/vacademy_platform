@@ -63,6 +63,9 @@ public class LearnerEnrollRequestService {
     private EnrollInviteService enrollInviteService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository enrollInviteRepository;
+
+    @Autowired
     private PaymentOptionService paymentOptionService;
 
     @Autowired
@@ -528,6 +531,7 @@ public class LearnerEnrollRequestService {
             // 3. Create faculty mappings for each package session (admin portal access)
             for (String packageSessionId : packageSessionIds) {
                 try {
+                    // PACKAGE_SESSION entry
                     AddUserAccessDTO accessDTO = AddUserAccessDTO.builder()
                             .userId(userId)
                             .packageSessionId(packageSessionId)
@@ -543,6 +547,29 @@ public class LearnerEnrollRequestService {
                     facultyService.grantUserAccess(accessDTO);
                     log.info("Created faculty mapping for user={} packageSession={} sub-org={}",
                             userId, packageSessionId, subOrgId);
+
+                    // Auto-discover invites with sub_org_id for this PS and create ENROLL_INVITE entries
+                    List<String> inviteIds = enrollInviteRepository
+                            .findInviteIdsForSubOrgAndPackageSession(subOrgId, packageSessionId);
+                    for (String inviteId : inviteIds) {
+                        AddUserAccessDTO inviteAccess = AddUserAccessDTO.builder()
+                                .userId(userId)
+                                .packageSessionId(packageSessionId)
+                                .name(user.getFullName())
+                                .status("ACTIVE")
+                                .userType("ROOT_ADMIN")
+                                .accessType("ENROLL_INVITE")
+                                .accessId(inviteId)
+                                .accessPermission("FULL")
+                                .linkageType("SUB_ORG")
+                                .suborgId(subOrgId)
+                                .build();
+                        facultyService.grantUserAccess(inviteAccess);
+                    }
+                    if (!inviteIds.isEmpty()) {
+                        log.info("Created {} ENROLL_INVITE faculty mappings for user={} sub-org={} PS={}",
+                                inviteIds.size(), userId, subOrgId, packageSessionId);
+                    }
                 } catch (Exception e) {
                     log.error("Failed to create faculty mapping for packageSession={}: {}",
                             packageSessionId, e.getMessage());

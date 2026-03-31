@@ -112,6 +112,12 @@ public class AssignmentSlideService {
         if (StringUtils.hasText(dto.getCommaSeparatedMediaIds())) {
             assignmentSlide.setCommaSeparatedMediaIds(dto.getCommaSeparatedMediaIds());
         }
+        if (dto.getTotalMarks() != null) {
+            assignmentSlide.setTotalMarks(dto.getTotalMarks());
+        }
+        if (dto.getPassingMarks() != null) {
+            assignmentSlide.setPassingMarks(dto.getPassingMarks());
+        }
 
         List<AssignmentSlideQuestion> existingQuestions = assignmentSlide.getAssignmentSlideQuestions();
         existingQuestions.clear();

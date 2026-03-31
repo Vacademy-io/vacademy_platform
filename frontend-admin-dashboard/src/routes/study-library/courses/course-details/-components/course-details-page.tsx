@@ -1051,6 +1051,13 @@ export const CourseDetailsPage = () => {
         Object.values(tokenData.authorities).some(
             (auth: Authority) => Array.isArray(auth?.roles) && auth.roles.includes('ADMIN')
         );
+    const isAdminOrTeacher =
+        tokenData?.authorities &&
+        Object.values(tokenData.authorities).some(
+            (auth: Authority) =>
+                Array.isArray(auth?.roles) &&
+                (auth.roles.includes('ADMIN') || auth.roles.includes('TEACHER'))
+        );
     const currentUserId = tokenData?.user;
 
     // Get course status and ownership
@@ -1502,8 +1509,8 @@ export const CourseDetailsPage = () => {
                             </div>
                         )}
 
-                        {/* Instructors Section */}
-                        {instructors && instructors.length > 0 && (
+                        {/* Instructors Section - only visible for ADMIN or TEACHER roles */}
+                        {instructors && instructors.length > 0 && isAdminOrTeacher && (
                             <div className="mb-4 flex flex-col gap-2 rounded-md bg-white p-3 shadow-sm lg:mb-6 lg:p-4">
                                 <h2 className="text-lg font-semibold text-gray-900">Authors</h2>
                                 {loadingInstructors ? (

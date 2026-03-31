@@ -12,9 +12,9 @@ import {
 } from './studentDataEnrichmentService';
 import { mapTemplateVariables } from '@/utils/template-variable-mapper';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import { SEND_EMAIL_TO_USERS_PUBLIC } from '@/constants/urls';
 import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import { sendNotification, type UnifiedSendResponse } from './unified-send-service';
 import { validateTemplateVariables, type ValidationResult } from '@/utils/template-validation';
 import { VariableContext } from './template-variables/types';
 import type { PageContext } from './page-context-resolver';
@@ -480,65 +480,31 @@ export class BulkEmailService {
                 ...(usedVariables.length > 0 && instituteId ? { institute_id: instituteId } : {}),
             };
 
-            // Step 5: Send bulk email using existing API
-            const url =
-                usedVariables.length > 0 && instituteId
-                    ? `${SEND_EMAIL_TO_USERS_PUBLIC}?instituteId=${instituteId}`
-                    : SEND_EMAIL_TO_USERS_PUBLIC;
+            // Step 5: Send bulk email via unified send API
+            const recipients = users.map((u) => ({
+                email: u.channel_id,
+                userId: u.user_id,
+                variables: u.placeholders,
+            }));
 
-            // Refresh token if needed
-            if (!this.authToken) {
-                this.refreshToken();
-            }
-
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${this.authToken}`,
+            const unifiedResponse: UnifiedSendResponse = await sendNotification({
+                instituteId: instituteId || '',
+                channel: 'EMAIL',
+                recipients,
+                options: {
+                    emailSubject: subject,
+                    emailBody: template,
+                    emailType: 'UTILITY_EMAIL',
+                    source: source,
+                    sourceId: sourceId,
                 },
-                body: JSON.stringify(payload),
             });
 
-            if (!response.ok) {
-                // Try to get error details
-                let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
-                try {
-                    const errorText = await response.text();
-                    errorMessage += ` - ${errorText.substring(0, 200)}`;
-                } catch (e) {
-                    // Ignore error parsing
-                }
-                throw new Error(errorMessage);
-            }
-
-            // Check if response is JSON or plain text success
-            const contentType = response.headers.get('content-type');
-            let responseData: any = { success: true };
-
-            if (!contentType || !contentType.includes('application/json')) {
-                const responseText = await response.text();
-                // Check if it's a success message
-                if (
-                    responseText.toLowerCase().includes('success') ||
-                    responseText.toLowerCase().includes('sent') ||
-                    responseText.toLowerCase().includes('notification')
-                ) {
-                    responseData = { success: true, message: responseText };
-                } else {
-                    throw new Error(
-                        `API returned non-JSON response: ${responseText.substring(0, 100)}`
-                    );
-                }
-            } else {
-                responseData = await response.json();
-            }
-
             const result: BulkEmailResult = {
-                success: responseData.success !== false,
+                success: unifiedResponse.status !== 'FAILED',
                 totalStudents: students.length,
-                processedStudents: users.length,
-                failedStudents: errors.length,
+                processedStudents: unifiedResponse.accepted + unifiedResponse.failed,
+                failedStudents: unifiedResponse.failed + errors.length,
                 errors,
                 payload,
             };
@@ -648,60 +614,39 @@ export class BulkEmailService {
         usedVariables: string[] = []
     ): Promise<BulkEmailResult> {
         const instituteId = this.getInstituteId();
-        // Only include instituteId if template has variables that might need institute data
-        const url =
-            usedVariables.length > 0 && instituteId
-                ? `${SEND_EMAIL_TO_USERS_PUBLIC}?instituteId=${instituteId}`
-                : SEND_EMAIL_TO_USERS_PUBLIC;
 
         let successCount = 0;
         let failureCount = 0;
         const errors: Array<{ studentId: string; studentName: string; error: string }> = [];
 
+        // Send one-by-one via unified send as fallback
         for (const user of users) {
             try {
-                const requestBody = {
-                    body: template,
-                    notification_type: 'EMAIL' as const,
-                    source: 'STUDENT_MANAGEMENT_BULK_EMAIL',
-                    source_id: `fallback-${Date.now()}`,
-                    subject,
-                    users: [
-                        {
-                            user_id: user.user_id,
-                            channel_id: user.channel_id,
-                            placeholders: user.placeholders,
-                        },
-                    ],
-                    // Only include institute_id if template has variables that might need institute data
-                    ...(usedVariables.length > 0 && instituteId
-                        ? { institute_id: instituteId }
-                        : {}),
-                };
-
-                // Refresh token if needed
-                if (!this.authToken) {
-                    this.refreshToken();
-                }
-
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${this.authToken}`,
+                const response = await sendNotification({
+                    instituteId: instituteId || '',
+                    channel: 'EMAIL',
+                    recipients: [{
+                        email: user.channel_id,
+                        userId: user.user_id,
+                        variables: user.placeholders,
+                    }],
+                    options: {
+                        emailSubject: subject,
+                        emailBody: template,
+                        emailType: 'UTILITY_EMAIL',
+                        source: 'STUDENT_MANAGEMENT_BULK_EMAIL',
+                        sourceId: `fallback-${Date.now()}`,
                     },
-                    body: JSON.stringify(requestBody),
                 });
 
-                if (response.ok) {
+                if (response.accepted > 0) {
                     successCount++;
                 } else {
                     failureCount++;
-                    const errorText = await response.text().catch(() => 'Unknown error');
                     errors.push({
                         studentId: user.user_id,
                         studentName: user.placeholders.name || 'Unknown',
-                        error: `HTTP ${response.status}: ${errorText.substring(0, 100)}`,
+                        error: response.results?.[0]?.error || 'Send failed',
                     });
                 }
             } catch (error) {

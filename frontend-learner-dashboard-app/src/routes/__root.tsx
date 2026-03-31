@@ -239,14 +239,15 @@ const RootComponent = () => {
     // Apply global ui-vibrant class based on override/settings and expose debug helpers
     const applyUiType = (t: StudentUIType) => {
       const root = document.documentElement;
+      root.classList.remove("ui-vibrant", "ui-play");
       if (t === "vibrant") root.classList.add("ui-vibrant");
-      else root.classList.remove("ui-vibrant");
+      else if (t === "play") root.classList.add("ui-play");
     };
 
     const DEBUG_KEY = "DEBUG_UI_TYPE";
     try {
       const override = (localStorage.getItem(DEBUG_KEY) || "") as StudentUIType;
-      if (override === "vibrant" || override === "default") {
+      if (override === "vibrant" || override === "default" || override === "play") {
         applyUiType(override);
       } else {
         getStudentDisplaySettings(false)

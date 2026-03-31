@@ -95,6 +95,30 @@ public class AudienceController {
         return ResponseEntity.ok(lead);
     }
 
+    /**
+     * Send a message to audience campaign leads.
+     */
+    @PostMapping("/campaign/{audienceId}/send")
+    public ResponseEntity<SendAudienceMessageResponseDTO> sendMessage(
+            @PathVariable String audienceId,
+            @RequestBody SendAudienceMessageRequestDTO request) {
+        request.setAudienceId(audienceId);
+        SendAudienceMessageResponseDTO response = audienceService.sendAudienceMessage(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get communication history for a campaign.
+     */
+    @GetMapping("/campaign/{audienceId}/communications")
+    public ResponseEntity<Page<AudienceCommunicationDTO>> getCommunications(
+            @PathVariable String audienceId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Page<AudienceCommunicationDTO> communications = audienceService.getCommunications(audienceId, page, size);
+        return ResponseEntity.ok(communications);
+    }
+
     @PostMapping("/enquiries")
     public ResponseEntity<Page<EnquiryWithResponseDTO>> getEnquiries(
             @RequestBody EnquiryListFilterDTO filterDTO,

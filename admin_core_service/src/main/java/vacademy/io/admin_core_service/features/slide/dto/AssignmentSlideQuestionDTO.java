@@ -16,7 +16,11 @@ public class AssignmentSlideQuestionDTO {
 
     private boolean isNewQuestion;
 
+    private String questionType;
+
     private Integer questionOrder;
 
     private String status;
+
+    private List<AssignmentSlideQuestionOptionDTO> options;
 }

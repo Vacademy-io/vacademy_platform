@@ -72,7 +72,7 @@ public class PaymentNotificatonService {
         notificationDTO.setUsers(List.of(notificationToUserDTO));
 
         try {
-            notificationService.sendEmailToUsers(notificationDTO, instituteId);
+            notificationService.sendEmailViaUnified(notificationDTO, instituteId);
             return true;
         } catch (Exception e) {
             SentryLogger.SentryEventBuilder.error(e)
@@ -129,7 +129,7 @@ public class PaymentNotificatonService {
         notificationDTO.setUsers(List.of(notificationToUserDTO));
 
         try {
-            notificationService.sendEmailToUsers(notificationDTO, instituteId);
+            notificationService.sendEmailViaUnified(notificationDTO, instituteId);
             return true;
         } catch (Exception e) {
             SentryLogger.SentryEventBuilder.error(e)

@@ -23,7 +23,7 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
                 sgr.id AS guestId,
                 sgr.email AS guestEmail,
                 sgr.registered_at AS registeredAt,
-                lsl.status AS attendanceStatus,
+                COALESCE(lsl.status, 'UNMARKED') AS attendanceStatus,
                 lsl.details AS attendanceDetails,
                 lsl.created_at AS attendanceTimestamp,
                 (

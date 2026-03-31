@@ -407,4 +407,123 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("messageList") String[] messageList,
             @Param("messageCount") Integer messageCount
     );
+
+    // Chatbot flow session message history
+    List<NotificationLog> findByChannelIdAndNotificationTypeInOrderByNotificationDateAsc(
+            String channelId, List<String> notificationTypes);
+
+    // ==================== COMMUNICATION TIMELINE METHODS ====================
+
+    /**
+     * Find all non-event logs for a user filtered by notification types, paginated and sorted by date DESC.
+     * Used by the unified communication timeline to fetch EMAIL, WHATSAPP_MESSAGE_OUTGOING, WHATSAPP_MESSAGE_INCOMING.
+     */
+    @Query("""
+                SELECT nl FROM NotificationLog nl
+                WHERE nl.userId = :userId
+                AND nl.notificationType IN :types
+                ORDER BY nl.notificationDate DESC
+            """)
+    Page<NotificationLog> findByUserIdAndNotificationTypeInOrderByNotificationDateDesc(
+            @Param("userId") String userId,
+            @Param("types") List<String> types,
+            Pageable pageable);
+
+    /**
+     * Find all non-event logs for a user filtered by notification types and date range.
+     */
+    @Query("""
+                SELECT nl FROM NotificationLog nl
+                WHERE nl.userId = :userId
+                AND nl.notificationType IN :types
+                AND (:fromDate IS NULL OR nl.notificationDate >= :fromDate)
+                AND (:toDate IS NULL OR nl.notificationDate <= :toDate)
+                ORDER BY nl.notificationDate DESC
+            """)
+    Page<NotificationLog> findByUserIdAndTypesAndDateRange(
+            @Param("userId") String userId,
+            @Param("types") List<String> types,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            Pageable pageable);
+
+    // ==================== WHATSAPP INBOX METHODS ====================
+
+    /**
+     * Get distinct conversations (unique phone numbers) with their latest message.
+     * Uses DISTINCT ON to guarantee one row per channel_id (no duplicates).
+     * Supports multiple channel IDs for multi-channel institutes.
+     */
+    @Query(value = """
+            SELECT * FROM (
+                SELECT DISTINCT ON (nl.channel_id) nl.*
+                FROM notification_log nl
+                WHERE nl.sender_business_channel_id IN (:channelIds)
+                  AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
+                ORDER BY nl.channel_id, nl.notification_date DESC
+            ) conversations
+            ORDER BY conversations.notification_date DESC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<NotificationLog> findConversationsForInbox(
+            @Param("channelIds") List<String> senderBusinessChannelIds,
+            @Param("limit") int limit,
+            @Param("offset") int offset);
+
+    /**
+     * Get messages for a specific phone number, scoped to institute's channels.
+     * Cursor-paginated (newest first).
+     */
+    @Query(value = """
+            SELECT * FROM notification_log
+            WHERE channel_id = :phone
+              AND sender_business_channel_id IN (:channelIds)
+              AND notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
+              AND (:cursor IS NULL OR notification_date < CAST(:cursor AS TIMESTAMP))
+            ORDER BY notification_date DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<NotificationLog> findMessagesForPhone(
+            @Param("phone") String phone,
+            @Param("channelIds") List<String> senderBusinessChannelIds,
+            @Param("cursor") String cursor,
+            @Param("limit") int limit);
+
+    /**
+     * Batch count unread messages for multiple phones in one query.
+     * Returns rows of (channel_id, unread_count).
+     */
+    @Query(value = """
+            SELECT sub.channel_id, COUNT(*) as unread_count
+            FROM notification_log sub
+            WHERE sub.channel_id IN (:phones)
+              AND sub.notification_type = 'WHATSAPP_MESSAGE_INCOMING'
+              AND sub.notification_date > (
+                SELECT COALESCE(MAX(nl2.notification_date), CAST('1970-01-01' AS TIMESTAMP))
+                FROM notification_log nl2
+                WHERE nl2.channel_id = sub.channel_id
+                  AND nl2.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+              )
+            GROUP BY sub.channel_id
+            """, nativeQuery = true)
+    List<Object[]> batchCountUnreadMessages(@Param("phones") List<String> phones);
+
+    /**
+     * Search conversations by phone number or sender name.
+     */
+    @Query(value = """
+            SELECT * FROM (
+                SELECT DISTINCT ON (nl.channel_id) nl.*
+                FROM notification_log nl
+                WHERE nl.sender_business_channel_id IN (:channelIds)
+                  AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
+                  AND (nl.channel_id LIKE :query OR COALESCE(nl.sender_name, '') ILIKE :query)
+                ORDER BY nl.channel_id, nl.notification_date DESC
+            ) conversations
+            ORDER BY conversations.notification_date DESC
+            LIMIT 30
+            """, nativeQuery = true)
+    List<NotificationLog> searchConversations(
+            @Param("channelIds") List<String> senderBusinessChannelIds,
+            @Param("query") String query);
 }

@@ -102,7 +102,7 @@ public class TemplateReader {
             request.setUserDetails(bodyParams);
 
             // Send WhatsApp
-            notificationService.sendWhatsappToUsers(request,instituteId);
+            notificationService.sendWhatsappViaUnified(request,instituteId);
 
             return "WhatsApp notification sent";
         } catch (Exception e) {

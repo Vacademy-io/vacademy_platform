@@ -215,7 +215,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
             slide.slideType === 'code-editor' ||
             slide.slideType === 'solution'
         ) {
-            setCodeContent(slide.content || '// Your code here\n');
+            setCodeContent(slide.content || '// Start writing your code here');
         } else if (
             slide.slideType === 'quiz' ||
             slide.slideType === 'assessment' ||

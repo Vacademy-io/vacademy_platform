@@ -73,6 +73,7 @@ import { MyOrdersWidget } from "./-components/MyOrdersWidget";
 import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidget";
 import { Preferences } from "@capacitor/preferences";
 import { AttendanceWidget } from "./-components/AttendanceWidget";
+import { playIllustrations } from "@/assets/play-illustrations";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import { computeGamificationData } from "@/services/play-gamification";
@@ -481,15 +482,6 @@ export function DashboardComponent() {
         {/* Dashboard Pins Panel */}
         <DashboardPinsPanel maxPins={3} />
 
-        {/* Play Theme Gamification Widgets */}
-        {isPlayTheme && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-            <StreakCounterWidget />
-            <XpDisplayWidget />
-            <AchievementBadgesWidget />
-          </div>
-        )}
-
         {/* Recent System Notifications Widget */}
         <RecentSystemNotifications />
 
@@ -517,27 +509,9 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/courses" });
                       }}
                       isLoading={isLoading}
-                      className="[.ui-vibrant_&]:bg-sky-50 [.ui-vibrant_&]:border-sky-200 dark:[.ui-vibrant_&]:bg-sky-950/30 dark:[.ui-vibrant_&]:border-sky-800/50"
-                      iconClassName="[.ui-vibrant_&]:text-sky-600 dark:[.ui-vibrant_&]:text-sky-300 [.ui-vibrant_&]:bg-sky-100 dark:[.ui-vibrant_&]:bg-sky-500/20"
-                    />
-                  ),
-                },
-                {
-                  id: "thisWeekAttendance" as const,
-                  className: "",
-                  render: (
-                    <StatCard
-                      title="Attendance %"
-                      count={
-                        Math.round(weeklyAttendance?.attendancePercentage ?? 0)
-                      }
-                      icon={Clock}
-                      onClick={() =>
-                        navigate({ to: "/learning-centre/attendance" })
-                      }
-                      isLoading={isLoadingAttendance}
-                      className="[.ui-vibrant_&]:bg-emerald-50 [.ui-vibrant_&]:border-emerald-200 dark:[.ui-vibrant_&]:bg-emerald-950/30 dark:[.ui-vibrant_&]:border-emerald-800/50"
-                      iconClassName="[.ui-vibrant_&]:text-emerald-600 dark:[.ui-vibrant_&]:text-emerald-300 [.ui-vibrant_&]:bg-emerald-100 dark:[.ui-vibrant_&]:bg-emerald-500/20"
+                      className="[.ui-vibrant_&]:bg-sky-50 [.ui-vibrant_&]:border-sky-200 dark:[.ui-vibrant_&]:bg-sky-950/30 dark:[.ui-vibrant_&]:border-sky-800/50 [.ui-play_&]:!bg-[#5B9BD5] [.ui-play_&]:!shadow-[0_5px_0_#3D7AB5] [.ui-play_&]:text-white"
+                      iconClassName="[.ui-vibrant_&]:text-sky-600 dark:[.ui-vibrant_&]:text-sky-300 [.ui-vibrant_&]:bg-sky-100 dark:[.ui-vibrant_&]:bg-sky-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
+                      illustration={playIllustrations.Course}
                     />
                   ),
                 },
@@ -553,8 +527,9 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/live-class" })
                       }
                       isLoading={isLoadingLiveSessions}
-                      className="[.ui-vibrant_&]:bg-rose-50 [.ui-vibrant_&]:border-rose-200 dark:[.ui-vibrant_&]:bg-rose-950/30 dark:[.ui-vibrant_&]:border-rose-800/50"
-                      iconClassName="[.ui-vibrant_&]:text-rose-600 dark:[.ui-vibrant_&]:text-rose-300 [.ui-vibrant_&]:bg-rose-100 dark:[.ui-vibrant_&]:bg-rose-500/20"
+                      className="[.ui-vibrant_&]:bg-rose-50 [.ui-vibrant_&]:border-rose-200 dark:[.ui-vibrant_&]:bg-rose-950/30 dark:[.ui-vibrant_&]:border-rose-800/50 [.ui-play_&]:!bg-[#E91E63] [.ui-play_&]:!shadow-[0_5px_0_#AD1457] [.ui-play_&]:text-white"
+                      iconClassName="[.ui-vibrant_&]:text-rose-600 dark:[.ui-vibrant_&]:text-rose-300 [.ui-vibrant_&]:bg-rose-100 dark:[.ui-vibrant_&]:bg-rose-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
+                      illustration={playIllustrations.LiveClass}
                     />
                   ),
                 },
@@ -574,8 +549,9 @@ export function DashboardComponent() {
                         navigate({ to: "/assessment/examination" });
                       }}
                       isLoading={isLoading}
-                      className="[.ui-vibrant_&]:bg-amber-50 [.ui-vibrant_&]:border-amber-200 dark:[.ui-vibrant_&]:bg-amber-950/30 dark:[.ui-vibrant_&]:border-amber-800/50"
-                      iconClassName="[.ui-vibrant_&]:text-amber-600 dark:[.ui-vibrant_&]:text-amber-300 [.ui-vibrant_&]:bg-amber-100 dark:[.ui-vibrant_&]:bg-amber-500/20"
+                      className="[.ui-vibrant_&]:bg-amber-50 [.ui-vibrant_&]:border-amber-200 dark:[.ui-vibrant_&]:bg-amber-950/30 dark:[.ui-vibrant_&]:border-amber-800/50 [.ui-play_&]:!bg-[#8E44AD] [.ui-play_&]:!shadow-[0_5px_0_#6C3483] [.ui-play_&]:text-white"
+                      iconClassName="[.ui-vibrant_&]:text-amber-600 dark:[.ui-vibrant_&]:text-amber-300 [.ui-vibrant_&]:bg-amber-100 dark:[.ui-vibrant_&]:bg-amber-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
+                      illustration={playIllustrations.Certificate}
                     />
                   ),
                 },
@@ -593,21 +569,6 @@ export function DashboardComponent() {
                   id: "learningAnalytics" as const,
                   className: "sm:col-span-2 lg:col-span-4",
                   render: <PastLearningInsights />,
-                },
-                {
-                  id: "dailyProgress" as const,
-                  className: "",
-                  render: null,
-                },
-                {
-                  id: "activityTrend" as const,
-                  className: "",
-                  render: null,
-                },
-                {
-                  id: "liveClasses" as const,
-                  className: "",
-                  render: null,
                 },
                 {
                   id: "thisWeekAttendance" as const,
@@ -711,6 +672,15 @@ export function DashboardComponent() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Play Theme Gamification Widgets — at bottom */}
+            {isPlayTheme && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <StreakCounterWidget />
+                <XpDisplayWidget />
+                <AchievementBadgesWidget />
+              </div>
             )}
 
             {/* Explore Buttons Section */}

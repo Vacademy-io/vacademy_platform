@@ -331,7 +331,7 @@ export const MySidebar = ({
           <SidebarFooter>
             {state === "expanded" || isMobile ? (
               <div className="flex flex-col gap-2 px-2 pb-2 mt-auto">
-                <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider pl-1">
+                <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider pl-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-600">
                   Apps & Portals
                 </span>
                 <div className="flex flex-wrap gap-1">
@@ -340,7 +340,7 @@ export const MySidebar = ({
                       href={learnerPortalUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-200))]"
                       title="Web Portal"
                     >
                       <Globe className="h-5 w-5" weight="duotone" />
@@ -351,7 +351,7 @@ export const MySidebar = ({
                       href={playStoreAppLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-200))]"
                       title="Android App"
                     >
                       <GooglePlayLogo className="h-5 w-5 text-green-600" weight="fill" />
@@ -362,7 +362,7 @@ export const MySidebar = ({
                       href={appStoreAppLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-200))]"
                       title="iOS App"
                     >
                       <AppStoreLogo className="h-5 w-5 text-sky-600" weight="fill" />
@@ -373,7 +373,7 @@ export const MySidebar = ({
                       href={windowsAppLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-200))]"
                       title="Windows App"
                     >
                       <WindowsLogo className="h-5 w-5 text-blue-600" weight="fill" />
@@ -384,7 +384,7 @@ export const MySidebar = ({
                       href={macAppLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-200))]"
                       title="Mac App"
                     >
                       <AppleLogo className="h-5 w-5 text-neutral-800 dark:text-neutral-200" weight="fill" />

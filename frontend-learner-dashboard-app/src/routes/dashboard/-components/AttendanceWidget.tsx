@@ -11,6 +11,7 @@ import {
 import { useWeeklyAttendanceQuery } from "@/services/attendance/getWeeklyAttendance";
 import { ChartBar, Fire } from "@phosphor-icons/react";
 import { ChevronRight } from "lucide-react";
+import { playIllustrations } from "@/assets/play-illustrations";
 
 const PERIOD_LABELS: Record<AttendancePeriod, string> = {
   "7d": "7 Days",
@@ -106,11 +107,20 @@ export function AttendanceWidget() {
       className={cn(
         "group relative overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md hover:border-primary/20 h-full",
         "[.ui-vibrant_&]:bg-emerald-50/50 [.ui-vibrant_&]:border-emerald-200",
-        "dark:[.ui-vibrant_&]:bg-emerald-950/20 dark:[.ui-vibrant_&]:border-emerald-800/50"
+        "dark:[.ui-vibrant_&]:bg-emerald-950/20 dark:[.ui-vibrant_&]:border-emerald-800/50",
+        // Play Styles - Solid Bold Duolingo
+        "[.ui-play_&]:bg-[#58CC02] [.ui-play_&]:border-2 [.ui-play_&]:border-[#46a302] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#46a302]",
+        "[.ui-play_&]:text-white [.ui-play_&]:font-bold",
+        "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:md:flex-col"
       )}
       onClick={() => navigate({ to: "/learning-centre/attendance" })}
     >
-      <CardHeader className="pb-2 px-4 pt-4">
+      {/* Play: SVG strip — side on mobile, top on desktop (matches Badges widget) */}
+      <div className="hidden [.ui-play_&]:!flex order-2 md:order-none w-28 md:w-full items-center justify-center bg-white/10 p-2 md:px-6 md:pt-4 md:pb-2 flex-shrink-0 md:flex-shrink">
+        <playIllustrations.AttendanceHappy className="h-24 md:h-28 w-auto text-white" />
+      </div>
+      <div className="[.ui-play_&]:flex-1 [.ui-play_&]:min-w-0">
+      <CardHeader className="pb-2 px-4 pt-4 [.ui-play_&]:pt-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div
@@ -136,8 +146,8 @@ export function AttendanceWidget() {
                 className={cn(
                   "h-6 px-2 text-[11px] font-medium rounded-md",
                   period === p
-                    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:text-emerald-300"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:text-emerald-300 [.ui-play_&]:!bg-white/20 [.ui-play_&]:!text-white"
+                    : "text-muted-foreground hover:text-foreground [.ui-play_&]:!text-white/70"
                 )}
               >
                 {PERIOD_LABELS[p]}
@@ -145,7 +155,7 @@ export function AttendanceWidget() {
             ))}
             <ChevronRight
               size={14}
-              className="ml-1 text-muted-foreground group-hover:text-primary transition-all duration-300 group-hover:translate-x-0.5"
+              className="ml-1 text-muted-foreground group-hover:text-primary transition-all duration-300 group-hover:translate-x-0.5 [.ui-play_&]:!text-white/60"
             />
           </div>
         </div>
@@ -156,17 +166,17 @@ export function AttendanceWidget() {
         <div className="grid grid-cols-3 gap-3">
           {/* Overall % */}
           <div className="text-center">
-            <div className={cn("text-2xl font-bold", getPercentageColor(pct))}>
+            <div className={cn("text-2xl font-bold", getPercentageColor(pct), "[.ui-play_&]:!text-white")}>
               {isLoading ? <Skeleton className="h-8 w-12 mx-auto" /> : `${pct}%`}
             </div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">
+            <div className="text-[11px] text-muted-foreground [.ui-play_&]:!text-white/80 mt-0.5">
               Overall
             </div>
           </div>
 
           {/* Streak */}
           <div className="text-center">
-            <div className="text-2xl font-bold text-foreground flex items-center justify-center gap-1">
+            <div className="text-2xl font-bold text-foreground [.ui-play_&]:!text-white flex items-center justify-center gap-1">
               {isLoading ? (
                 <Skeleton className="h-8 w-12" />
               ) : (
@@ -174,15 +184,16 @@ export function AttendanceWidget() {
                   <Fire
                     size={20}
                     weight="fill"
-                    className={
-                      streak > 0 ? "text-orange-500" : "text-slate-300"
-                    }
+                    className={cn(
+                      streak > 0 ? "text-orange-500" : "text-slate-300",
+                      "[.ui-play_&]:!text-white"
+                    )}
                   />
                   {streak}
                 </>
               )}
             </div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">
+            <div className="text-[11px] text-muted-foreground [.ui-play_&]:!text-white/80 mt-0.5">
               Streak
             </div>
           </div>
@@ -194,14 +205,14 @@ export function AttendanceWidget() {
                 <Skeleton className="h-8 w-16 mx-auto" />
               ) : (
                 <span>
-                  <span className="text-emerald-600">{present}</span>
-                  <span className="text-muted-foreground text-lg">
+                  <span className="text-emerald-600 [.ui-play_&]:!text-white">{present}</span>
+                  <span className="text-muted-foreground text-lg [.ui-play_&]:!text-white">
                     /{total}
                   </span>
                 </span>
               )}
             </div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">
+            <div className="text-[11px] text-muted-foreground [.ui-play_&]:!text-white/80 mt-0.5">
               Days Present
             </div>
           </div>
@@ -227,6 +238,7 @@ export function AttendanceWidget() {
           </div>
         )}
       </CardContent>
+      </div>
     </Card>
   );
 }

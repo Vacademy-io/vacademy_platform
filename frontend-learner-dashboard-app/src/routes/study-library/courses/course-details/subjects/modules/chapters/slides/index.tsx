@@ -711,7 +711,7 @@ function Slides() {
           {nextChapter && (
             <button
               onClick={handleNextChapter}
-              className="w-full flex items-center justify-between gap-1.5 px-1.5 py-1 rounded hover:bg-gray-50 transition-colors group/next"
+              className="w-full flex items-center justify-between gap-1.5 px-1.5 py-1 rounded hover:bg-gray-50 transition-colors group/next [.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200"
             >
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide group-hover/next:text-primary-500 transition-colors">
@@ -731,15 +731,15 @@ function Slides() {
 
           {/* Progress Bar (Minimal) */}
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+            <div className="flex items-center justify-between text-[10px] font-medium text-gray-400 uppercase tracking-wider [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
               <span>Progress</span>
-              <span className="text-gray-700">
+              <span className="text-gray-700 [.ui-play_&]:font-black">
                 {Math.min(calculateOverallCompletion(slides), 100)}%
               </span>
             </div>
-            <div className="h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-1 w-full bg-gray-100 rounded-full overflow-hidden [.ui-play_&]:rounded-full [.ui-play_&]:h-3">
               <div
-                className="h-full bg-primary-500 rounded-full transition-all duration-500 ease-out"
+                className="h-full bg-primary-500 rounded-full transition-all duration-500 ease-out [.ui-play_&]:rounded-full [.ui-play_&]:h-3"
                 style={{
                   width: `${Math.min(
                     calculateOverallCompletion(slides),

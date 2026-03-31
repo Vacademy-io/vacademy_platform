@@ -32,6 +32,7 @@ import { getPublicUrl } from "@/services/upload_file";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { isItemLocked } from "@/components/drip-conditions/helpers";
 import { LockedBadge } from "@/components/drip-conditions";
+import { playIllustrations } from "@/assets/play-illustrations";
 
 // Helper function to get responsive truncation length - kept for tooltip usage
 // const getResponsiveTruncationLength = () => {
@@ -560,9 +561,10 @@ const SlideItem = ({
               className={`
                 flex w-full items-center gap-2 rounded-md px-2 py-2
                 transition-all duration-150
+                [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary-100 [.ui-play_&]:my-1.5 [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))] [.ui-play_&]:transition-all [.ui-play_&]:hover:border-primary-200 [.ui-play_&]:hover:shadow-[0_3px_0_hsl(var(--primary-200))]
                 ${
                   isActive
-                    ? "text-primary-700 bg-primary-50 border border-primary-200/60"
+                    ? "text-primary-700 bg-primary-50 border border-primary-200/60 [.ui-play_&]:!bg-primary-50 [.ui-play_&]:!border-primary-300 [.ui-play_&]:!shadow-[0_3px_0_hsl(var(--primary-300))]"
                     : "bg-white text-gray-700 hover:bg-gray-50 border border-transparent"
                 }
               `}
@@ -571,6 +573,7 @@ const SlideItem = ({
               <div
                 className={`
                   flex w-5 h-5 shrink-0 items-center justify-center rounded text-[11px] font-bold
+                  [.ui-play_&]:rounded-lg [.ui-play_&]:font-black [.ui-play_&]:border-2
                   ${
                     isActive
                       ? "bg-primary-500 text-white"
@@ -586,11 +589,11 @@ const SlideItem = ({
 
               {/* Title + type on one compact block */}
               <div className="min-w-0 flex-1">
-                <h4 className="text-[13px] font-medium leading-tight truncate">
+                <h4 className="text-[13px] font-medium leading-tight truncate [.ui-play_&]:font-bold">
                   {getSlideTitle()}
                 </h4>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${typeColors.text}`}>
+                  <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium [.ui-play_&]:font-semibold ${typeColors.text}`}>
                     <span className={`w-1 h-1 rounded-full ${typeColors.dot}`}></span>
                     {slide.source_type === "VIDEO" && mediaKind === "audio"
                       ? "Audio"
@@ -607,10 +610,10 @@ const SlideItem = ({
               {/* Right side: progress or status */}
               <div className="shrink-0 flex items-center gap-1">
                 {isLocked ? (
-                  <LockedBadge size="sm" unlockMessage={unlockMessage} />
+                  <LockedBadge size="sm" unlockMessage={unlockMessage} className="[.ui-play_&]:rounded-full [.ui-play_&]:bg-gray-200" />
                 ) : slide.percentage_completed != null ? (
                   <span
-                    className={`text-[10px] font-semibold ${
+                    className={`text-[10px] font-semibold [.ui-play_&]:font-black ${
                       isCompleted
                         ? "text-success-600"
                         : isActive
@@ -623,7 +626,7 @@ const SlideItem = ({
                 ) : null}
                 {!isLocked && (
                   <StatusIcon
-                    className={`w-3.5 h-3.5 ${statusDetails.color}`}
+                    className={`w-3.5 h-3.5 ${statusDetails.color} ${isCompleted ? '[.ui-play_&]:text-[#58CC02]' : ''}`}
                     weight="duotone"
                   />
                 )}
@@ -679,9 +682,14 @@ export const ChapterSidebarSlides = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-gray-50/30 via-transparent to-primary-50/20 pointer-events-none rounded-xl"></div>
 
         <div className="relative flex flex-col items-center justify-center px-3 py-6 text-center animate-fade-in-up">
-          <div className="mb-3 flex w-10 h-10 animate-gentle-pulse items-center justify-center rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 shadow-sm">
+          <div className="mb-3 flex w-10 h-10 animate-gentle-pulse items-center justify-center rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 shadow-sm [.ui-play_&]:hidden">
             <File className="w-5 h-5 text-gray-400" weight="duotone" />
           </div>
+          <img
+            src={playIllustrations.bookLover}
+            alt="No slides"
+            className="hidden [.ui-play_&]:!block w-24 h-24 mb-3"
+          />
           <h3 className="mb-1 text-sm font-bold text-gray-900">
             No slides available
           </h3>

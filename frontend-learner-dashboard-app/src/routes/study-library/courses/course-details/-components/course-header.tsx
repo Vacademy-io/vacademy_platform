@@ -1,6 +1,7 @@
 import { cn, toTitleCase } from "@/lib/utils";
 import { VideoPlayer } from "../components/media/video-player";
 import { Badge } from "@/components/ui/badge";
+import { playIllustrations } from "@/assets/play-illustrations";
 
 interface CourseHeaderProps {
     courseData: {
@@ -170,6 +171,7 @@ export const CourseHeader = ({ courseData, showConfetti = false }: CourseHeaderP
                     )}
                 </div>
             </div>
+            <playIllustrations.Learning className="hidden [.ui-play_&]:!block absolute bottom-2 right-2 h-28 w-auto pointer-events-none text-primary-300 opacity-30 z-20" />
         </div>
     );
 };

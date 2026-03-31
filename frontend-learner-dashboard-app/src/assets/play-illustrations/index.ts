@@ -1,53 +1,57 @@
 /**
  * Play theme illustrations from unDraw (undraw.co)
- * Import from this barrel file: import { illustrations } from "@/assets/play-illustrations"
+ *
+ * These SVGs use `currentColor` for their accent color.
+ * Control the accent by setting CSS `color` on the component or parent.
+ *
+ * Usage:
+ *   <playIllustrations.goals className="text-orange-300 h-40" />
  */
 
-import goals from "./goals.svg";
-import accomplishments from "./accomplishments.svg";
-import winners from "./winners.svg";
-import certificate from "./certificate.svg";
-import treasure from "./treasure.svg";
-import celebration from "./celebration.svg";
-import onlineLearning from "./online-learning.svg";
-import education from "./education.svg";
-import continuousLearning from "./continuous-learning.svg";
-import steppingUp from "./stepping-up.svg";
-import successful from "./successful.svg";
-import completed from "./completed.svg";
-import progressOverview from "./progress-overview.svg";
-import bookLover from "./book-lover.svg";
-import learning from "./learning.svg";
+import Goals from "./goals.svg";
+import Accomplishments from "./accomplishments.svg";
+import Winners from "./winners.svg";
+import Certificate from "./certificate.svg";
+import Treasure from "./treasure.svg";
+import Celebration from "./celebration.svg";
+import OnlineLearning from "./online-learning.svg";
+import Education from "./education.svg";
+import ContinuousLearning from "./continuous-learning.svg";
+import SteppingUp from "./stepping-up.svg";
+import Successful from "./successful.svg";
+import Completed from "./completed.svg";
+import ProgressOverview from "./progress-overview.svg";
+import BookLover from "./book-lover.svg";
+import Learning from "./learning.svg";
+import GameWorld from "./game-world.svg";
+import FeelingHappy from "./feeling-happy.svg";
+import ICanFly from "./i-can-fly.svg";
+import Course from "./course.svg";
+import AttendanceHappy from "./attendance-happy.svg";
+import LiveClass from "./live-class.svg";
+import ContinueLearning from "./continue-learning.svg";
 
 export const playIllustrations = {
-  /** Streak widget — motivation/empty state */
-  goals,
-  /** XP/level-up celebration */
-  accomplishments,
-  /** Achievement badges header */
-  winners,
-  /** Badge unlock reward */
-  certificate,
-  /** XP/reward earned */
-  treasure,
-  /** Badge unlocked modal / celebration */
-  celebration,
-  /** Continue learning card */
-  onlineLearning,
-  /** Empty course list state */
-  education,
-  /** Streak motivation — active streak */
-  continuousLearning,
-  /** Level-up toast */
-  steppingUp,
-  /** Course completion */
-  successful,
-  /** Course completed state */
-  completed,
-  /** Dashboard progress section */
-  progressOverview,
-  /** Reading/library section */
-  bookLover,
-  /** General learning */
-  learning,
+  Goals,
+  Accomplishments,
+  Winners,
+  Certificate,
+  Treasure,
+  Celebration,
+  OnlineLearning,
+  Education,
+  ContinuousLearning,
+  SteppingUp,
+  Successful,
+  Completed,
+  ProgressOverview,
+  BookLover,
+  Learning,
+  GameWorld,
+  FeelingHappy,
+  ICanFly,
+  Course,
+  AttendanceHappy,
+  LiveClass,
+  ContinueLearning,
 } as const;

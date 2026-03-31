@@ -11,6 +11,7 @@ import {
   formatSessionTimeInUserTimezone,
 } from "@/utils/timezone";
 import { cn } from "@/lib/utils";
+import { playIllustrations } from "@/assets/play-illustrations";
 
 interface UpcomingLiveClassesWidgetProps {
   liveSessions: SessionDetails[];
@@ -124,18 +125,29 @@ export function UpcomingLiveClassesWidget({
   return (
     <Card
       className={cn(
-        "transition-shadow hover:shadow-md",
+        "relative overflow-hidden transition-shadow hover:shadow-md",
         "[.ui-vibrant_&]:border-violet-200 dark:[.ui-vibrant_&]:border-violet-800/50",
         "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-violet-50/50",
-        "dark:[.ui-vibrant_&]:from-card dark:[.ui-vibrant_&]:to-violet-950/20"
+        "dark:[.ui-vibrant_&]:from-card dark:[.ui-vibrant_&]:to-violet-950/20",
+        // Play Styles - Solid Bold Duolingo
+        "[.ui-play_&]:bg-[#E91E63] [.ui-play_&]:border-2 [.ui-play_&]:border-[#c2185b] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#c2185b]",
+        "[.ui-play_&]:text-white [.ui-play_&]:font-bold",
+        "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:md:flex-col"
       )}
     >
+      {/* Play SVG: side on mobile, top on desktop */}
+      <div className="hidden [.ui-play_&]:!flex order-2 md:order-first w-28 md:w-full items-center justify-center bg-white/10 p-2 md:px-6 md:pt-4 md:pb-2 flex-shrink-0">
+        <playIllustrations.LiveClass className="h-24 md:h-28 w-auto text-white" />
+      </div>
+      <div className="[.ui-play_&]:flex-1 [.ui-play_&]:min-w-0">
       <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
         <div className="flex items-center gap-2">
           <div
             className={cn(
               "p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-violet-600 dark:text-violet-400",
-              "[.ui-vibrant_&]:bg-violet-200/70 dark:[.ui-vibrant_&]:bg-violet-800/40"
+              "[.ui-vibrant_&]:bg-violet-200/70 dark:[.ui-vibrant_&]:bg-violet-800/40",
+              // Play icon
+              "[.ui-play_&]:bg-white/20 [.ui-play_&]:text-white [.ui-play_&]:rounded-xl"
             )}
           >
             <Video size={18} />
@@ -245,6 +257,7 @@ export function UpcomingLiveClassesWidget({
           );
         })}
       </CardContent>
+      </div>
     </Card>
   );
 }

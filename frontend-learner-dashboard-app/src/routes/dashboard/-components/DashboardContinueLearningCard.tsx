@@ -10,6 +10,7 @@ import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { ChevronRight, Sparkles } from "lucide-react";
 import { Play, Target, BookOpen } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { playIllustrations } from "@/assets/play-illustrations";
 
 // Enhanced Continue Learning Card
 export const ContinueLearningCard = ({
@@ -21,16 +22,21 @@ export const ContinueLearningCard = ({
 }) => {
     if (!data?.slides || data.slides.length === 0) {
         return (
-            <Card className="h-full border-dashed bg-muted/40 shadow-none hover:shadow-none transition-none">
-                <CardContent className="p-6 text-center flex flex-col items-center justify-center h-full space-y-4">
-                    <div className="p-3 bg-primary/10 rounded-full text-primary ring-1 ring-primary/20">
+            <Card className={cn(
+                "h-full border-dashed bg-muted/40 shadow-none hover:shadow-none transition-none",
+                "[.ui-play_&]:border-solid [.ui-play_&]:border-2 [.ui-play_&]:border-[hsl(var(--play-green))]/30 [.ui-play_&]:bg-[hsl(var(--play-green))]/5 [.ui-play_&]:shadow-[0_4px_0_hsl(var(--play-green)/0.2)]"
+            )}>
+                <CardContent className="p-6 text-center flex flex-col items-center justify-center h-full space-y-4 relative overflow-hidden">
+                    {/* Play mode illustration */}
+                    <playIllustrations.Education className="hidden [.ui-play_&]:!block h-20 w-auto mb-2 text-green-600" />
+                    <div className="p-3 bg-primary/10 rounded-full text-primary ring-1 ring-primary/20 [.ui-play_&]:bg-[hsl(var(--play-green))]/20 [.ui-play_&]:text-[hsl(var(--play-green))] [.ui-play_&]:ring-0">
                         <Target
                             weight="duotone"
                             size={24}
                         />
                     </div>
                     <div className="space-y-1">
-                        <h3 className="text-lg font-semibold tracking-tight">
+                        <h3 className="text-lg font-semibold tracking-tight [.ui-play_&]:font-black">
                             All Caught Up!
                         </h3>
                         <p className="text-sm text-muted-foreground max-w-xs mx-auto">
@@ -39,7 +45,7 @@ export const ContinueLearningCard = ({
                             more content to continue learning.
                         </p>
                     </div>
-                    <Button variant="outline" className="gap-2">
+                    <Button variant="outline" className="gap-2 [.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:shadow-[0_3px_0_hsl(var(--primary-300))]">
                         <BookOpen weight="duotone" size={16} />
                         Explore Content
                     </Button>
@@ -50,11 +56,20 @@ export const ContinueLearningCard = ({
 
     return (
         <Card className={cn(
-            "h-full flex flex-col shadow-sm hover:shadow-md transition-all duration-300 group",
+            "h-full flex flex-col shadow-sm hover:shadow-md transition-all duration-300 group relative overflow-hidden",
             // Vibrant Mode Styles
             "[.ui-vibrant_&]:bg-indigo-50 dark:[.ui-vibrant_&]:bg-indigo-950/30",
-            "[.ui-vibrant_&]:border-indigo-200 dark:[.ui-vibrant_&]:border-indigo-800/50"
+            "[.ui-vibrant_&]:border-indigo-200 dark:[.ui-vibrant_&]:border-indigo-800/50",
+            // Play Mode: solid blue card
+            "[.ui-play_&]:!bg-[#5B9BD5] [.ui-play_&]:!border-[#5B9BD5] [.ui-play_&]:!shadow-[0_5px_0_#3D7AB5]",
+            "[.ui-play_&]:text-white",
+            "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:md:flex-col"
         )}>
+            {/* Play SVG: side on mobile, top on desktop */}
+            <div className="hidden [.ui-play_&]:!flex order-2 md:order-first w-28 md:w-full items-center justify-center bg-white/10 p-2 md:px-6 md:pt-4 md:pb-2 flex-shrink-0">
+              <playIllustrations.ContinueLearning className="h-24 md:h-28 w-auto text-white" />
+            </div>
+            <div className="[.ui-play_&]:flex-1 [.ui-play_&]:min-w-0">
             <CardHeader className="pb-3 px-4 sm:px-6 flex flex-row items-center justify-between space-y-0">
                 <div className="flex items-center space-x-3">
                     <div className={cn(
@@ -129,6 +144,7 @@ export const ContinueLearningCard = ({
                     Resume Learning
                 </Button>
             </CardContent>
+            </div>
         </Card>
     );
 };

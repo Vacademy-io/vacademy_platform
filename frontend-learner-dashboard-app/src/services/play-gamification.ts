@@ -187,10 +187,7 @@ function computeXp(
   const attendanceXp = attendanceDays * 5;
   const total = coursesXp + slidesXp + testsXp + attendanceXp;
 
-  // "Today XP" — approximate: just attendance today + recent slide activity
-  const today = Math.min(total, 50); // placeholder — will be refined
-
-  return { total, today };
+  return { total, today: 0 };
 }
 
 /**

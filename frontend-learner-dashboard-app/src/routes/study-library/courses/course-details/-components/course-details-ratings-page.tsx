@@ -439,7 +439,10 @@ export function CourseDetailsRatingsComponent({
             "relative bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 lg:p-5 group overflow-hidden",
             // Vibrant Styles
             "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
-            "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:shadow-md"
+            "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:shadow-md",
+            // Play Styles — solid, bold, Duolingo-style
+            "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:rounded-2xl [.ui-play_&]:text-white",
+            "[.ui-play_&]:shadow-[0_4px_0_#1a3d6d]"
         )}>
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
@@ -453,7 +456,9 @@ export function CourseDetailsRatingsComponent({
                 <div className="flex items-center space-x-2 sm:space-x-3 animate-fade-in-down">
                     <div className={cn(
                         "p-1.5 sm:p-2 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-lg shadow-sm",
-                        "[.ui-vibrant_&]:bg-yellow-500/20 [.ui-vibrant_&]:text-yellow-600"
+                        "[.ui-vibrant_&]:bg-yellow-500/20 [.ui-vibrant_&]:text-yellow-600",
+                        // Play Styles
+                        "[.ui-play_&]:bg-[#ffc800] [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_#e6b400]"
                     )}>
                         <Star
                             size={20}
@@ -546,12 +551,16 @@ export function CourseDetailsRatingsComponent({
                             "relative bg-gradient-to-br from-yellow-50/80 to-orange-50/80 border border-yellow-200/60 rounded-md p-3 sm:p-4 lg:p-5 overflow-hidden group/rating",
                             // Vibrant Styles - Flat Pastel
                             "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-amber-50/50 dark:[.ui-vibrant_&]:bg-amber-950/20",
-                            "[.ui-vibrant_&]:border-amber-200/50 dark:[.ui-vibrant_&]:border-amber-800/30"
+                            "[.ui-vibrant_&]:border-amber-200/50 dark:[.ui-vibrant_&]:border-amber-800/30",
+                            // Play Styles — solid, bold, Duolingo-style
+                            "[.ui-play_&]:bg-[#ffc800] [.ui-play_&]:border-[#e6b400] [.ui-play_&]:rounded-2xl [.ui-play_&]:text-[#3c3c3c] [.ui-play_&]:font-bold",
+                            "[.ui-play_&]:shadow-[0_3px_0_#e6b400]"
                         )}>
                             {/* Background pattern */}
                             <div className={cn(
                                 "absolute inset-0 bg-gradient-to-br from-yellow-100/20 via-transparent to-orange-100/20 opacity-0 group-hover/rating:opacity-100 transition-opacity duration-500",
-                                "[.ui-vibrant_&]:hidden"
+                                "[.ui-vibrant_&]:hidden",
+                                "[.ui-play_&]:hidden"
                             )}></div>
 
                             <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-6">

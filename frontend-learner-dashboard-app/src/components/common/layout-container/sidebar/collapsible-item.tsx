@@ -20,12 +20,12 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
         <Collapsible asChild defaultOpen={isChildActive} className="group/collapsible">
             <SidebarMenuItem>
                 <CollapsibleTrigger asChild>
-                    <SidebarMenuButton tooltip={title} isActive={isChildActive} size="default" className="[.ui-play_&]:rounded-full [.ui-play_&]:transition-all [.ui-play_&]:duration-150 [.ui-play_&]:hover:scale-[1.02]">
+                    <SidebarMenuButton tooltip={title} isActive={isChildActive} size="default">
                         {icon && React.createElement(icon, {
                             weight: isChildActive ? "fill" : "duotone",
-                            className: `size-4 [.ui-play_&]:size-5 ${isChildActive ? "[.ui-play_&]:text-primary" : ""}`
+                            className: "size-4"
                         })}
-                        <span className="[.ui-play_&]:font-semibold">{title}</span>
+                        <span>{title}</span>
                         <CaretRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                     </SidebarMenuButton>
                 </CollapsibleTrigger>

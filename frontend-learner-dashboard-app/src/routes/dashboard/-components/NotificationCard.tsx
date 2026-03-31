@@ -23,7 +23,11 @@ export function NotifcationCard({
         isNew ? "border-primary/20 bg-primary/5" : "border-border shadow-sm",
         // Vibrant Styles
         "[.ui-vibrant_&]:hover:shadow-lg [.ui-vibrant_&]:hover:border-primary/30",
-        isNew && "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary/5 [.ui-vibrant_&]:to-primary/10"
+        isNew && "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary/5 [.ui-vibrant_&]:to-primary/10",
+        // Play Styles - Solid Bold Duolingo
+        "[.ui-play_&]:border-2 [.ui-play_&]:border-[#E5E5E5] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#E5E5E5] [.ui-play_&]:hover:shadow-[0_2px_0_0_#E5E5E5] [.ui-play_&]:hover:translate-y-[2px]",
+        "[.ui-play_&]:font-bold",
+        isNew && "[.ui-play_&]:bg-[#1CB0F6] [.ui-play_&]:text-white [.ui-play_&]:border-[#1899d6] [.ui-play_&]:shadow-[0_4px_0_0_#1899d6]"
       )}
     >
       <CardContent className="p-4 sm:p-5">

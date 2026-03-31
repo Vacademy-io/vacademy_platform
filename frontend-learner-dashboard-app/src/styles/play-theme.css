@@ -1,25 +1,28 @@
 /* =====================================================================
    Play Theme – Duolingo-inspired gamified skin
+   SOLID colors, NO gradients, BOLD shapes, FUN illustrations
    Applied via .ui-play class on <html> (mutually exclusive with .ui-vibrant)
    ===================================================================== */
 
 /* ── Play Color Tokens ────────────────────────────────────────────── */
 .ui-play {
   --play-gold: 45 100% 50%;       /* #FFD700 — XP / points */
-  --play-fire: 18 100% 60%;       /* #FF6B35 — streaks */
-  --play-green: 122 39% 49%;      /* #4CAF50 — progress / completion */
-  --play-purple: 291 76% 42%;     /* #9C27B0 — achievements */
-  --play-blue: 207 90% 54%;       /* #2196F3 — info / levels */
-  --play-radius-card: 16px;
-  --play-radius-btn: 12px;
+  --play-fire: 14 100% 57%;       /* #FF4B1F — streaks (bolder red-orange) */
+  --play-green: 145 63% 42%;      /* #27AE60 — progress / completion */
+  --play-purple: 271 76% 53%;     /* #8E44AD — achievements */
+  --play-blue: 217 89% 61%;       /* #5B9BD5 — info / levels */
+  --play-pink: 340 82% 52%;       /* #E91E63 — hearts / accents */
+  --play-dark: 220 26% 14%;       /* #1A1D2E — dark card backgrounds */
+  --play-radius-card: 20px;
+  --play-radius-btn: 14px;
   --play-radius-badge: 999px;
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */
 @keyframes play-wiggle {
   0%, 100% { transform: rotate(0deg); }
-  15% { transform: rotate(-12deg); }
-  30% { transform: rotate(10deg); }
+  15% { transform: rotate(-14deg); }
+  30% { transform: rotate(12deg); }
   45% { transform: rotate(-8deg); }
   60% { transform: rotate(6deg); }
   75% { transform: rotate(-3deg); }
@@ -27,7 +30,7 @@
 
 @keyframes play-pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.15); opacity: 0.85; }
+  50% { transform: scale(1.12); opacity: 0.9; }
 }
 
 @keyframes play-bounce-in {
@@ -39,7 +42,7 @@
 
 @keyframes play-float {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+  50% { transform: translateY(-6px); }
 }
 
 @keyframes play-xp-pop {
@@ -54,120 +57,94 @@
 .play-float { animation: play-float 3s ease-in-out infinite; }
 .play-xp-pop { animation: play-xp-pop 0.4s ease-out; }
 
-/* ── Global Rounding & Softness ───────────────────────────────────── */
+/* ── Global Rounding & Solidity ───────────────────────────────────── */
 @layer components {
 
-  /* Cards: extra rounded, subtle colored shadow */
-  .ui-play .card,
-  .ui-play .Card,
-  .ui-play [class*="rounded-lg"] {
-    border-radius: var(--play-radius-card) !important;
-  }
-
+  /* Cards: extra rounded, solid feel, thick bottom shadow (3D press) */
   .ui-play .card,
   .ui-play .Card {
-    border-color: hsl(var(--primary-100)) !important;
-    box-shadow: 0 4px 16px hsl(var(--primary-200) / 0.25) !important;
-    transition: transform 180ms ease, box-shadow 180ms ease;
+    border-radius: var(--play-radius-card) !important;
+    border: 2px solid hsl(var(--primary-200)) !important;
+    box-shadow: 0 4px 0 hsl(var(--primary-200)) !important;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+    background: white !important;
   }
 
   .ui-play .card:hover,
   .ui-play .Card:hover {
-    transform: translateY(-2px) scale(1.01);
-    box-shadow: 0 8px 24px hsl(var(--primary-300) / 0.3) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 hsl(var(--primary-200)) !important;
   }
 
-  /* Badges: always pill */
+  /* Badges: always pill, solid */
   .ui-play .badge,
   .ui-play .Badge,
   .ui-play .level-badge,
   .ui-play .course-tag {
     border-radius: var(--play-radius-badge) !important;
-    font-weight: 600;
+    font-weight: 700;
+    border-width: 2px !important;
   }
 
   .ui-play .course-tag {
-    background-color: hsl(var(--play-blue) / 0.12) !important;
-    color: hsl(var(--play-blue)) !important;
-    border-color: hsl(var(--play-blue) / 0.3) !important;
+    background-color: hsl(var(--play-blue)) !important;
+    color: white !important;
+    border-color: hsl(var(--play-blue)) !important;
   }
 
   .ui-play .course-tag--secondary {
-    background-color: hsl(var(--play-purple) / 0.12) !important;
-    color: hsl(var(--play-purple)) !important;
-    border-color: hsl(var(--play-purple) / 0.3) !important;
+    background-color: hsl(var(--play-purple)) !important;
+    color: white !important;
+    border-color: hsl(var(--play-purple)) !important;
   }
 
   .ui-play .course-tag--tertiary {
-    background-color: hsl(var(--play-green) / 0.12) !important;
-    color: hsl(var(--play-green)) !important;
-    border-color: hsl(var(--play-green) / 0.3) !important;
+    background-color: hsl(var(--play-green)) !important;
+    color: white !important;
+    border-color: hsl(var(--play-green)) !important;
   }
 
-  /* ── Buttons ────────────────────────────────────────────────────── */
+  /* ── Buttons: 3D press effect (Duolingo style) ──────────────────── */
   .ui-play button.bg-primary-500,
   .ui-play .btn,
   .ui-play .my-button {
     border-radius: var(--play-radius-btn) !important;
-    transition: transform 150ms ease, box-shadow 150ms ease;
-    box-shadow: 0 4px 0 hsl(var(--primary-400));
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    box-shadow: 0 4px 0 hsl(var(--primary-400)) !important;
+    transition: transform 100ms ease, box-shadow 100ms ease;
   }
 
   .ui-play button.bg-primary-500:hover,
   .ui-play .btn:hover,
   .ui-play .my-button:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 0 hsl(var(--primary-400));
+    box-shadow: 0 5px 0 hsl(var(--primary-400)) !important;
   }
 
   .ui-play button.bg-primary-500:active,
   .ui-play .btn:active,
   .ui-play .my-button:active {
-    transform: translateY(2px);
-    box-shadow: 0 1px 0 hsl(var(--primary-400));
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 hsl(var(--primary-400)) !important;
   }
 
   /* ── Navbar ─────────────────────────────────────────────────────── */
   .ui-play .navbar {
-    border-radius: 0 0 var(--play-radius-card) var(--play-radius-card);
-    border-bottom: 3px solid hsl(var(--primary-200));
+    border-bottom: 3px solid hsl(var(--primary-200)) !important;
+    background: white !important;
   }
 
   .ui-play .navbar .text-base {
-    font-weight: 700;
-    letter-spacing: 0.2px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
   }
 
-  /* ── Sidebar ────────────────────────────────────────────────────── */
+  /* Sidebar: basic container only (detailed overrides are OUTSIDE @layer below) */
   .ui-play .sidebar-content {
-    background: linear-gradient(
-      180deg,
-      hsl(var(--primary-50)) 0%,
-      hsl(var(--background)) 100%
-    ) !important;
-  }
-
-  .ui-play .sidebar-content .bg-primary-50 {
-    background-color: hsl(var(--primary-100)) !important;
-    border-radius: var(--play-radius-badge) !important;
-  }
-
-  .ui-play .sidebar-content .hover\:bg-primary-50:hover {
-    background-color: hsl(var(--primary-200)) !important;
-    border-radius: var(--play-radius-badge) !important;
-    transform: scale(1.02);
-    transition: all 180ms ease;
-  }
-
-  .ui-play .sidebar-content a,
-  .ui-play .sidebar-content button {
-    border-radius: var(--play-radius-btn) !important;
-    transition: transform 150ms ease, background-color 150ms ease;
-  }
-
-  .ui-play .sidebar-content a:hover,
-  .ui-play .sidebar-content button:hover {
-    transform: scale(1.02);
+    background: white !important;
+    border-right: 3px solid hsl(var(--primary-300)) !important;
   }
 
   .ui-play .sidebar-content .shadow-sm,
@@ -175,121 +152,105 @@
     box-shadow: none !important;
   }
 
-  /* ── Dashboard Stat Cards ───────────────────────────────────────── */
+  /* ── Dashboard Stat Cards: SOLID colored backgrounds ────────────── */
   .ui-play .stat-card-inner {
     border-radius: var(--play-radius-card) !important;
-    border-width: 2px !important;
-    box-shadow: 0 6px 0 hsl(var(--primary-200)) !important;
+    border: none !important;
+    box-shadow: 0 5px 0 rgba(0, 0, 0, 0.15) !important;
+    color: white !important;
     transition: transform 150ms ease, box-shadow 150ms ease;
   }
 
   .ui-play .stat-card-inner:hover {
     transform: translateY(-3px);
-    box-shadow: 0 9px 0 hsl(var(--primary-200)) !important;
+    box-shadow: 0 8px 0 rgba(0, 0, 0, 0.15) !important;
   }
 
-  /* Per-category stat card colors (playful pastels) */
+  .ui-play .stat-card-inner .text-gray-900,
+  .ui-play .stat-card-inner .text-gray-800,
+  .ui-play .stat-card-inner .text-gray-700,
+  .ui-play .stat-card-inner .text-gray-600,
+  .ui-play .stat-card-inner .text-foreground {
+    color: white !important;
+  }
+
+  .ui-play .stat-card-inner .text-muted-foreground {
+    color: rgba(255, 255, 255, 0.8) !important;
+  }
+
+  /* Per-category stat card SOLID colors */
   .ui-play .dashboard-container .stat-card--courses .stat-card-inner {
-    background-color: hsl(var(--play-blue) / 0.1) !important;
-    border-color: hsl(var(--play-blue) / 0.3) !important;
-    box-shadow: 0 6px 0 hsl(var(--play-blue) / 0.2) !important;
+    background-color: hsl(var(--play-blue)) !important;
+    box-shadow: 0 5px 0 hsl(217 89% 48%) !important;
   }
 
   .ui-play .dashboard-container .stat-card--assignments .stat-card-inner {
-    background-color: hsl(var(--play-gold) / 0.12) !important;
-    border-color: hsl(var(--play-gold) / 0.35) !important;
-    box-shadow: 0 6px 0 hsl(var(--play-gold) / 0.2) !important;
+    background-color: hsl(var(--play-gold)) !important;
+    box-shadow: 0 5px 0 hsl(45 100% 40%) !important;
+    color: hsl(var(--play-dark)) !important;
+  }
+  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-900,
+  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-800,
+  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-700,
+  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-600,
+  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-foreground,
+  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-muted-foreground {
+    color: hsl(var(--play-dark)) !important;
   }
 
   .ui-play .dashboard-container .stat-card--evaluations .stat-card-inner {
-    background-color: hsl(var(--play-purple) / 0.1) !important;
-    border-color: hsl(var(--play-purple) / 0.3) !important;
-    box-shadow: 0 6px 0 hsl(var(--play-purple) / 0.2) !important;
+    background-color: hsl(var(--play-purple)) !important;
+    box-shadow: 0 5px 0 hsl(271 76% 40%) !important;
   }
 
   .ui-play .dashboard-container .stat-card--attendance .stat-card-inner {
-    background-color: hsl(var(--play-green) / 0.1) !important;
-    border-color: hsl(var(--play-green) / 0.3) !important;
-    box-shadow: 0 6px 0 hsl(var(--play-green) / 0.2) !important;
+    background-color: hsl(var(--play-green)) !important;
+    box-shadow: 0 5px 0 hsl(145 63% 32%) !important;
   }
 
   .ui-play .dashboard-container .stat-card--live .stat-card-inner {
-    background-color: hsl(var(--play-fire) / 0.1) !important;
-    border-color: hsl(var(--play-fire) / 0.3) !important;
-    box-shadow: 0 6px 0 hsl(var(--play-fire) / 0.2) !important;
+    background-color: hsl(var(--play-pink)) !important;
+    box-shadow: 0 5px 0 hsl(340 82% 40%) !important;
   }
 
-  /* Stat card icon chips: colored circles */
-  .ui-play .stat-card--courses .stat-card-icon {
-    background-color: hsl(var(--play-blue) / 0.2) !important;
-    color: hsl(var(--play-blue)) !important;
-    border-radius: 50% !important;
-  }
-  .ui-play .stat-card--assignments .stat-card-icon {
-    background-color: hsl(var(--play-gold) / 0.2) !important;
-    color: hsl(var(--play-gold)) !important;
-    border-radius: 50% !important;
-  }
-  .ui-play .stat-card--evaluations .stat-card-icon {
-    background-color: hsl(var(--play-purple) / 0.2) !important;
-    color: hsl(var(--play-purple)) !important;
-    border-radius: 50% !important;
-  }
-  .ui-play .stat-card--attendance .stat-card-icon {
-    background-color: hsl(var(--play-green) / 0.2) !important;
-    color: hsl(var(--play-green)) !important;
-    border-radius: 50% !important;
-  }
+  /* Stat card icon: white circle on solid bg */
+  .ui-play .stat-card--courses .stat-card-icon,
+  .ui-play .stat-card--assignments .stat-card-icon,
+  .ui-play .stat-card--evaluations .stat-card-icon,
+  .ui-play .stat-card--attendance .stat-card-icon,
   .ui-play .stat-card--live .stat-card-icon {
-    background-color: hsl(var(--play-fire) / 0.2) !important;
-    color: hsl(var(--play-fire)) !important;
+    background-color: rgba(255, 255, 255, 0.25) !important;
+    color: white !important;
     border-radius: 50% !important;
   }
 
-  /* Stat card title decorative dot */
+  /* Stat card title: no decorative shape, just bold */
   .ui-play .stat-card-title {
-    position: relative;
-    padding-left: 18px;
-    font-weight: 700;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-size: 0.75rem !important;
   }
 
   .ui-play .stat-card-title::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 50%;
-    width: 10px;
-    height: 10px;
-    transform: translateY(-50%);
-    border-radius: 50%;
-    background: hsl(var(--primary-400));
-  }
-
-  .ui-play .stat-card--courses .stat-card-title::before {
-    background: hsl(var(--play-blue));
-  }
-  .ui-play .stat-card--assignments .stat-card-title::before {
-    background: hsl(var(--play-gold));
-  }
-  .ui-play .stat-card--evaluations .stat-card-title::before {
-    background: hsl(var(--play-purple));
-  }
-  .ui-play .stat-card--attendance .stat-card-title::before {
-    background: hsl(var(--play-green));
-  }
-  .ui-play .stat-card--live .stat-card-title::before {
-    background: hsl(var(--play-fire));
+    display: none !important;
   }
 
   /* ── Continue Learning Card ─────────────────────────────────────── */
   .ui-play .continue-learning-card {
-    border-color: hsl(var(--play-green) / 0.3) !important;
+    background-color: hsl(var(--play-blue)) !important;
+    border-color: hsl(var(--play-blue)) !important;
+    color: white !important;
     border-radius: var(--play-radius-card) !important;
-    background: linear-gradient(
-      135deg,
-      hsl(var(--play-green) / 0.05),
-      hsl(var(--background))
-    ) !important;
+    box-shadow: 0 5px 0 hsl(217 89% 48%) !important;
+  }
+
+  .ui-play .continue-learning-card .text-muted-foreground {
+    color: rgba(255, 255, 255, 0.8) !important;
+  }
+
+  .ui-play .continue-learning-card .text-foreground {
+    color: white !important;
   }
 
   /* ── Course Cards ───────────────────────────────────────────────── */
@@ -300,63 +261,66 @@
   .ui-play .level-badge {
     border-width: 2px !important;
     border-radius: var(--play-radius-badge) !important;
-    font-weight: 700;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: 0.65rem;
   }
 
   .ui-play .course-stats {
     background: hsl(var(--primary-50));
-    border-color: hsl(var(--primary-100));
+    border-color: hsl(var(--primary-200));
     border-radius: var(--play-radius-btn);
+    border-width: 2px;
   }
 
   /* ── Chips ──────────────────────────────────────────────────────── */
   .ui-play .chip-secondary {
-    background-color: hsl(var(--play-purple) / 0.1) !important;
-    color: hsl(var(--play-purple)) !important;
-    border-color: hsl(var(--play-purple) / 0.3) !important;
+    background-color: hsl(var(--play-purple)) !important;
+    color: white !important;
+    border-color: hsl(var(--play-purple)) !important;
     border-radius: var(--play-radius-badge) !important;
+    font-weight: 700;
   }
 
   .ui-play .chip-tertiary {
-    background-color: hsl(var(--play-green) / 0.1) !important;
-    color: hsl(var(--play-green)) !important;
-    border-color: hsl(var(--play-green) / 0.3) !important;
+    background-color: hsl(var(--play-green)) !important;
+    color: white !important;
+    border-color: hsl(var(--play-green)) !important;
     border-radius: var(--play-radius-badge) !important;
+    font-weight: 700;
   }
 
   /* ── Background Surfaces ────────────────────────────────────────── */
   .ui-play .bg-gray-50 {
-    background-color: hsl(var(--primary-50) / 0.5) !important;
+    background-color: #f8f9fb !important;
   }
 
   .ui-play .bg-white\/80 {
-    background-color: hsl(var(--background) / 0.9) !important;
+    background-color: white !important;
   }
 
   /* ── Dashboard User Avatar ──────────────────────────────────────── */
   .ui-play .dashboard-user-avatar {
     border: 3px solid hsl(var(--play-gold)) !important;
     border-radius: 50% !important;
-    box-shadow: 0 0 0 3px hsl(var(--play-gold) / 0.2);
+    box-shadow: 0 0 0 3px hsl(var(--play-gold) / 0.3);
   }
 
-  /* ── Course Detail Page ──────────────────────────────────────────── */
-  /* Section headers (subject/module/chapter accordions) */
+  /* ── Course Detail Page ─────────────────────────────────────────── */
   .ui-play .group.flex.w-full.items-center.justify-between.rounded-lg {
     border-radius: var(--play-radius-card) !important;
     border-width: 2px !important;
+    box-shadow: 0 3px 0 hsl(var(--primary-200));
     transition: transform 150ms ease, box-shadow 150ms ease;
   }
 
   .ui-play .group.flex.w-full.items-center.justify-between.rounded-lg:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px hsl(var(--primary-200) / 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 0 hsl(var(--primary-200));
   }
 
-  /* Content items in course structure */
   .ui-play [class*="border"][class*="rounded-lg"][class*="hover:bg-accent"] {
     border-radius: var(--play-radius-btn) !important;
-    transition: all 150ms ease;
   }
 
   .ui-play [class*="border"][class*="rounded-lg"][class*="hover:bg-accent"]:hover {
@@ -364,15 +328,443 @@
     background-color: hsl(var(--primary-50)) !important;
   }
 
-  /* Course enrollment card */
   .ui-play .course-enrollment,
   .ui-play [class*="enrollment"] {
     border-radius: var(--play-radius-card) !important;
   }
 
-  /* Certificate completion banner */
   .ui-play [class*="certificate"] {
     border-radius: var(--play-radius-card) !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     GLOBAL PAGE STYLES — applies to ALL pages automatically
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── Tabs (assessment tabs, course tabs, dashboard tabs) ────────── */
+  .ui-play [role="tablist"] {
+    border-radius: var(--play-radius-btn) !important;
+    background: hsl(var(--primary-50)) !important;
+    border: 2px solid hsl(var(--primary-200)) !important;
+    padding: 4px !important;
+  }
+
+  .ui-play [role="tab"] {
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    font-size: 0.75rem !important;
+    transition: all 150ms ease !important;
+  }
+
+  .ui-play [role="tab"][data-state="active"],
+  .ui-play [role="tab"][aria-selected="true"] {
+    background: hsl(var(--primary-400)) !important;
+    color: white !important;
+    box-shadow: 0 3px 0 hsl(var(--primary-500)) !important;
+  }
+
+  /* ── Inputs & Select (forms across all pages) ───────────────────── */
+  .ui-play input[type="text"],
+  .ui-play input[type="email"],
+  .ui-play input[type="password"],
+  .ui-play input[type="search"],
+  .ui-play input[type="number"],
+  .ui-play textarea,
+  .ui-play select,
+  .ui-play [role="combobox"] {
+    border-radius: var(--play-radius-btn) !important;
+    border-width: 2px !important;
+    border-color: hsl(var(--primary-200)) !important;
+    font-weight: 600 !important;
+    transition: border-color 150ms ease, box-shadow 150ms ease !important;
+  }
+
+  .ui-play input:focus,
+  .ui-play textarea:focus,
+  .ui-play select:focus,
+  .ui-play [role="combobox"]:focus {
+    border-color: hsl(var(--primary-400)) !important;
+    box-shadow: 0 0 0 3px hsl(var(--primary-200) / 0.4) !important;
+  }
+
+  /* ── Tables (attendance, reports, progress) ─────────────────────── */
+  .ui-play table {
+    border-radius: var(--play-radius-card) !important;
+    overflow: hidden;
+  }
+
+  .ui-play thead {
+    background: hsl(var(--primary-400)) !important;
+  }
+
+  .ui-play thead th {
+    color: white !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-size: 0.7rem !important;
+    border-bottom: none !important;
+  }
+
+  .ui-play tbody tr {
+    transition: background-color 150ms ease;
+  }
+
+  .ui-play tbody tr:hover {
+    background-color: hsl(var(--primary-50)) !important;
+  }
+
+  .ui-play tbody td {
+    font-weight: 600 !important;
+    border-color: hsl(var(--primary-100)) !important;
+  }
+
+  /* ── Dialogs / Modals ───────────────────────────────────────────── */
+  .ui-play [role="dialog"] > div,
+  .ui-play [role="alertdialog"] > div {
+    border-radius: var(--play-radius-card) !important;
+    border: 2px solid hsl(var(--primary-200)) !important;
+    box-shadow: 0 8px 0 hsl(var(--primary-200) / 0.5) !important;
+  }
+
+  /* ── Tooltips ───────────────────────────────────────────────────── */
+  .ui-play [role="tooltip"] {
+    border-radius: var(--play-radius-btn) !important;
+    font-weight: 700 !important;
+    border: 2px solid hsl(var(--primary-300)) !important;
+  }
+
+  /* ── Dropdowns / Popovers ───────────────────────────────────────── */
+  .ui-play [data-radix-popper-content-wrapper] > div,
+  .ui-play [role="listbox"],
+  .ui-play [cmdk-list] {
+    border-radius: var(--play-radius-card) !important;
+    border: 2px solid hsl(var(--primary-200)) !important;
+    box-shadow: 0 6px 0 hsl(var(--primary-200) / 0.3) !important;
+  }
+
+  .ui-play [role="option"] {
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    margin: 2px 4px !important;
+  }
+
+  .ui-play [role="option"][data-highlighted],
+  .ui-play [role="option"]:hover {
+    background: hsl(var(--primary-100)) !important;
+  }
+
+  /* ── Progress bars (everywhere) ─────────────────────────────────── */
+  .ui-play [role="progressbar"] {
+    border-radius: var(--play-radius-badge) !important;
+    height: 12px !important;
+    background: hsl(var(--primary-100)) !important;
+  }
+
+  .ui-play [role="progressbar"] > div {
+    border-radius: var(--play-radius-badge) !important;
+    background: hsl(var(--play-green)) !important;
+  }
+
+  /* ── Accordion / Collapsible (course content, FAQ, etc.) ────────── */
+  .ui-play [data-state="open"] > [role="button"],
+  .ui-play [data-state="closed"] > [role="button"] {
+    border-radius: var(--play-radius-btn) !important;
+    font-weight: 700 !important;
+  }
+
+  /* ── Alert / Toast / Notification ───────────────────────────────── */
+  .ui-play [role="alert"],
+  .ui-play [data-sonner-toast] {
+    border-radius: var(--play-radius-card) !important;
+    border-width: 2px !important;
+    font-weight: 600 !important;
+  }
+
+  /* ── Skeleton loaders ───────────────────────────────────────────── */
+  .ui-play [data-slot="skeleton"],
+  .ui-play .animate-pulse {
+    border-radius: var(--play-radius-btn) !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     ASSESSMENT / EXAM PAGE STYLES
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* Assessment cards (test list) */
+  .ui-play .assessment-card,
+  .ui-play [class*="assessment"] .card,
+  .ui-play [class*="Assessment"] {
+    border-radius: var(--play-radius-card) !important;
+    border: 2px solid hsl(var(--primary-200)) !important;
+    box-shadow: 0 4px 0 hsl(var(--primary-200)) !important;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+
+  .ui-play .assessment-card:hover,
+  .ui-play [class*="assessment"] .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 hsl(var(--primary-200)) !important;
+  }
+
+  /* Exam interface: question navigator sidebar */
+  .ui-play .question-navigator button,
+  .ui-play [class*="question-nav"] button {
+    border-radius: 50% !important;
+    font-weight: 800 !important;
+    border: 2px solid transparent !important;
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.1);
+    transition: transform 100ms ease;
+  }
+
+  .ui-play .question-navigator button:hover {
+    transform: scale(1.1);
+  }
+
+  /* Exam footer nav buttons */
+  .ui-play .exam-footer button,
+  .ui-play [class*="footer"] button[class*="primary"],
+  .ui-play [class*="footer"] button[class*="secondary"] {
+    border-radius: var(--play-radius-btn) !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     STUDY LIBRARY / COURSE CONTENT VIEWER
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* Chapter sidebar items */
+  .ui-play .chapter-sidebar-item,
+  .ui-play [class*="chapter"] [class*="sidebar"] a,
+  .ui-play [class*="chapter"] [class*="sidebar"] button {
+    border-radius: var(--play-radius-btn) !important;
+    font-weight: 600 !important;
+    transition: all 150ms ease;
+  }
+
+  .ui-play [class*="chapter"] [class*="sidebar"] a:hover,
+  .ui-play [class*="chapter"] [class*="sidebar"] button:hover {
+    transform: scale(1.02);
+    background: hsl(var(--primary-50)) !important;
+  }
+
+  /* Slide navigation (prev/next) */
+  .ui-play [class*="slide"] button[class*="prev"],
+  .ui-play [class*="slide"] button[class*="next"],
+  .ui-play .slide-nav-btn {
+    border-radius: 50% !important;
+    box-shadow: 0 3px 0 hsl(var(--primary-300)) !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     COURSE LISTING / SEARCH / FILTER
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* Search bar */
+  .ui-play [class*="search"] input,
+  .ui-play [class*="Search"] input {
+    border-radius: var(--play-radius-badge) !important;
+    border: 2px solid hsl(var(--primary-200)) !important;
+    padding-left: 16px !important;
+    font-weight: 600 !important;
+  }
+
+  /* Filter chips / pills */
+  .ui-play [class*="filter"] button,
+  .ui-play [class*="Filter"] button {
+    border-radius: var(--play-radius-badge) !important;
+    border: 2px solid hsl(var(--primary-200)) !important;
+    font-weight: 700 !important;
+    transition: all 150ms ease;
+  }
+
+  .ui-play [class*="filter"] button:hover,
+  .ui-play [class*="Filter"] button:hover {
+    background: hsl(var(--primary-100)) !important;
+    transform: scale(1.03);
+  }
+
+  .ui-play [class*="filter"] button[data-state="active"],
+  .ui-play [class*="Filter"] button[aria-pressed="true"] {
+    background: hsl(var(--primary-400)) !important;
+    color: white !important;
+    border-color: hsl(var(--primary-400)) !important;
+  }
+
+  /* Pagination */
+  .ui-play [class*="pagination"] button,
+  .ui-play nav[aria-label*="pagination"] button {
+    border-radius: 50% !important;
+    border: 2px solid hsl(var(--primary-200)) !important;
+    font-weight: 800 !important;
+    min-width: 36px;
+    min-height: 36px;
+    transition: all 150ms ease;
+  }
+
+  .ui-play [class*="pagination"] button[aria-current="page"],
+  .ui-play nav[aria-label*="pagination"] button[data-selected] {
+    background: hsl(var(--primary-400)) !important;
+    color: white !important;
+    border-color: hsl(var(--primary-400)) !important;
+    box-shadow: 0 3px 0 hsl(var(--primary-500)) !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     ATTENDANCE PAGE
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* Attendance dashboard widget: force all text to white on green bg */
+  .ui-play .card:has([class*="ChartBar"]) .text-foreground,
+  .ui-play .card:has([class*="ChartBar"]) .text-2xl,
+  .ui-play .card:has([class*="ChartBar"]) .text-muted-foreground,
+  .ui-play .card:has([class*="ChartBar"]) .text-emerald-600,
+  .ui-play .card:has([class*="ChartBar"]) .text-red-600,
+  .ui-play .card:has([class*="ChartBar"]) .text-orange-500,
+  .ui-play .card:has([class*="ChartBar"]) .text-slate-300,
+  .ui-play .card:has([class*="ChartBar"]) [class*="text-"] {
+    color: white !important;
+  }
+
+  /* Attendance period buttons: white pill on green */
+  .ui-play .card:has([class*="ChartBar"]) button {
+    color: rgba(255, 255, 255, 0.7) !important;
+    background: transparent !important;
+  }
+
+  .ui-play .card:has([class*="ChartBar"]) button[class*="bg-emerald"] {
+    color: white !important;
+    background: rgba(255, 255, 255, 0.2) !important;
+    border-radius: var(--play-radius-badge) !important;
+  }
+
+  /* Attendance weekly dots: white bg */
+  .ui-play .card:has([class*="ChartBar"]) .bg-emerald-100 {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+  }
+
+  /* Icon container: white bg with green icon */
+  .ui-play .card:has([class*="ChartBar"]) .bg-emerald-100.p-1\.5 {
+    background-color: rgba(255, 255, 255, 0.25) !important;
+  }
+
+  /* Attendance status dots */
+  .ui-play [class*="attendance"] [class*="PRESENT"],
+  .ui-play [class*="attendance"] [class*="present"] {
+    background-color: hsl(var(--play-green)) !important;
+    color: white !important;
+    border-radius: var(--play-radius-badge) !important;
+    font-weight: 700 !important;
+  }
+
+  .ui-play [class*="attendance"] [class*="ABSENT"],
+  .ui-play [class*="attendance"] [class*="absent"] {
+    background-color: hsl(var(--play-fire)) !important;
+    color: white !important;
+    border-radius: var(--play-radius-badge) !important;
+    font-weight: 700 !important;
+  }
+
+  /* Calendar date pickers */
+  .ui-play [class*="calendar"],
+  .ui-play [role="grid"] {
+    border-radius: var(--play-radius-card) !important;
+    border: 2px solid hsl(var(--primary-200)) !important;
+  }
+
+  .ui-play [role="gridcell"] button {
+    border-radius: 50% !important;
+    font-weight: 700 !important;
+  }
+
+  .ui-play [role="gridcell"] button[aria-selected="true"] {
+    background: hsl(var(--primary-400)) !important;
+    color: white !important;
+    box-shadow: 0 2px 0 hsl(var(--primary-500));
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     LIVE CLASS PAGES
+     ══════════════════════════════════════════════════════════════════ */
+
+  .ui-play [class*="live-class"] .card,
+  .ui-play [class*="LiveClass"] .card,
+  .ui-play [class*="session"] .card {
+    border-radius: var(--play-radius-card) !important;
+    border: 2px solid hsl(var(--play-pink) / 0.3) !important;
+    box-shadow: 0 4px 0 hsl(var(--play-pink) / 0.2) !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     USER PROFILE & SETTINGS
+     ══════════════════════════════════════════════════════════════════ */
+
+  .ui-play [class*="profile"] .avatar,
+  .ui-play [class*="Profile"] .avatar {
+    border: 3px solid hsl(var(--play-gold)) !important;
+    box-shadow: 0 0 0 4px hsl(var(--play-gold) / 0.2);
+  }
+
+  .ui-play [class*="profile"] .card,
+  .ui-play [class*="Profile"] .card {
+    border-radius: var(--play-radius-card) !important;
+    border: 2px solid hsl(var(--primary-200)) !important;
+    box-shadow: 0 4px 0 hsl(var(--primary-200)) !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     REFERRAL PAGE
+     ══════════════════════════════════════════════════════════════════ */
+
+  .ui-play [class*="referral"] .card,
+  .ui-play [class*="Referral"] .card {
+    border-radius: var(--play-radius-card) !important;
+    border: 2px solid hsl(var(--play-gold) / 0.3) !important;
+    box-shadow: 0 4px 0 hsl(var(--play-gold) / 0.2) !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     GLOBAL TYPOGRAPHY OVERRIDES
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* Page headings */
+  .ui-play h1 {
+    font-weight: 900 !important;
+    letter-spacing: -0.5px;
+  }
+
+  .ui-play h2 {
+    font-weight: 800 !important;
+  }
+
+  .ui-play h3 {
+    font-weight: 700 !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     SCROLLBAR STYLING
+     ══════════════════════════════════════════════════════════════════ */
+
+  .ui-play ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .ui-play ::-webkit-scrollbar-track {
+    background: hsl(var(--primary-50));
+    border-radius: 4px;
+  }
+
+  .ui-play ::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary-300));
+    border-radius: 4px;
+  }
+
+  .ui-play ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary-400));
   }
 
   /* ── Prevent double animations ──────────────────────────────────── */
@@ -387,4 +779,88 @@
     transform: none !important;
   }
 
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SIDEBAR OVERRIDES — Outside @layer for higher specificity than CVA
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* All sidebar menu buttons: rounded, taller, bolder */
+.ui-play [data-sidebar="menu-button"] {
+  border-radius: 14px !important;
+  font-weight: 700 !important;
+  min-height: 46px !important;
+  margin: 3px 4px !important;
+  padding: 8px 14px !important;
+  transition: all 150ms ease !important;
+}
+
+/* Bigger icons */
+.ui-play [data-sidebar="menu-button"] svg {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+/* Hover */
+.ui-play [data-sidebar="menu-button"]:hover {
+  background-color: hsl(var(--primary-50)) !important;
+  transform: scale(1.02);
+}
+
+/* Active: SOLID primary bg, white text, 3D shadow */
+.ui-play [data-sidebar="menu-button"][data-active="true"] {
+  background-color: hsl(var(--primary-400)) !important;
+  color: white !important;
+  font-weight: 800 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 4px 0 hsl(var(--primary-500)) !important;
+}
+
+.ui-play [data-sidebar="menu-button"][data-active="true"]:hover {
+  background-color: hsl(var(--primary-400)) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 0 hsl(var(--primary-500)) !important;
+}
+
+.ui-play [data-sidebar="menu-button"][data-active="true"] svg {
+  color: white !important;
+}
+
+/* Sub-menu items */
+.ui-play [data-sidebar="menu-sub-button"] {
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  min-height: 36px !important;
+  transition: all 150ms ease !important;
+}
+
+.ui-play [data-sidebar="menu-sub-button"]:hover {
+  background-color: hsl(var(--primary-50)) !important;
+}
+
+.ui-play [data-sidebar="menu-sub-button"][data-active="true"] {
+  background-color: hsl(var(--primary-100)) !important;
+  color: hsl(var(--primary-500)) !important;
+  font-weight: 700 !important;
+}
+
+/* Logo area */
+.ui-play [data-sidebar="header"] [data-sidebar="menu-button"] {
+  border-radius: 16px !important;
+  background-color: hsl(var(--primary-50)) !important;
+  border: 2px solid hsl(var(--primary-200)) !important;
+  box-shadow: 0 3px 0 hsl(var(--primary-200)) !important;
+  margin: 8px !important;
+  padding: 12px !important;
+  min-height: auto !important;
+}
+
+.ui-play [data-sidebar="header"] [data-sidebar="menu-button"]:hover {
+  background-color: hsl(var(--primary-100)) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 0 hsl(var(--primary-200)) !important;
+}
+
+.ui-play [data-sidebar="footer"] {
+  padding: 8px !important;
 }

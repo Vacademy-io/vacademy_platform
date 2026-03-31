@@ -51,7 +51,7 @@ const FilterList: React.FC<FilterListProps> = ({
                         htmlFor={item.id}
                         className={cn(
                             "text-sm cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-                            selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold" : "font-normal"
+                            selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold [.ui-play_&]:font-extrabold [.ui-play_&]:text-[#58cc02]" : "font-normal [.ui-play_&]:font-bold"
                         )}
                     >
                         {item.name}
@@ -159,16 +159,21 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             // Vibrant Styles - Flat Pastel
             "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
             "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
-            "[.ui-vibrant_&]:shadow-md"
+            "[.ui-vibrant_&]:shadow-md",
+            // Play Styles — solid, bold, Duolingo-style
+            "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:rounded-2xl [.ui-play_&]:text-white",
+            "[.ui-play_&]:shadow-[0_4px_0_#1a3d6d]"
         )}>
             {/* Desktop Header */}
             <div className={cn(
                 "p-4 border-b flex items-center justify-between",
-                "[.ui-vibrant_&]:border-primary/10"
+                "[.ui-vibrant_&]:border-primary/10",
+                // Play Styles
+                "[.ui-play_&]:border-white/20"
             )}>
                 <div className="flex items-center gap-2">
-                    <Filter size={18} className={cn("text-muted-foreground", "[.ui-vibrant_&]:text-primary")} />
-                    <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary")}>Filters</h2>
+                    <Filter size={18} className={cn("text-muted-foreground", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-[#ffc800]")} />
+                    <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide")}>Filters</h2>
                 </div>
                 {hasActiveFilters && (
                     <Button
@@ -294,7 +299,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                 // Vibrant Styles
                                 "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
                                 "[.ui-vibrant_&]:shadow-sm",
-                                "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20"
+                                "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
+                                // Play Styles
+                                "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:text-white [.ui-play_&]:border-[#46a302] [.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
+                                "[.ui-play_&]:shadow-[0_4px_0_#46a302] [.ui-play_&]:hover:bg-[#46a302]"
                             )}
                         >
                             <div className="flex items-center gap-2">

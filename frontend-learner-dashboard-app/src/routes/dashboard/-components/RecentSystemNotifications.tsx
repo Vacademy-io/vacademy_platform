@@ -8,6 +8,7 @@ import { isAfter, subDays } from 'date-fns';
 import { formatLocalDateTime } from '@/helpers/formatISOTime';
 import type { UserMessage } from '@/types/announcement';
 import { cn } from "@/lib/utils";
+import { playIllustrations } from "@/assets/play-illustrations";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -94,11 +95,21 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
 
   return (
     <Card className={cn(
+      "relative overflow-hidden",
       className,
       // Vibrant Styles - Flat Pastel
       "[.ui-vibrant_&]:bg-fuchsia-50/50 dark:[.ui-vibrant_&]:bg-fuchsia-950/20",
-      "[.ui-vibrant_&]:border-fuchsia-200/50 dark:[.ui-vibrant_&]:border-fuchsia-800/30"
+      "[.ui-vibrant_&]:border-fuchsia-200/50 dark:[.ui-vibrant_&]:border-fuchsia-800/30",
+      // Play Styles - Solid Bold Duolingo
+      "[.ui-play_&]:bg-[#FF9600] [.ui-play_&]:border-2 [.ui-play_&]:border-[#e08600] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#e08600]",
+      "[.ui-play_&]:text-white [.ui-play_&]:font-bold",
+      "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:md:flex-col"
     )}>
+      {/* Play SVG: side on mobile, top on desktop */}
+      <div className="hidden [.ui-play_&]:!flex order-2 md:order-first w-28 md:w-full items-center justify-center bg-white/10 p-2 md:px-6 md:pt-4 md:pb-2 flex-shrink-0">
+        <playIllustrations.Celebration className="h-24 md:h-28 w-auto text-white" />
+      </div>
+      <div className="[.ui-play_&]:flex-1 [.ui-play_&]:min-w-0">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <CardTitle className="text-lg font-semibold flex items-center gap-2 min-w-0">
@@ -180,7 +191,10 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
                       ? "border-l-4 border-l-primary bg-primary/5 [.ui-vibrant_&]:bg-fuchsia-100/30 dark:[.ui-vibrant_&]:bg-fuchsia-900/20"
                       : "border-border hover:border-primary/50",
                     // Vibrant Styles - Flat Pastel
-                    "[.ui-vibrant_&]:hover:bg-fuchsia-100/40 [.ui-vibrant_&]:hover:border-fuchsia-200/60 dark:[.ui-vibrant_&]:hover:bg-fuchsia-900/30"
+                    "[.ui-vibrant_&]:hover:bg-fuchsia-100/40 [.ui-vibrant_&]:hover:border-fuchsia-200/60 dark:[.ui-vibrant_&]:hover:bg-fuchsia-900/30",
+                    // Play Styles - Solid Bold Duolingo
+                    "[.ui-play_&]:bg-white/20 [.ui-play_&]:border-2 [.ui-play_&]:border-white/30 [.ui-play_&]:rounded-xl [.ui-play_&]:hover:bg-white/30",
+                    !alert.isRead && "[.ui-play_&]:border-l-4 [.ui-play_&]:border-l-white [.ui-play_&]:bg-white/25"
                   )}
                 >
                   <div className="flex items-start gap-3">
@@ -249,6 +263,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
           </>
         )}
       </CardContent>
+      </div>
     </Card>
   );
 };

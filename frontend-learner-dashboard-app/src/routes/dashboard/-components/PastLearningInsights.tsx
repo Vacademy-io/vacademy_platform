@@ -8,10 +8,11 @@ import { UserActivityArray } from "../-types/dashboard-data-types";
 import { formatTimeFromMillis } from "@/helpers/formatTimeFromMiliseconds";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BarChart3, Clock, Zap, Target, Award, TrendingUp } from "lucide-react";
+import { BarChart3, Clock, Zap, Target, Award, TrendingUp, BarChart2, Table2 } from "lucide-react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { cn } from "@/lib/utils";
+import { playIllustrations } from "@/assets/play-illustrations";
 
 // Enhanced Loading Skeleton
 const AnalyticsLoadingSkeleton = () => (
@@ -50,64 +51,26 @@ const AnalyticsLoadingSkeleton = () => (
   </div>
 );
 
-// Enhanced StatsCard Component
-const StatsCard = ({
-  title,
+// Compact inline stat
+const InlineStat = ({
+  label,
   value,
   icon: Icon,
-  trend,
-  trendColor,
-  description,
 }: {
-  title: string;
+  label: string;
   value: string;
   icon: React.ComponentType<{ size?: number | string; className?: string }>;
-  trend?: string;
-  trendColor?: string;
-  description: string;
-}) => {
-  return (
-    <Card className={cn(
-      "shadow-none hover:shadow-sm transition-shadow",
-      // Vibrant Styles - Flat Pastel
-      "[.ui-vibrant_&]:bg-teal-50/50 dark:[.ui-vibrant_&]:bg-teal-950/20",
-      "[.ui-vibrant_&]:border-teal-200/50 dark:[.ui-vibrant_&]:border-teal-800/30"
-    )}>
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className={cn(
-            "p-2 bg-primary/10 rounded-md text-primary",
-            "[.ui-vibrant_&]:bg-white/90 [.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:text-teal-600 [.ui-vibrant_&]:ring-0",
-            "[.ui-vibrant_&]:dark:bg-teal-500/10 [.ui-vibrant_&]:dark:text-teal-300"
-          )}>
-            <Icon size={18} />
-          </div>
-          {trend && (
-            <Badge
-              variant="secondary"
-              className={cn(
-                `${trendColor || 'bg-secondary text-secondary-foreground'} border-0 px-2 py-0.5`,
-                "[.ui-vibrant_&]:shadow-sm"
-              )}
-            >
-              {trend}
-            </Badge>
-          )}
-        </div>
-
-        <div className="space-y-1">
-          <div className="text-2xl font-bold tracking-tight">
-            {value}
-          </div>
-          <div className="text-sm font-medium text-muted-foreground">
-            {title}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">{description}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+}) => (
+  <div className="flex items-center gap-2">
+    <div className="p-1.5 rounded-lg bg-primary/10 text-primary [.ui-play_&]:bg-white/20 [.ui-play_&]:text-white">
+      <Icon size={14} />
+    </div>
+    <div>
+      <span className="text-sm font-bold [.ui-play_&]:text-white">{value}</span>
+      <span className="text-xs text-muted-foreground ml-1 [.ui-play_&]:text-white/60">{label}</span>
+    </div>
+  </div>
+);
 
 export const PastLearningInsights = () => {
   const { mutate: pastLearningInsights, isPending } = usePastLearningInsights();
@@ -115,6 +78,7 @@ export const PastLearningInsights = () => {
   const [avgTimeSpent, setAvgTimeSpent] = useState<string>("0");
   const [totalSessions, setTotalSessions] = useState<number>(0);
   const [streakDays, setStreakDays] = useState<number>(0);
+  const [activeView, setActiveView] = useState<"chart" | "table">("chart");
 
   useEffect(() => {
     const fetchUserActivity = async () => {
@@ -175,108 +139,71 @@ export const PastLearningInsights = () => {
   if (isPending) return <AnalyticsLoadingSkeleton />;
 
   return (
-    <div className="space-y-6 animate-fade-in-up">
-      {/* Enhanced Header Section */}
-      <Card className="shadow-none border-none bg-transparent">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-lg bg-primary/10 text-primary">
-              <TrendingUp size={24} />
+    <div className="animate-fade-in-up">
+      <Card className={cn(
+        "shadow-none relative overflow-hidden",
+        "[.ui-vibrant_&]:bg-blue-50/50 dark:[.ui-vibrant_&]:bg-blue-950/20",
+        "[.ui-vibrant_&]:border-blue-200/50 dark:[.ui-vibrant_&]:border-blue-800/30",
+        "[.ui-vibrant_&]:shadow-sm",
+        "[.ui-play_&]:!bg-[#1CB0F6] [.ui-play_&]:!border-2 [.ui-play_&]:!border-[#1899d6] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#1899d6]"
+      )}>
+        {/* Header: title + inline stats + view toggle */}
+        <CardHeader className="px-5 py-3 border-b [.ui-play_&]:border-white/20">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary [.ui-play_&]:bg-white/20 [.ui-play_&]:text-white">
+                <TrendingUp size={18} />
+              </div>
+              <div>
+                <CardTitle className="text-sm font-semibold [.ui-play_&]:text-white [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">Learning Progress</CardTitle>
+                <CardDescription className="text-xs [.ui-play_&]:text-white/60">Past 7 days activity vs batch average</CardDescription>
+              </div>
             </div>
-            <div>
-              <h2 className="text-2xl font-semibold tracking-tight">Learning Analytics</h2>
-              <div className="flex items-center gap-2 text-muted-foreground mt-1">
-                <BarChart3 size={14} />
-                <span className="text-sm">Past 7 days performance insights</span>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Inline stats */}
+              <InlineStat label="avg" value={avgTimeSpent} icon={Clock} />
+              <InlineStat label="sessions" value={totalSessions.toString()} icon={Target} />
+              <InlineStat label={`day${streakDays !== 1 ? "s" : ""} streak`} value={streakDays.toString()} icon={Award} />
+
+              {/* View toggle */}
+              <div className="flex items-center bg-muted/50 rounded-lg p-0.5 [.ui-play_&]:bg-white/20">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setActiveView("chart"); }}
+                  className={cn(
+                    "p-1.5 rounded-md transition-all",
+                    activeView === "chart"
+                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-[#1899d6]"
+                      : "text-muted-foreground hover:text-foreground [.ui-play_&]:text-white/60 [.ui-play_&]:hover:text-white"
+                  )}
+                  title="Chart view"
+                >
+                  <BarChart2 size={14} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setActiveView("table"); }}
+                  className={cn(
+                    "p-1.5 rounded-md transition-all",
+                    activeView === "table"
+                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-[#1899d6]"
+                      : "text-muted-foreground hover:text-foreground [.ui-play_&]:text-white/60 [.ui-play_&]:hover:text-white"
+                  )}
+                  title="Table view"
+                >
+                  <Table2 size={14} />
+                </button>
               </div>
             </div>
           </div>
-
-          <Badge variant="outline" className="w-fit text-primary border-primary/20 gap-1.5 py-1.5 px-3 h-auto">
-            <Zap size={14} />
-            Live Analytics
-          </Badge>
-        </div>
-      </Card>
-
-      {/* Enhanced Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatsCard
-          title="Average Study Time"
-          value={avgTimeSpent}
-          icon={Clock}
-          description="Daily learning average"
-        />
-        <StatsCard
-          title={`Active ${getTerminology(
-            ContentTerms.LiveSession,
-            SystemTerms.LiveSession
-          )}s`}
-          value={totalSessions.toString()}
-          icon={Target}
-          trend={totalSessions >= 4 ? "+12%" : ""}
-          trendColor={
-            totalSessions >= 4 ? "bg-green-500/10 text-green-600" : ""
-          }
-          description={`Learning ${getTerminology(
-            ContentTerms.LiveSession,
-            SystemTerms.LiveSession
-          ).toLocaleLowerCase()}s this week`}
-        />
-        <StatsCard
-          title="Learning Streak"
-          value={`${streakDays} day${streakDays !== 1 ? "s" : ""}`}
-          icon={Award}
-          trend={streakDays >= 3 ? "🔥" : ""}
-          trendColor="bg-orange-500/10 text-orange-600"
-          description="Consecutive learning days"
-        />
-      </div>
-
-      {/* Enhanced Chart Section */}
-      <Card className={cn(
-        "shadow-none",
-        // Vibrant Styles - Flat Pastel
-        "[.ui-vibrant_&]:bg-blue-50/50 dark:[.ui-vibrant_&]:bg-blue-950/20",
-        "[.ui-vibrant_&]:border-blue-200/50 dark:[.ui-vibrant_&]:border-blue-800/30",
-        "[.ui-vibrant_&]:shadow-sm"
-      )}>
-        <CardHeader className="border-b px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <CardTitle className="text-base font-semibold">Activity Trend</CardTitle>
-              <CardDescription>Daily study time comparison with batch average</CardDescription>
-            </div>
-            <Badge variant="secondary" className="font-normal">7 Days</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="p-6">
-          <LineChartComponent userActivity={userActivity} />
-        </CardContent>
-      </Card>
-
-      {/* Enhanced Table Section */}
-      <Card className={cn(
-        "shadow-none",
-        "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
-        "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5"
-      )}>
-        <CardHeader className="border-b px-6 py-4 flex flex-row items-center justify-between space-y-0">
-          <div className="space-y-1">
-            <CardTitle className="text-base font-semibold">Daily Progress</CardTitle>
-            <CardDescription>Detailed breakdown of your learning sessions</CardDescription>
-          </div>
-          <Badge variant="outline" className="gap-1.5 border-green-500/20 text-green-600 bg-green-500/5">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-            </span>
-            Updated
-          </Badge>
         </CardHeader>
 
-        <CardContent className="p-6">
-          <StudentProgressTable userActivity={userActivity} />
+        {/* Content: chart or table based on toggle */}
+        <CardContent className="p-4 [.ui-play_&]:bg-white [.ui-play_&]:m-3 [.ui-play_&]:rounded-xl">
+          {activeView === "chart" ? (
+            <LineChartComponent userActivity={userActivity} />
+          ) : (
+            <StudentProgressTable userActivity={userActivity} />
+          )}
         </CardContent>
       </Card>
     </div>

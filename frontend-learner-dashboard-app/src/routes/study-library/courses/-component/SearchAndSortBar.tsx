@@ -43,7 +43,10 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
             // Vibrant Styles - Flat Pastel
             "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
             "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
-            "[.ui-vibrant_&]:shadow-sm"
+            "[.ui-vibrant_&]:shadow-sm",
+            // Play Styles — white bg with bold border and shadow
+            "[.ui-play_&]:!bg-white [.ui-play_&]:border-2 [.ui-play_&]:!border-primary-200 [.ui-play_&]:rounded-2xl",
+            "[.ui-play_&]:shadow-[0_4px_0_hsl(var(--primary-200))]"
         )}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* Search Section */}
@@ -59,7 +62,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                                 ContentTerms.Course,
                                 SystemTerms.Course
                             ).toLocaleLowerCase()}s...`}
-                            className="pl-10 w-full"
+                            className={cn("pl-10 w-full", "[.ui-play_&]:rounded-full [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:bg-primary-50 [.ui-play_&]:font-bold")}
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={handleKeyDown}

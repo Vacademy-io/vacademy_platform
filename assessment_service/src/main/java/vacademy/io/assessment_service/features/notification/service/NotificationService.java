@@ -111,33 +111,51 @@ public class NotificationService {
     }
 
     public void sendPushNotificationToUsers(String instituteId, List<String> userIds, String title, String body, java.util.Map<String, String> data) {
-        java.util.Map<String, Object> request = new java.util.HashMap<>();
-        request.put("institute_id", instituteId);
-        request.put("user_ids", userIds);
-        request.put("title", title);
-        request.put("body", body);
-        request.put("data", data != null ? data : java.util.Map.of());
+        List<UnifiedSendRequest.Recipient> recipients = userIds.stream()
+                .map(uid -> UnifiedSendRequest.Recipient.builder().userId(uid).build())
+                .toList();
 
-        internalClientUtils.makeHmacRequest(
-                clientName,
-                HttpMethod.POST.name(),
-                notificationServerBaseUrl,
-                NotificationConstant.PUSH_SEND_TO_USERS,
-                request);
+        UnifiedSendRequest request = UnifiedSendRequest.builder()
+                .instituteId(instituteId != null ? instituteId : "")
+                .channel("PUSH")
+                .recipients(recipients)
+                .options(UnifiedSendRequest.SendOptions.builder()
+                        .pushTitle(title)
+                        .pushBody(body)
+                        .pushData(data)
+                        .build())
+                .build();
+
+        try {
+            internalClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.POST.name(),
+                    notificationServerBaseUrl, UNIFIED_SEND, request);
+        } catch (Exception e) {
+            log.error("Failed to send push notification via unified API: {}", e.getMessage(), e);
+        }
     }
 
     public void sendSystemAlertToUsers(String instituteId, List<String> userIds, String title, String body) {
-        java.util.Map<String, Object> request = new java.util.HashMap<>();
-        request.put("institute_id", instituteId);
-        request.put("user_ids", userIds);
-        request.put("title", title);
-        request.put("body", body);
+        List<UnifiedSendRequest.Recipient> recipients = userIds.stream()
+                .map(uid -> UnifiedSendRequest.Recipient.builder().userId(uid).build())
+                .toList();
 
-        internalClientUtils.makeHmacRequest(
-                clientName,
-                HttpMethod.POST.name(),
-                notificationServerBaseUrl,
-                NotificationConstant.SYSTEM_ALERT_SEND_TO_USERS,
-                request);
+        UnifiedSendRequest request = UnifiedSendRequest.builder()
+                .instituteId(instituteId != null ? instituteId : "")
+                .channel("SYSTEM_ALERT")
+                .recipients(recipients)
+                .options(UnifiedSendRequest.SendOptions.builder()
+                        .pushTitle(title)
+                        .pushBody(body)
+                        .build())
+                .build();
+
+        try {
+            internalClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.POST.name(),
+                    notificationServerBaseUrl, UNIFIED_SEND, request);
+        } catch (Exception e) {
+            log.error("Failed to send system alert via unified API: {}", e.getMessage(), e);
+        }
     }
 }

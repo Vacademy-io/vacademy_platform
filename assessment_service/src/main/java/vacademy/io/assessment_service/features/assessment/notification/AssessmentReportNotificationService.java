@@ -107,7 +107,8 @@ public class AssessmentReportNotificationService {
             Map<String, String> pushData = Map.of(
                     "type", "ASSESSMENT_REPORT",
                     "assessment_id", assessmentId,
-                    "action", "VIEW_REPORT"
+                    "action", "VIEW_REPORT",
+                    "path", "/assessment/reports"
             );
             notificationService.sendPushNotificationToUsers(instituteId, userIds, pushTitle, pushBody, pushData);
         } catch (Exception e) {

@@ -25,43 +25,137 @@ export function processHtmlString(html: string | undefined) {
     const result: { type: string; content: string }[] = [];
 
     // Helper function to process nodes recursively
+    /**
+     * Extract a continuous LaTeX expression starting at position `start` in `text`.
+     * Handles nested braces, subscripts, superscripts, and chained commands.
+     * Returns the end index (exclusive) of the expression.
+     */
+    function extractLatexExpression(text: string, start: number): number {
+        let i = start;
+        while (i < text.length) {
+            if (text[i] === '\\') {
+                // Read command name
+                let j = i + 1;
+                while (j < text.length && /[a-zA-Z]/.test(text[j]!)) j++;
+                if (j === i + 1) {
+                    // Single-char command like \, or \{
+                    j++;
+                }
+                i = j;
+                // Read optional arguments in braces
+                while (i < text.length && text[i] === '{') {
+                    i = findClosingBrace(text, i);
+                }
+            } else if (text[i] === '_' || text[i] === '^') {
+                i++;
+                if (i < text.length && text[i] === '{') {
+                    i = findClosingBrace(text, i);
+                } else if (i < text.length) {
+                    i++; // single char subscript/superscript
+                }
+            } else if (text[i] === '{') {
+                i = findClosingBrace(text, i);
+            } else {
+                break;
+            }
+        }
+        return i;
+    }
+
+    function findClosingBrace(text: string, start: number): number {
+        let depth = 1;
+        let i = start + 1;
+        while (i < text.length && depth > 0) {
+            if (text[i] === '{') depth++;
+            else if (text[i] === '}') depth--;
+            i++;
+        }
+        return i;
+    }
+
+    // Pattern to detect the START of a raw LaTeX command
+    const LATEX_CMD_START =
+        /\\(?:mathrm|mathbf|mathit|mathsf|mathtt|mathcal|mathbb|mathfrak|text|textbf|textit|frac|sqrt|overline|underline|vec|hat|bar|dot|ddot|tilde|widetilde|widehat|overleftarrow|overrightarrow|overbrace|underbrace|sum|prod|int|lim|log|ln|sin|cos|tan|cot|sec|csc|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega|longrightarrow|rightarrow|leftarrow|Rightarrow|Leftarrow|times|div|pm|mp|cdot|leq|geq|neq|approx|equiv|subset|supset|cup|cap|infty|partial|nabla|forall|exists|neg|wedge|vee|oplus|otimes)[{_^ ]/g;
+
+    function renderLatexSegment(tex: string) {
+        try {
+            const rendered = katex.renderToString(tex, {
+                throwOnError: false,
+                displayMode: false,
+            });
+            result.push({ type: 'formula', content: rendered });
+        } catch {
+            result.push({ type: 'text', content: tex });
+        }
+    }
+
+    function processTextWithLatex(text: string) {
+        // First split by $$ and $ delimiters
+        const dollarParts = text.split(/(\$\$[^$]+\$\$|\$[^$]+\$)/g);
+        dollarParts.forEach((part) => {
+            if (part.startsWith('$$') && part.endsWith('$$')) {
+                const tex = part.slice(2, -2);
+                try {
+                    const rendered = katex.renderToString(tex, {
+                        throwOnError: false,
+                        displayMode: true,
+                    });
+                    result.push({ type: 'formula', content: rendered });
+                } catch {
+                    result.push({ type: 'text', content: part });
+                }
+            } else if (part.startsWith('$') && part.endsWith('$') && part.length > 1) {
+                const tex = part.slice(1, -1);
+                try {
+                    const rendered = katex.renderToString(tex, {
+                        throwOnError: false,
+                        displayMode: false,
+                    });
+                    result.push({ type: 'formula', content: rendered });
+                } catch {
+                    result.push({ type: 'text', content: part });
+                }
+            } else if (part) {
+                // Check for raw LaTeX commands (without $ delimiters)
+                LATEX_CMD_START.lastIndex = 0;
+                const firstMatch = LATEX_CMD_START.exec(part);
+                if (firstMatch) {
+                    LATEX_CMD_START.lastIndex = 0;
+                    let lastIndex = 0;
+                    let match: RegExpExecArray | null;
+                    while ((match = LATEX_CMD_START.exec(part)) !== null) {
+                        // Push text before the match
+                        if (match.index > lastIndex) {
+                            const before = part.slice(lastIndex, match.index);
+                            if (before) result.push({ type: 'text', content: before });
+                        }
+                        // Extract full expression from the start of this command
+                        const exprEnd = extractLatexExpression(part, match.index);
+                        const fullExpr = part.slice(match.index, exprEnd);
+                        renderLatexSegment(fullExpr);
+                        lastIndex = exprEnd;
+                        LATEX_CMD_START.lastIndex = exprEnd;
+                    }
+                    // Push remaining text after last match
+                    if (lastIndex < part.length) {
+                        const remaining = part.slice(lastIndex);
+                        if (remaining) result.push({ type: 'text', content: remaining });
+                    }
+                    LATEX_CMD_START.lastIndex = 0;
+                } else {
+                    result.push({ type: 'text', content: part });
+                }
+            }
+        });
+    }
+
     function processNode(node: Node) {
         if (node.nodeType === Node.TEXT_NODE) {
-            const text = node.textContent?.trim();
-            if (text) {
-                // Split by LaTeX delimiters: $$...$$ or $...$
-                const parts = text.split(/(\$\$[^$]+\$\$|\$[^$]+\$)/g);
-                parts.forEach((part) => {
-                    if (part.startsWith('$$') && part.endsWith('$$')) {
-                        // Block math
-                        const tex = part.slice(2, -2);
-                        try {
-                            const html = katex.renderToString(tex, {
-                                throwOnError: false,
-                                displayMode: true,
-                            });
-                            result.push({ type: 'formula', content: html });
-                        } catch (e) {
-                            result.push({ type: 'text', content: part });
-                        }
-                    } else if (part.startsWith('$') && part.endsWith('$')) {
-                        // Inline math
-                        const tex = part.slice(1, -1);
-                        try {
-                            const html = katex.renderToString(tex, {
-                                throwOnError: false,
-                                displayMode: false,
-                            });
-                            result.push({ type: 'formula', content: html });
-                        } catch (e) {
-                            result.push({ type: 'text', content: part });
-                        }
-                    } else {
-                        if (part) {
-                            result.push({ type: 'text', content: part });
-                        }
-                    }
-                });
+            const text = node.textContent;
+            if (text && text.trim()) {
+                // Collapse internal whitespace but preserve a single leading/trailing space
+                const processed = text.replace(/\s+/g, ' ');
+                processTextWithLatex(processed);
             }
         } else if (node.nodeType === Node.ELEMENT_NODE) {
             const element = node as Element;
@@ -71,6 +165,25 @@ export function processHtmlString(html: string | undefined) {
                 const src = element.getAttribute('src');
                 if (src) {
                     result.push({ type: 'image', content: src });
+                }
+            }
+            // Handle math-inline/math-display spans with data-latex attribute
+            // (content inside is entity-encoded, so re-render from data-latex)
+            else if (element.getAttribute('data-latex')) {
+                const latexStr = element.getAttribute('data-latex')!;
+                const isDisplay =
+                    element.classList.contains('math-display');
+                try {
+                    const rendered = katex.renderToString(latexStr, {
+                        throwOnError: false,
+                        displayMode: isDisplay,
+                    });
+                    result.push({ type: 'formula', content: rendered });
+                } catch {
+                    result.push({
+                        type: 'formula',
+                        content: element.outerHTML,
+                    });
                 }
             }
             // Handle KaTeX/math formula spans
@@ -84,10 +197,35 @@ export function processHtmlString(html: string | undefined) {
                     content: element.outerHTML,
                 });
             }
+            // Handle <br> as a line break
+            else if (element.tagName === 'BR') {
+                result.push({ type: 'text', content: '<br/>' });
+            }
             // Process children recursively for other elements
             else {
+                const isBlock = [
+                    'P',
+                    'DIV',
+                    'LI',
+                    'H1',
+                    'H2',
+                    'H3',
+                    'H4',
+                    'H5',
+                    'H6',
+                    'BLOCKQUOTE',
+                    'OL',
+                    'UL',
+                    'TR',
+                ].includes(element.tagName);
+
                 for (const child of Array.from(element.childNodes)) {
                     processNode(child);
+                }
+
+                // Add a line break after block-level elements
+                if (isBlock) {
+                    result.push({ type: 'text', content: '<br/>' });
                 }
             }
         }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,7 +16,42 @@ import { getUserId } from "@/constants/getUserId";
 import { MyInput } from "@/components/design-system/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
-// import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import "katex/dist/katex.min.css";
+import katex from "katex";
+
+/** Renders HTML content with KaTeX math support (handles data-latex spans) */
+const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: string }) => {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    // Re-render math-inline/math-display spans with data-latex attributes
+    const mathSpans = ref.current.querySelectorAll(
+      "span.math-inline[data-latex], span.math-display[data-latex], div.math-display[data-latex], span[data-latex], div[data-latex]"
+    );
+    mathSpans.forEach((span) => {
+      const latex = span.getAttribute("data-latex");
+      if (!latex) return;
+      const isDisplay = span.classList.contains("math-display");
+      try {
+        katex.render(latex, span as HTMLElement, {
+          throwOnError: false,
+          displayMode: isDisplay,
+        });
+      } catch {
+        // Keep original content on failure
+      }
+    });
+  }, [html]);
+
+  return (
+    <div
+      ref={ref}
+      className={className}
+      dangerouslySetInnerHTML={{ __html: html || "" }}
+    />
+  );
+};
 
 interface QuestionResponseMap {
   [key: string]: {
@@ -37,10 +72,13 @@ interface Question {
   text_data: {
     content: string;
   };
-  question_type: string;
+  question_type?: string;
+  question_order?: number;
   options?: Option[];
-  re_attempt_count: number;
+  re_attempt_count?: number;
   options_json?: string;
+  status?: string;
+  new_question?: boolean;
 }
 
 interface AssignmentSlideProps {
@@ -278,210 +316,107 @@ const AssignmentSlide = ({
     submitAssignmentMutation.mutate();
   };
 
+  // Render MCQ options (shared for MCQS, MCQM, TRUE_FALSE)
+  const renderOptions = (question: Question, isMultiSelect: boolean) => {
+    const currentResponse = questionResponses[question.id]?.value || "";
+    const qType = question.question_type || "";
+
+    if (!question.options?.length) return null;
+
+    return (
+      <div className="space-y-4">
+        {question.options.map((option, optIndex) => {
+          const isSelected = isMultiSelect
+            ? Array.isArray(currentResponse) && currentResponse.includes(option.id)
+            : typeof currentResponse === "string" && currentResponse === option.id;
+
+          return (
+            <div
+              key={option.id}
+              className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full cursor-pointer ${
+                isSelected ? "border-primary-500 bg-primary-50" : "border-gray-200"
+              }`}
+              onClick={() => {
+                if (isMultiSelect) {
+                  const currentValues = Array.isArray(currentResponse) ? currentResponse : [];
+                  const newValues = currentValues.includes(option.id)
+                    ? currentValues.filter((id) => id !== option.id)
+                    : [...currentValues, option.id];
+                  handleResponseChange(question.id, newValues, qType);
+                } else {
+                  handleResponseChange(question.id, option.id, qType);
+                }
+              }}
+            >
+              <div className="relative flex items-center">
+                <div
+                  className={`w-6 h-6 border rounded-md flex items-center justify-center ${
+                    isSelected ? "bg-green-500 border-green-500" : "border-gray-300"
+                  }`}
+                >
+                  {isSelected && <span className="text-white font-bold">✔</span>}
+                </div>
+              </div>
+              <label className={`flex-grow text-sm ${isSelected ? "font-semibold" : "text-gray-700"}`}>
+                {qType === "TRUE_FALSE" ? (
+                  <HtmlWithKatex html={option.text.content} className="inline" />
+                ) : (
+                  <>
+                    {String.fromCharCode(65 + optIndex)}.{" "}
+                    <HtmlWithKatex html={option.text.content} className="inline" />
+                  </>
+                )}
+              </label>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   // Render question based on type
   const renderQuestion = (question: Question, index: number) => {
     if (!question.text_data?.content) return null;
 
     const currentResponse = questionResponses[question.id]?.value || "";
+    const qType = question.question_type || "";
 
     return (
       <div className="mb-6">
         <div className="flex justify-between items-start mb-4">
-          <h3 className="text-md font-medium">
-            {index + 1}. {question.text_data.content}
+          <h3 className="text-md font-medium flex gap-1">
+            <span className="min-w-fit">{index + 1}.</span>
+            <HtmlWithKatex html={question.text_data.content} />
           </h3>
-          <div className="text-sm text-gray-500">
-            <div>Type: {getQuestionTypeDisplay(question.question_type)}</div>
-            <div>Attempts: {question.re_attempt_count || "Unlimited"}</div>
-          </div>
+          {qType && (
+            <div className="text-sm text-gray-500 min-w-fit ml-4">
+              <div>Type: {getQuestionTypeDisplay(qType)}</div>
+              {question.re_attempt_count != null && (
+                <div>Attempts: {question.re_attempt_count || "Unlimited"}</div>
+              )}
+            </div>
+          )}
         </div>
 
         {(() => {
-          switch (question.question_type) {
+          switch (qType) {
             case "MCQS":
-              return (
-                <div className="space-y-4">
-                  {question.options?.map((option, optIndex) => (
-                    <div
-                      key={option.id}
-                      className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full ${
-                        Array.isArray(currentResponse) &&
-                        currentResponse.includes(option.id)
-                          ? "border-primary-500 bg-primary-50"
-                          : "border-gray-200"
-                      }`}
-                      onClick={() => {
-                        const currentValues = Array.isArray(currentResponse)
-                          ? currentResponse
-                          : [];
-                        const newValues = currentValues.includes(option.id)
-                          ? currentValues.filter((id) => id !== option.id)
-                          : [...currentValues, option.id];
-                        handleResponseChange(
-                          question.id,
-                          newValues,
-                          question.question_type
-                        );
-                      }}
-                    >
-                      <div className="relative flex items-center">
-                        <div
-                          className={`w-6 h-6 border rounded-md flex items-center justify-center ${
-                            Array.isArray(currentResponse) &&
-                            currentResponse.includes(option.id)
-                              ? "bg-green-500 border-green-500"
-                              : "border-gray-300"
-                          }`}
-                        >
-                          {Array.isArray(currentResponse) &&
-                            currentResponse.includes(option.id) && (
-                              <span className="text-white font-bold">✔</span>
-                            )}
-                        </div>
-                      </div>
+              return renderOptions(question, false);
 
-                      <label
-                        className={`flex-grow text-sm ${
-                          Array.isArray(currentResponse) &&
-                          currentResponse.includes(option.id)
-                            ? "font-semibold"
-                            : "text-gray-700"
-                        }`}
-                      >
-                        {String.fromCharCode(65 + optIndex)}.{" "}
-                        {option.text.content}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              );
             case "TRUE_FALSE":
-              return (
-                <div className="space-y-4">
-                  {question.options?.map((option, optIndex) => (
-                    <div
-                      key={option.id}
-                      className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full ${
-                        typeof currentResponse === "string" &&
-                        currentResponse === option.id
-                          ? "border-primary-500 bg-primary-50"
-                          : "border-gray-200"
-                      }`}
-                      onClick={() =>
-                        handleResponseChange(
-                          question.id,
-                          option.id,
-                          question.question_type
-                        )
-                      }
-                    >
-                      <div className="relative flex items-center">
-                        <div
-                          className={`w-6 h-6 border rounded-md flex items-center justify-center ${
-                            typeof currentResponse === "string" &&
-                            currentResponse === option.id
-                              ? "bg-green-500 border-green-500"
-                              : "border-gray-300"
-                          }`}
-                        >
-                          {typeof currentResponse === "string" &&
-                            currentResponse === option.id && (
-                              <span className="text-white font-bold">✔</span>
-                            )}
-                        </div>
-                      </div>
-
-                      <label
-                        className={`flex-grow text-sm ${
-                          typeof currentResponse === "string" &&
-                          currentResponse === option.id
-                            ? "font-semibold"
-                            : "text-gray-700"
-                        }`}
-                      >
-                        {question.question_type === "TRUE_FALSE"
-                          ? option.text.content
-                          : `${String.fromCharCode(65 + optIndex)}. ${
-                              option.text.content
-                            }`}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              );
+              return renderOptions(question, false);
 
             case "MCQM":
-              return (
-                <div className="space-y-4">
-                  {question.options?.map((option, optIndex) => (
-                    <div
-                      key={option.id}
-                      className={`flex flex-row-reverse items-center justify-between rounded-lg border p-4 w-full ${
-                        Array.isArray(currentResponse) &&
-                        currentResponse.includes(option.id)
-                          ? "border-primary-500 bg-primary-50"
-                          : "border-gray-200"
-                      }`}
-                      onClick={() => {
-                        const currentValues = Array.isArray(currentResponse)
-                          ? currentResponse
-                          : [];
-                        const newValues = currentValues.includes(option.id)
-                          ? currentValues.filter((id) => id !== option.id)
-                          : [...currentValues, option.id];
-                        handleResponseChange(
-                          question.id,
-                          newValues,
-                          question.question_type
-                        );
-                      }}
-                    >
-                      <div className="relative flex items-center">
-                        <div
-                          className={`w-6 h-6 border rounded-md flex items-center justify-center ${
-                            Array.isArray(currentResponse) &&
-                            currentResponse.includes(option.id)
-                              ? "bg-green-500 border-green-500"
-                              : "border-gray-300"
-                          }`}
-                        >
-                          {Array.isArray(currentResponse) &&
-                            currentResponse.includes(option.id) && (
-                              <span className="text-white font-bold">✔</span>
-                            )}
-                        </div>
-                      </div>
-
-                      <label
-                        className={`flex-grow text-sm ${
-                          Array.isArray(currentResponse) &&
-                          currentResponse.includes(option.id)
-                            ? "font-semibold"
-                            : "text-gray-700"
-                        }`}
-                      >
-                        {String.fromCharCode(65 + optIndex)}.{" "}
-                        {option.text.content}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              );
+              return renderOptions(question, true);
 
             case "ONE_WORD":
               return (
                 <div className="w-full max-w-md">
                   <MyInput
                     inputType="text"
-                    input={
-                      typeof currentResponse === "string" ? currentResponse : ""
-                    }
+                    input={typeof currentResponse === "string" ? currentResponse : ""}
                     onChangeFunction={(e) =>
-                      handleResponseChange(
-                        question.id,
-                        e.target.value,
-                        question.question_type
-                      )
+                      handleResponseChange(question.id, e.target.value, qType)
                     }
                     inputPlaceholder="Type your one-word answer"
                     className="text-xl py-4 font-medium w-full"
@@ -496,15 +431,9 @@ const AssignmentSlide = ({
               return (
                 <div className="w-full">
                   <Textarea
-                    value={
-                      typeof currentResponse === "string" ? currentResponse : ""
-                    }
+                    value={typeof currentResponse === "string" ? currentResponse : ""}
                     onChange={(e) =>
-                      handleResponseChange(
-                        question.id,
-                        e.target.value,
-                        question.question_type
-                      )
+                      handleResponseChange(question.id, e.target.value, qType)
                     }
                     placeholder="Type your answer..."
                     className="min-h-[200px] text-base"
@@ -526,9 +455,7 @@ const AssignmentSlide = ({
                         handleNumericChange(question.id, e.target.value)
                       }
                       inputPlaceholder={
-                        isDecimal
-                          ? "Enter decimal value"
-                          : "Enter integer value"
+                        isDecimal ? "Enter decimal value" : "Enter integer value"
                       }
                       inputMode="numeric"
                       className="text-xl py-4 font-medium w-full max-w-md"
@@ -546,9 +473,7 @@ const AssignmentSlide = ({
                             key={num}
                             variant="outline"
                             className="h-14 text-xl font-medium"
-                            onClick={() =>
-                              handleKeyPress(question.id, num.toString())
-                            }
+                            onClick={() => handleKeyPress(question.id, num.toString())}
                           >
                             {num}
                           </Button>
@@ -565,9 +490,7 @@ const AssignmentSlide = ({
                             variant="outline"
                             className="h-14 text-xl font-medium"
                             onClick={() => handleKeyPress(question.id, ".")}
-                            disabled={numericValuesMap[question.id]?.includes(
-                              "."
-                            )}
+                            disabled={numericValuesMap[question.id]?.includes(".")}
                           >
                             .
                           </Button>
@@ -575,14 +498,11 @@ const AssignmentSlide = ({
                         <Button
                           variant="outline"
                           className="h-14 text-xl font-medium"
-                          onClick={() =>
-                            handleKeyPress(question.id, "backspace")
-                          }
+                          onClick={() => handleKeyPress(question.id, "backspace")}
                         >
                           ←
                         </Button>
                       </div>
-
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         <Button
                           variant="outline"
@@ -598,11 +518,9 @@ const AssignmentSlide = ({
               );
 
             default:
-              return (
-                <p className="text-sm text-gray-500">
-                  Question type not supported: {question.question_type}
-                </p>
-              );
+              // No question_type — display as read-only text question
+              // (student answers via file upload)
+              return null;
           }
         })()}
       </div>
@@ -614,7 +532,7 @@ const AssignmentSlide = ({
       <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
         <CardHeader className="space-y-2">
           <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
-            {assignmentData.text_data?.content || activeItem?.title}
+            <HtmlWithKatex html={assignmentData.text_data?.content || activeItem?.title || ""} />
           </CardTitle>
           <CardDescription className="text-sm sm:text-base text-gray-600">
             <div className="flex flex-col space-y-1 mt-2">
@@ -635,13 +553,10 @@ const AssignmentSlide = ({
         </CardHeader>
         <CardContent>
           {assignmentData.parent_rich_text?.content && (
-            <div className="prose max-w-none text-gray-700 text-sm sm:text-base">
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: assignmentData.parent_rich_text.content,
-                }}
-              />
-            </div>
+            <HtmlWithKatex
+              html={assignmentData.parent_rich_text.content}
+              className="prose max-w-none text-gray-700 text-sm sm:text-base"
+            />
           )}
         </CardContent>
       </Card>

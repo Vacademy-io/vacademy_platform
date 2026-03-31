@@ -442,12 +442,12 @@ export const convertToAssignmentSlideBackendFormat = (assignmentSlide: Assignmen
     return {
         id: assignmentSlide.id,
         parent_rich_text: {
-            id: '',
+            id: assignmentSlide.parentRichTextId || '',
             type: 'RICH_TEXT',
             content: assignmentSlide.taskDescription,
         },
         text_data: {
-            id: '',
+            id: assignmentSlide.textDataId || '',
             type: 'TEXT',
             content: assignmentSlide.task,
         },
@@ -467,6 +467,14 @@ export const convertToAssignmentSlideBackendFormat = (assignmentSlide: Assignmen
                 status: 'ACTIVE',
                 question_type: question.questionType,
                 new_question: question.newQuestion,
+                ...(question.options?.length
+                    ? {
+                          options: question.options.map((opt) => ({
+                              id: opt.id,
+                              text: { content: opt.text.content },
+                          })),
+                      }
+                    : {}),
             };
         }),
     };
@@ -714,6 +722,8 @@ const transformAssignmentSlide = (assignment: AssignmentSlide) => {
         id: assignment?.id,
         task: parseHtmlToString(assignment?.text_data?.content || ''),
         taskDescription: assignment?.parent_rich_text?.content || '',
+        parentRichTextId: assignment?.parent_rich_text?.id || '',
+        textDataId: assignment?.text_data?.id || '',
         startDate: convertDateFormat(assignment?.live_date || ''),
         endDate: convertDateFormat(assignment?.end_date || ''),
         reattemptCount: String(assignment?.re_attempt_count || 0),
@@ -725,6 +735,10 @@ const transformAssignmentSlide = (assignment: AssignmentSlide) => {
                     questionName: question?.text_data?.content || '',
                     questionType: question?.question_type || '',
                     newQuestion: question?.new_question || false,
+                    options: question?.options?.map((opt: { id: string; text: { content: string } }) => ({
+                        id: opt.id || '',
+                        text: { content: opt.text?.content || '' },
+                    })),
                 };
             }) || [],
         totalParticipants: 0,

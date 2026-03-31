@@ -123,6 +123,10 @@ export interface AssignmentQuestion {
     status: string;
     new_question: boolean;
     question_type: string;
+    options?: {
+        id: string;
+        text: { content: string };
+    }[];
 }
 
 // Quiz slide interface

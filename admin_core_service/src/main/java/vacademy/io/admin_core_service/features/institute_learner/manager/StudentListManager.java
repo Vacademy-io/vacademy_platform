@@ -85,6 +85,9 @@ public class StudentListManager {
      * - For PS without invite access: shows all learners
      */
     private void applyFacultyAccessFilter(CustomUserDetails user, StudentListFilter filter) {
+        // Handle user-selected invite filter (works for ALL users, not just faculty)
+        applyUserInviteFilter(filter);
+
         if (user == null || !hasFacultyAssignedPermission(user)) {
             return;
         }
@@ -156,17 +159,24 @@ public class StudentListManager {
                 filter.setServerEnrollInviteIds(effectiveInviteIds);
                 filter.setEnrollInvitePackageSessionIds(enrollInvitePsIds);
             }
-        } else if (filter.getEnrollInviteIds() != null && !filter.getEnrollInviteIds().isEmpty()) {
-            // Non-faculty user with explicit invite filter — use directly
-            List<String> invitePsIds = pslipoRepository.findPackageSessionIdsByEnrollInviteIds(filter.getEnrollInviteIds());
-            Set<String> effectiveSet = new HashSet<>(effectivePsIds);
-            List<String> enrollInvitePsIds = invitePsIds.stream()
-                    .filter(effectiveSet::contains)
-                    .collect(Collectors.toList());
-            if (!enrollInvitePsIds.isEmpty()) {
-                filter.setServerEnrollInviteIds(filter.getEnrollInviteIds());
-                filter.setEnrollInvitePackageSessionIds(enrollInvitePsIds);
-            }
+        }
+    }
+
+    /**
+     * Handles user-selected enroll_invite_ids filter (works for all users).
+     * If no faculty FSPSSM filtering will happen, this sets serverEnrollInviteIds directly.
+     */
+    private void applyUserInviteFilter(StudentListFilter filter) {
+        List<String> userInviteIds = filter.getEnrollInviteIds();
+        if (userInviteIds == null || userInviteIds.isEmpty()) {
+            return;
+        }
+        // Pre-set serverEnrollInviteIds from user selection.
+        // If applyFacultyAccessFilter runs later, it will intersect/override.
+        List<String> invitePsIds = pslipoRepository.findPackageSessionIdsByEnrollInviteIds(userInviteIds);
+        if (!invitePsIds.isEmpty()) {
+            filter.setServerEnrollInviteIds(userInviteIds);
+            filter.setEnrollInvitePackageSessionIds(invitePsIds);
         }
     }
 

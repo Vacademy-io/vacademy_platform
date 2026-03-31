@@ -112,6 +112,8 @@ export interface AssignmentSlide {
     live_date: string; // ISO 8601 date format
     end_date: string; // ISO 8601 date format
     re_attempt_count: number;
+    total_marks?: number;
+    passing_marks?: number;
     comma_separated_media_ids: string;
     questions: AssignmentQuestion[];
 }

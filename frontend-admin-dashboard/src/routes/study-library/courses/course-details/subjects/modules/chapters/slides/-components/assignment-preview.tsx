@@ -243,7 +243,7 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                                             inputType="number"
                                             label="Total Marks"
                                             inputPlaceholder="e.g. 100"
-                                            input={value ?? ''}
+                                            input={value?.toString() ?? ''}
                                             onChangeFunction={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
                                             required={false}
                                             size="large"
@@ -271,7 +271,7 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                                             inputType="number"
                                             label="Passing Marks (optional)"
                                             inputPlaceholder="e.g. 40"
-                                            input={value ?? ''}
+                                            input={value?.toString() ?? ''}
                                             onChangeFunction={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
                                             required={false}
                                             size="large"

@@ -265,6 +265,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.destination_package_session_id AS "destinationPackageSessionId",
           ssigm.user_plan_id AS "userPlanId",
           up.enroll_invite_id AS "enrollInviteId",
+          ei.name AS "enrollInviteName",
           ssigm.sub_org_id AS "subOrgId",
           sub_org.name AS "subOrgName",
           ssigm.comma_separated_org_roles AS "commaSeparatedOrgRoles"
@@ -289,6 +290,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ORDER BY pl.date DESC NULLS LAST
           LIMIT 1
       ) last_pl ON TRUE
+      LEFT JOIN enroll_invite ei
+          ON ei.id = up.enroll_invite_id
       LEFT JOIN institutes sub_org
           ON sub_org.id = ssigm.sub_org_id
       WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
@@ -324,7 +327,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                s.parents_to_mother_email, ssigm.institute_enrollment_number,
-               ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id,
+               ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles
       """, countQuery = """
       SELECT COUNT(DISTINCT s.id)
@@ -427,6 +430,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.destination_package_session_id AS "destinationPackageSessionId",
           ssigm.user_plan_id AS "userPlanId",
           up.enroll_invite_id AS "enrollInviteId",
+          ei.name AS "enrollInviteName",
           ssigm.sub_org_id AS "subOrgId",
           sub_org.name AS "subOrgName",
           ssigm.comma_separated_org_roles AS "commaSeparatedOrgRoles"
@@ -451,6 +455,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ORDER BY pl.date DESC NULLS LAST
           LIMIT 1
       ) last_pl ON TRUE
+      LEFT JOIN enroll_invite ei
+          ON ei.id = up.enroll_invite_id
       LEFT JOIN institutes sub_org
           ON sub_org.id = ssigm.sub_org_id
       WHERE (
@@ -491,7 +497,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                s.parents_to_mother_email, ssigm.institute_enrollment_number,
-               ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id,
+               ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles
       """, countQuery = """
       SELECT COUNT(DISTINCT s.id)
@@ -724,6 +730,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.destination_package_session_id AS "destinationPackageSessionId",
           ssigm.user_plan_id AS "userPlanId",
           up.enroll_invite_id AS "enrollInviteId",
+          ei.name AS "enrollInviteName",
           ssigm.desired_level_id AS "desiredLevelId",
           ssigm.sub_org_id AS "subOrgId",
           sub_org.name AS "subOrgName",
@@ -749,6 +756,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ORDER BY pl.date DESC NULLS LAST
           LIMIT 1
       ) last_pl ON TRUE
+      LEFT JOIN enroll_invite ei
+          ON ei.id = up.enroll_invite_id
       LEFT JOIN institutes sub_org
           ON sub_org.id = ssigm.sub_org_id
       WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
@@ -789,7 +798,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                s.parents_to_mother_email, ssigm.institute_enrollment_number,
-               ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id,
+               ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name, ssigm.desired_level_id,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles
       """, countQuery = """
       SELECT COUNT(DISTINCT s.id)
@@ -902,6 +911,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.destination_package_session_id AS "destinationPackageSessionId",
           ssigm.user_plan_id AS "userPlanId",
           up.enroll_invite_id AS "enrollInviteId",
+          ei.name AS "enrollInviteName",
           ssigm.desired_level_id AS "desiredLevelId",
           ssigm.sub_org_id AS "subOrgId",
           sub_org.name AS "subOrgName",
@@ -927,6 +937,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ORDER BY pl.date DESC NULLS LAST
           LIMIT 1
       ) last_pl ON TRUE
+      LEFT JOIN enroll_invite ei
+          ON ei.id = up.enroll_invite_id
       LEFT JOIN institutes sub_org
           ON sub_org.id = ssigm.sub_org_id
       WHERE (
@@ -982,7 +994,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                s.parents_to_mother_email, ssigm.institute_enrollment_number,
-               ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id,
+               ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name, ssigm.desired_level_id,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles
       """, countQuery = """
       SELECT COUNT(DISTINCT s.id)

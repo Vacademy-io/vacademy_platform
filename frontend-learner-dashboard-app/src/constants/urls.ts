@@ -52,11 +52,11 @@ export const ASSESSMENT_SAVE = `${BASE_URL}/assessment-service/assessment/learne
 export const ASSESSMENT_SUBMIT = `${BASE_URL}/assessment-service/assessment/learner/status/submit`;
 export const RESTART_ASSESSMENT = `${BASE_URL}/assessment-service/assessment/learner/status/restart`;
 // Learner-scoped report endpoints (properly authorized)
-export const STUDENT_REPORT_URL = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/list`;
-export const STUDENT_REPORT_DETAIL_URL = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/detail`;
-export const LEARNER_REPORT_COMPARISON_URL = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/comparison`;
-export const LEARNER_OPTION_DISTRIBUTION_URL = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/option-distribution`;
-export const LEARNER_REPORT_LEADERBOARD_URL = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/leaderboard`;
+export const STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/learner/report/list`;
+export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/assessment/learner/report/detail`;
+export const LEARNER_REPORT_COMPARISON_URL = `${BASE_URL}/assessment-service/assessment/learner/report/comparison`;
+export const LEARNER_OPTION_DISTRIBUTION_URL = `${BASE_URL}/assessment-service/assessment/learner/report/option-distribution`;
+export const LEARNER_REPORT_LEADERBOARD_URL = `${BASE_URL}/assessment-service/assessment/learner/report/leaderboard`;
 export const SURVEY_STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/survey/student-report`;
 export const GET_ASSESSMENT_DETAILS = `${BASE_URL}/assessment-service/assessment/create/v1/status`;
 export const GET_ASSESSMENT_MARKS = `${BASE_URL}/assessment-service/assessment/admin/init/total-marks`;
@@ -75,7 +75,7 @@ const ENROLL_API_BASE =
 export const ENROLL_USER_INVITE_PAYMENT_URL = `${ENROLL_API_BASE}/admin-core-service/v1/learner/enroll`;
 export const ENROLL_DETAILS_RESPONSE = `${BASE_URL}/admin-core-service/learner-invitation-response/record`;
 export const STUDENT_DETAIL_EDIT = `${BASE_URL}/admin-core-service/learner/info/v1/edit`;
-export const EXPORT_ASSESSMENT_REPORT = `${"http://localhost:8074"}/assessment-service/assessment/learner/report/pdf`;
+export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/pdf`;
 export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessment/learner/manual-status/submit`;
 
 export const ADD_UPDATE_VIDEO_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-video-activity`;

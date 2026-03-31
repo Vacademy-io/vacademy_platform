@@ -15,7 +15,7 @@ import { GET_LEVELS_BY_INSTITUTE } from '@/constants/urls';
 
 const ITEMS_PER_PAGE = 20;
 
-export const StudentCourses = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
+export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmissionTab?: boolean; packageSessionId?: string }) => {
     const { selectedStudent } = useStudentSidebar();
     const instituteId = getInstituteId();
     const userId = isSubmissionTab ? selectedStudent?.id || '' : selectedStudent?.user_id || '';
@@ -29,6 +29,7 @@ export const StudentCourses = ({ isSubmissionTab }: { isSubmissionTab?: boolean 
     const [pastPage, setPastPage] = useState(0);
 
     const levelIds = selectedLevelId ? [selectedLevelId] : [];
+    const packageSessionIds = packageSessionId ? [packageSessionId] : [];
 
     const {
         data: progressCourses,
@@ -40,6 +41,7 @@ export const StudentCourses = ({ isSubmissionTab }: { isSubmissionTab?: boolean 
         page: progressPage,
         size: ITEMS_PER_PAGE,
         levelIds,
+        packageSessionIds,
     });
 
     const {
@@ -52,6 +54,7 @@ export const StudentCourses = ({ isSubmissionTab }: { isSubmissionTab?: boolean 
         page: completedPage,
         size: ITEMS_PER_PAGE,
         levelIds,
+        packageSessionIds,
     });
 
     const {
@@ -64,6 +67,7 @@ export const StudentCourses = ({ isSubmissionTab }: { isSubmissionTab?: boolean 
         page: pastPage,
         size: ITEMS_PER_PAGE,
         levelIds,
+        packageSessionIds,
     });
 
     const { data: availableLevels = [] } = useQuery<{ id: string; level_name: string }[]>({

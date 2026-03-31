@@ -26,6 +26,7 @@ import { getPublicUrl } from '@/services/upload_file';
 import { ErrorBoundary } from '@/components/core/dashboard-loader';
 import { useStudentSidebar } from '../../../-context/selected-student-sidebar-context';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { cn } from '@/lib/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { isUserAdmin } from '@/utils/userDetails';
 import {
@@ -43,6 +44,7 @@ export const StudentSidebar = ({
     enquiryId,
     applicantId,
     className,
+    packageSessionId,
 }: {
     selectedTab?: string;
     examType?: string;
@@ -52,6 +54,7 @@ export const StudentSidebar = ({
     enquiryId?: string;
     applicantId?: string;
     className?: string;
+    packageSessionId?: string;
 }) => {
     const { state } = useSidebar();
     const [category, setCategory] = useState('overview');
@@ -167,7 +170,7 @@ export const StudentSidebar = ({
     }, [category]);
 
     return (
-        <Sidebar side="right" className={className}>
+        <Sidebar side="right" className={cn('top-14 md:top-[72px]', className)}>
             <SidebarContent
                 className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
             >
@@ -581,7 +584,7 @@ export const StudentSidebar = ({
                     </div>
                     <ErrorBoundary>
                         {category === 'courses' && tabSettings?.coursesTab && (
-                            <StudentCourses isSubmissionTab={isSubmissionTab} />
+                            <StudentCourses isSubmissionTab={isSubmissionTab} packageSessionId={packageSessionId} />
                         )}
                         {category === 'overview' && tabSettings?.overviewTab && (
                             <StudentOverview isSubmissionTab={isSubmissionTab} />

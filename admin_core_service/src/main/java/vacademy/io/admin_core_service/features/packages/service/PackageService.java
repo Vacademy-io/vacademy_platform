@@ -208,7 +208,9 @@ public class PackageService {
                     instructors,
                     projection.getLevelIds(),
                     projection.getReadTimeInMinutes(),
-                    projection.getPackageType());
+                    projection.getPackageType(),
+                    projection.getSessionId(),
+                    projection.getSessionName());
         }).toList();
     }
 
@@ -263,7 +265,9 @@ public class PackageService {
                 instructors,
                 projection.getLevelIds(),
                 projection.getReadTimeInMinutes(),
-                projection.getPackageType());
+                projection.getPackageType(),
+                projection.getSessionId(),
+                projection.getSessionName());
 
         return dto;
     }

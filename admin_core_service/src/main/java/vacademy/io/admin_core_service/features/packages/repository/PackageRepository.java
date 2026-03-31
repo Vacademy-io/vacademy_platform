@@ -619,6 +619,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     ), 0.0) AS rating,
                     COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
                     MIN(ps.id) AS packageSessionId,
+                    MIN(ps.session_id) AS sessionId,
+                    MIN(s.session_name) AS sessionName,
                     MIN(l.id) AS levelId,
                     MIN(l.level_name) AS levelName,
                     ARRAY_REMOVE(
@@ -636,6 +638,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
                 JOIN level l ON l.id = ps.level_id
+                LEFT JOIN session s ON s.id = ps.session_id
                 JOIN package_institute pi ON pi.package_id = p.id
                 LEFT JOIN faculty_subject_package_session_mapping fspm
                     ON fspm.package_session_id = ps.id
@@ -797,6 +800,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ), 0.0) AS rating,
 
                 ps.id AS packageSessionId,
+                ps.session_id AS sessionId,
+                s.session_name AS sessionName,
                 CASE
                     WHEN ps.name IS NULL OR ps.name = '' THEN NULL
                     ELSE CONCAT(p.package_name, ' ', ps.name)
@@ -822,6 +827,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
             JOIN level l ON l.id = ps.level_id
+            LEFT JOIN session s ON s.id = ps.session_id
             JOIN package_institute pi ON pi.package_id = p.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
@@ -915,7 +921,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                 p.course_depth, p.course_html_description, p.package_type, p.created_at,
-                ps.id, ps.name, l.id, l.level_name /* 3. Added Grouping by Session */
+                ps.id, ps.name, l.id, l.level_name, s.id, s.session_name /* 3. Added Grouping by Session */
             """,
 
             countQuery = """
@@ -1103,6 +1109,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     ), 0.0) AS rating,
 
                     ps.id AS packageSessionId,
+                    ps.session_id AS sessionId,
+                    s.session_name AS sessionName,
                     CASE
                         WHEN ps.name IS NULL OR ps.name = '' THEN NULL
                         ELSE CONCAT(p.package_name, ' ', ps.name)
@@ -1129,6 +1137,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
                 JOIN level l ON l.id = ps.level_id
+                LEFT JOIN session s ON s.id = ps.session_id
                 JOIN package_institute pi ON pi.package_id = p.id
 
                 LEFT JOIN faculty_subject_package_session_mapping fspm
@@ -1221,7 +1230,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                     p.course_depth, p.course_html_description, p.package_type, p.created_at,
-                    ps.id, ps.name, l.id, l.level_name /* 3. Added Grouping by Session */
+                    ps.id, ps.name, l.id, l.level_name, s.id, s.session_name /* 3. Added Grouping by Session */
             """,
 
             countQuery = """
@@ -1325,6 +1334,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     ), 0.0) AS rating,
                     COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
                     ps.id AS packageSessionId,
+                    ps.session_id AS sessionId,
+                    s.session_name AS sessionName,
                     MIN(l.id) AS levelId,
                     MIN(l.level_name) AS levelName,
                     ARRAY_REMOVE(
@@ -1348,6 +1359,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
                 JOIN level l ON l.id = ps.level_id
+                LEFT JOIN session s ON s.id = ps.session_id
                 JOIN package_institute pi ON pi.package_id = p.id
                 LEFT JOIN faculty_subject_package_session_mapping fspm
                     ON fspm.package_session_id = ps.id
@@ -1433,7 +1445,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                     p.course_depth, p.course_html_description, p.package_type, p.created_at, p.created_by_user_id,
-                    ps_read_time.total_read_time_minutes
+                    ps_read_time.total_read_time_minutes,
+                    s.id, s.session_name
             """, countQuery = """
                 SELECT COUNT(DISTINCT ps.id)
                 FROM package p

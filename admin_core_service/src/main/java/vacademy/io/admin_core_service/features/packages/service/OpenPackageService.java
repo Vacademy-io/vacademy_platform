@@ -191,7 +191,9 @@ public class OpenPackageService {
                                         instructors,
                                         projection.getLevelIds(),
                                         projection.getReadTimeInMinutes(),
-                                        projection.getPackageType());
+                                        projection.getPackageType(),
+                                        projection.getSessionId(),
+                                        projection.getSessionName());
                 }).toList();
         }
 
@@ -247,7 +249,9 @@ public class OpenPackageService {
                                 instructors,
                                 projection.getLevelIds(),
                                 getReadTimeInMinutes(packageId),
-                                projection.getPackageType());
+                                projection.getPackageType(),
+                                projection.getSessionId(),
+                                projection.getSessionName());
 
                 return dto;
         }

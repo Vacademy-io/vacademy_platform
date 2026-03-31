@@ -35,9 +35,12 @@ public class StudentListFilter {
     private LocalDate startDate;
     private LocalDate endDate;
 
-    // Internal fields - auto-injected by server for faculty ENROLL_INVITE filtering (not from frontend)
-    @JsonIgnore
+    // User-facing invite filter (from request body)
     private List<String> enrollInviteIds;
+
+    // Internal fields - auto-injected by server for faculty ENROLL_INVITE filtering
+    @JsonIgnore
+    private List<String> serverEnrollInviteIds;
     @JsonIgnore
     private List<String> enrollInvitePackageSessionIds;
 }

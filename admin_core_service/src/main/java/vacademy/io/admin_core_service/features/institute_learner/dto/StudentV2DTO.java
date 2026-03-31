@@ -47,6 +47,7 @@ public class StudentV2DTO {
     private PaymentOptionDTO paymentOption;
     private String destinationPackageSessionId;
     private String enrollInviteId;
+    private String enrollInviteName;
     private Map<String, String> customFields;
 
     // ---- ADDED FIELDS ----

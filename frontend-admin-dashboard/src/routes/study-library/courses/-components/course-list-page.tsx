@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select';
 import { StarRatingComponent } from '@/components/common/star-rating-component';
 import { MyButton } from '@/components/design-system/button';
-import { TrashSimple, Funnel, X } from '@phosphor-icons/react';
+import { TrashSimple, Funnel, X, Package, ListBullets } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { MyPagination } from '@/components/design-system/pagination';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -31,7 +31,9 @@ import { convertCapitalToTitleCase } from '@/lib/utils';
 import { CourseImageShimmer, InstructorAvatarShimmer } from '@/components/ui/shimmer';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { Switch } from '@/components/ui/switch';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 interface CourseListPageProps {
     selectedFilters: AllCourseFilters;
@@ -94,12 +96,36 @@ const CourseListPage = ({
     const navigate = useNavigate();
     const isMobile = useIsMobile();
     const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const { instituteDetails } = useInstituteDetailsStore();
+
+    const sessions = useMemo(
+        () => instituteDetails?.sessions?.filter((s) => s.status !== 'DELETED') ?? [],
+        [instituteDetails]
+    );
+
+    const isDefaultName = (name?: string | null) =>
+        !name || name.toLowerCase() === 'default';
+
+    const packageView = selectedFilters.package_view;
+
+    // Group courses by package ID when in package view
+    const groupedCourses = useMemo(() => {
+        if (!packageView || !allCourses?.content) return null;
+        const groups = new Map<string, CourseItem[]>();
+        allCourses.content.forEach((course) => {
+            const existing = groups.get(course.id) || [];
+            existing.push(course);
+            groups.set(course.id, existing);
+        });
+        return groups;
+    }, [allCourses, packageView]);
 
     // Count active filters
     const activeFilterCount =
         selectedFilters.level_ids.length +
         selectedFilters.tag.length +
-        selectedFilters.faculty_ids.length;
+        selectedFilters.faculty_ids.length +
+        selectedFilters.session_ids.length;
 
     // Filter sidebar content - reused between mobile sheet and desktop sidebar
     const FilterContent = () => (
@@ -126,7 +152,34 @@ const CourseListPage = ({
                     </div>
                 )}
             </div>
-            <div className="mb-1 text-sm font-semibold">
+            {/* Academic Session Filter — at top, only if >1 session */}
+            {sessions.length > 1 && (
+                <>
+                    <div className="mb-1 text-sm font-semibold">Academic Session</div>
+                    <Select
+                        value={selectedFilters.session_ids[0] ?? 'all'}
+                        onValueChange={(val) =>
+                            setSelectedFilters((prev) => ({
+                                ...prev,
+                                session_ids: val === 'all' ? [] : [val],
+                            }))
+                        }
+                    >
+                        <SelectTrigger className="w-full">
+                            <SelectValue placeholder="All Sessions" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Sessions</SelectItem>
+                            {sessions.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                    {s.session_name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </>
+            )}
+            <div className={`${sessions.length > 1 ? 'mt-4' : ''} mb-1 text-sm font-semibold`}>
                 {getTerminology(ContentTerms.Level, SystemTerms.Level)}s
             </div>
             <div className="flex flex-col gap-2">
@@ -304,263 +357,257 @@ const CourseListPage = ({
                                 </button>
                             )}
                         </div>
-                        {/* Sort By */}
-                        <div className="flex items-center justify-between gap-2 sm:min-w-[180px] sm:justify-end">
-                            <span className="text-sm font-medium text-neutral-600">Sort by</span>
-                            <Select value={sortBy} onValueChange={setSortBy}>
-                                <SelectTrigger className="w-[110px]">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="oldest">Oldest</SelectItem>
-                                    <SelectItem value="newest">Newest</SelectItem>
-                                </SelectContent>
-                            </Select>
+                        {/* View Toggle + Sort By */}
+                        <div className="flex items-center justify-between gap-4 sm:justify-end">
+                            <div className="flex items-center gap-1">
+                                <ListBullets
+                                    size={20}
+                                    weight={!packageView ? 'bold' : 'regular'}
+                                    className={`cursor-pointer rounded p-0.5 transition-colors ${!packageView ? 'text-primary-600 bg-primary-50' : 'text-neutral-400 hover:text-neutral-600'}`}
+                                    onClick={() => setSelectedFilters((prev) => ({ ...prev, package_view: false }))}
+                                />
+                                <Switch
+                                    checked={packageView}
+                                    onCheckedChange={(checked) =>
+                                        setSelectedFilters((prev) => ({
+                                            ...prev,
+                                            package_view: checked,
+                                        }))
+                                    }
+                                />
+                                <Package
+                                    size={20}
+                                    weight={packageView ? 'bold' : 'regular'}
+                                    className={`cursor-pointer rounded p-0.5 transition-colors ${packageView ? 'text-primary-600 bg-primary-50' : 'text-neutral-400 hover:text-neutral-600'}`}
+                                    onClick={() => setSelectedFilters((prev) => ({ ...prev, package_view: true }))}
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-neutral-600">
+                                    Sort by
+                                </span>
+                                <Select value={sortBy} onValueChange={setSortBy}>
+                                    <SelectTrigger className="w-[110px]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="oldest">Oldest</SelectItem>
+                                        <SelectItem value="newest">Newest</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                     </div>
 
                     {/* Course Grid - Responsive columns */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
-                        {Array.isArray(allCourses?.content) &&
-                            (allCourses?.content?.length ?? 0) > 0 ? (
-                            allCourses?.content?.map((course: CourseItem) => {
+                        {packageView && groupedCourses && groupedCourses.size > 0 ? (
+                            Array.from(groupedCourses.entries()).map(([packageId, courseRows]) => {
+                                const course = courseRows[0]!;
                                 const instructors: CourseInstructor[] = course.instructors || [];
                                 const tags: string[] = course.comma_separeted_tags
-                                    ? course.comma_separeted_tags
-                                        .split(',')
-                                        .map((t: string) => t.trim())
+                                    ? course.comma_separeted_tags.split(',').map((t: string) => t.trim())
                                     : [];
-                                const displayName = course.package_session_name
-                                    ? `${convertCapitalToTitleCase(
-                                          course.package_name
-                                      )} ${convertCapitalToTitleCase(
-                                          course.package_session_name
-                                      )}`
-                                    : convertCapitalToTitleCase(course.package_name);
+                                const displayName = convertCapitalToTitleCase(course.package_name);
+
+                                // Collect unique non-default level names
+                                const levelNames = [...new Set(
+                                    courseRows.map((r) => r.level_name).filter((n): n is string => !isDefaultName(n))
+                                )];
+                                // Collect unique non-default session names
+                                const sessionNames = [...new Set(
+                                    courseRows.map((r) => r.session_name).filter((n): n is string => !isDefaultName(n))
+                                )];
 
                                 return (
                                     <div
-                                        key={course.id}
-                                        className={`animate-fade-in group relative flex h-fit flex-col rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-transform duration-500 hover:scale-[1.02] hover:shadow-md sm:hover:scale-[1.025]`}
+                                        key={packageId}
+                                        className="animate-fade-in group relative flex h-fit cursor-pointer flex-col rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-transform duration-500 hover:scale-[1.02] hover:shadow-md sm:hover:scale-[1.025]"
+                                        onClick={() => navigate({ to: '/study-library/courses/course-details', search: { courseId: packageId } })}
                                     >
-                                        {/* Course Banner Image */}
                                         {isLoadingImages ? (
                                             <CourseImageShimmer />
                                         ) : courseImageUrls[course.id] ? (
                                             <div className="flex size-full w-full items-center justify-center overflow-hidden rounded-lg px-2 pb-0 pt-2 sm:px-3 sm:pt-4">
-                                                <img
-                                                    src={
-                                                        courseImageUrls[course.id] ||
-                                                        course.thumbnail_file_id ||
-                                                        'https://images.pexels.com/photos/31530661/pexels-photo-31530661.jpeg'
-                                                    }
-                                                    alt={course.package_name}
-                                                    className="rounded-lg bg-white object-cover p-1 transition-transform duration-300 group-hover:scale-105 sm:p-2"
-                                                />
+                                                <img src={courseImageUrls[course.id] || course.thumbnail_file_id} alt={course.package_name} className="rounded-lg bg-white object-cover p-1 transition-transform duration-300 group-hover:scale-105 sm:p-2" />
+                                            </div>
+                                        ) : null}
+                                        <div className="flex flex-col gap-1 p-3 sm:p-4">
+                                            <div className="min-w-0 text-base font-extrabold text-neutral-800 sm:text-lg">
+                                                {displayName}
+                                            </div>
+                                            {/* Level & Session badges */}
+                                            {(levelNames.length > 0 || sessionNames.length > 0) && (
+                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                    {levelNames.map((name) => (
+                                                        <span key={name} className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                                                            {convertCapitalToTitleCase(name)}
+                                                        </span>
+                                                    ))}
+                                                    {sessionNames.map((name) => (
+                                                        <span key={name} className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+                                                            {name}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <div className={
+                                                (course.course_html_description_html || '').replace(/<[^>]*>/g, '').slice(0, 120).length > 0
+                                                    ? 'mt-1 line-clamp-2 text-xs text-neutral-600 sm:mt-2 sm:text-sm'
+                                                    : 'text-xs text-neutral-600 sm:text-sm'
+                                            }>
+                                                {(course.course_html_description_html || '').replace(/<[^>]*>/g, '').slice(0, 120)}
+                                            </div>
+                                            {instructors.length > 0 && (
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    {instructors.map((inst) =>
+                                                        isLoadingImages ? <InstructorAvatarShimmer key={inst.id} /> : (
+                                                            <img key={inst.id} src={instructorProfilePicUrls[inst.id] || 'https://randomuser.me/api/portraits/lego/1.jpg'} alt={inst.full_name} className="-ml-2 size-6 rounded-full border border-neutral-200 object-cover first:ml-0 sm:size-7" />
+                                                        )
+                                                    )}
+                                                    <span className="ml-1 truncate text-xs text-neutral-600 sm:ml-2">
+                                                        {instructors.map((inst) => inst.full_name).join(', ')}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {tags.length > 0 && (
+                                                <div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto">
+                                                    {tags.map((tag) => (
+                                                        <span key={tag} className="flex-shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{tag}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <div className="my-2 -mb-2 flex items-center gap-2">
+                                                <StarRatingComponent score={course.rating * 20} maxScore={100} />
+                                                <span className="text-neutral-500">{(course.rating || 0).toFixed(1)}</span>
+                                            </div>
+                                            <span className="-mb-3 mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
+                                                {course.is_course_published_to_catalaouge ? (<><Eye className="size-4" /> In Catalog</>) : (<><EyeSlash className="size-4" /> Private</>)}
+                                            </span>
+                                            <div className="mt-3 flex gap-2 sm:mt-4">
+                                                <MyButton className="flex-1 text-sm" buttonType="primary" onClick={(e) => { e.stopPropagation(); navigate({ to: '/study-library/courses/course-details', search: { courseId: packageId } }); }}>
+                                                    View {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                                                </MyButton>
+                                                {showDeleteButton && (
+                                                    <div onClick={(e) => e.stopPropagation()}>
+                                                        <AlertDialog open={deletingCourseId === course.id || undefined} onOpenChange={() => {}}>
+                                                            <AlertDialogTrigger className="flex size-9 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-500 transition-colors hover:border-red-300 hover:bg-red-100 active:scale-95">
+                                                                <TrashSimple size={18} />
+                                                            </AlertDialogTrigger>
+                                                            <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md">
+                                                                <AlertDialogHeader>
+                                                                    <AlertDialogTitle>Are you sure you want to delete this course?</AlertDialogTitle>
+                                                                    <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                                                                </AlertDialogHeader>
+                                                                <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+                                                                    <AlertDialogCancel disabled={deletingCourseId === course.id} className="w-full sm:w-auto">Cancel</AlertDialogCancel>
+                                                                    <AlertDialogAction onClick={() => handleCourseDelete(course.id)} disabled={deletingCourseId === course.id} className="w-full bg-primary-500 text-white sm:w-auto">
+                                                                        {deletingCourseId === course.id ? 'Deleting...' : 'Confirm'}
+                                                                    </AlertDialogAction>
+                                                                </AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                        </AlertDialog>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        ) : Array.isArray(allCourses?.content) && (allCourses?.content?.length ?? 0) > 0 ? (
+                            allCourses?.content?.map((course: CourseItem) => {
+                                const instructors: CourseInstructor[] = course.instructors || [];
+                                const tags: string[] = course.comma_separeted_tags
+                                    ? course.comma_separeted_tags.split(',').map((t: string) => t.trim())
+                                    : [];
+                                const displayName = course.package_session_name
+                                    ? `${convertCapitalToTitleCase(course.package_name)} ${convertCapitalToTitleCase(course.package_session_name)}`
+                                    : convertCapitalToTitleCase(course.package_name);
+
+                                return (
+                                    <div
+                                        key={`${course.id}-${course.package_session_id}`}
+                                        className="animate-fade-in group relative flex h-fit cursor-pointer flex-col rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-transform duration-500 hover:scale-[1.02] hover:shadow-md sm:hover:scale-[1.025]"
+                                        onClick={() => navigate({ to: '/study-library/courses/course-details', search: { courseId: course.id } })}
+                                    >
+                                        {isLoadingImages ? (
+                                            <CourseImageShimmer />
+                                        ) : courseImageUrls[course.id] ? (
+                                            <div className="flex size-full w-full items-center justify-center overflow-hidden rounded-lg px-2 pb-0 pt-2 sm:px-3 sm:pt-4">
+                                                <img src={courseImageUrls[course.id] || course.thumbnail_file_id} alt={course.package_name} className="rounded-lg bg-white object-cover p-1 transition-transform duration-300 group-hover:scale-105 sm:p-2" />
                                             </div>
                                         ) : null}
                                         <div className="flex flex-col gap-1 p-3 sm:p-4">
                                             <div className="flex items-start justify-between gap-2">
-                                                <div className="min-w-0 flex-1 text-base font-extrabold text-neutral-800 sm:text-lg">
-                                                    {displayName}
-                                                </div>
-                                                <div
-                                                    className={`flex-shrink-0 rounded-lg bg-gray-100 p-1 px-2 text-xs font-semibold text-gray-700`}
-                                                >
-                                                    {convertCapitalToTitleCase(course.level_name) ||
-                                                        'Level'}
-                                                </div>
-                                            </div>
-                                            {/* Description section */}
-                                            <div
-                                                className={
-                                                    (course.course_html_description_html || '')
-                                                        .replace(/<[^>]*>/g, '')
-                                                        .slice(0, 120).length > 0
-                                                        ? 'mt-1 line-clamp-2 text-xs text-neutral-600 sm:mt-2 sm:text-sm'
-                                                        : 'text-xs text-neutral-600 sm:text-sm'
-                                                }
-                                            >
-                                                {(course.course_html_description_html || '')
-                                                    .replace(/<[^>]*>/g, '')
-                                                    .slice(0, 120)}
-                                            </div>
-                                            {/* Instructors section */}
-                                            <div
-                                                className={
-                                                    instructors && instructors.length > 0
-                                                        ? 'mt-2 flex items-center gap-2'
-                                                        : 'flex items-center gap-2'
-                                                }
-                                            >
-                                                {instructors?.map((inst: CourseInstructor) =>
-                                                    isLoadingImages ? (
-                                                        <InstructorAvatarShimmer key={inst.id} />
-                                                    ) : (
-                                                        <img
-                                                            key={inst.id}
-                                                            src={
-                                                                instructorProfilePicUrls[inst.id] ||
-                                                                'https://randomuser.me/api/portraits/lego/1.jpg'
-                                                            }
-                                                            alt={inst.full_name}
-                                                            className="-ml-2 size-6 rounded-full border border-neutral-200 object-cover first:ml-0 sm:size-7"
-                                                        />
-                                                    )
+                                                <div className="min-w-0 flex-1 text-base font-extrabold text-neutral-800 sm:text-lg">{displayName}</div>
+                                                {!isDefaultName(course.level_name) && (
+                                                    <div className="flex-shrink-0 rounded-lg bg-gray-100 p-1 px-2 text-xs font-semibold text-gray-700">
+                                                        {convertCapitalToTitleCase(course.level_name)}
+                                                    </div>
                                                 )}
-                                                <span className="ml-1 truncate text-xs text-neutral-600 sm:ml-2">
-                                                    {instructors
-                                                        ?.map(
-                                                            (inst: CourseInstructor) =>
-                                                                inst.full_name
+                                            </div>
+                                            {!isDefaultName(course.session_name) && (
+                                                <span className="w-fit rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+                                                    {course.session_name}
+                                                </span>
+                                            )}
+                                            <div className={
+                                                (course.course_html_description_html || '').replace(/<[^>]*>/g, '').slice(0, 120).length > 0
+                                                    ? 'mt-1 line-clamp-2 text-xs text-neutral-600 sm:mt-2 sm:text-sm'
+                                                    : 'text-xs text-neutral-600 sm:text-sm'
+                                            }>
+                                                {(course.course_html_description_html || '').replace(/<[^>]*>/g, '').slice(0, 120)}
+                                            </div>
+                                            {instructors.length > 0 && (
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    {instructors.map((inst) =>
+                                                        isLoadingImages ? <InstructorAvatarShimmer key={inst.id} /> : (
+                                                            <img key={inst.id} src={instructorProfilePicUrls[inst.id] || 'https://randomuser.me/api/portraits/lego/1.jpg'} alt={inst.full_name} className="-ml-2 size-6 rounded-full border border-neutral-200 object-cover first:ml-0 sm:size-7" />
                                                         )
-                                                        .join(', ')}
-                                                </span>
-                                            </div>
-                                            {/* Tags section - scrollable on mobile */}
-                                            <div
-                                                className={
-                                                    tags && tags.length > 0
-                                                        ? 'no-scrollbar mt-2 flex gap-2 overflow-x-auto'
-                                                        : 'flex flex-wrap gap-2'
-                                                }
-                                            >
-                                                {tags?.map((tag: string) => (
-                                                    <span
-                                                        key={tag}
-                                                        className="flex-shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
-                                                    >
-                                                        {tag}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                            {/* Rating section */}
-                                            <div
-                                                className={
-                                                    tags && tags.length > 0
-                                                        ? 'my-2 -mb-2 flex items-center gap-2'
-                                                        : '-mb-2 flex items-center gap-2'
-                                                }
-                                            >
-                                                <StarRatingComponent
-                                                    score={course.rating * 20}
-                                                    maxScore={100}
-                                                />
-                                                <span className="text-neutral-500">
-                                                    {(course.rating || 0).toFixed(1)}
-                                                </span>
-                                            </div>
-                                            {/* Catalog/Private status */}
-                                            <span className="-mb-3 mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
-                                                {course.is_course_published_to_catalaouge ? (
-                                                    <>
-                                                        <Eye className="size-4" /> In Catalog
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <EyeSlash className="size-4" /> Private
-                                                    </>
-                                                )}
-                                            </span>
-                                            {/* View Course Button */}
-                                            <div className="mt-3 flex gap-2 sm:mt-4">
-                                                <MyButton
-                                                    className="flex-1 text-sm"
-                                                    buttonType="primary"
-                                                    onClick={() =>
-                                                        navigate({
-                                                            to: '/study-library/courses/course-details',
-                                                            search: { courseId: course.id },
-                                                        })
-                                                    }
-                                                >
-                                                    View{' '}
-                                                    {getTerminology(
-                                                        ContentTerms.Course,
-                                                        SystemTerms.Course
                                                     )}
+                                                    <span className="ml-1 truncate text-xs text-neutral-600 sm:ml-2">
+                                                        {instructors.map((inst) => inst.full_name).join(', ')}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {tags.length > 0 && (
+                                                <div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto">
+                                                    {tags.map((tag) => (
+                                                        <span key={tag} className="flex-shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{tag}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <div className="my-2 -mb-2 flex items-center gap-2">
+                                                <StarRatingComponent score={course.rating * 20} maxScore={100} />
+                                                <span className="text-neutral-500">{(course.rating || 0).toFixed(1)}</span>
+                                            </div>
+                                            <span className="-mb-3 mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
+                                                {course.is_course_published_to_catalaouge ? (<><Eye className="size-4" /> In Catalog</>) : (<><EyeSlash className="size-4" /> Private</>)}
+                                            </span>
+                                            <div className="mt-3 flex gap-2 sm:mt-4">
+                                                <MyButton className="flex-1 text-sm" buttonType="primary" onClick={(e) => { e.stopPropagation(); navigate({ to: '/study-library/courses/course-details', search: { courseId: course.id } }); }}>
+                                                    View {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                                                 </MyButton>
                                                 {showDeleteButton && (
-                                                    <AlertDialog
-                                                        open={
-                                                            deletingCourseId === course.id ||
-                                                            undefined
-                                                        }
-                                                        onOpenChange={() => {
-                                                            // Only allow closing if not currently deleting
-                                                            if (
-                                                                !deletingCourseId ||
-                                                                deletingCourseId !== course.id
-                                                            ) {
-                                                                // If parent controls dialog open state, call parent handler here if needed
-                                                            }
-                                                        }}
-                                                    >
-                                                        <AlertDialogTrigger className="flex size-9 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-500 transition-colors hover:border-red-300 hover:bg-red-100 active:scale-95">
-                                                            <TrashSimple size={18} />
-                                                        </AlertDialogTrigger>
-                                                        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md">
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>
-                                                                    Are you sure you want to delete
-                                                                    this course?
-                                                                </AlertDialogTitle>
-                                                                <AlertDialogDescription>
-                                                                    This action cannot be undone.
-                                                                    This will permanently delete
-                                                                    your course and remove your
-                                                                    course data from our servers.
-                                                                </AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
-                                                                <AlertDialogCancel
-                                                                    disabled={
-                                                                        deletingCourseId ===
-                                                                        course.id
-                                                                    }
-                                                                    className="w-full sm:w-auto"
-                                                                >
-                                                                    Cancel
-                                                                </AlertDialogCancel>
-                                                                <AlertDialogAction
-                                                                    onClick={() =>
-                                                                        handleCourseDelete(
-                                                                            course.id
-                                                                        )
-                                                                    }
-                                                                    disabled={
-                                                                        deletingCourseId ===
-                                                                        course.id
-                                                                    }
-                                                                    className="w-full bg-primary-500 text-white sm:w-auto"
-                                                                >
-                                                                    {deletingCourseId ===
-                                                                        course.id ? (
-                                                                        <svg
-                                                                            className="animate-spin"
-                                                                            width="18"
-                                                                            height="18"
-                                                                            viewBox="0 0 24 24"
-                                                                            fill="none"
-                                                                            xmlns="http://www.w3.org/2000/svg"
-                                                                        >
-                                                                            <circle
-                                                                                cx="12"
-                                                                                cy="12"
-                                                                                r="10"
-                                                                                stroke="#ef4444"
-                                                                                strokeWidth="4"
-                                                                                strokeDasharray="60"
-                                                                                strokeDashoffset="20"
-                                                                            />
-                                                                        </svg>
-                                                                    ) : (
-                                                                        'Confirm'
-                                                                    )}
-                                                                </AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog>
+                                                    <div onClick={(e) => e.stopPropagation()}>
+                                                        <AlertDialog open={deletingCourseId === course.id || undefined} onOpenChange={() => {}}>
+                                                            <AlertDialogTrigger className="flex size-9 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-500 transition-colors hover:border-red-300 hover:bg-red-100 active:scale-95">
+                                                                <TrashSimple size={18} />
+                                                            </AlertDialogTrigger>
+                                                            <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md">
+                                                                <AlertDialogHeader>
+                                                                    <AlertDialogTitle>Are you sure you want to delete this course?</AlertDialogTitle>
+                                                                    <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                                                                </AlertDialogHeader>
+                                                                <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+                                                                    <AlertDialogCancel disabled={deletingCourseId === course.id} className="w-full sm:w-auto">Cancel</AlertDialogCancel>
+                                                                    <AlertDialogAction onClick={() => handleCourseDelete(course.id)} disabled={deletingCourseId === course.id} className="w-full bg-primary-500 text-white sm:w-auto">
+                                                                        {deletingCourseId === course.id ? 'Deleting...' : 'Confirm'}
+                                                                    </AlertDialogAction>
+                                                                </AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                        </AlertDialog>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>

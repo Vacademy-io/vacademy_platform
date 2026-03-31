@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
 import vacademy.io.admin_core_service.features.level.enums.LevelStatusEnum;
+import vacademy.io.admin_core_service.features.packages.dto.CustomPage;
 import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageFilterDTO;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDetailDTO;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDetailProjection;
@@ -65,51 +66,44 @@ public class PackageService {
         }
 
         Page<PackageDetailProjection> learnerPackageDetail;
-        long totalForPagination;
 
         if (Boolean.TRUE.equals(learnerPackageFilterDTO.getPackageView())) {
-            // Package-view mode: paginate by distinct packages
-            Page<String> packageIdPage = packageRepository.getDistinctPackageIds(
-                    false, // isPublishedOnly — admin endpoint shows all
-                    learnerPackageFilterDTO.getSearchByName(),
-                    instituteId,
-                    Optional.ofNullable(learnerPackageFilterDTO.getLevelIds()).orElse(List.of()),
-                    List.of(PackageStatusEnum.ACTIVE.name()),
-                    Optional.ofNullable(learnerPackageFilterDTO.getPackageTypes()).orElse(List.of()),
-                    List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                    Optional.ofNullable(learnerPackageFilterDTO.getFacultyIds()).orElse(List.of()),
-                    List.of(StatusEnum.ACTIVE.name()),
-                    Optional.ofNullable(learnerPackageFilterDTO.getTag()).orElse(List.of()),
-                    List.of(LevelStatusEnum.ACTIVE.name()),
-                    Optional.ofNullable(learnerPackageFilterDTO.getSessionIds()).orElse(List.of()),
-                    Optional.ofNullable(learnerPackageFilterDTO.getPackageIds()).orElse(List.of()),
-                    Optional.ofNullable(learnerPackageFilterDTO.getPackageSessionIds()).orElse(List.of()),
-                    effectiveFilter,
-                    learnerPackageFilterDTO.getCreatedByUserId(),
-                    pageable);
+            // Package-view mode: fetch ALL sessions, group by package, paginate in Java
+            Pageable unpaged = PageRequest.of(0, 10000, thisSort);
+            learnerPackageDetail = fetchAdminDetail(learnerPackageFilterDTO, instituteId,
+                    effectiveFilter, null, unpaged);
 
-            if (packageIdPage.isEmpty()) {
-                return new PageImpl<>(List.of(), pageable, 0);
+            List<PackageDetailDTO> allDtos = mapProjectionsToDTOs(learnerPackageDetail.getContent());
+
+            // Group by package ID preserving order
+            Map<String, List<PackageDetailDTO>> grouped = new LinkedHashMap<>();
+            for (PackageDetailDTO dto : allDtos) {
+                grouped.computeIfAbsent(dto.getId(), k -> new ArrayList<>()).add(dto);
             }
 
-            totalForPagination = packageIdPage.getTotalElements();
-            List<String> pagePackageIds = packageIdPage.getContent();
-            Pageable unpaged = PageRequest.of(0, Integer.MAX_VALUE, thisSort);
+            // Paginate by distinct packages
+            List<String> allPackageIds = new ArrayList<>(grouped.keySet());
+            int totalPackages = allPackageIds.size();
 
-            learnerPackageDetail = fetchAdminDetail(learnerPackageFilterDTO, instituteId,
-                    effectiveFilter, pagePackageIds, unpaged);
+            int fromIndex = Math.min(pageNo * pageSize, totalPackages);
+            int toIndex = Math.min(fromIndex + pageSize, totalPackages);
+            List<String> pagePackageIds = allPackageIds.subList(fromIndex, toIndex);
+
+            // Collect all session rows for packages on this page
+            List<PackageDetailDTO> pageDtos = new ArrayList<>();
+            for (String pkgId : pagePackageIds) {
+                pageDtos.addAll(grouped.get(pkgId));
+            }
+
+            return new CustomPage<>(pageDtos, pageable, totalPackages);
         } else {
             // Default mode: paginate by session
-            totalForPagination = -1;
             learnerPackageDetail = fetchAdminDetail(learnerPackageFilterDTO, instituteId,
                     effectiveFilter, null, pageable);
+
+            List<PackageDetailDTO> dtos = mapProjectionsToDTOs(learnerPackageDetail.getContent());
+            return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
         }
-
-        // Map projections to DTOs with instructors
-        List<PackageDetailDTO> dtos = mapProjectionsToDTOs(learnerPackageDetail.getContent());
-
-        long total = totalForPagination >= 0 ? totalForPagination : learnerPackageDetail.getTotalElements();
-        return new PageImpl<>(dtos, pageable, total);
     }
 
     private Page<PackageDetailProjection> fetchAdminDetail(

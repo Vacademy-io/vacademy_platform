@@ -1513,10 +1513,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             Pageable pageable);
 
     /**
-     * Lightweight query to get paginated distinct package IDs with all filters.
-     * Used by packageView mode to determine which packages to show on a page,
-     * before fetching full session-level detail for those packages.
-     * Uses GROUP BY instead of DISTINCT so ORDER BY p.created_at works in PostgreSQL.
+     * Returns paginated distinct package IDs matching all filters.
+     * Uses manual LIMIT/OFFSET to avoid Spring Data Page<String> native query issues.
      */
     @Query(value = """
             SELECT p.id
@@ -1580,7 +1578,33 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
                 )
             GROUP BY p.id, p.created_at
-            """, countQuery = """
+            ORDER BY p.created_at DESC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<String> getDistinctPackageIds(
+            @Param("isPublishedOnly") boolean isPublishedOnly,
+            @Param("name") String name,
+            @Param("instituteId") String instituteId,
+            @Param("levelIds") List<String> levelIds,
+            @Param("packageStatus") List<String> packageStatus,
+            @Param("packageTypes") List<String> packageTypes,
+            @Param("packageSessionStatus") List<String> packageSessionStatus,
+            @Param("facultyIds") List<String> facultyIds,
+            @Param("facultyPackageSessionStatus") List<String> facultyPackageSessionStatus,
+            @Param("tags") List<String> tags,
+            @Param("levelStatus") List<String> levelStatus,
+            @Param("sessionIds") List<String> sessionIds,
+            @Param("packageIds") List<String> packageIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("packageSessionFilter") String packageSessionFilter,
+            @Param("createdByUserId") String createdByUserId,
+            @Param("limit") int limit,
+            @Param("offset") int offset);
+
+    /**
+     * Counts distinct packages matching all filters. Used with getDistinctPackageIds for manual pagination.
+     */
+    @Query(value = """
             SELECT COUNT(DISTINCT p.id)
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
@@ -1642,7 +1666,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
                 )
             """, nativeQuery = true)
-    Page<String> getDistinctPackageIds(
+    long countDistinctPackages(
             @Param("isPublishedOnly") boolean isPublishedOnly,
             @Param("name") String name,
             @Param("instituteId") String instituteId,
@@ -1658,8 +1682,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("packageIds") List<String> packageIds,
             @Param("packageSessionIds") List<String> packageSessionIds,
             @Param("packageSessionFilter") String packageSessionFilter,
-            @Param("createdByUserId") String createdByUserId,
-            Pageable pageable);
+            @Param("createdByUserId") String createdByUserId);
 
     @Query(value = """
             SELECT

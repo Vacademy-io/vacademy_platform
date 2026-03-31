@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import PhoneInput from 'react-phone-input-2';
+import 'react-phone-input-2/lib/bootstrap.css';
 import { MyButton } from '@/components/design-system/button';
 import { Plus, Trash, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { NewUserRow, CustomFieldValue } from '../../../-types/bulk-assign-types';
@@ -318,12 +320,16 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                                 <Label className="mb-1 text-xs text-neutral-500">
                                     Mobile (optional)
                                 </Label>
-                                <Input
-                                    placeholder="+91 9876543210"
+                                <PhoneInput
+                                    country="in"
+                                    enableSearch={true}
+                                    placeholder="123 456 7890"
                                     value={row.mobile_number}
-                                    onChange={(e) =>
-                                        update(idx, 'mobile_number', e.target.value)
+                                    onChange={(value) =>
+                                        update(idx, 'mobile_number', value)
                                     }
+                                    inputClass="!w-full h-7"
+                                    inputProps={{ name: `mobile_number_${idx}` }}
                                 />
                             </div>
                             <div>

@@ -40,6 +40,8 @@ export const getAllCoursesWithFilters = async (
             type: null as string | null,
             package_ids: data.package_ids ?? [],
             package_session_ids: data.package_session_ids ?? [],
+            session_ids: data.session_ids ?? [],
+            package_view: data.package_view ?? true,
             ...(data.package_session_filter === 'PARENTS_ONLY' ||
             data.package_session_filter === 'CHILDREN_ONLY'
                 ? { package_session_filter: data.package_session_filter }

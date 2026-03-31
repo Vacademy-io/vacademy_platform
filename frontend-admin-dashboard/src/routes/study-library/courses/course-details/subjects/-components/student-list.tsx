@@ -19,6 +19,10 @@ import { DropdownItemType } from '@/components/common/students/enroll-manually/d
 import { StudentFilters } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/student-filters';
 import { GetFilterData } from '@/routes/manage-students/students-list/-constants/all-filters';
 import { BulkActions } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/bulk-actions/bulk-actions';
+import { useQuery } from '@tanstack/react-query';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { GET_INVITE_LINKS } from '@/constants/urls';
+import { getInstituteId } from '@/constants/helper';
 
 const Students = ({
     packageSessionId,
@@ -65,9 +69,32 @@ const Students = ({
         handlePageChange,
     } = useStudentTable(appliedFilters, setAppliedFilters, [packageSessionId]);
 
-    const filters = GetFilterData(instituteDetails, currentSession?.id).filter(
-        (filter) => filter.id !== 'batch'
-    );
+    // Fetch accessible invites for this package session (API-filtered by FSPSSM)
+    const instituteId = getInstituteId();
+    const { data: invitesForFilter } = useQuery({
+        queryKey: ['invite-filter-list', packageSessionId, instituteId],
+        queryFn: async () => {
+            const response = await authenticatedAxiosInstance.post(
+                `${GET_INVITE_LINKS}?instituteId=${instituteId}&pageNo=0&pageSize=100`,
+                { search_name: '', package_session_ids: [packageSessionId], payment_option_ids: [], sort_columns: {}, tags: [] }
+            );
+            return (response.data?.content || []).map((inv: { id: string; name: string }) => ({
+                id: inv.id,
+                label: inv.name || inv.id,
+            }));
+        },
+        enabled: !!packageSessionId && !!instituteId,
+        staleTime: 1000 * 60 * 5,
+    });
+
+    const filters = [
+        ...GetFilterData(instituteDetails, currentSession?.id).filter(
+            (filter) => filter.id !== 'batch'
+        ),
+        ...(invitesForFilter && invitesForFilter.length > 0
+            ? [{ id: 'enroll_invite_ids', title: 'Invite', filterList: invitesForFilter }]
+            : []),
+    ];
     const currentPageSelection = rowSelections[page] || {};
 
     useEffect(() => {

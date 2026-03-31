@@ -134,14 +134,37 @@ public class StudentListManager {
                 .findEnrollInviteAccessIdsByUserIdAndInstituteId(user.getUserId(), instituteId, activeStatuses);
 
         if (!accessibleInviteIds.isEmpty()) {
-            List<String> invitePsIds = pslipoRepository.findPackageSessionIdsByEnrollInviteIds(accessibleInviteIds);
+            // If user explicitly selected invites from the filter, intersect with accessible set
+            List<String> userSelectedInvites = filter.getEnrollInviteIds();
+            List<String> effectiveInviteIds;
+            if (userSelectedInvites != null && !userSelectedInvites.isEmpty()) {
+                Set<String> accessibleSet = new HashSet<>(accessibleInviteIds);
+                effectiveInviteIds = userSelectedInvites.stream()
+                        .filter(accessibleSet::contains)
+                        .collect(Collectors.toList());
+            } else {
+                effectiveInviteIds = accessibleInviteIds;
+            }
+
+            List<String> invitePsIds = pslipoRepository.findPackageSessionIdsByEnrollInviteIds(effectiveInviteIds);
             Set<String> effectiveSet = new HashSet<>(effectivePsIds);
             List<String> enrollInvitePsIds = invitePsIds.stream()
                     .filter(effectiveSet::contains)
                     .collect(Collectors.toList());
 
             if (!enrollInvitePsIds.isEmpty()) {
-                filter.setEnrollInviteIds(accessibleInviteIds);
+                filter.setServerEnrollInviteIds(effectiveInviteIds);
+                filter.setEnrollInvitePackageSessionIds(enrollInvitePsIds);
+            }
+        } else if (filter.getEnrollInviteIds() != null && !filter.getEnrollInviteIds().isEmpty()) {
+            // Non-faculty user with explicit invite filter — use directly
+            List<String> invitePsIds = pslipoRepository.findPackageSessionIdsByEnrollInviteIds(filter.getEnrollInviteIds());
+            Set<String> effectiveSet = new HashSet<>(effectivePsIds);
+            List<String> enrollInvitePsIds = invitePsIds.stream()
+                    .filter(effectiveSet::contains)
+                    .collect(Collectors.toList());
+            if (!enrollInvitePsIds.isEmpty()) {
+                filter.setServerEnrollInviteIds(filter.getEnrollInviteIds());
                 filter.setEnrollInvitePackageSessionIds(enrollInvitePsIds);
             }
         }
@@ -262,7 +285,7 @@ public class StudentListManager {
 
     private Page<StudentListV2Projection> fetchStudentPage(StudentListFilter filter, Pageable pageable) {
         boolean hasCustomFieldFilters = filter.getCustomFieldFilters() != null && !filter.getCustomFieldFilters().isEmpty();
-        boolean hasEnrollInviteFilter = filter.getEnrollInviteIds() != null && !filter.getEnrollInviteIds().isEmpty();
+        boolean hasEnrollInviteFilter = filter.getServerEnrollInviteIds() != null && !filter.getServerEnrollInviteIds().isEmpty();
         // Use custom repo methods when custom field filters or enroll invite filters are present
         boolean useCustomRepo = hasCustomFieldFilters || hasEnrollInviteFilter;
 
@@ -283,7 +306,7 @@ public class StudentListManager {
                         filter.getCustomFieldFilters(),
                         filter.getStartDate(),
                         filter.getEndDate(),
-                        filter.getEnrollInviteIds(),
+                        filter.getServerEnrollInviteIds(),
                         filter.getEnrollInvitePackageSessionIds(),
                         pageable);
             } else {
@@ -324,7 +347,7 @@ public class StudentListManager {
                         filter.getCustomFieldFilters(),
                         filter.getStartDate(),
                         filter.getEndDate(),
-                        filter.getEnrollInviteIds(),
+                        filter.getServerEnrollInviteIds(),
                         filter.getEnrollInvitePackageSessionIds(),
                         pageable);
             } else {
@@ -410,6 +433,7 @@ public class StudentListManager {
             }
             dto.setCustomFields(parseCustomFields(mapper, p.getCustomFieldsJson()));
             dto.setEnrollInviteId(p.getEnrollInviteId());
+            dto.setEnrollInviteName(p.getEnrollInviteName());
             dto.setDesiredLevelId(p.getDesiredLevelId());
 
             dto.setSubOrgId(p.getSubOrgId());

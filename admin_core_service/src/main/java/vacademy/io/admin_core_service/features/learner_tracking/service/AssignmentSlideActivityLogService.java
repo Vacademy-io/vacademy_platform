@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.AssignmentSlideActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.GradeAssignmentDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.QuestionSlideActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.AssignmentSlideTracked;
@@ -61,6 +62,16 @@ public class AssignmentSlideActivityLogService {
                 activityLogDTO);
 
         return activityLog.getId();
+    }
+
+    public void gradeAssignment(GradeAssignmentDTO gradeDTO) {
+        AssignmentSlideTracked tracked = assignmentSlideTrackedRepository
+                .findById(gradeDTO.getTrackedId())
+                .orElseThrow(() -> new RuntimeException("Assignment submission not found"));
+        tracked.setMarks(gradeDTO.getMarks());
+        tracked.setFeedback(gradeDTO.getFeedback());
+        tracked.setCheckedFileId(gradeDTO.getCheckedFileId());
+        assignmentSlideTrackedRepository.save(tracked);
     }
 
     public Page<ActivityLogDTO> getAssignmentSlideActivityLogs(String userId, String slideId, Pageable pageable,

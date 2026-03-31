@@ -6,6 +6,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.GradeAssignmentDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.service.AssignmentSlideActivityLogService;
 import vacademy.io.admin_core_service.features.learner_tracking.service.QuestionSlideActivityLogService;
 import vacademy.io.common.auth.config.PageConstants;
@@ -27,6 +28,14 @@ public class AssignmentSlideActivityLogController {
                                                                         String userId,
                                                                         @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(assignmentSlideActivityLogService.addOrUpdateAssignmentSlideSlideActivityLog(activityLogDTO, slideId,chapterId,moduleId,subjectId,packageSessionId, userId, user));
+    }
+
+    @PostMapping("/grade")
+    public ResponseEntity<String> gradeAssignment(
+            @RequestBody GradeAssignmentDTO gradeDTO,
+            @RequestAttribute("user") CustomUserDetails user) {
+        assignmentSlideActivityLogService.gradeAssignment(gradeDTO);
+        return ResponseEntity.ok("Graded successfully");
     }
 
     @GetMapping("/assignment-slide-activity-logs")

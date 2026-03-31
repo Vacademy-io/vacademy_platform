@@ -30,5 +30,9 @@ public class AssignmentSlideDTO {
 
     private String commaSeparatedMediaIds;
 
+    private Double totalMarks;
+
+    private Double passingMarks;
+
     private List<AssignmentSlideQuestionDTO>questions;
 }

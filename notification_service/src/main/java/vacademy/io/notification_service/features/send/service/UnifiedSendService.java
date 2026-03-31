@@ -254,21 +254,31 @@ public class UnifiedSendService implements SendChannelRouter {
         }
 
         // Inject preview text as hidden div at the start of the email body
+        log.info("Preview text for email: '{}' (null={})", previewText, previewText == null);
         if (previewText != null && !previewText.isEmpty() && templateBody != null) {
             // HTML-escape to prevent XSS injection
             String safeText = previewText
                     .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                     .replace("\"", "&quot;").replace("'", "&#39;");
-            String previewHtml = "<div style=\"display:none;font-size:1px;color:#333333;line-height:1px;"
+            // Gmail/Outlook need whitespace padding after the text to prevent them
+            // from pulling visible body content into the preview area.
+            // &#847; (combining grapheme joiner) is invisible and fills the space.
+            StringBuilder padding = new StringBuilder();
+            for (int i = 0; i < 100; i++) {
+                padding.append("&#847; &#8199; &#65279; ");
+            }
+            String previewHtml = "<div style=\"display:none;font-size:1px;color:#ffffff;line-height:1px;"
                     + "max-height:0px;max-width:0px;opacity:0;overflow:hidden;\">"
-                    + safeText + "</div>";
+                    + safeText + padding + "</div>";
             // Insert after <body> tag if present, otherwise prepend
             if (templateBody.toLowerCase().contains("<body")) {
                 // quoteReplacement prevents $1/$2 in preview text from corrupting the regex replacement
                 String escaped = java.util.regex.Matcher.quoteReplacement(previewHtml);
                 templateBody = templateBody.replaceFirst("(?i)(<body[^>]*>)", "$1" + escaped);
+                log.info("Injected preview text after <body> tag");
             } else {
                 templateBody = previewHtml + templateBody;
+                log.info("Prepended preview text to email body");
             }
         }
 

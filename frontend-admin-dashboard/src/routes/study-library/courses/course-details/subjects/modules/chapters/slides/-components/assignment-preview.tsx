@@ -16,13 +16,18 @@ import {
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { MyButton } from '@/components/design-system/button';
-import { X } from '@phosphor-icons/react';
+import { X, Copy, Check } from '@phosphor-icons/react';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
+import { toast } from 'sonner';
 import { QuestionPaperUpload } from '@/routes/assessment/question-papers/-components/QuestionPaperUpload';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { QuestionPapersTabs } from '@/routes/assessment/question-papers/-components/QuestionPapersTabs';
 import { Badge } from '@/components/ui/badge';
-import { ReverseProgressBar } from '@/components/ui/progress';
+// import { ReverseProgressBar } from '@/components/ui/progress';
 import { RichContentRenderer } from '@/routes/assessment/assessment-list/offline-entry/$assessmentId/-components/RichContentRenderer';
+import { useQuery } from '@tanstack/react-query';
+import { getSlideActivityStats } from '@/services/study-library/slide-operations/slide-activity-stats';
 
 const QUESTION_TYPE_LABELS: Record<string, string> = {
     MCQS: 'Single Choice',
@@ -33,6 +38,47 @@ const QUESTION_TYPE_LABELS: Record<string, string> = {
     NUMERIC: 'Numeric',
     CMCQS: 'Comprehension (Single)',
     CMCQM: 'Comprehension (Multiple)',
+};
+
+const ShareAssignmentLink = ({ slideId }: { slideId: string }) => {
+    const { instituteDetails } = useInstituteDetailsStore();
+    const [copied, setCopied] = useState(false);
+    const learnerBaseUrl = instituteDetails?.learner_portal_base_url || BASE_URL_LEARNER_DASHBOARD;
+    const withProtocol = learnerBaseUrl.startsWith('http') ? learnerBaseUrl : `https://${learnerBaseUrl}`;
+    const normalizedBase = withProtocol.replace(/\/+$/, '');
+    const assignmentLink = `${normalizedBase}/assignment/${slideId}`;
+
+    const handleCopy = () => {
+        navigator.clipboard
+            .writeText(assignmentLink)
+            .then(() => {
+                setCopied(true);
+                toast.success('Link copied to clipboard');
+                setTimeout(() => setCopied(false), 2000);
+            })
+            .catch(() => toast.error('Failed to copy link'));
+    };
+
+    return (
+        <div className="flex flex-col gap-2">
+            <h1 className="font-semibold">Share Assignment</h1>
+            <div className="flex items-center gap-3">
+                <span className="max-w-[400px] truncate rounded-md border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm text-neutral-600">
+                    {assignmentLink}
+                </span>
+                <MyButton
+                    type="button"
+                    scale="small"
+                    buttonType="secondary"
+                    layoutVariant="icon"
+                    onClick={handleCopy}
+                    title="Copy link"
+                >
+                    {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
+                </MyButton>
+            </div>
+        </div>
+    );
 };
 
 const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) => {
@@ -54,9 +100,19 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
     });
 
     const adaptive_marking_for_each_question = form.getValues('adaptive_marking_for_each_question');
-    const { watch, getValues } = form;
-    const totalParticipants = Number(getValues('totalParticipants')) || 0;
-    const submittedParticipants = Number(getValues('submittedParticipants')) || 0;
+    const { watch } = form;
+
+    // Fetch live participant stats from activity API
+    const { data: activityStats } = useQuery({
+        ...getSlideActivityStats({
+            slideId: activeItem.id,
+            page: 0,
+            size: 1,
+        }),
+        enabled: !!activeItem.id,
+    });
+
+    const totalParticipants = activityStats?.totalElements ?? 0;
 
     useEffect(() => {
         const subscription = watch(() => {
@@ -172,6 +228,72 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                         </FormItem>
                     )}
                 />
+
+                {/* Marks Configuration */}
+                <div>
+                    <h1 className="mb-3 font-semibold">Marks</h1>
+                    <div className="flex items-center gap-6">
+                        <FormField
+                            control={form.control}
+                            name="totalMarks"
+                            render={({ field: { onChange, value, ...field } }) => (
+                                <FormItem>
+                                    <FormControl>
+                                        <MyInput
+                                            inputType="number"
+                                            label="Total Marks"
+                                            inputPlaceholder="e.g. 100"
+                                            input={value ?? ''}
+                                            onChangeFunction={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+                                            required={false}
+                                            size="large"
+                                            className="w-48"
+                                            {...field}
+                                            min={0}
+                                            onKeyDown={(e) => {
+                                                if (['e', 'E', '-', '+'].includes(e.key)) {
+                                                    e.preventDefault();
+                                                }
+                                            }}
+                                            onWheel={(e) => e.currentTarget.blur()}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="passingMarks"
+                            render={({ field: { onChange, value, ...field } }) => (
+                                <FormItem>
+                                    <FormControl>
+                                        <MyInput
+                                            inputType="number"
+                                            label="Passing Marks (optional)"
+                                            inputPlaceholder="e.g. 40"
+                                            input={value ?? ''}
+                                            onChangeFunction={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+                                            required={false}
+                                            size="large"
+                                            className="w-48"
+                                            {...field}
+                                            min={0}
+                                            onKeyDown={(e) => {
+                                                if (['e', 'E', '-', '+'].includes(e.key)) {
+                                                    e.preventDefault();
+                                                }
+                                            }}
+                                            onWheel={(e) => e.currentTarget.blur()}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                    </div>
+                </div>
+
+                {/* Share Assignment Link */}
+                <ShareAssignmentLink slideId={activeItem.id} />
 
                 {/* Upload Question Paper */}
                 <div className="flex flex-wrap items-center justify-start gap-5">
@@ -353,19 +475,6 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                     <h1 className="font-semibold">Responses</h1>
                     <div className="flex flex-col gap-2 text-sm">
                         <span>Total Participants: {totalParticipants}</span>
-                        <div className="flex items-center justify-between">
-                            <span>Submitted By: {submittedParticipants}</span>
-                            <span>Pending: {totalParticipants - submittedParticipants}</span>
-                        </div>
-                        <ReverseProgressBar
-                            value={parseFloat(
-                                (
-                                    ((totalParticipants - submittedParticipants) /
-                                        totalParticipants) *
-                                    100
-                                ).toFixed(2)
-                            )}
-                        />
                     </div>
                 </div>
             </FormProvider>

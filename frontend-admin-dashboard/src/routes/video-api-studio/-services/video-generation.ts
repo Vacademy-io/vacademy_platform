@@ -117,6 +117,12 @@ export const CONTENT_TYPES = [
 
 export type QualityTier = 'free' | 'standard' | 'premium' | 'ultra';
 
+export interface ReferenceFile {
+    url: string;
+    name: string;
+    type: 'image' | 'pdf';
+}
+
 export interface GenerateVideoRequest {
     prompt: string;
     content_type?: ContentType; // NEW: Default "VIDEO"
@@ -130,6 +136,7 @@ export interface GenerateVideoRequest {
     model: string;
     quality_tier: QualityTier;
     video_id?: string; // Optional: auto-generated if not provided
+    reference_files?: ReferenceFile[];
 }
 
 export const QUALITY_TIERS: Array<{

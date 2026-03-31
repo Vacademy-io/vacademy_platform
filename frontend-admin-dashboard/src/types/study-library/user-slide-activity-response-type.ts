@@ -62,7 +62,9 @@ export interface AssignmentSlide {
     id: string;
     comma_separated_file_ids: string;
     date_submitted: string; // ISO string, e.g. "2025-05-17T07:22:31.439Z"
-    marks: number;
+    marks: number | null;
+    feedback: string | null;
+    checked_file_id: string | null;
 }
 
 export interface VideoSlideQuestion {

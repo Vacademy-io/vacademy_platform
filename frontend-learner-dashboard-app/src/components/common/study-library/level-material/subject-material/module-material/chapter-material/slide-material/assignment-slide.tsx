@@ -8,9 +8,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { FileUploader } from "./file-uploader";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { SUBMIT_ASSIGNMENT_SLIDE_ANSWERS } from "@/constants/urls";
+import { SUBMIT_ASSIGNMENT_SLIDE_ANSWERS, GET_ASSIGNMENT_ACTIVITY_LOGS } from "@/constants/urls";
+import { getPublicUrl } from "@/services/upload_file";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/constants/getUserId";
 import { MyInput } from "@/components/design-system/input";
@@ -200,6 +201,8 @@ interface AssignmentSlideProps {
     live_date: string;
     end_date: string;
     re_attempt_count: number;
+    total_marks?: number | null;
+    passing_marks?: number | null;
     questions?: Question[];
   };
   onUpload: (
@@ -224,6 +227,30 @@ const AssignmentSlide = ({
   const [numericValuesMap, setNumericValuesMap] = useState<
     Record<string, string>
   >({});
+
+  // Fetch grading results for this assignment
+  const slideId = activeItem?.id || '';
+  const { data: gradingData } = useQuery({
+    queryKey: ['ASSIGNMENT_GRADING_RESULTS', slideId],
+    queryFn: async () => {
+      const userId = await getUserId();
+      const response = await authenticatedAxiosInstance.get(GET_ASSIGNMENT_ACTIVITY_LOGS, {
+        params: { userId, slideId, pageNo: 0, pageSize: 1 },
+      });
+      return response.data;
+    },
+    enabled: !!slideId,
+    staleTime: 30 * 1000,
+  });
+
+  // Extract latest graded submission
+  const latestSubmission = gradingData?.content?.[0]?.assignment_slides?.[0];
+  const gradedMarks = latestSubmission?.marks ?? null;
+  const gradedFeedback = latestSubmission?.feedback ?? null;
+  const checkedFileId = latestSubmission?.checked_file_id ?? null;
+  const totalMarks = assignmentData.total_marks;
+  const passingMarks = assignmentData.passing_marks;
+  const isPassed = gradedMarks != null && passingMarks != null ? gradedMarks >= passingMarks : null;
 
   // Constants for numeric input
   const isDecimal = false;
@@ -391,7 +418,7 @@ const AssignmentSlide = ({
       };
 
       const urlParams = new URLSearchParams(window.location.search);
-      const slideId = urlParams.get("slideId") || "";
+      const slideId = urlParams.get("slideId") || activeItem?.id || "";
       const userId = await getUserId();
       return authenticatedAxiosInstance.post(
         SUBMIT_ASSIGNMENT_SLIDE_ANSWERS,
@@ -742,6 +769,56 @@ const AssignmentSlide = ({
         <div className="mt-4 p-3 sm:p-4 bg-gray-50 text-gray-800 rounded-md text-sm sm:text-base border border-gray-200">
           Error: {submitError}
         </div>
+      )}
+
+      {/* Grading Results */}
+      {gradedMarks != null && (
+        <Card className="mt-4 sm:mt-6 bg-white shadow-sm">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
+              Results
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl font-bold text-gray-900">
+                  {gradedMarks}{totalMarks != null ? ` / ${totalMarks}` : ''}
+                </span>
+                {isPassed != null && (
+                  <span className={`rounded-full px-3 py-1 text-sm font-medium ${
+                    isPassed
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-red-100 text-red-700'
+                  }`}>
+                    {isPassed ? 'Passed' : 'Not Passed'}
+                  </span>
+                )}
+              </div>
+              {gradedFeedback && (
+                <div className="rounded-md bg-gray-50 p-3 border border-gray-200">
+                  <p className="text-xs font-medium text-gray-500 mb-1">Feedback</p>
+                  <p className="text-sm text-gray-700">{gradedFeedback}</p>
+                </div>
+              )}
+              {checkedFileId && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const url = await getPublicUrl(checkedFileId);
+                      if (url) window.open(url, '_blank');
+                    } catch (err) {
+                      console.error('Failed to get checked copy URL:', err);
+                    }
+                  }}
+                  className="flex items-center gap-2 w-fit rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  Download Checked Answer Copy
+                </button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

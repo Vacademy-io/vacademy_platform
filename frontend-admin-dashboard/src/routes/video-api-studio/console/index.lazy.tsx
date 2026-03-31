@@ -34,6 +34,20 @@ export const Route = createLazyFileRoute('/video-api-studio/console/')({
     component: VideoConsole,
 });
 
+/** Map internal stage names to user-friendly labels */
+const STAGE_LABELS: Record<string, string> = {
+    PENDING: 'Queued',
+    SCRIPT: 'Writing Script',
+    TTS: 'Generating Audio',
+    WORDS: 'Processing Audio',
+    HTML: 'Creating Visuals',
+    AVATAR: 'Generating Avatar',
+    RENDER: 'Rendering Video',
+};
+function friendlyStage(stage: string): string {
+    return STAGE_LABELS[stage] || stage;
+}
+
 type ConsoleState = 'idle' | 'generating' | 'complete';
 
 interface CurrentGeneration {
@@ -224,7 +238,7 @@ function VideoConsole() {
                     setConsoleState('idle');
                     setCurrentGeneration(null);
                     toast.error(
-                        'Generation is taking longer than expected. Please check history for updates or try again.'
+                        'Your generation is taking a while. Check History to view progress, or try again.'
                     );
                     return;
                 }
@@ -261,7 +275,7 @@ function VideoConsole() {
                         setCurrentGeneration(null);
                         toast.error(
                             urls.error_message ||
-                            `Generation failed at ${urls.current_stage} stage. Please try again.`
+                            `Generation failed at "${friendlyStage(urls.current_stage)}" step. Please try again.`
                         );
                     } else if (urls.status === 'STALLED') {
                         // Backend detected the job has not progressed in >15 min
@@ -272,7 +286,7 @@ function VideoConsole() {
                         setCurrentGeneration(null);
                         toast.error(
                             urls.error_message ||
-                            `Generation appears stuck at ${urls.current_stage} stage. Please try again.`
+                            `Generation appears stuck at "${friendlyStage(urls.current_stage)}" step. Please try again.`
                         );
                     } else if (urls.status === 'COMPLETED' && !urls.html_url) {
                         // Completed but missing HTML — show what stage it actually reached
@@ -283,7 +297,7 @@ function VideoConsole() {
                         setCurrentGeneration(null);
                         toast.error(
                             urls.error_message ||
-                            `Generation stopped at ${urls.current_stage} stage without producing visual content. Please try again.`
+                            `Generation stopped at "${friendlyStage(urls.current_stage)}" step without producing visual content. Please try again.`
                         );
                     }
                     // Otherwise still IN_PROGRESS — keep polling
@@ -631,7 +645,7 @@ function VideoConsole() {
                         setCurrentGeneration(null);
                         toast.error(
                             urls.error_message ||
-                            `Generation ${urls.status === 'STALLED' ? 'stalled' : 'failed'} at ${urls.current_stage} stage. Please try again.`
+                            `Generation ${urls.status === 'STALLED' ? 'stalled' : 'failed'} at "${friendlyStage(urls.current_stage)}" step. Please try again.`
                         );
                         return;
                     }
@@ -645,7 +659,7 @@ function VideoConsole() {
                         if (urls.status === 'COMPLETED') {
                             toast.error(
                                 urls.error_message ||
-                                `Generation stopped at ${urls.current_stage} stage without producing visual content. Please try again.`
+                                `Generation stopped at "${friendlyStage(urls.current_stage)}" step without producing visual content. Please try again.`
                             );
                             setConsoleState('idle');
                             setCurrentGeneration(null);

@@ -1008,7 +1008,7 @@ export const SlideMaterial = ({
 
         // Handle HTML_VIDEO slides (AI-generated videos)
         if (activeItem.source_type === 'HTML_VIDEO') {
-            setContent(<VideoSlidePreview activeItem={activeItem} />);
+            setContent(<VideoSlidePreview key={activeItem.id} activeItem={activeItem} />);
             return;
         }
 
@@ -1092,7 +1092,7 @@ export const SlideMaterial = ({
                     />
                 );
             } else {
-                setContent(<VideoSlidePreview activeItem={activeItem} />);
+                setContent(<VideoSlidePreview key={activeItem.id} activeItem={activeItem} />);
             }
 
             return;
@@ -1114,7 +1114,7 @@ export const SlideMaterial = ({
                     return;
                 }
 
-                setContent(<StudyLibraryAssignmentPreview activeItem={activeItem} />);
+                setContent(<StudyLibraryAssignmentPreview key={activeItem.id} activeItem={activeItem} />);
             } catch (error) {
                 console.error('Error rendering assignment preview:', error);
                 const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1619,19 +1619,19 @@ export const SlideMaterial = ({
         }
 
         if (activeItem.source_type?.toUpperCase() === 'QUESTION') {
-            setContent(<StudyLibraryQuestionsPreview activeItem={activeItem} />);
+            setContent(<StudyLibraryQuestionsPreview key={activeItem.id} activeItem={activeItem} />);
             return;
         }
 
         // Handle AUDIO slides
         if (activeItem.source_type?.toUpperCase() === 'AUDIO') {
-            setContent(<AudioSlidePreview activeItem={activeItem} isLearnerView={isLearnerView} />);
+            setContent(<AudioSlidePreview key={activeItem.id} activeItem={activeItem} isLearnerView={isLearnerView} />);
             return;
         }
 
         // Handle SCORM slides
         if (activeItem.source_type?.toUpperCase() === 'SCORM') {
-            setContent(<ScormSlidePreview activeItem={activeItem} isLearnerView={isLearnerView} />);
+            setContent(<ScormSlidePreview key={activeItem.id} activeItem={activeItem} isLearnerView={isLearnerView} />);
             return;
         }
 

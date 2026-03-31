@@ -116,6 +116,7 @@ async def generate_video_external(
                         quality_tier=getattr(p, "quality_tier", "ultra"),
                         institute_id=inst_id,
                         user_id=None,
+                        reference_files=[rf.model_dump() for rf in p.reference_files] if p.reference_files else None,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:

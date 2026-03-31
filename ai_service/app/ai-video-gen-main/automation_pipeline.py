@@ -985,9 +985,12 @@ class VideoGenerationPipeline:
         generate_avatar: bool = False,
         avatar_image_url: Optional[str] = None,
         max_segments: int = 8,
+        reference_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         # Store max_segments for use in concept-aligned segmentation
         self._max_segments = max_segments
+        # Store reference context (processed images/PDFs from user uploads)
+        self._reference_context = reference_context
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")
         
@@ -1509,6 +1512,22 @@ class VideoGenerationPipeline:
                 layout_theme=_style.get("layout_theme", "clean_light"),
             ).strip()
             
+        # ── Inject reference material context into the script prompt ──
+        if getattr(self, '_reference_context', None):
+            ref_text = self._reference_context.get("text_context", "")
+            if ref_text:
+                # Truncate to avoid exceeding context limits (keep first ~8000 chars)
+                if len(ref_text) > 8000:
+                    ref_text = ref_text[:8000] + "\n... [truncated]"
+                user_prompt += (
+                    "\n\n**📎 REFERENCE MATERIALS PROVIDED BY THE USER:**\n"
+                    f"{ref_text}\n\n"
+                    "Use the above reference material to inform your content. "
+                    "Include relevant facts, data, and concepts from these materials. "
+                    "The reference materials are the primary source of truth for this content."
+                )
+                print(f"📎 Injected {len(ref_text)} chars of reference context into script prompt")
+
         print(f"📝 Generating {content_type} content...")
 
         # Retry up to 3 times if we get invalid JSON
@@ -2841,6 +2860,27 @@ class VideoGenerationPipeline:
                     next_context=next_ctx,
                     diversity_context=diversity_ctx,
                 )
+
+            # ── Inject reference images into HTML generation prompt ──
+            if getattr(self, '_reference_context', None):
+                ref_images = self._reference_context.get("embeddable_images", [])
+                if ref_images:
+                    img_lines = []
+                    for ri in ref_images:
+                        s3_url = ri.get("s3_url", "")
+                        desc = ri.get("description", "Reference image")
+                        source = ri.get("source_file", "")
+                        if s3_url:
+                            img_lines.append(f"  - {desc} (from: {source}) → URL: {s3_url}")
+                    if img_lines:
+                        user_prompt += (
+                            "\n\n**📎 REFERENCE IMAGES AVAILABLE (embed directly via <img> tags):**\n"
+                            + "\n".join(img_lines)
+                            + "\n\nYou MAY embed these reference images directly in your HTML using "
+                            "<img src=\"{url}\"> when they are relevant to this segment's narration. "
+                            "Choose the most relevant image(s) for this specific segment, or skip if none fit. "
+                            "These are real URLs — do NOT use data-img-prompt for these images."
+                        )
 
             # Retry logic: distinguishes server overload (500), rate-limit (429),
             # and JSON parse failures so each gets an appropriate delay.

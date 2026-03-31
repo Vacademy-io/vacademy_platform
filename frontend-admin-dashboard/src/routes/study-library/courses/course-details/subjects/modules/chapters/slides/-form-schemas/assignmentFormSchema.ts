@@ -28,6 +28,8 @@ export const assignmentFormSchema = z.object({
                 .optional(),
         })
     ),
+    totalMarks: z.number().optional(),
+    passingMarks: z.number().optional(),
     totalParticipants: z.number().optional(),
     submittedParticipants: z.number().optional(),
 });

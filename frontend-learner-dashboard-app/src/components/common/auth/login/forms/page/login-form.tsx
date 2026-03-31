@@ -753,10 +753,11 @@ export function LoginForm({
         }
 
         // Refresh and use Student Display Settings post-login route
+        // Explicit redirect param (from deep-links) takes priority over settings
         try {
           const settings = await getStudentDisplaySettings(true);
           const redirectRoute =
-            settings?.postLoginRedirectRoute || "/dashboard";
+            redirect || settings?.postLoginRedirectRoute || "/dashboard";
 
           if (/^https?:\/\//.test(redirectRoute)) {
             window.location.assign(redirectRoute);

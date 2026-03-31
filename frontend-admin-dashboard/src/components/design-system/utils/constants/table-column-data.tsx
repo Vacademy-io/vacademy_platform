@@ -941,7 +941,7 @@ export const ActivityStatsColumns: ColumnDef<ActivityStatsColumnsType>[] = [
             // Create a regular function to handle the click
             const handleClick = () => {
                 const store = useActivityStatsStore.getState();
-                store.openDialog(row.original.user_id);
+                store.openDialog(row.original.user_id, row.original.full_name);
             };
 
             return (

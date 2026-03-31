@@ -454,6 +454,8 @@ export const convertToAssignmentSlideBackendFormat = (assignmentSlide: Assignmen
         live_date: convertedStartDate,
         end_date: convertedEndDate,
         re_attempt_count: assignmentSlide.reattemptCount,
+        total_marks: assignmentSlide.totalMarks ?? null,
+        passing_marks: assignmentSlide.passingMarks ?? null,
         comma_separated_media_ids: '',
         questions: assignmentSlide.adaptive_marking_for_each_question.map((question, idx) => {
             return {
@@ -727,6 +729,8 @@ const transformAssignmentSlide = (assignment: AssignmentSlide) => {
         startDate: convertDateFormat(assignment?.live_date || ''),
         endDate: convertDateFormat(assignment?.end_date || ''),
         reattemptCount: String(assignment?.re_attempt_count || 0),
+        totalMarks: assignment?.total_marks ?? undefined,
+        passingMarks: assignment?.passing_marks ?? undefined,
         uploaded_question_paper: null,
         adaptive_marking_for_each_question:
             assignment?.questions?.map((question) => {

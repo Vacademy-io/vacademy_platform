@@ -3,8 +3,15 @@ Schemas for AI Video Generation API.
 """
 from __future__ import annotations
 
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, List, Literal
 from pydantic import BaseModel, Field
+
+
+class ReferenceFileItem(BaseModel):
+    """A reference file (image or PDF) attached to a generation request."""
+    url: str = Field(..., description="Public S3 URL of the file")
+    name: str = Field(..., description="Original filename (e.g., 'diagram.png')")
+    type: Literal["image", "pdf"] = Field(..., description="File type: 'image' or 'pdf'")
 
 
 # Content types supported by the generation pipeline
@@ -78,7 +85,11 @@ class VideoGenerationRequest(BaseModel):
         default=None,
         description="URL of a face/portrait image for the speaking avatar. If not provided, a default teacher image is used. Only applies to VIDEO content type."
     )
-    
+    reference_files: Optional[List[ReferenceFileItem]] = Field(
+        default=None,
+        description="List of reference files (images/PDFs) to include in generation"
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -92,7 +103,11 @@ class VideoGenerationRequest(BaseModel):
                 "target_duration": "5 minutes",
                 "voice_gender": "female",
                 "tts_provider": "edge",
-                "avatar_image_url": None
+                "avatar_image_url": None,
+                "reference_files": [
+                    {"url": "https://bucket.s3.amazonaws.com/file1.png", "name": "diagram.png", "type": "image"},
+                    {"url": "https://bucket.s3.amazonaws.com/file2.pdf", "name": "notes.pdf", "type": "pdf"}
+                ]
             }
         }
 

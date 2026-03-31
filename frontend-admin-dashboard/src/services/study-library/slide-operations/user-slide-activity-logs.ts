@@ -4,6 +4,7 @@ import {
     GET_QUESTION_SLIDE_ACTIVITY_LOGS,
     GET_ASSIGNMENT_SLIDE_ACTIVITY_LOGS,
     GET_VIDEO_RESPONSE_SLIDE_ACTIVITY_LOGS,
+    GRADE_ASSIGNMENT_SUBMISSION,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 
@@ -153,6 +154,20 @@ export const getAssignmentSlideActivityLogs = ({
         queryFn: () => fetchAssignmentSlideLogs(userId, slideId, pageNo, pageSize),
         staleTime: 60 * 60 * 1000,
     };
+};
+
+export const gradeAssignmentSubmission = async (data: {
+    tracked_id: string;
+    marks: number;
+    feedback?: string;
+    checked_file_id?: string;
+}) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: GRADE_ASSIGNMENT_SUBMISSION,
+        data,
+    });
+    return response.data;
 };
 
 export const fetchUserVideoResponseSlideLogs = async (

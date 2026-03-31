@@ -636,7 +636,27 @@ class VideoGenerationService:
                 
                 if outputs and "run_dir" in outputs:
                     run_dir = outputs["run_dir"]
-                    
+
+                # ── Validate required outputs for this stage ──
+                # If the pipeline returned but critical output files are missing,
+                # treat it as a stage failure instead of silently continuing.
+                _required_outputs = {
+                    "script": ["script_path"],
+                    "tts": ["audio_path"],
+                    "words": ["words_json"],
+                    "html": ["timeline_json"],
+                    "avatar": ["avatar_video_path"],
+                    "render": ["video_path"],
+                }
+                _expected = _required_outputs.get(stage_pipeline_name, [])
+                _missing = [k for k in _expected if not outputs or not outputs.get(k)]
+                if _missing and not pipeline_error:
+                    pipeline_error = (
+                        f"Stage '{stage_pipeline_name}' finished but missing required outputs: "
+                        f"{_missing}. The stage may have failed silently."
+                    )
+                    logger.error(f"[VideoGenService] {pipeline_error}")
+
             except Exception as e:
                 import traceback
                 pipeline_error = str(e)

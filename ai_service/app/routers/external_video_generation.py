@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List
 from uuid import uuid4
 
@@ -235,19 +236,50 @@ async def get_video_urls_external(
     Authentication: Requires 'X-Institute-Key' header.
     """
     status = service.get_video_status(video_id)
-    
+
     if not status:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
-    
+
     s3_urls = status.get("s3_urls", {})
-    
+    raw_status = status.get("status", "UNKNOWN")
+    error_message = status.get("error_message")
+    updated_at_str = status.get("updated_at")
+
+    # ── Staleness detection ──
+    # If the job is still IN_PROGRESS but hasn't been updated in >15 min,
+    # the pipeline likely died silently.  Report STALLED so the frontend
+    # can show a meaningful message instead of polling forever.
+    STALE_THRESHOLD = timedelta(minutes=15)
+    if raw_status == "IN_PROGRESS" and updated_at_str:
+        try:
+            updated_at_dt = datetime.fromisoformat(
+                updated_at_str.replace("Z", "+00:00")
+            )
+            if updated_at_dt.tzinfo is None:
+                updated_at_dt = updated_at_dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - updated_at_dt > STALE_THRESHOLD:
+                raw_status = "STALLED"
+                error_message = (
+                    error_message
+                    or f"Generation has not progressed since {updated_at_str}. "
+                       f"Last stage reached: {status.get('current_stage', 'UNKNOWN')}."
+                )
+                logger.warning(
+                    f"[urls] Video {video_id} detected as stalled "
+                    f"(last update: {updated_at_str})"
+                )
+        except (ValueError, TypeError):
+            pass  # unparseable timestamp — fall through with original status
+
     return VideoUrlsResponse(
         video_id=video_id,
         html_url=s3_urls.get("timeline"),
         audio_url=s3_urls.get("audio"),
         words_url=s3_urls.get("words"),
-        status=status.get("status", "UNKNOWN"),
-        current_stage=status.get("current_stage", "UNKNOWN")
+        status=raw_status,
+        current_stage=status.get("current_stage", "UNKNOWN"),
+        updated_at=updated_at_str,
+        error_message=error_message,
     )
 
 

@@ -19,7 +19,64 @@ import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import "katex/dist/katex.min.css";
 import katex from "katex";
 
-/** Renders HTML content with KaTeX math support (handles data-latex spans) */
+/** Returns an SVG icon string based on file extension / MIME type */
+const getFileIconSvg = (fileName: string, mimeType: string): string => {
+  const name = fileName.toLowerCase();
+  const type = mimeType.toLowerCase();
+
+  // PDF
+  if (type.includes("pdf") || name.endsWith(".pdf")) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12l-2 4h4l-2 4"/></svg>`;
+  }
+  // Images
+  if (type.includes("image") || /\.(jpg|jpeg|png|gif|svg|webp|bmp)$/i.test(name)) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+  }
+  // Word docs
+  if (/\.(doc|docx)$/i.test(name) || type.includes("word")) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
+  }
+  // Spreadsheets
+  if (/\.(xls|xlsx|csv)$/i.test(name) || type.includes("sheet") || type.includes("excel")) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><rect x="8" y="12" width="8" height="6" rx="1"/></svg>`;
+  }
+  // Video
+  if (type.includes("video") || /\.(mp4|mov|avi|webm|mkv)$/i.test(name)) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`;
+  }
+  // Audio
+  if (type.includes("audio") || /\.(mp3|wav|ogg|aac|flac)$/i.test(name)) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+  }
+  // Archive
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(name)) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>`;
+  }
+  // Generic file
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+};
+
+/** Download arrow icon */
+const downloadIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+
+/** Get human-readable file size label from extension */
+const getFileTypeLabel = (fileName: string, mimeType: string): string => {
+  const name = fileName.toLowerCase();
+  const type = mimeType.toLowerCase();
+  if (type.includes("pdf") || name.endsWith(".pdf")) return "PDF";
+  if (/\.(jpg|jpeg)$/i.test(name) || type.includes("jpeg")) return "JPEG";
+  if (name.endsWith(".png") || type.includes("png")) return "PNG";
+  if (/\.(doc|docx)$/i.test(name) || type.includes("word")) return "Word";
+  if (/\.(xls|xlsx)$/i.test(name) || type.includes("sheet")) return "Excel";
+  if (/\.(ppt|pptx)$/i.test(name) || type.includes("presentation")) return "PPT";
+  if (name.endsWith(".csv")) return "CSV";
+  if (/\.(mp4|mov|avi|webm)$/i.test(name) || type.includes("video")) return "Video";
+  if (/\.(mp3|wav|ogg)$/i.test(name) || type.includes("audio")) return "Audio";
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(name)) return "Archive";
+  return "File";
+};
+
+/** Renders HTML content with KaTeX math support and enhanced attachment rendering */
 const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: string }) => {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -41,6 +98,56 @@ const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: str
       } catch {
         // Keep original content on failure
       }
+    });
+
+    // Enhance attachment links with file icons and better styling
+    const attachmentLinks = ref.current.querySelectorAll('a[data-attachment="true"]');
+    attachmentLinks.forEach((link) => {
+      if (link.getAttribute("data-enhanced")) return;
+      link.setAttribute("data-enhanced", "true");
+
+      const anchor = link as HTMLAnchorElement;
+      const fileName = anchor.getAttribute("name") || anchor.textContent?.trim() || "File";
+      const mimeType = anchor.getAttribute("type") || "";
+      const typeLabel = getFileTypeLabel(fileName, mimeType);
+      const iconSvg = getFileIconSvg(fileName, mimeType);
+
+      // Replace inline styles with a clean card-like look
+      anchor.removeAttribute("style");
+      anchor.style.cssText = `
+        display: flex; align-items: center; gap: 12px;
+        background: #f9fafb; padding: 12px 16px; border-radius: 10px;
+        border: 1px solid #e5e7eb; text-decoration: none; color: #111827;
+        transition: all 0.15s ease; cursor: pointer; max-width: 400px;
+      `;
+
+      // Build enhanced inner HTML
+      anchor.innerHTML = `
+        <span style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 8px; background: #f3f4f6; flex-shrink: 0;">
+          ${iconSvg}
+        </span>
+        <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1;">
+          <span style="font-size: 14px; font-weight: 500; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            ${fileName}
+          </span>
+          <span style="font-size: 12px; color: #6b7280;">
+            ${typeLabel}
+          </span>
+        </span>
+        <span style="flex-shrink: 0; display: flex; align-items: center;">
+          ${downloadIconSvg}
+        </span>
+      `;
+
+      // Hover effect
+      anchor.addEventListener("mouseenter", () => {
+        anchor.style.background = "#f3f4f6";
+        anchor.style.borderColor = "#d1d5db";
+      });
+      anchor.addEventListener("mouseleave", () => {
+        anchor.style.background = "#f9fafb";
+        anchor.style.borderColor = "#e5e7eb";
+      });
     });
   }, [html]);
 

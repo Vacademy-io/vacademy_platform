@@ -259,16 +259,31 @@ function VideoConsole() {
                         localStorage.removeItem(PENDING_GENERATION_KEY);
                         setConsoleState('idle');
                         setCurrentGeneration(null);
-                        toast.error('Content generation failed. Please try again.');
-                    } else if (urls.status === 'COMPLETED' && !urls.html_url) {
-                        // Completed at a partial stage (e.g. script-only) — no visual content
+                        toast.error(
+                            urls.error_message ||
+                            `Generation failed at ${urls.current_stage} stage. Please try again.`
+                        );
+                    } else if (urls.status === 'STALLED') {
+                        // Backend detected the job has not progressed in >15 min
                         if (pollingRef.current) clearInterval(pollingRef.current);
                         pollingRef.current = null;
                         localStorage.removeItem(PENDING_GENERATION_KEY);
                         setConsoleState('idle');
                         setCurrentGeneration(null);
-                        toast.info(
-                            'Generation completed but no visual content was produced. The content may only have a script.'
+                        toast.error(
+                            urls.error_message ||
+                            `Generation appears stuck at ${urls.current_stage} stage. Please try again.`
+                        );
+                    } else if (urls.status === 'COMPLETED' && !urls.html_url) {
+                        // Completed but missing HTML — show what stage it actually reached
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        pollingRef.current = null;
+                        localStorage.removeItem(PENDING_GENERATION_KEY);
+                        setConsoleState('idle');
+                        setCurrentGeneration(null);
+                        toast.error(
+                            urls.error_message ||
+                            `Generation stopped at ${urls.current_stage} stage without producing visual content. Please try again.`
                         );
                     }
                     // Otherwise still IN_PROGRESS — keep polling
@@ -609,11 +624,34 @@ function VideoConsole() {
                 try {
                     const urls = await getVideoUrls(item.video_id, activeApiKey);
 
+                    // Handle terminal failure / stalled states immediately
+                    if (urls.status === 'FAILED' || urls.status === 'STALLED') {
+                        setIsLoadingVideoUrls(false);
+                        setConsoleState('idle');
+                        setCurrentGeneration(null);
+                        toast.error(
+                            urls.error_message ||
+                            `Generation ${urls.status === 'STALLED' ? 'stalled' : 'failed'} at ${urls.current_stage} stage. Please try again.`
+                        );
+                        return;
+                    }
+
                     // Backend can return status=COMPLETED with null URLs when the job
-                    // finished a mid-stage (e.g. current_stage=SCRIPT). Only show the
+                    // finished at a mid-stage (e.g. current_stage=SCRIPT). Only show the
                     // player when the required URLs are actually present.
                     if (!urls.html_url || (!urls.audio_url && needsAudio(item.content_type))) {
                         setIsLoadingVideoUrls(false);
+                        // If status is COMPLETED but no HTML, the generation stopped early
+                        if (urls.status === 'COMPLETED') {
+                            toast.error(
+                                urls.error_message ||
+                                `Generation stopped at ${urls.current_stage} stage without producing visual content. Please try again.`
+                            );
+                            setConsoleState('idle');
+                            setCurrentGeneration(null);
+                            return;
+                        }
+                        // Still IN_PROGRESS — start polling
                         toast.info('Content is still being generated. Waiting for completion…');
                         startPollingForVideo(
                             {

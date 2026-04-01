@@ -182,6 +182,14 @@ public class DistinctUserAudienceService {
                        .packageSessionId(v2Data.getPackageSessionId())
                        .instituteEnrollmentNumber(v2Data.getInstituteEnrollmentNumber())
                        .paymentStatus(v2Data.getPaymentStatus())
+                       .instituteId(v2Data.getInstituteId())
+                       .fathersName(v2Data.getFathersName())
+                       .mothersName(v2Data.getMothersName())
+                       .parentsMobileNumber(v2Data.getParentsMobileNumber())
+                       .parentsEmail(v2Data.getParentsEmail())
+                       .parentsToMotherMobileNumber(v2Data.getParentsToMotherMobileNumber())
+                       .parentsToMotherEmail(v2Data.getParentsToMotherEmail())
+                       .linkedInstituteName(v2Data.getLinkedInstituteName())
                        .customFieldsMap(parseCustomFieldsJson(v2Data.getCustomFieldsJson()));
             }
 

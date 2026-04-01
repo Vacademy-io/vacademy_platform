@@ -40,5 +40,13 @@ public class UserWithCustomFieldsDTO {
     private String packageSessionId;
     private String instituteEnrollmentNumber;
     private String paymentStatus;
+    private String instituteId;
+    private String fathersName;
+    private String mothersName;
+    private String parentsMobileNumber;
+    private String parentsEmail;
+    private String parentsToMotherMobileNumber;
+    private String parentsToMotherEmail;
+    private String linkedInstituteName;
     private Map<String, String> customFieldsMap;
 }

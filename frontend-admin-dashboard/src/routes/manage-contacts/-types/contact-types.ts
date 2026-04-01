@@ -72,6 +72,14 @@ export interface ContactUser {
     package_session_id?: string;
     institute_enrollment_number?: string;
     payment_status?: string;
+    institute_id?: string;
+    fathers_name?: string;
+    mothers_name?: string;
+    parents_mobile_number?: string;
+    parents_email?: string;
+    parents_to_mother_mobile_number?: string;
+    parents_to_mother_email?: string;
+    linked_institute_name?: string;
     custom_fields_map?: Record<string, string | null>;
 }
 

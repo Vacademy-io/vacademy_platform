@@ -117,6 +117,7 @@ async def generate_video_external(
                         institute_id=inst_id,
                         user_id=None,
                         reference_files=[rf.model_dump() for rf in p.reference_files] if p.reference_files else None,
+                        orientation=getattr(p, "orientation", "landscape"),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -395,6 +396,12 @@ async def request_video_render(
         render_key=settings.render_server_key,
     )
 
+    # Derive dimensions from orientation stored in metadata
+    _meta = status.get("metadata", {}) or {}
+    _orientation = _meta.get("orientation", "landscape")
+    _render_width = 1080 if _orientation == "portrait" else 1920
+    _render_height = 1920 if _orientation == "portrait" else 1080
+
     try:
         job_id = render_svc.submit(
             video_id=video_id,
@@ -404,6 +411,8 @@ async def request_video_render(
             branding_meta_url=s3_urls.get("branding_meta"),
             avatar_video_url=s3_urls.get("avatar"),
             show_captions=True,
+            width=_render_width,
+            height=_render_height,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))

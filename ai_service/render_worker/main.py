@@ -63,6 +63,8 @@ class RenderJobRequest(BaseModel):
     callback_url: Optional[str] = Field(None, description="URL to POST on completion")
     show_captions: bool = Field(default=True)
     audio_delay: float = Field(default=0.0)
+    width: int = Field(default=1920, description="Video width (1920 for landscape, 1080 for portrait)")
+    height: int = Field(default=1080, description="Video height (1080 for landscape, 1920 for portrait)")
 
 
 class RenderJobResponse(BaseModel):
@@ -102,6 +104,8 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
             show_captions=request.show_captions,
             audio_delay=request.audio_delay,
             on_progress=lambda p: _update_progress(job_id, p),
+            width=request.width,
+            height=request.height,
         )
 
         jobs[job_id]["status"] = "completed"

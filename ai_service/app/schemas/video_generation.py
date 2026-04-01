@@ -89,6 +89,10 @@ class VideoGenerationRequest(BaseModel):
         default=None,
         description="List of reference files (images/PDFs) to include in generation"
     )
+    orientation: Literal["landscape", "portrait"] = Field(
+        default="landscape",
+        description="Video orientation: 'landscape' (1920x1080, 16:9) or 'portrait' (1080x1920, 9:16)"
+    )
 
     class Config:
         json_schema_extra = {
@@ -104,6 +108,7 @@ class VideoGenerationRequest(BaseModel):
                 "voice_gender": "female",
                 "tts_provider": "edge",
                 "avatar_image_url": None,
+                "orientation": "landscape",
                 "reference_files": [
                     {"url": "https://bucket.s3.amazonaws.com/file1.png", "name": "diagram.png", "type": "image"},
                     {"url": "https://bucket.s3.amazonaws.com/file2.pdf", "name": "notes.pdf", "type": "pdf"}

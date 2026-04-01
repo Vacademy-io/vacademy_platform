@@ -42,6 +42,8 @@ class RenderService:
         callback_url: Optional[str] = None,
         show_captions: bool = True,
         audio_delay: float = 0.0,
+        width: int = 1920,
+        height: int = 1080,
     ) -> str:
         """
         Submit a render job to the worker. Returns the job_id.
@@ -59,6 +61,8 @@ class RenderService:
             "callback_url": callback_url,
             "show_captions": show_captions,
             "audio_delay": audio_delay,
+            "width": width,
+            "height": height,
         }
 
         try:

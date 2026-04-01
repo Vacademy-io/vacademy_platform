@@ -257,11 +257,23 @@ export function PromptInput({
 
     const MAX_ATTACHMENTS = 10;
     const MAX_FILE_SIZE_MB = 50;
+    const ACCEPTED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
+    const [isDraggingOver, setIsDraggingOver] = useState(false);
 
-    const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
-        e.target.value = '';
+    // Shared upload logic for both file input and drag-drop
+    const processFiles = async (fileList: File[]) => {
+        if (fileList.length === 0) return;
+
+        // Filter to accepted types
+        const validFiles = fileList.filter((f) => {
+            const ext = f.name.split('.').pop()?.toLowerCase() || '';
+            return ACCEPTED_EXTENSIONS.includes(ext);
+        });
+        if (validFiles.length < fileList.length) {
+            const rejected = fileList.length - validFiles.length;
+            toast.warning(`${rejected} file(s) skipped (only images and PDFs accepted)`);
+        }
+        if (validFiles.length === 0) return;
 
         const remaining = MAX_ATTACHMENTS - attachments.length;
         if (remaining <= 0) {
@@ -269,8 +281,8 @@ export function PromptInput({
             return;
         }
 
-        const filesToProcess = Array.from(files).slice(0, remaining);
-        if (filesToProcess.length < files.length) {
+        const filesToProcess = validFiles.slice(0, remaining);
+        if (filesToProcess.length < validFiles.length) {
             toast.warning(`Only ${remaining} more file(s) can be added (max ${MAX_ATTACHMENTS})`);
         }
 
@@ -334,6 +346,35 @@ export function PromptInput({
         } finally {
             setIsUploadingAttachment(false);
         }
+    };
+
+    const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        e.target.value = '';
+        await processFiles(Array.from(files));
+    };
+
+    // Drag-and-drop handlers for the prompt area
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer.types.includes('Files')) {
+            setIsDraggingOver(true);
+        }
+    };
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingOver(false);
+    };
+    const handleDrop = async (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingOver(false);
+        if (isGenerating || disabled || isUploadingAttachment) return;
+        const files = Array.from(e.dataTransfer.files);
+        await processFiles(files);
     };
 
     const removeAttachment = (fileId: string) => {
@@ -857,8 +898,26 @@ export function PromptInput({
                     </div>
                 )}
 
-                {/* Prompt Input */}
-                <div className="relative flex items-end gap-2 rounded-lg border bg-muted/30 p-1.5 shadow-sm transition-all focus-within:border-ring/50 focus-within:ring-1 focus-within:ring-ring">
+                {/* Prompt Input — supports drag-and-drop for images/PDFs */}
+                <div
+                    className={`relative flex items-end gap-2 rounded-lg border p-1.5 shadow-sm transition-all focus-within:border-ring/50 focus-within:ring-1 focus-within:ring-ring ${
+                        isDraggingOver
+                            ? 'border-blue-400 bg-blue-50/50 ring-1 ring-blue-300'
+                            : 'bg-muted/30'
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                >
+                    {/* Drag overlay */}
+                    {isDraggingOver && (
+                        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/80">
+                            <div className="flex flex-col items-center gap-1 text-blue-600">
+                                <Paperclip className="size-5" />
+                                <span className="text-xs font-medium">Drop images or PDFs here</span>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex shrink-0 flex-col items-center justify-end gap-0.5 pb-1">
                         {/* Hidden file inputs */}
                         <input

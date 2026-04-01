@@ -7,6 +7,7 @@ import { CheckCircle2, Copy, Check, Code2, Link2, Download, Loader2, ExternalLin
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import {
     ContentType,
+    VideoOrientation,
     getContentTypeLabel,
     requiresAudio,
     requestVideoRender,
@@ -21,6 +22,7 @@ interface VideoResultProps {
     audioUrl?: string;
     wordsUrl?: string;
     contentType?: ContentType;
+    orientation?: VideoOrientation;
     prompt: string;
     apiKey?: string;
 }
@@ -33,9 +35,13 @@ export function VideoResult({
     audioUrl,
     wordsUrl,
     contentType = 'VIDEO',
+    orientation = 'landscape',
     prompt,
     apiKey,
 }: VideoResultProps) {
+    const isPortrait = orientation === 'portrait';
+    const playerWidth = isPortrait ? 1080 : 1920;
+    const playerHeight = isPortrait ? 1920 : 1080;
     const [copiedUrl, setCopiedUrl] = useState(false);
     const [copiedEmbed, setCopiedEmbed] = useState(false);
     const [renderState, setRenderState] = useState<RenderState>('idle');
@@ -150,7 +156,7 @@ export function VideoResult({
                 <div
                     className="flex overflow-hidden rounded-xl border-2 bg-black shadow-lg w-full"
                     style={{
-                        aspectRatio: '16/9',
+                        aspectRatio: isPortrait ? '9/16' : '16/9',
                         maxHeight: 'calc(100vh - 200px)',
                     }}
                 >
@@ -158,8 +164,8 @@ export function VideoResult({
                         timelineUrl={htmlUrl}
                         audioUrl={audioUrl}
                         wordsUrl={wordsUrl}
-                        width={1920}
-                        height={1080}
+                        width={playerWidth}
+                        height={playerHeight}
                         onDownloadClick={
                             showDownload && renderState === 'idle'
                                 ? handleRequestRender

@@ -115,6 +115,7 @@ export const CONTENT_TYPES = [
     },
 ] as const;
 
+export type VideoOrientation = 'landscape' | 'portrait';
 export type QualityTier = 'free' | 'standard' | 'premium' | 'ultra';
 
 export interface ReferenceFile {
@@ -137,6 +138,7 @@ export interface GenerateVideoRequest {
     quality_tier: QualityTier;
     video_id?: string; // Optional: auto-generated if not provided
     reference_files?: ReferenceFile[];
+    orientation?: VideoOrientation;
 }
 
 export const QUALITY_TIERS: Array<{
@@ -320,6 +322,7 @@ export const DEFAULT_OPTIONS: Omit<GenerateVideoRequest, 'prompt'> = {
     target_duration: '2-3 minutes',
     model: '',
     quality_tier: 'ultra',
+    orientation: 'landscape',
 };
 
 export function generateVideoId(): string {

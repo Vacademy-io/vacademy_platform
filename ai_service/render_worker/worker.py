@@ -66,6 +66,8 @@ class RenderWorker:
         show_captions: bool = True,
         audio_delay: float = 0.0,
         on_progress: Optional[Callable[[float], None]] = None,
+        width: int = 1920,
+        height: int = 1080,
     ) -> str:
         """
         Run the full render pipeline and return the S3 URL of the output MP4.
@@ -145,6 +147,8 @@ class RenderWorker:
                 "--frames-dir", str(frames_dir),
                 "--background", "#000000",
                 "--fps", str(FPS),
+                "--width", str(width),
+                "--height", str(height),
                 "--frames-only",
             ]
             if VIDEO_OPTIONS.exists():
@@ -157,6 +161,11 @@ class RenderWorker:
                 base_cmd.extend(["--audio-delay", str(audio_delay)])
             if show_captions:
                 base_cmd.append("--show-captions")
+
+            # Branding watermark overlay (branding.json is baked into Docker image)
+            branding_json = REPO_ROOT / "branding.json"
+            if branding_json.exists():
+                base_cmd.extend(["--show-branding", "--branding-json", str(branding_json)])
 
             # Split frame ranges
             chunk_size = (total_frames + NUM_WORKERS - 1) // NUM_WORKERS
@@ -202,6 +211,10 @@ class RenderWorker:
                         f"Render worker {i} (frames {frame_ranges[i]}) failed: "
                         f"{result.stderr[-500:]}"
                     )
+                # Log browser errors/warnings from successful workers (print() goes to stdout)
+                if "[BROWSER ERROR]" in result.stdout or "[BROWSER EXCEPTION]" in result.stdout:
+                    browser_lines = [l for l in result.stdout.split('\n') if '[BROWSER' in l]
+                    logger.warning(f"Worker {i} browser errors ({len(browser_lines)} lines):\n" + '\n'.join(browser_lines[-20:]))
                 logger.info(f"Worker {i} done: {result.stdout[-200:]}")
 
             rendered_frames = sorted(frames_dir.glob("frame_*.png"))

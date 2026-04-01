@@ -75,7 +75,9 @@ jobs:
               "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
               "ADMIN_CORE_SERVICE_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_DB_URL }}" \
               "DB_HOST=${{ secrets.DB_HOST }}" \
-              "DB_PORT=${{ secrets.DB_PORT }}"
+              "DB_PORT=${{ secrets.DB_PORT }}" \
+              "RENDER_SERVER_URL=${{ secrets.RENDER_SERVER_URL }}" \
+              "RENDER_SERVER_KEY=${{ secrets.RENDER_SERVER_KEY }}"
 
             kubectl patch deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" --type=strategic \
               --patch '{

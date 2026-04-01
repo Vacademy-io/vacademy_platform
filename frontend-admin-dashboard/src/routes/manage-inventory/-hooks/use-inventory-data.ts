@@ -1,39 +1,63 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    getInventoryAvailability,
     updateInventoryCapacity,
     reserveInventorySlot,
     releaseInventorySlot,
-    getMultipleInventoryAvailability,
+    fetchPaginatedBatches,
+    fetchBatchInventoryAvailability,
+    fetchBatchesSummary,
+    fetchInventoryStats,
 } from '../-services/inventory-service';
-import { InventoryAvailability } from '../-types/inventory-types';
+import {
+    PaginatedBatchesResponse,
+    BatchAvailabilityMap,
+    BatchesSummaryResponse,
+    InventoryFilters,
+    InventoryStats,
+} from '../-types/inventory-types';
 
 /**
- * Hook to fetch availability for a single package session
+ * Hook to fetch paginated batches with server-side filtering
  */
-export const useInventoryAvailability = (packageSessionId: string | undefined) => {
-    return useQuery<InventoryAvailability>({
-        queryKey: ['inventoryAvailability', packageSessionId],
-        queryFn: () =>
-            packageSessionId
-                ? getInventoryAvailability(packageSessionId)
-                : Promise.reject('No package session ID'),
-        enabled: !!packageSessionId,
-        staleTime: 1000 * 30, // 30 seconds
-        retry: 2,
+export const usePaginatedBatches = (filters: InventoryFilters, page: number, size: number) => {
+    return useQuery<PaginatedBatchesResponse>({
+        queryKey: ['paginatedBatches', filters, page, size],
+        queryFn: () => fetchPaginatedBatches(filters, page, size),
+        staleTime: 1000 * 30,
     });
 };
 
 /**
- * Hook to fetch availability for multiple package sessions
+ * Hook to fetch inventory availability for a list of package session IDs in one call
  */
-export const useMultipleInventoryAvailability = (packageSessionIds: string[]) => {
-    return useQuery<Map<string, InventoryAvailability>>({
-        queryKey: ['inventoryAvailabilityBatch', packageSessionIds],
-        queryFn: () => getMultipleInventoryAvailability(packageSessionIds),
+export const useBatchInventoryAvailability = (packageSessionIds: string[]) => {
+    return useQuery<BatchAvailabilityMap>({
+        queryKey: ['batchInventoryAvailability', packageSessionIds],
+        queryFn: () => fetchBatchInventoryAvailability(packageSessionIds),
         enabled: packageSessionIds.length > 0,
-        staleTime: 1000 * 30, // 30 seconds
-        retry: 1,
+        staleTime: 1000 * 30,
+    });
+};
+
+/**
+ * Hook to fetch batches summary for filter dropdowns
+ */
+export const useBatchesSummary = () => {
+    return useQuery<BatchesSummaryResponse>({
+        queryKey: ['batchesSummary'],
+        queryFn: fetchBatchesSummary,
+        staleTime: 1000 * 60 * 5, // 5 minutes — filter options don't change often
+    });
+};
+
+/**
+ * Hook to fetch aggregated inventory stats for the entire institute
+ */
+export const useInventoryStats = () => {
+    return useQuery<InventoryStats>({
+        queryKey: ['inventoryStats'],
+        queryFn: fetchInventoryStats,
+        staleTime: 1000 * 30,
     });
 };
 
@@ -44,12 +68,18 @@ export const useUpdateCapacity = () => {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ packageSessionId, maxSeats, availableSlots }: { packageSessionId: string; maxSeats: number | null; availableSlots: number | null }) =>
-            updateInventoryCapacity(packageSessionId, maxSeats, availableSlots),
-        onSuccess: (_, variables) => {
-            // Invalidate both single and batch queries
-            queryClient.invalidateQueries({ queryKey: ['inventoryAvailability', variables.packageSessionId] });
-            queryClient.invalidateQueries({ queryKey: ['inventoryAvailabilityBatch'] });
+        mutationFn: ({
+            packageSessionId,
+            maxSeats,
+            availableSlots,
+        }: {
+            packageSessionId: string;
+            maxSeats: number | null;
+            availableSlots: number | null;
+        }) => updateInventoryCapacity(packageSessionId, maxSeats, availableSlots),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['batchInventoryAvailability'] });
+            queryClient.invalidateQueries({ queryKey: ['inventoryStats'] });
         },
     });
 };
@@ -62,9 +92,9 @@ export const useReserveSlot = () => {
 
     return useMutation({
         mutationFn: (packageSessionId: string) => reserveInventorySlot(packageSessionId),
-        onSuccess: (_, packageSessionId) => {
-            queryClient.invalidateQueries({ queryKey: ['inventoryAvailability', packageSessionId] });
-            queryClient.invalidateQueries({ queryKey: ['inventoryAvailabilityBatch'] });
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['batchInventoryAvailability'] });
+            queryClient.invalidateQueries({ queryKey: ['inventoryStats'] });
         },
     });
 };
@@ -77,9 +107,9 @@ export const useReleaseSlot = () => {
 
     return useMutation({
         mutationFn: (packageSessionId: string) => releaseInventorySlot(packageSessionId),
-        onSuccess: (_, packageSessionId) => {
-            queryClient.invalidateQueries({ queryKey: ['inventoryAvailability', packageSessionId] });
-            queryClient.invalidateQueries({ queryKey: ['inventoryAvailabilityBatch'] });
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['batchInventoryAvailability'] });
+            queryClient.invalidateQueries({ queryKey: ['inventoryStats'] });
         },
     });
 };

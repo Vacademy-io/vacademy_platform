@@ -3,6 +3,8 @@ import { useQueries } from '@tanstack/react-query';
 import { fetchMembershipStats, getMembershipStatsQueryKey } from '@/services/membership-stats';
 import { subDays, subMonths, format, startOfToday, endOfDay } from 'date-fns';
 
+const USER_TYPES = ['NEW_USER', 'RETAINER'] as const;
+
 export function useMembershipAnalytics(packageSessionIds: string[] | undefined) {
     // Generate dates (Memoized to prevent infinite refetching due to changing 'now')
     const { today, now, last24hStart, last24hEnd, last7dStart, last30dStart } = useMemo(() => {
@@ -24,109 +26,99 @@ export function useMembershipAnalytics(packageSessionIds: string[] | undefined) 
     // Common query config
     const commonQuery = {
         package_session_ids: packageSessionIds,
-        user_types: undefined, // Total users
         institute_id: 'auto', // Handled by service
         sort_columns: undefined,
         search_name: undefined,
     };
 
-    // Summary Queries
+    // Helper to build queries for a date range — total + per user type
+    const buildRangeQueries = (startDateStr: string, endDateStr: string) => {
+        const baseFilter = {
+            ...commonQuery,
+            start_date_in_utc: startDateStr,
+            end_date_in_utc: endDateStr,
+        };
+
+        // Total (no user_types filter)
+        const totalQuery = {
+            queryKey: getMembershipStatsQueryKey(0, 1, { ...baseFilter, user_types: undefined }),
+            queryFn: () => fetchMembershipStats(0, 1, { ...baseFilter, user_types: undefined }),
+        };
+
+        // Per user type
+        const typeQueries = USER_TYPES.map((userType) => ({
+            queryKey: getMembershipStatsQueryKey(0, 1, { ...baseFilter, user_types: [userType] }),
+            queryFn: () => fetchMembershipStats(0, 1, { ...baseFilter, user_types: [userType] }),
+        }));
+
+        return [totalQuery, ...typeQueries]; // [total, NEW_USER, RETAINER]
+    };
+
+    // Summary Queries: 3 ranges × 3 queries each = 9
     const summaryQueries = [
-        // Index 0: Last 24h
-        {
-            queryKey: getMembershipStatsQueryKey(0, 1, {
-                ...commonQuery,
-                start_date_in_utc: formatDate(last24hStart),
-                end_date_in_utc: formatDate(last24hEnd),
-            }),
-            queryFn: () =>
-                fetchMembershipStats(0, 1, {
-                    ...commonQuery,
-                    start_date_in_utc: formatDate(last24hStart),
-                    end_date_in_utc: formatDate(last24hEnd),
-                }),
-        },
-        // Index 1: Last 7d
-        {
-            queryKey: getMembershipStatsQueryKey(0, 1, {
-                ...commonQuery,
-                start_date_in_utc: formatDate(last7dStart),
-                end_date_in_utc: formatDate(now),
-            }),
-            queryFn: () =>
-                fetchMembershipStats(0, 1, {
-                    ...commonQuery,
-                    start_date_in_utc: formatDate(last7dStart),
-                    end_date_in_utc: formatDate(now),
-                }),
-        },
-        // Index 2: Last 30d
-        {
-            queryKey: getMembershipStatsQueryKey(0, 1, {
-                ...commonQuery,
-                start_date_in_utc: formatDate(last30dStart),
-                end_date_in_utc: formatDate(now),
-            }),
-            queryFn: () =>
-                fetchMembershipStats(0, 1, {
-                    ...commonQuery,
-                    start_date_in_utc: formatDate(last30dStart),
-                    end_date_in_utc: formatDate(now),
-                }),
-        },
+        ...buildRangeQueries(formatDate(last24hStart), formatDate(last24hEnd)),   // indices 0-2
+        ...buildRangeQueries(formatDate(last7dStart), formatDate(now)),            // indices 3-5
+        ...buildRangeQueries(formatDate(last30dStart), formatDate(now)),           // indices 6-8
     ];
 
     // Graph Queries (Last 7 days, daily)
-    // From 6 days ago -> Today (7 points)
     const days = Array.from({ length: 7 }, (_, i) => {
-        const d = subDays(today, 6 - i); // 6 days ago, 5 days ago ... 0 days ago (today)
+        const d = subDays(today, 6 - i);
         return {
             date: d,
             start: d,
             end: endOfDay(d),
-            label: format(d, 'EEE'), // Mon, Tue...
+            label: format(d, 'EEE'),
             fullLabel: format(d, 'MMM dd'),
         };
     });
 
-    const graphQueries = days.map((day) => ({
-        queryKey: getMembershipStatsQueryKey(0, 1, {
-            ...commonQuery,
-            start_date_in_utc: formatDate(day.start),
-            end_date_in_utc: formatDate(day.end),
-        }),
-        queryFn: () =>
-            fetchMembershipStats(0, 1, {
-                ...commonQuery,
-                start_date_in_utc: formatDate(day.start),
-                end_date_in_utc: formatDate(day.end),
-            }),
-    }));
+    // 7 days × 3 queries each = 21
+    const graphQueries = days.flatMap((day) =>
+        buildRangeQueries(formatDate(day.start), formatDate(day.end))
+    );
 
     const results = useQueries({
         queries: [...summaryQueries, ...graphQueries],
     });
 
-    const summaryResults = results.slice(0, 3);
-    const graphResults = results.slice(3);
+    const summaryResults = results.slice(0, 9);
+    const graphResults = results.slice(9);
 
     const isLoading = results.some((r) => r.isLoading);
 
-    // Process Graph Data
+    // Helper to extract total_elements
+    const getCount = (index: number) => results[index]?.data?.total_elements || 0;
+
+    // Process Graph Data — each day has 3 results (total, NEW_USER, RETAINER)
     const graphData = days.map((day, index) => {
-        const queryResult = graphResults[index];
+        const base = index * 3;
         return {
             date: day.label,
             fullDate: day.fullLabel,
-            users: queryResult?.data?.total_elements || 0,
+            users: graphResults[base]?.data?.total_elements || 0,
+            newUsers: graphResults[base + 1]?.data?.total_elements || 0,
+            retainers: graphResults[base + 2]?.data?.total_elements || 0,
         };
     });
 
     return {
         stats: {
-            last24Hours: summaryResults[0]?.data?.total_elements || 0,
-            last7Days: summaryResults[1]?.data?.total_elements || 0,
-            last30Days: summaryResults[2]?.data?.total_elements || 0,
+            last24Hours: {
+                total: getCount(0),
+                newUsers: getCount(1),
+                retainers: getCount(2),
+            },
+            last7Days: {
+                total: getCount(3),
+                newUsers: getCount(4),
+                retainers: getCount(5),
+            },
+            last30Days: {
+                total: getCount(6),
+                newUsers: getCount(7),
+                retainers: getCount(8),
+            },
         },
         dateRanges: {
             last24h: { start: last24hStart, end: last24hEnd },

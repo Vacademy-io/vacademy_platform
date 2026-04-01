@@ -1354,7 +1354,7 @@ export function RouteComponent() {
                 slide.slideType === 'video-jupyter' ||
                 slide.slideType === 'video-scratch'
             ) {
-                setCodeContent(slide.content || '// Your code here\nconsole.log("Hello, World!");');
+                setCodeContent(slide.content || '// Start writing your code here');
             } else if (
                 slide.slideType === 'code-editor' ||
                 slide.slideType === 'jupyter' ||
@@ -1365,7 +1365,7 @@ export function RouteComponent() {
                     setCodeContent(slide.content || DEFAULT_SOLUTION_CODE);
                 } else {
                     setCodeContent(
-                        slide.content || '// Your code here\nconsole.log("Hello, World!");'
+                        slide.content || '// Start writing your code here'
                     );
                 }
             } else if (slide.slideType === 'homework' || slide.slideType === 'assignment') {

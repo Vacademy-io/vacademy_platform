@@ -126,6 +126,9 @@ public class LearnerEnrollRequestService {
     private StudentSessionInstituteGroupMappingRepository ssigmRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository userPlanRepository;
+
+    @Autowired
     private vacademy.io.admin_core_service.features.packages.service.PackageSessionService packageSessionService;
 
     @Transactional
@@ -172,8 +175,9 @@ public class LearnerEnrollRequestService {
             boolean sendCredentials = getSendCredentialsFlag(
                     learnerEnrollRequestDTO.getInstituteId(),
                     enrollDTO.getPackageSessionIds());
+            String learndashBaseUrl = getLearndashBaseUrlFromPackage(enrollDTO.getPackageSessionIds());
             UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(learnerEnrollRequestDTO.getUser(),
-                    learnerEnrollRequestDTO.getInstituteId(), sendCredentials);
+                    learnerEnrollRequestDTO.getInstituteId(), sendCredentials, learndashBaseUrl);
             learnerEnrollRequestDTO.setUser(user);
             EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
             // Generate coupon code for new learner enrollment
@@ -282,6 +286,14 @@ public class LearnerEnrollRequestService {
             log.info("Setting user email {} in PaymentInitiationRequest for payment receipt emails",
                     learnerEnrollRequestDTO.getUser().getEmail());
             enrollDTO.getPaymentInitiationRequest().setEmail(learnerEnrollRequestDTO.getUser().getEmail());
+        }
+
+        // B2B: Validate seat limit for SUBORG_LEARNER invites (per PS independently)
+        if (EnrollInviteTag.SUBORG_LEARNER.name().equals(enrollInvite.getTag())
+                && enrollInvite.getSubOrgId() != null) {
+            for (String psId : enrollDTO.getPackageSessionIds()) {
+                validateSubOrgSeatLimit(enrollInvite.getSubOrgId(), psId);
+            }
         }
 
         UserPlan userPlan = createUserPlan(
@@ -415,6 +427,13 @@ public class LearnerEnrollRequestService {
                                 userMap.put("short_referral_link", shortRefLink);
                                 userMap.put("ref_code", refCode);
                                 userMap.put("invite_code", enrollInvite != null ? enrollInvite.getInviteCode() : "");
+
+                                // Extract learndash_base_url from this package's courseSetting
+                                String wfLearndashBaseUrl = getLearndashBaseUrlFromPackage(List.of(packageSessionId));
+                                if (StringUtils.hasText(wfLearndashBaseUrl)) {
+                                    userMap.put("learndash_base_url", wfLearndashBaseUrl);
+                                    workflowContext.put("learndash_base_url", wfLearndashBaseUrl);
+                                }
 
                                 workflowContext.put("users", List.of(userMap));
 
@@ -578,6 +597,41 @@ public class LearnerEnrollRequestService {
         } catch (Exception e) {
             log.error("Error in postProcessSubOrgEnrollment for user={} sub-org={}: {}",
                     userId, subOrgId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Validates seat limit for SUBORG_LEARNER enrollments.
+     * Finds ROOT_ADMIN's UserPlan → PaymentPlan.memberCount for the sub-org + PS.
+     * Counts active learner members (excluding ROOT_ADMIN) and rejects if at capacity.
+     * Each PS is validated independently.
+     */
+    private void validateSubOrgSeatLimit(String subOrgId, String packageSessionId) {
+        Optional<StudentSessionInstituteGroupMapping> rootAdminOpt = ssigmRepository
+                .findRootAdminMappingBySubOrgAndPackageSession(subOrgId, packageSessionId);
+        if (rootAdminOpt.isEmpty() || rootAdminOpt.get().getUserPlanId() == null) {
+            log.warn("No ROOT_ADMIN mapping found for sub-org={} PS={} — skipping seat validation",
+                    subOrgId, packageSessionId);
+            return;
+        }
+
+        Optional<UserPlan> userPlanOpt = userPlanRepository.findById(rootAdminOpt.get().getUserPlanId());
+        if (userPlanOpt.isEmpty() || userPlanOpt.get().getPaymentPlan() == null) {
+            return;
+        }
+
+        Integer memberCount = userPlanOpt.get().getPaymentPlan().getMemberCount();
+        if (memberCount == null) {
+            return; // No limit set — unlimited
+        }
+
+        long currentCount = ssigmRepository.countBySubOrgIdAndPackageSessionIdAndStatus(
+                subOrgId, packageSessionId, "ACTIVE");
+
+        if (currentCount >= memberCount) {
+            throw new VacademyException(String.format(
+                    "Seat limit reached for this organization. Current members: %d, Maximum allowed: %d.",
+                    currentCount, memberCount));
         }
     }
 
@@ -884,6 +938,59 @@ public class LearnerEnrollRequestService {
         } catch (Exception e) {
             log.error("Error in checkPackageSendCredentialsFlag - defaulting to sendCredentials=true", e);
             return true;
+        }
+    }
+
+    /**
+     * Extract learndash_base_url from the first package's courseSetting JSON.
+     * Path: setting.LMS_SETTING.data.data.learndash_base_url
+     *
+     * @param packageSessionIds List of package session IDs
+     * @return learndash_base_url if found, null otherwise
+     */
+    private String getLearndashBaseUrlFromPackage(List<String> packageSessionIds) {
+        try {
+            if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+                return null;
+            }
+
+            List<PackageSession> packageSessions = packageSessionRepository
+                    .findPackageSessionsByIds(packageSessionIds);
+
+            for (PackageSession packageSession : packageSessions) {
+                if (packageSession.getPackageEntity() == null) {
+                    continue;
+                }
+
+                String courseSetting = packageSession.getPackageEntity().getCourseSetting();
+                if (!StringUtils.hasText(courseSetting)) {
+                    continue;
+                }
+
+                JsonNode rootNode = objectMapper.readTree(courseSetting);
+                JsonNode learndashBaseUrlNode = rootNode
+                        .path("setting")
+                        .path("LMS_SETTING")
+                        .path("data")
+                        .path("data")
+                        .path("learndash_base_url");
+
+                if (!learndashBaseUrlNode.isMissingNode() && learndashBaseUrlNode.isTextual()) {
+                    String url = learndashBaseUrlNode.asText();
+                    if (StringUtils.hasText(url)) {
+                        log.info("Found learndash_base_url in package {}: {}",
+                                packageSession.getPackageEntity().getId(), url);
+                        return url;
+                    }
+                }
+            }
+
+            log.info("No learndash_base_url found in any package courseSetting");
+            return null;
+
+        } catch (Exception e) {
+            log.error("Error extracting learndash_base_url from package courseSetting", e);
+            return null;
         }
     }
 

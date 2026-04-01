@@ -1,13 +1,20 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CheckCircle2, Copy, Check, Code2, Link2 } from 'lucide-react';
+import { CheckCircle2, Copy, Check, Code2, Link2, Download, Loader2, ExternalLink } from 'lucide-react';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
-import { ContentType, getContentTypeLabel } from '../-services/video-generation';
+import {
+    ContentType,
+    VideoOrientation,
+    getContentTypeLabel,
+    requiresAudio,
+    requestVideoRender,
+    getVideoUrls,
+} from '../-services/video-generation';
 import { LatexRenderer } from './LatexRenderer';
+import { toast } from 'sonner';
 
 interface VideoResultProps {
     videoId: string;
@@ -15,8 +22,12 @@ interface VideoResultProps {
     audioUrl?: string;
     wordsUrl?: string;
     contentType?: ContentType;
+    orientation?: VideoOrientation;
     prompt: string;
+    apiKey?: string;
 }
+
+type RenderState = 'idle' | 'submitting' | 'rendering' | 'done' | 'error';
 
 export function VideoResult({
     videoId,
@@ -24,16 +35,46 @@ export function VideoResult({
     audioUrl,
     wordsUrl,
     contentType = 'VIDEO',
+    orientation = 'landscape',
     prompt,
+    apiKey,
 }: VideoResultProps) {
+    const isPortrait = orientation === 'portrait';
+    const playerWidth = isPortrait ? 1080 : 1920;
+    const playerHeight = isPortrait ? 1920 : 1080;
     const [copiedUrl, setCopiedUrl] = useState(false);
     const [copiedEmbed, setCopiedEmbed] = useState(false);
+    const [renderState, setRenderState] = useState<RenderState>('idle');
+    const [videoDownloadUrl, setVideoDownloadUrl] = useState<string | null>(null);
+    const [renderError, setRenderError] = useState<string | null>(null);
+    const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const showDownload = (contentType === 'VIDEO' || requiresAudio(contentType)) && !!apiKey;
+
+    // Check if video_url already exists on mount
+    useEffect(() => {
+        if (!apiKey) return;
+        getVideoUrls(videoId, apiKey)
+            .then((urls) => {
+                if (urls.video_url) {
+                    setVideoDownloadUrl(urls.video_url);
+                    setRenderState('done');
+                }
+            })
+            .catch(() => {});
+    }, [videoId, apiKey]);
+
+    // Cleanup polling on unmount
+    useEffect(() => {
+        return () => {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+        };
+    }, []);
 
     // Build the shareable URL
     const baseUrl = window.location.origin;
     const shareableUrl = `${baseUrl}/content/${videoId}?timeline=${encodeURIComponent(htmlUrl)}${audioUrl ? `&audio=${encodeURIComponent(audioUrl)}` : ''}${wordsUrl ? `&words=${encodeURIComponent(wordsUrl)}` : ''}`;
 
-    // Build the embed code
     const embedCode = `<iframe
   src="${shareableUrl}"
   width="100%"
@@ -64,6 +105,48 @@ export function VideoResult({
         }
     };
 
+    const handleRequestRender = useCallback(async () => {
+        if (!apiKey || renderState === 'submitting' || renderState === 'rendering') return;
+
+        setRenderState('submitting');
+        setRenderError(null);
+
+        try {
+            await requestVideoRender(videoId, apiKey);
+            setRenderState('rendering');
+            toast.info('Video rendering started. This takes 2-5 minutes.');
+
+            // Poll for completion
+            let attempts = 0;
+            const MAX_ATTEMPTS = 120; // 20 minutes at 10s interval
+            pollingRef.current = setInterval(async () => {
+                attempts++;
+                if (attempts > MAX_ATTEMPTS) {
+                    if (pollingRef.current) clearInterval(pollingRef.current);
+                    setRenderState('error');
+                    setRenderError('Render is taking too long. Please check history later.');
+                    return;
+                }
+
+                try {
+                    const urls = await getVideoUrls(videoId, apiKey);
+                    if (urls.video_url) {
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        setVideoDownloadUrl(urls.video_url);
+                        setRenderState('done');
+                        toast.success('Video ready for download!');
+                    }
+                } catch {
+                    // ignore polling errors, keep trying
+                }
+            }, 10_000);
+        } catch (error) {
+            setRenderState('error');
+            setRenderError(error instanceof Error ? error.message : 'Failed to start render');
+            toast.error('Failed to start video render');
+        }
+    }, [videoId, apiKey, renderState]);
+
     const contentLabel = getContentTypeLabel(contentType);
 
     return (
@@ -73,7 +156,7 @@ export function VideoResult({
                 <div
                     className="flex overflow-hidden rounded-xl border-2 bg-black shadow-lg w-full"
                     style={{
-                        aspectRatio: '16/9',
+                        aspectRatio: isPortrait ? '9/16' : '16/9',
                         maxHeight: 'calc(100vh - 200px)',
                     }}
                 >
@@ -81,8 +164,15 @@ export function VideoResult({
                         timelineUrl={htmlUrl}
                         audioUrl={audioUrl}
                         wordsUrl={wordsUrl}
-                        width={1920}
-                        height={1080}
+                        width={playerWidth}
+                        height={playerHeight}
+                        onDownloadClick={
+                            showDownload && renderState === 'idle'
+                                ? handleRequestRender
+                                : videoDownloadUrl
+                                  ? () => window.open(videoDownloadUrl, '_blank')
+                                  : undefined
+                        }
                     />
                 </div>
             </div>
@@ -190,6 +280,62 @@ export function VideoResult({
                                 </PopoverContent>
                             </Popover>
                         </div>
+
+                        {/* Download as Video */}
+                        {showDownload && (
+                            <div className="space-y-1.5">
+                                <label className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                    <Download className="size-3.5" />
+                                    Download Video
+                                </label>
+
+                                {renderState === 'done' && videoDownloadUrl ? (
+                                    <a
+                                        href={videoDownloadUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 w-full h-9 px-3 rounded-md border bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition-colors"
+                                    >
+                                        <Download className="size-4" />
+                                        Download MP4
+                                        <ExternalLink className="size-3 ml-auto" />
+                                    </a>
+                                ) : renderState === 'rendering' || renderState === 'submitting' ? (
+                                    <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
+                                        <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+                                        <span className="text-xs text-muted-foreground">
+                                            {renderState === 'submitting'
+                                                ? 'Starting render...'
+                                                : 'Rendering video (2-5 min)...'}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full h-9 gap-2 shadow-sm justify-start"
+                                        onClick={handleRequestRender}
+                                    >
+                                        <Download className="size-4" />
+                                        Render & Download MP4
+                                    </Button>
+                                )}
+
+                                {renderState === 'error' && renderError && (
+                                    <div className="space-y-1.5 rounded-md border border-destructive/30 bg-destructive/5 p-2">
+                                        <p className="text-xs text-destructive">{renderError}</p>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 text-xs"
+                                            onClick={handleRequestRender}
+                                        >
+                                            Retry
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

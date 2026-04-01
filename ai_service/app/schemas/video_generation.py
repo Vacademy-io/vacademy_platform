@@ -89,6 +89,10 @@ class VideoGenerationRequest(BaseModel):
         default=None,
         description="List of reference files (images/PDFs) to include in generation"
     )
+    orientation: Literal["landscape", "portrait"] = Field(
+        default="landscape",
+        description="Video orientation: 'landscape' (1920x1080, 16:9) or 'portrait' (1080x1920, 9:16)"
+    )
 
     class Config:
         json_schema_extra = {
@@ -104,6 +108,7 @@ class VideoGenerationRequest(BaseModel):
                 "voice_gender": "female",
                 "tts_provider": "edge",
                 "avatar_image_url": None,
+                "orientation": "landscape",
                 "reference_files": [
                     {"url": "https://bucket.s3.amazonaws.com/file1.png", "name": "diagram.png", "type": "image"},
                     {"url": "https://bucket.s3.amazonaws.com/file2.pdf", "name": "notes.pdf", "type": "pdf"}
@@ -191,6 +196,7 @@ class VideoUrlsResponse(BaseModel):
     audio_url: Optional[str] = Field(None, description="URL to audio file (narration.mp3)")
     words_url: Optional[str] = Field(None, description="URL to time-synced words JSON for captions")
     avatar_url: Optional[str] = Field(None, description="URL to avatar talking-head video (MP4)")
+    video_url: Optional[str] = Field(None, description="URL to rendered MP4 video (from render server)")
     status: str = Field(..., description="Current video generation status (PENDING, IN_PROGRESS, COMPLETED, FAILED, STALLED)")
     current_stage: str = Field(..., description="Current generation stage")
     updated_at: Optional[str] = Field(None, description="Last time the record was updated (ISO 8601)")

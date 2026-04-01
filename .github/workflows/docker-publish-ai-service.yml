@@ -75,7 +75,9 @@ jobs:
               GOOGLE_APPLICATION_CREDENTIALS_JSON='${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' \
               MATHPIX_APP_ID=${{ secrets.MATHPIX_APP_ID }} \
               MATHPIX_APP_KEY=${{ secrets.MATHPIX_APP_KEY }} \
-              SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }}
+              SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }} \
+              RENDER_SERVER_URL=${{ secrets.RENDER_SERVER_URL }} \
+              RENDER_SERVER_KEY=${{ secrets.RENDER_SERVER_KEY }}
 
             # Apply resource limits from deployment YAML (helm upgrade not used in CI,
             # so patch directly to keep requests/limits in sync with the checked-in values).

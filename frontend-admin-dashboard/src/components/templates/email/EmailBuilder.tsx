@@ -36,8 +36,26 @@ interface EmailBuilderProps {
     isSaving?: boolean;
 }
 
+// Font list for the rich text toolbar font-family dropdown
+const fontList = [
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Helvetica', label: 'Helvetica' },
+    { value: 'Georgia', label: 'Georgia' },
+    { value: 'Times New Roman', label: 'Times New Roman' },
+    { value: 'Courier New', label: 'Courier New' },
+    { value: 'Verdana', label: 'Verdana' },
+    { value: 'Tahoma', label: 'Tahoma' },
+    { value: 'Trebuchet MS', label: 'Trebuchet MS' },
+    { value: 'Lucida Sans Unicode', label: 'Lucida Sans' },
+    { value: 'Open Sans', label: 'Open Sans' },
+    { value: 'Lato', label: 'Lato' },
+    { value: 'Roboto', label: 'Roboto' },
+    { value: 'Montserrat', label: 'Montserrat' },
+    { value: 'Poppins', label: 'Poppins' },
+];
+
 // Merge tags configuration
-const mergeTags = {
+const defaultMergeTags = {
     User: {
         Name: '{{name}}',
         Email: '{{email}}',
@@ -55,6 +73,16 @@ const mergeTags = {
     },
 };
 
+// Invoice-specific merge tags (shown when template type is INVOICE or INVOICE_EMAIL)
+const invoiceMergeTags = {
+    Invoice: {
+        'Invoice Number': '{{invoice_number}}',
+        'User Name': '{{user_name}}',
+        'Line Items (HTML)': '{{line_items}}',
+        'Total Amount': '{{total_amount}}',
+    },
+};
+
 // Inner toolbar component to access form context
 const EditorToolbar: React.FC<{
     onBack: () => void;
@@ -62,8 +90,11 @@ const EditorToolbar: React.FC<{
     setTemplateName: (name: string) => void;
     onOpenAssets: () => void;
     isSaving: boolean;
-    templateType?: 'marketing' | 'utility' | 'transactional';
-    onTemplateTypeChange?: (type: 'marketing' | 'utility' | 'transactional') => void;
+    templateType?: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL';
+    onTemplateTypeChange?: (type: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL') => void;
+    previewText?: string;
+    onPreviewTextChange?: (text: string) => void;
+    mergeTags?: Record<string, Record<string, string>>;
 }> = ({
     onBack,
     templateName,
@@ -72,6 +103,9 @@ const EditorToolbar: React.FC<{
     isSaving,
     templateType = 'utility',
     onTemplateTypeChange,
+    previewText = '',
+    onPreviewTextChange,
+    mergeTags = defaultMergeTags,
 }) => {
     const form = useForm();
     const { dirty, values } = useFormState({
@@ -154,7 +188,7 @@ const EditorToolbar: React.FC<{
     };
 
     return (
-        <div style={styles.toolbar}>
+        <div className="email-editor-toolbar" style={styles.toolbar}>
             <div style={styles.toolbarLeft}>
                 <button style={styles.backButton} onClick={handleBack}>
                     ← Back
@@ -214,7 +248,20 @@ const EditorToolbar: React.FC<{
                         <option value="utility">Utility</option>
                         <option value="marketing">Marketing</option>
                         <option value="transactional">Transactional</option>
+                        <option value="INVOICE">Invoice (PDF Layout)</option>
+                        <option value="INVOICE_EMAIL">Invoice Email</option>
                     </select>
+                </div>
+                <div style={styles.subjectContainer}>
+                    <label style={styles.subjectLabel}>Preview:</label>
+                    <input
+                        type="text"
+                        value={previewText}
+                        onChange={(e) => onPreviewTextChange?.(e.target.value)}
+                        placeholder="Inbox preview text..."
+                        style={{ ...styles.subjectInput, minWidth: '200px', maxWidth: '300px' }}
+                        title="Preview text shown in inbox before the email is opened"
+                    />
                 </div>
             </div>
             <div style={styles.toolbarRight}>
@@ -269,10 +316,11 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
     const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
     const [imageResolve, setImageResolve] = useState<((url: string) => void) | null>(null);
     const [templateName, setTemplateName] = useState(template?.name || 'Untitled Template');
-    const [templateType, setTemplateType] = useState<'marketing' | 'utility' | 'transactional'>(
+    const [templateType, setTemplateType] = useState<'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL'>(
         template?.templateType || 'utility'
     );
     const [isSaving, setIsSaving] = useState(false);
+    const [previewText, setPreviewText] = useState(template?.previewText || '');
 
     // Helper to convert base64 to File
     const base64ToFile = (base64Data: string, mimeType: string, filename: string): File | null => {
@@ -494,16 +542,21 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                 const mjmlJsonString = JSON.stringify(values.content);
 
                 // 5. Create template object with MJML stored in mjml field
+                // For INVOICE/INVOICE_EMAIL types, use that as the DB type directly
+                const resolvedType = (templateType === 'INVOICE' || templateType === 'INVOICE_EMAIL')
+                    ? templateType : 'EMAIL';
+
                 const savedTemplate: MessageTemplate = {
                     id: template?.id || '',
                     name: templateName,
-                    type: 'EMAIL',
+                    type: resolvedType,
                     subject: values.subject,
                     content: processedHtml, // Save as HTML for sending emails
                     variables: template?.variables || [],
                     isDefault: template?.isDefault || false,
                     templateType: templateType,
                     mjml: mjmlJsonString, // Store MJML JSON in settingJson via API
+                    previewText: previewText || undefined,
                     createdAt: template?.createdAt || new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 };
@@ -523,7 +576,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                     localStorage.setItem(mjmlJsonKey, mjmlJsonString);
                 }
 
-                toast.success('Template saved successfully!');
+                // Toast is shown by TemplateEditorEmail.handleSave — no duplicate here
             } catch (error) {
                 console.error('Failed to save template:', error);
                 toast.error('Failed to save template. Please try again.');
@@ -531,21 +584,34 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                 setIsSaving(false);
             }
         },
-        [template, templateName, templateType, onSave]
+        [template, templateName, templateType, previewText, onSave]
     );
 
-    // Handle image upload (for drag and drop in editor)
-    // Return base64 immediately for editor to work, then upload to S3 when saving
+    // Handle image upload — upload to S3 and return the public URL.
+    // Data URLs (base64) break easy-email's internal style parser which splits
+    // on ";" and ":" — destroying data:image/jpeg;base64,... in CSS properties.
+    // Using a real https:// URL avoids this parser bug entirely.
     const onUploadImage = useCallback(async (blob: Blob): Promise<string> => {
-        return new Promise((resolve, reject) => {
+        try {
             const reader = new FileReader();
-            reader.onload = () => {
-                const base64 = reader.result as string;
-                resolve(base64);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
+            const base64 = await new Promise<string>((resolve, reject) => {
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            const s3Url = await uploadImageToS3(base64);
+            return s3Url;
+        } catch (error) {
+            console.error('S3 upload failed, falling back to base64:', error);
+            // Fallback: return base64 (images won't render in preview for
+            // background-image CSS, but <img src> will still work)
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
     }, []);
 
     // Open asset picker
@@ -576,6 +642,14 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
         }
     }, [imageResolve]);
 
+    // Merge tags change based on template type
+    const mergeTags = useMemo(() => {
+        if (templateType === 'INVOICE' || templateType === 'INVOICE_EMAIL') {
+            return { ...invoiceMergeTags, ...defaultMergeTags };
+        }
+        return defaultMergeTags;
+    }, [templateType]);
+
     const handleOpenAssets = () => {
         openAssetPicker().then((url) => {
             if (url) {
@@ -593,6 +667,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                 autoComplete
                 dashed={false}
                 mergeTags={mergeTags}
+                fontList={fontList}
                 onSubmit={onSubmit}
                 onUploadImage={onUploadImage}
             >
@@ -607,9 +682,12 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                                 isSaving={isSaving || externalIsSaving}
                                 templateType={templateType}
                                 onTemplateTypeChange={setTemplateType}
+                                previewText={previewText}
+                                onPreviewTextChange={setPreviewText}
+                                mergeTags={mergeTags}
                             />
                             <div style={{ flex: 1, overflow: 'hidden' }}>
-                                <SimpleLayout showSourceCode={true}>
+                                <SimpleLayout showSourceCode={true} mjmlReadOnly={false}>
                                     <EmailEditor />
                                 </SimpleLayout>
                             </div>

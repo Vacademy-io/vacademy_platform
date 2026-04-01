@@ -245,8 +245,8 @@ public class InstituteCustomFiledService {
 
     public List<InstituteCustomField> createDefaultCustomFieldsForInstitute(Institute institute) {
         CustomFields nameCustomFields = CustomFields.builder()
-                .fieldKey("name")
-                .fieldName("name")
+                .fieldKey("full_name")
+                .fieldName("Full Name")
                 .defaultValue(null)
                 .fieldType("text")
                 .config("{}")
@@ -257,7 +257,7 @@ public class InstituteCustomFiledService {
 
         CustomFields emailCustomFields = CustomFields.builder()
                 .fieldKey("email")
-                .fieldName("email")
+                .fieldName("Email")
                 .defaultValue(null)
                 .fieldType("text")
                 .config("{}")
@@ -267,8 +267,8 @@ public class InstituteCustomFiledService {
                 .build();
 
         CustomFields phoneCustomFields = CustomFields.builder()
-                .fieldKey("phone")
-                .fieldName("phone")
+                .fieldKey("phone_number")
+                .fieldName("Phone Number")
                 .defaultValue(null)
                 .fieldType("number")
                 .config("{}")
@@ -277,41 +277,7 @@ public class InstituteCustomFiledService {
                 .isSortable(true)
                 .build();
 
-        CustomFields usernameCustomFields = CustomFields.builder()
-                .fieldKey("username")
-                .fieldName("username")
-                .defaultValue(null)
-                .fieldType("text")
-                .config("{}")
-                .isMandatory(false)
-                .isFilter(true)
-                .isSortable(true)
-                .build();
-
-        CustomFields passwordCustomFields = CustomFields.builder()
-                .fieldKey("password")
-                .fieldName("password")
-                .defaultValue(null)
-                .fieldType("text")
-                .config("{}")
-                .isMandatory(false)
-                .isFilter(true)
-                .isSortable(true)
-                .build();
-
-        CustomFields batchCustomFields = CustomFields.builder()
-                .fieldKey("batch")
-                .fieldName("batch")
-                .defaultValue(null)
-                .fieldType("text")
-                .config("{}")
-                .isMandatory(false)
-                .isFilter(true)
-                .isSortable(true)
-                .build();
-
-        List<CustomFields> allDefaultCustomFields = List.of(nameCustomFields, emailCustomFields, usernameCustomFields,
-                passwordCustomFields, batchCustomFields, phoneCustomFields);
+        List<CustomFields> allDefaultCustomFields = List.of(nameCustomFields, emailCustomFields, phoneCustomFields);
         List<CustomFields> allSavedCustomFields = customFieldRepository.saveAll(allDefaultCustomFields);
         List<InstituteCustomField> defaultInstituteCustomFields = new ArrayList<>();
 

@@ -102,9 +102,12 @@ export const usePushNotifications = () => {
       action: {
         label: 'View',
         onClick: () => {
-          // Handle notification action
           markAsRead(notification.id);
-          // Navigate to relevant screen if needed
+          // Navigate to path from notification data if available
+          const path = notification.data?.path;
+          if (path && typeof path === 'string') {
+            window.location.href = path;
+          }
         }
       }
     });

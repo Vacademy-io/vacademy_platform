@@ -5,6 +5,139 @@
     flex-direction: column;
 }
 
+/*
+ * ==========================================================================
+ * Undo Tailwind Preflight within the easy-email editor
+ * ==========================================================================
+ * Wrapped in @layer so these revert rules:
+ *   - Beat Tailwind Preflight (@layer base) — higher layer priority
+ *   - Lose to arco-design CSS (unlayered)   — unlayered always wins
+ * This prevents the revert from overriding arco's sidebar/panel styles
+ * while still neutralizing Tailwind's element-level resets.
+ * ==========================================================================
+ */
+
+@layer easy-email-reset {
+
+    /* --- Universal border reset undo --- */
+    .app-container *,
+    .app-container *::before,
+    .app-container *::after {
+        border-color: revert;
+        border-style: revert;
+        border-width: revert;
+    }
+
+    /* --- Buttons: undo transparent background --- */
+    .app-container button,
+    .app-container [type='button'],
+    .app-container [type='reset'],
+    .app-container [type='submit'] {
+        background-color: revert;
+        background-image: revert;
+        cursor: revert;
+        -webkit-appearance: revert;
+        appearance: revert;
+    }
+
+    /* --- Images: undo block display & max-width cap --- */
+    .app-container img,
+    .app-container svg,
+    .app-container video,
+    .app-container canvas {
+        display: revert;
+        max-width: revert;
+        height: revert;
+        vertical-align: revert;
+    }
+
+    /* --- Form elements: undo inherited font & stripped padding --- */
+    .app-container input,
+    .app-container select,
+    .app-container textarea,
+    .app-container optgroup {
+        font-family: revert;
+        font-size: revert;
+        font-weight: revert;
+        line-height: revert;
+        letter-spacing: revert;
+        color: revert;
+        margin: revert;
+        padding: revert;
+        background-color: revert;
+        border: revert;
+    }
+
+    /* --- Headings: undo stripped font-size/weight --- */
+    .app-container h1,
+    .app-container h2,
+    .app-container h3,
+    .app-container h4,
+    .app-container h5,
+    .app-container h6 {
+        font-size: revert;
+        font-weight: revert;
+        margin: revert;
+    }
+
+    /* --- Lists: undo stripped list-style --- */
+    .app-container ol,
+    .app-container ul,
+    .app-container menu {
+        list-style: revert;
+        margin: revert;
+        padding: revert;
+    }
+
+    /* --- Block elements: undo stripped margins --- */
+    .app-container p,
+    .app-container blockquote,
+    .app-container dl,
+    .app-container dd,
+    .app-container hr,
+    .app-container figure,
+    .app-container pre {
+        margin: revert;
+    }
+
+    /* --- Tables: undo collapsed borders --- */
+    .app-container table {
+        border-collapse: revert;
+        border-spacing: revert;
+        text-indent: revert;
+    }
+
+    /* --- Links: undo stripped color/underline --- */
+    .app-container a {
+        color: revert;
+        text-decoration: revert;
+    }
+
+    /* --- Fieldset: undo stripped padding/margin/border --- */
+    .app-container fieldset {
+        margin: revert;
+        padding: revert;
+        border: revert;
+    }
+
+    /* --- Legend: undo stripped padding --- */
+    .app-container legend {
+        padding: revert;
+    }
+
+    /* --- Summary: undo stripped list-style --- */
+    .app-container summary {
+        display: revert;
+    }
+
+}
+
+/*
+ * ==========================================================================
+ * Custom toolbar styles (unlayered — always wins over @layer rules)
+ * ==========================================================================
+ */
+
 /* Card hover effects */
 .app-container .templateCard:hover {
     transform: translateY(-4px);
@@ -15,21 +148,22 @@
     opacity: 1;
 }
 
-/* Button hover effects */
-.app-container button:hover {
+/* Button hover effects (toolbar only, not arco sidebar) */
+.email-editor-toolbar button:hover {
     opacity: 0.9;
 }
 
-/* Focus styles */
-.app-container input:focus {
+/* Focus styles for toolbar inputs only (not arco config panel) */
+.email-editor-toolbar input:focus {
     border-color: #667eea !important;
 }
 
-.app-container input::placeholder {
+.email-editor-toolbar input::placeholder {
     color: rgba(255, 255, 255, 0.5);
 }
 
-.app-container select {
+/* Toolbar select styling only (not arco config panel) */
+.email-editor-toolbar select {
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%231e293b' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
@@ -37,11 +171,11 @@
     padding-right: 32px;
 }
 
-.app-container select:focus {
+.email-editor-toolbar select:focus {
     border-color: #667eea !important;
 }
 
-.app-container select option {
+.email-editor-toolbar select option {
     color: #1e293b;
     background-color: #fff;
 }
@@ -64,4 +198,73 @@
 
 .app-container ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
+}
+
+/*
+ * ==========================================================================
+ * Protect arco-design popups rendered in document.body
+ * ==========================================================================
+ * Arco popups (font dropdowns, color pickers, tooltips, select menus)
+ * are portaled to document.body — outside .app-container — so the
+ * @layer easy-email-reset rules above don't reach them.
+ * Tailwind Preflight still hits them (border-width:0, transparent buttons).
+ * These rules undo Preflight specifically for arco popup containers.
+ * ==========================================================================
+ */
+
+@layer easy-email-reset {
+
+    /* Borders inside arco popups */
+    .arco-trigger-popup *,
+    .arco-trigger-popup *::before,
+    .arco-trigger-popup *::after {
+        border-color: revert;
+        border-style: revert;
+        border-width: revert;
+    }
+
+    /* Buttons inside arco popups */
+    .arco-trigger-popup button {
+        background-color: revert;
+        background-image: revert;
+        cursor: revert;
+        appearance: revert;
+    }
+
+    /* Images inside arco popups */
+    .arco-trigger-popup img,
+    .arco-trigger-popup svg {
+        display: revert;
+        max-width: revert;
+        height: revert;
+        vertical-align: revert;
+    }
+
+    /* Form elements inside arco popups */
+    .arco-trigger-popup input,
+    .arco-trigger-popup select,
+    .arco-trigger-popup textarea {
+        font-family: revert;
+        font-size: revert;
+        color: revert;
+        margin: revert;
+        padding: revert;
+        background-color: revert;
+        border: revert;
+    }
+
+    /* Lists inside arco popups (font list, color swatches) */
+    .arco-trigger-popup ul,
+    .arco-trigger-popup ol {
+        list-style: revert;
+        margin: revert;
+        padding: revert;
+    }
+
+    /* Links inside arco popups */
+    .arco-trigger-popup a {
+        color: revert;
+        text-decoration: revert;
+    }
+
 }

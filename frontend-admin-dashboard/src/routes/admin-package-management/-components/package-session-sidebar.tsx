@@ -54,7 +54,7 @@ import { EditSessionDialog } from './dialogs/edit-session-dialog';
 import { EditInviteDialog } from './dialogs/edit-invite-dialog';
 import { EditPaymentOptionDialog } from './dialogs/edit-payment-option-dialog';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { MyPagination } from '@/components/design-system/pagination';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -68,8 +68,16 @@ import {
     CommandList,
 } from '@/components/ui/command';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { Copy, NotePencil } from '@phosphor-icons/react';
+import GenerateInviteLinkDialog from '@/routes/manage-students/invite/-components/create-invite/GenerateInviteLinkDialog';
+import { handleGetEnrollSingleInviteDetails } from '@/routes/manage-students/invite/-components/create-invite/-services/enroll-invite';
+import { handleGetPaymentDetails } from '@/routes/manage-students/invite/-components/create-invite/-services/get-payments';
+import { extractBatchesFromInviteDetails } from '@/routes/manage-students/invite/-utils/enrollInviteTransformers';
+import { LoadingSpinner } from '@/components/ai-course-builder/LoadingSpinner';
 
 interface PackageSessionSidebarProps {
     selectedPackage: {
@@ -407,6 +415,61 @@ const CompactSessionCard = ({
     </div>
 );
 
+// Full Edit Invite Dialog (reuses GenerateInviteLinkDialog from manage-students)
+const FullEditInviteDialogContent = ({
+    inviteId,
+    onClose,
+}: {
+    inviteId: string;
+    onClose: () => void;
+}) => {
+    const [open, setOpen] = useState(true);
+    const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
+
+    const { data: inviteLinkDetails } = useSuspenseQuery(
+        handleGetEnrollSingleInviteDetails({ inviteId })
+    );
+    useSuspenseQuery(handleGetPaymentDetails());
+
+    const selectedBatches = extractBatchesFromInviteDetails(
+        inviteLinkDetails,
+        getDetailsFromPackageSessionId
+    );
+
+    const parentBatch = selectedBatches[0];
+    const selectedCourse = parentBatch
+        ? { id: parentBatch.package_dto.package_name, name: parentBatch.package_dto.package_name }
+        : null;
+
+    return (
+        <GenerateInviteLinkDialog
+            showSummaryDialog={open}
+            setShowSummaryDialog={(v) => {
+                setOpen(v);
+                if (!v) onClose();
+            }}
+            selectedCourse={selectedCourse}
+            selectedBatches={selectedBatches
+                .filter((batch) => batch !== null)
+                .map((batch) => ({
+                    sessionId: batch.session.id,
+                    levelId: batch.level.id,
+                    sessionName: batch.session.session_name,
+                    levelName: batch.level.level_name,
+                    courseId: batch.package_dto.id,
+                    courseName: batch.package_dto.package_name,
+                    isParent: false,
+                }))}
+            inviteLinkId={inviteId}
+            singlePackageSessionId={true}
+            isEditInviteLink={true}
+            setDialogOpen={(v) => {
+                if (!v) onClose();
+            }}
+        />
+    );
+};
+
 // Enroll Invites List Component
 const EnrollInvitesList = ({
     session,
@@ -418,12 +481,22 @@ const EnrollInvitesList = ({
     onInviteClick: (inviteId: string) => void;
 }) => {
     const [editingInvite, setEditingInvite] = useState<EnrollInvite | null>(null);
+    const [fullEditInviteId, setFullEditInviteId] = useState<string | null>(null);
     const queryClient = useQueryClient();
+    const { instituteDetails } = useInstituteDetailsStore();
 
     const { data, isLoading } = useQuery({
         queryKey: ['enroll-invites', session.id],
         queryFn: () => fetchEnrollInvites(session.id),
     });
+
+    const getInviteUrl = (inviteCode: string) =>
+        createInviteLink(inviteCode, instituteDetails?.learner_portal_base_url);
+
+    const copyInviteUrl = (inviteCode: string) => {
+        navigator.clipboard.writeText(getInviteUrl(inviteCode));
+        toast.success('Invite link copied to clipboard');
+    };
 
     const handleDeleteInvite = async (inviteId: string) => {
         if (confirm('Are you sure you want to delete this invite?')) {
@@ -498,7 +571,15 @@ const EnrollInvitesList = ({
                                                         onClick={() => setEditingInvite(invite)}
                                                     >
                                                         <Pencil className="mr-2 size-3" />
-                                                        Edit
+                                                        Quick Edit
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                        onClick={() =>
+                                                            setFullEditInviteId(invite.id)
+                                                        }
+                                                    >
+                                                        <NotePencil className="mr-2 size-3" />
+                                                        Edit Details
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem
                                                         onClick={() =>
@@ -514,13 +595,26 @@ const EnrollInvitesList = ({
                                         </div>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 text-[10px] text-neutral-500">
-                                    <div className="flex items-center gap-1">
-                                        <Ticket className="size-3" />
-                                        <span className="rounded bg-neutral-100 px-1 font-mono">
-                                            {invite.invite_code}
-                                        </span>
-                                    </div>
+                                <div className="mb-1 flex items-center gap-1 text-[10px] text-neutral-500">
+                                    <Ticket className="size-3 shrink-0" />
+                                    <span
+                                        className="truncate rounded bg-neutral-100 px-1 font-mono"
+                                        title={getInviteUrl(invite.invite_code)}
+                                    >
+                                        {getInviteUrl(invite.invite_code)}
+                                    </span>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            copyInviteUrl(invite.invite_code);
+                                        }}
+                                        className="shrink-0 rounded p-0.5 hover:bg-neutral-200"
+                                        title="Copy invite link"
+                                    >
+                                        <Copy className="size-3" />
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 text-[10px] text-neutral-500">
                                     <div className="flex items-center gap-1">
                                         <Calendar className="size-3" />
                                         <span>{invite.start_date}</span>
@@ -547,6 +641,26 @@ const EnrollInvitesList = ({
                     onOpenChange={(open) => !open && setEditingInvite(null)}
                 />
             )}
+
+            {fullEditInviteId && (
+                <Suspense
+                    fallback={
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                            <LoadingSpinner />
+                        </div>
+                    }
+                >
+                    <FullEditInviteDialogContent
+                        inviteId={fullEditInviteId}
+                        onClose={() => {
+                            setFullEditInviteId(null);
+                            queryClient.invalidateQueries({
+                                queryKey: ['enroll-invites', session.id],
+                            });
+                        }}
+                    />
+                </Suspense>
+            )}
         </div>
     );
 };
@@ -554,6 +668,7 @@ const EnrollInvitesList = ({
 // Invite Detail View Component
 const InviteDetailView = ({ inviteId, onBack }: { inviteId: string; onBack: () => void }) => {
     const [editingPaymentOption, setEditingPaymentOption] = useState<PaymentOption | null>(null);
+    const { instituteDetails } = useInstituteDetailsStore();
     const { data: invite, isLoading } = useQuery({
         queryKey: ['enroll-invite-detail', inviteId],
         queryFn: () => fetchEnrollInviteDetail(inviteId),
@@ -595,11 +710,28 @@ const InviteDetailView = ({ inviteId, onBack }: { inviteId: string; onBack: () =
                 >
                     <CaretLeft className="size-4" />
                 </button>
-                <div className="flex flex-col">
+                <div className="flex min-w-0 flex-1 flex-col">
                     <span className="text-xs font-semibold text-neutral-800">Invite Details</span>
-                    <span className="font-mono text-[10px] text-neutral-500">
-                        {invite.invite_code}
-                    </span>
+                    <div className="flex items-center gap-1">
+                        <span
+                            className="truncate font-mono text-[10px] text-neutral-500"
+                            title={createInviteLink(invite.invite_code, instituteDetails?.learner_portal_base_url)}
+                        >
+                            {createInviteLink(invite.invite_code, instituteDetails?.learner_portal_base_url)}
+                        </span>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(
+                                    createInviteLink(invite.invite_code, instituteDetails?.learner_portal_base_url)
+                                );
+                                toast.success('Invite link copied to clipboard');
+                            }}
+                            className="shrink-0 rounded p-0.5 hover:bg-neutral-200"
+                            title="Copy invite link"
+                        >
+                            <Copy className="size-3" />
+                        </button>
+                    </div>
                 </div>
             </div>
 

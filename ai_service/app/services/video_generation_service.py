@@ -104,6 +104,7 @@ class VideoGenerationService:
         avatar_image_url: Optional[str] = None,
         quality_tier: str = "ultra",
         reference_files: Optional[list] = None,
+        orientation: str = "landscape",
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -118,6 +119,7 @@ class VideoGenerationService:
             target_duration: Target video duration (e.g., '5 minutes')
             content_type: Type of content (VIDEO, QUIZ, STORYBOOK, etc.)
             quality_tier: Quality tier (free, standard, premium, ultra)
+            orientation: Video orientation ('landscape' or 'portrait')
 
         Yields:
             SSE events with progress updates
@@ -155,6 +157,8 @@ class VideoGenerationService:
                 gen_metadata["institute_id"] = institute_id
             if user_id:
                 gen_metadata["user_id"] = user_id
+            if orientation and orientation != "landscape":
+                gen_metadata["orientation"] = orientation
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -219,6 +223,7 @@ class VideoGenerationService:
                     avatar_image_url=avatar_image_url,
                     quality_tier=quality_tier,
                     reference_files=reference_files,
+                    orientation=orientation,
                 ):
                     # If we get an error event, log it and check if we should stop
                     if event.get("type") == "error":
@@ -282,6 +287,7 @@ class VideoGenerationService:
         avatar_image_url: Optional[str] = None,
         quality_tier: str = "ultra",
         reference_files: Optional[list] = None,
+        orientation: str = "landscape",
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -609,6 +615,10 @@ class VideoGenerationService:
                         else:
                             logger.warning("[VideoGenService] No audio S3 URL found for avatar stage")
 
+                # Derive dimensions from orientation
+                _vid_width = 1080 if orientation == "portrait" else 1920
+                _vid_height = 1920 if orientation == "portrait" else 1080
+
                 pipeline_run = functools.partial(
                     pipeline.run,
                     base_prompt=prompt,
@@ -629,6 +639,8 @@ class VideoGenerationService:
                     generate_avatar=generate_avatar,
                     avatar_image_url=avatar_image_url,
                     reference_context=reference_context.to_dict() if reference_context else None,
+                    video_width=_vid_width,
+                    video_height=_vid_height,
                 )
                 
                 with ThreadPoolExecutor() as executor:

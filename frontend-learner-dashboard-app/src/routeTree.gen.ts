@@ -74,6 +74,7 @@ import { Route as StudyLibraryLiveClassUsernameIndexRouteImport } from './routes
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from './routes/study-library/courses/course-details/index'
 import { Route as MMediaIdPhoneNumberIndexRouteImport } from './routes/m/$mediaId/$phoneNumber/index'
 import { Route as AssessmentReportsStudentReportIndexRouteImport } from './routes/assessment/reports/student-report/index'
+import { Route as AssessmentReportsComparisonIndexRouteImport } from './routes/assessment/reports/comparison/index'
 import { Route as AssessmentReportsAiReportIndexRouteImport } from './routes/assessment/reports/ai-report/index'
 import { Route as AssessmentExaminationAssessmentIdIndexRouteImport } from './routes/assessment/examination/$assessmentId/index'
 import { Route as AssessmentExaminationAssessmentIdAssessmentPreviewRouteImport } from './routes/assessment/examination/$assessmentId/assessmentPreview'
@@ -428,6 +429,12 @@ const AssessmentReportsStudentReportIndexRoute =
     path: '/assessment/reports/student-report/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AssessmentReportsComparisonIndexRoute =
+  AssessmentReportsComparisonIndexRouteImport.update({
+    id: '/assessment/reports/comparison/',
+    path: '/assessment/reports/comparison/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AssessmentReportsAiReportIndexRoute =
   AssessmentReportsAiReportIndexRouteImport.update({
     id: '/assessment/reports/ai-report/',
@@ -557,6 +564,7 @@ export interface FileRoutesByFullPath {
   '/assessment/examination/$assessmentId/assessmentPreview': typeof AssessmentExaminationAssessmentIdAssessmentPreviewRoute
   '/assessment/examination/$assessmentId': typeof AssessmentExaminationAssessmentIdIndexRoute
   '/assessment/reports/ai-report': typeof AssessmentReportsAiReportIndexRoute
+  '/assessment/reports/comparison': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -633,6 +641,7 @@ export interface FileRoutesByTo {
   '/assessment/examination/$assessmentId/assessmentPreview': typeof AssessmentExaminationAssessmentIdAssessmentPreviewRoute
   '/assessment/examination/$assessmentId': typeof AssessmentExaminationAssessmentIdIndexRoute
   '/assessment/reports/ai-report': typeof AssessmentReportsAiReportIndexRoute
+  '/assessment/reports/comparison': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -711,6 +720,7 @@ export interface FileRoutesById {
   '/assessment/examination/$assessmentId/assessmentPreview': typeof AssessmentExaminationAssessmentIdAssessmentPreviewRoute
   '/assessment/examination/$assessmentId/': typeof AssessmentExaminationAssessmentIdIndexRoute
   '/assessment/reports/ai-report/': typeof AssessmentReportsAiReportIndexRoute
+  '/assessment/reports/comparison/': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report/': typeof AssessmentReportsStudentReportIndexRoute
   '/m/$mediaId/$phoneNumber/': typeof MMediaIdPhoneNumberIndexRoute
   '/study-library/courses/course-details/': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -790,6 +800,7 @@ export interface FileRouteTypes {
     | '/assessment/examination/$assessmentId/assessmentPreview'
     | '/assessment/examination/$assessmentId'
     | '/assessment/reports/ai-report'
+    | '/assessment/reports/comparison'
     | '/assessment/reports/student-report'
     | '/m/$mediaId/$phoneNumber'
     | '/study-library/courses/course-details'
@@ -866,6 +877,7 @@ export interface FileRouteTypes {
     | '/assessment/examination/$assessmentId/assessmentPreview'
     | '/assessment/examination/$assessmentId'
     | '/assessment/reports/ai-report'
+    | '/assessment/reports/comparison'
     | '/assessment/reports/student-report'
     | '/m/$mediaId/$phoneNumber'
     | '/study-library/courses/course-details'
@@ -943,6 +955,7 @@ export interface FileRouteTypes {
     | '/assessment/examination/$assessmentId/assessmentPreview'
     | '/assessment/examination/$assessmentId/'
     | '/assessment/reports/ai-report/'
+    | '/assessment/reports/comparison/'
     | '/assessment/reports/student-report/'
     | '/m/$mediaId/$phoneNumber/'
     | '/study-library/courses/course-details/'
@@ -1020,6 +1033,7 @@ export interface RootRouteChildren {
   AssessmentExaminationAssessmentIdAssessmentPreviewRoute: typeof AssessmentExaminationAssessmentIdAssessmentPreviewRoute
   AssessmentExaminationAssessmentIdIndexRoute: typeof AssessmentExaminationAssessmentIdIndexRoute
   AssessmentReportsAiReportIndexRoute: typeof AssessmentReportsAiReportIndexRoute
+  AssessmentReportsComparisonIndexRoute: typeof AssessmentReportsComparisonIndexRoute
   AssessmentReportsStudentReportIndexRoute: typeof AssessmentReportsStudentReportIndexRoute
   MMediaIdPhoneNumberIndexRoute: typeof MMediaIdPhoneNumberIndexRoute
   StudyLibraryCoursesCourseDetailsIndexRoute: typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -1491,6 +1505,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssessmentReportsStudentReportIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/assessment/reports/comparison/': {
+      id: '/assessment/reports/comparison/'
+      path: '/assessment/reports/comparison'
+      fullPath: '/assessment/reports/comparison'
+      preLoaderRoute: typeof AssessmentReportsComparisonIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/assessment/reports/ai-report/': {
       id: '/assessment/reports/ai-report/'
       path: '/assessment/reports/ai-report'
@@ -1642,6 +1663,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentExaminationAssessmentIdIndexRoute:
     AssessmentExaminationAssessmentIdIndexRoute,
   AssessmentReportsAiReportIndexRoute: AssessmentReportsAiReportIndexRoute,
+  AssessmentReportsComparisonIndexRoute: AssessmentReportsComparisonIndexRoute,
   AssessmentReportsStudentReportIndexRoute:
     AssessmentReportsStudentReportIndexRoute,
   MMediaIdPhoneNumberIndexRoute: MMediaIdPhoneNumberIndexRoute,

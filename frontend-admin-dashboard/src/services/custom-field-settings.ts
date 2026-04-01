@@ -256,7 +256,7 @@ const VISIBILITY_TO_LOCATION_MAP: Record<keyof FieldVisibility, string> = {
 };
 
 // System field identifiers (fieldName from API)
-const SYSTEM_FIELD_NAMES = ['name', 'email', 'username', 'password', 'batch', 'phone'];
+const SYSTEM_FIELD_NAMES = ['full name', 'email', 'phone number'];
 
 /**
  * Convert options array (UI format) to config JSON string (API format)

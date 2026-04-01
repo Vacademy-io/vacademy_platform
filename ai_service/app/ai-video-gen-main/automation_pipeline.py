@@ -83,6 +83,7 @@ GENERATE_VIDEO_SCRIPT = REPO_ROOT / "generate_video.py"
 try:
     from prompts import (
         SCRIPT_SYSTEM_PROMPT,
+        get_script_system_prompt,
         SCRIPT_USER_PROMPT_TEMPLATE,
         SCRIPT_REVIEW_SYSTEM_PROMPT,
         SCRIPT_REVIEW_USER_PROMPT_TEMPLATE,
@@ -90,6 +91,8 @@ try:
         STYLE_GUIDE_USER_PROMPT_TEMPLATE,
         HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE,
         HTML_GENERATION_SAFE_AREA,
+        get_html_generation_safe_area,
+        _get_fewshot_examples,
         HTML_GENERATION_USER_PROMPT_TEMPLATE,
         SEGMENT_CONTEXT_ADDON,
         BACKGROUND_PRESETS,
@@ -986,7 +989,13 @@ class VideoGenerationPipeline:
         avatar_image_url: Optional[str] = None,
         max_segments: int = 8,
         reference_context: Optional[Dict[str, Any]] = None,
+        video_width: int = 1920,
+        video_height: int = 1080,
     ) -> Dict[str, Any]:
+        # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
+        self.video_width = video_width
+        self.video_height = video_height
+        self.aspect_label = "9:16 portrait" if video_width < video_height else "16:9 landscape"
         # Store max_segments for use in concept-aligned segmentation
         self._max_segments = max_segments
         # Store reference context (processed images/PDFs from user uploads)
@@ -1460,12 +1469,17 @@ class VideoGenerationPipeline:
         
         if content_type == "VIDEO" or not ct_prompts.get("system"):
             # Use existing VIDEO prompts
-            system_prompt = SCRIPT_SYSTEM_PROMPT
+            system_prompt = get_script_system_prompt(
+                getattr(self, 'video_width', 1920),
+                getattr(self, 'video_height', 1080)
+            )
+            _aspect = getattr(self, 'aspect_label', '16:9 landscape')
             user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(
-                base_prompt=base_prompt.strip(), 
+                base_prompt=base_prompt.strip(),
                 language=language,
                 target_audience=target_audience,
-                target_duration=target_duration
+                target_duration=target_duration,
+                aspect_label=_aspect,
             ).strip()
         else:
             # Use content-type-specific prompts
@@ -2453,7 +2467,7 @@ class VideoGenerationPipeline:
                 "end": 0.0,   # Will be ignored in user_driven mode
                 "text": "Interactive content",
                 "html": html_content,
-                "htmlStartX": 0, "htmlStartY": 0, "htmlEndX": 1920, "htmlEndY": 1080,
+                "htmlStartX": 0, "htmlStartY": 0, "htmlEndX": self.video_width, "htmlEndY": self.video_height,
                 "id": entry_id or f"segment-{index}"
             }
             if extra_meta:
@@ -2785,12 +2799,23 @@ class VideoGenerationPipeline:
 
             # Select system prompt based on HTML quality
             try:
+                _w = getattr(self, 'video_width', 1920)
+                _h = getattr(self, 'video_height', 1080)
+                _fewshot = _get_fewshot_examples(_w, _h)
                 if hasattr(self, '_current_html_quality') and self._current_html_quality == "classic":
                     from prompts import HTML_GENERATION_SYSTEM_PROMPT_CLASSIC
                     system_prompt = HTML_GENERATION_SYSTEM_PROMPT_CLASSIC
                 else:
                     from prompts import HTML_GENERATION_SYSTEM_PROMPT_ADVANCED
-                    system_prompt = HTML_GENERATION_SYSTEM_PROMPT_ADVANCED
+                    _aspect = getattr(self, 'aspect_label', '16:9 landscape')
+                    # Inject dimension-aware few-shot examples and resolve dimension placeholders
+                    system_prompt = (
+                        HTML_GENERATION_SYSTEM_PROMPT_ADVANCED
+                        .replace("{fewshot_examples}", _fewshot)
+                        .replace("{canvas_width}", str(_w))
+                        .replace("{canvas_height}", str(_h))
+                        .replace("{aspect_label}", _aspect)
+                    )
             except ImportError:
                 # Fallback to default if import fails
                 system_prompt = HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE
@@ -2813,6 +2838,10 @@ class VideoGenerationPipeline:
                     "Use the key-takeaway card style.\n"
                 )
 
+            # Use dimension-aware safe area
+            _safe_area = get_html_generation_safe_area(self.video_width, self.video_height) if hasattr(self, 'video_width') else HTML_GENERATION_SAFE_AREA
+            _aspect_label = "9:16 portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "16:9"
+
             user_prompt = HTML_GENERATION_USER_PROMPT_TEMPLATE.format(
                 index=seg["index"],
                 start=seg["start"],
@@ -2821,7 +2850,7 @@ class VideoGenerationPipeline:
                 word_timings=word_timings,
                 style_context=style_context,
                 beat_context=beat_context,
-                safe_area=HTML_GENERATION_SAFE_AREA,
+                safe_area=_safe_area,
                 language=language,
                 topic_guidance=topic_guidance,
                 # Color enforcement variables
@@ -2832,6 +2861,10 @@ class VideoGenerationPipeline:
                 svg_fill=palette.get('svg_fill', '#2563eb'),
                 annotation_color=palette.get('annotation_color', '#dc2626'),
                 primary_color=palette.get('primary', '#2563eb'),
+                # Dimension placeholders for prompt templates
+                aspect_label=_aspect_label,
+                canvas_width=getattr(self, 'video_width', 1920),
+                canvas_height=getattr(self, 'video_height', 1080),
             ).strip()
 
             # Append segment continuity context (Standard+ tiers)
@@ -3028,8 +3061,8 @@ class VideoGenerationPipeline:
                     "durationSeconds": max(5.0, seg_duration),
                     "htmlStartX": 0,
                     "htmlStartY": 0,
-                    "width": 1920,
-                    "height": 1080,
+                    "width": self.video_width,
+                    "height": self.video_height,
                     "html": html,
                 }
             ]
@@ -3433,20 +3466,22 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if h is None and "h" in box:
             h = coerce_int(box["h"], None)
 
+        _vw = getattr(self, 'video_width', 1920)
+        _vh = getattr(self, 'video_height', 1080)
         auto_box = False
         if w is None:
-            w = 1920
+            w = _vw
             auto_box = True
         if h is None:
-            h = 1080
+            h = _vh
             auto_box = True
 
         # Auto-center if x/y are missing but w/h are known (or defaulted above)
         if x is None:
-            x = (1920 - w) // 2
+            x = (_vw - w) // 2
             auto_box = True
         if y is None:
-            y = (1080 - h) // 2
+            y = (_vh - h) // 2
             auto_box = True
 
         w = max(200, w)
@@ -3802,8 +3837,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "end": end,
             "htmlStartX": 0,
             "htmlStartY": 0,
-            "htmlEndX": 1920,
-            "htmlEndY": 1080,
+            "htmlEndX": getattr(self, 'video_width', 1920),
+            "htmlEndY": getattr(self, 'video_height', 1080),
             "html": html,
             "id": f"segment-{seg.get('index')}-filler-{filler_index}",
             "index": seg.get("index"),
@@ -4210,7 +4245,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         print(f"    📝 Applied {replacements_applied} image replacements")
         return html_segments, total_image_usage
 
-    def _call_image_generation_llm(self, prompt: str, width: int = 1920, height: int = 1080) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
+    def _call_image_generation_llm(self, prompt: str, width: Optional[int] = None, height: Optional[int] = None) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
+        width = width or getattr(self, 'video_width', 1920)
+        height = height or getattr(self, 'video_height', 1080)
         """
         Generate image using Google Generative AI (Gemini). Returns (image_bytes, usage_metadata).
 
@@ -4532,8 +4569,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             content_type: Type of content (VIDEO, QUIZ, STORYBOOK, etc.)
         """
         # Video dimensions for positioning
-        VIDEO_WIDTH = 1920
-        VIDEO_HEIGHT = 1080
+        VIDEO_WIDTH = getattr(self, 'video_width', 1920)
+        VIDEO_HEIGHT = getattr(self, 'video_height', 1080)
         
         # Determine navigation mode based on content type
         NAVIGATION_MAP = {
@@ -4793,6 +4830,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "outro_duration": outro_duration if outro_enabled else 0.0,
             "content_starts_at": content_starts_at,
             "content_ends_at": content_max_end,
+            "dimensions": {"width": VIDEO_WIDTH, "height": VIDEO_HEIGHT},
         }
         if chapter_markers:
             meta_dict["chapters"] = chapter_markers

@@ -428,7 +428,7 @@ const SortableSlideItem = React.memo(({ slide, onEdit, onDelete, getSlideIcon, o
                 });
                 // Set default code if none found (for slides like "Topic 1: What is Python?")
                 if (!regularCode) {
-                    regularCode = '// Your code here\nconsole.log("Hello, World!");';
+                    regularCode = '// Start writing your code here';
                 }
                 setCodeContent(regularCode);
             } else {
@@ -697,7 +697,7 @@ const SortableSlideItem = React.memo(({ slide, onEdit, onDelete, getSlideIcon, o
             // Always render topic slides as video + code
             // If no code is found, use default placeholder code
             if (!regularCode) {
-                regularCode = '// Your code here\nconsole.log("Hello, World!");';
+                regularCode = '// Start writing your code here';
             }
 
             // Extract video script (everything except regular code blocks)

@@ -117,6 +117,7 @@ async def generate_video_external(
                         institute_id=inst_id,
                         user_id=None,
                         reference_files=[rf.model_dump() for rf in p.reference_files] if p.reference_files else None,
+                        orientation=getattr(p, "orientation", "landscape"),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -277,6 +278,8 @@ async def get_video_urls_external(
         html_url=s3_urls.get("timeline"),
         audio_url=s3_urls.get("audio"),
         words_url=s3_urls.get("words"),
+        avatar_url=s3_urls.get("avatar"),
+        video_url=s3_urls.get("video"),
         status=raw_status,
         current_stage=status.get("current_stage", "UNKNOWN"),
         updated_at=updated_at_str,
@@ -344,3 +347,146 @@ async def update_frame_external(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ---------------------------------------------------------------------------
+# Video Render (offloaded to dedicated Hetzner render server)
+# ---------------------------------------------------------------------------
+
+@router.post("/render/{video_id}")
+async def request_video_render(
+    video_id: str,
+    service: VideoGenerationService = Depends(get_video_service),
+    institute_id: str = Depends(get_institute_from_api_key),
+):
+    """
+    Trigger MP4 rendering for a completed video (HTML stage must be done).
+
+    Submits a render job to the dedicated render server. The frontend can
+    poll /urls/{video_id} to check when `video_url` becomes available.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Render server not configured. Set RENDER_SERVER_URL.",
+        )
+
+    # Validate video exists and has required stages completed
+    status = service.get_video_status(video_id)
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    s3_urls = status.get("s3_urls", {})
+    if not s3_urls.get("timeline"):
+        raise HTTPException(
+            status_code=400,
+            detail="Video must have HTML stage completed before rendering. Missing timeline URL.",
+        )
+    if not s3_urls.get("audio"):
+        raise HTTPException(
+            status_code=400,
+            detail="Video must have audio (TTS stage) before rendering. Missing audio URL.",
+        )
+
+    render_svc = RenderService(
+        render_server_url=settings.render_server_url,
+        render_key=settings.render_server_key,
+    )
+
+    # Derive dimensions from orientation stored in metadata
+    _meta = status.get("metadata", {}) or {}
+    _orientation = _meta.get("orientation", "landscape")
+    _render_width = 1080 if _orientation == "portrait" else 1920
+    _render_height = 1920 if _orientation == "portrait" else 1080
+
+    try:
+        job_id = render_svc.submit(
+            video_id=video_id,
+            timeline_url=s3_urls["timeline"],
+            audio_url=s3_urls["audio"],
+            words_url=s3_urls.get("words"),
+            branding_meta_url=s3_urls.get("branding_meta"),
+            avatar_video_url=s3_urls.get("avatar"),
+            show_captions=True,
+            width=_render_width,
+            height=_render_height,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    # Poll the render worker in background and update DB on completion
+    async def _poll_render(vid: str, jid: str):
+        import asyncio as _aio
+        try:
+            deadline = 5400  # 90 min
+            elapsed = 0
+            while elapsed < deadline:
+                await _aio.sleep(15)
+                elapsed += 15
+                status_resp = render_svc.check_status(jid)
+                rs = status_resp.get("status", "")
+                if rs == "completed":
+                    video_url = status_resp.get("video_url", "")
+                    if video_url:
+                        with make_db_session() as bg_session:
+                            repo = AiVideoRepository(session=bg_session)
+                            repo.update_files(
+                                video_id=vid,
+                                file_ids={"video": f"{vid}-video"},
+                                s3_urls={"video": video_url},
+                            )
+                        logger.info(f"[render-poll] Video {vid} render done, DB updated: {video_url}")
+                    return
+                elif rs == "failed":
+                    logger.error(f"[render-poll] Video {vid} render failed: {status_resp.get('error')}")
+                    return
+        except Exception as e:
+            logger.error(f"[render-poll] Polling error for {vid}: {e}")
+
+    asyncio.create_task(_poll_render(video_id, job_id))
+
+    return {"job_id": job_id, "status": "queued", "video_id": video_id}
+
+
+@router.post("/render-callback/{video_id}")
+async def render_callback(
+    video_id: str,
+    payload: dict,
+    x_render_key: str = Header(""),
+    db: Session = Depends(db_dependency),
+):
+    """
+    Callback from the render worker when a render job completes or fails.
+    Auth: X-Render-Key header must match RENDER_SERVER_KEY.
+    """
+    from ..config import get_settings
+
+    settings = get_settings()
+    if settings.render_server_key and x_render_key != settings.render_server_key:
+        raise HTTPException(status_code=401, detail="Invalid render key")
+
+    repo = AiVideoRepository(session=db)
+    video = repo.get_by_video_id(video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    cb_status = payload.get("status")
+    video_url = payload.get("video_url")
+    error = payload.get("error")
+
+    if cb_status == "completed" and video_url:
+        repo.update_files(
+            video_id=video_id,
+            file_ids={"video": f"{video_id}-video"},
+            s3_urls={"video": video_url},
+        )
+        logger.info(f"[render-callback] Video {video_id} render completed: {video_url}")
+        return {"status": "ok"}
+    elif cb_status == "failed":
+        logger.error(f"[render-callback] Video {video_id} render failed: {error}")
+        return {"status": "ok", "note": "failure recorded"}
+    else:
+        return {"status": "ok"}

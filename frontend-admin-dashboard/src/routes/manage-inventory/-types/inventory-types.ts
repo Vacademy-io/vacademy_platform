@@ -32,14 +32,56 @@ export interface InventoryFilters {
     courseId?: string;
     levelId?: string;
     sessionId?: string;
+    search?: string;
     availabilityStatus?: 'all' | 'limited' | 'unlimited' | 'low';
 }
 
 export interface InventoryStats {
-    totalSessions: number;
-    unlimitedSessions: number;
-    limitedSessions: number;
-    lowAvailabilitySessions: number;
-    totalCapacity: number;
-    totalAvailable: number;
+    total_sessions: number;
+    unlimited_sessions: number;
+    limited_sessions: number;
+    total_capacity: number;
+    total_available: number;
+    critical_sessions: number;
+    low_availability_sessions: number;
+}
+
+// Paginated batches response (from /institute/v1/paginated-batches)
+export interface PaginatedBatchesResponse {
+    content: PaginatedBatchItem[];
+    page_number: number;
+    page_size: number;
+    total_elements: number;
+    total_pages: number;
+    first: boolean;
+    last: boolean;
+    has_next: boolean;
+    has_previous: boolean;
+}
+
+export interface PaginatedBatchItem {
+    id: string;
+    name?: string | null;
+    level: { id: string; level_name: string };
+    session: { id: string; session_name: string };
+    start_time: string | null;
+    status: string;
+    package_dto: { id: string; package_name: string; thumbnail_id?: string | null };
+    group?: { id: string; group_name: string } | null;
+    read_time_in_minutes?: number;
+    is_org_associated?: boolean;
+    is_parent?: boolean;
+    parent_id?: string | null;
+}
+
+// Batch availability response (from /package-session/inventory/batch-availability)
+export type BatchAvailabilityMap = Record<string, InventoryAvailability>;
+
+// Batches summary response (from /institute/v1/batches-summary)
+export interface BatchesSummaryResponse {
+    total_batches: number;
+    has_org_associated: boolean;
+    packages: { id: string; name: string }[];
+    levels: { id: string; name: string }[];
+    sessions: { id: string; name: string }[];
 }

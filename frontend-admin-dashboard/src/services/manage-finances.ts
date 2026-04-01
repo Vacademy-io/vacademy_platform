@@ -9,6 +9,26 @@ import {
 } from '@/types/manage-finances';
 import { BASE_URL, NOTIFICATION_SERVICE_BASE } from '@/constants/urls';
 
+// ─── Fee Types for Institute ───────────────────────────────────────────────
+
+export interface FeeTypeOption {
+    id: string;
+    name: string;
+}
+
+export const getFeeTypesQueryKey = () => ['FEE_TYPES_FOR_INSTITUTE'];
+
+export const fetchFeeTypesForInstitute = async (): Promise<FeeTypeOption[]> => {
+    const instituteId = getInstituteId();
+    if (!instituteId) throw new Error('Institute ID not found');
+
+    const response = await authenticatedAxiosInstance.get<FeeTypeOption[]>(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/fee-types`,
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
 // ─── Main Table Search ──────────────────────────────────────────────────────
 
 export const getManageFinancesQueryKey = (filter: FeeSearchFilterDTO) => [

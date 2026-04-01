@@ -115,6 +115,7 @@ export const CONTENT_TYPES = [
     },
 ] as const;
 
+export type VideoOrientation = 'landscape' | 'portrait';
 export type QualityTier = 'free' | 'standard' | 'premium' | 'ultra';
 
 export interface ReferenceFile {
@@ -137,6 +138,7 @@ export interface GenerateVideoRequest {
     quality_tier: QualityTier;
     video_id?: string; // Optional: auto-generated if not provided
     reference_files?: ReferenceFile[];
+    orientation?: VideoOrientation;
 }
 
 export const QUALITY_TIERS: Array<{
@@ -220,6 +222,7 @@ export interface VideoUrls {
     audio_url: string | null;
     words_url: string | null;
     avatar_url?: string | null;
+    video_url?: string | null;
     status: VideoStatusType;
     current_stage: VideoStage;
     updated_at?: string | null;
@@ -319,6 +322,7 @@ export const DEFAULT_OPTIONS: Omit<GenerateVideoRequest, 'prompt'> = {
     target_duration: '2-3 minutes',
     model: '',
     quality_tier: 'ultra',
+    orientation: 'landscape',
 };
 
 export function generateVideoId(): string {
@@ -440,6 +444,25 @@ export async function getVideoUrls(videoId: string, apiKey: string): Promise<Vid
 
     if (!response.ok) {
         throw new Error(`Failed to get video URLs: ${response.statusText}`);
+    }
+
+    return response.json();
+}
+
+export async function requestVideoRender(
+    videoId: string,
+    apiKey: string
+): Promise<{ job_id: string; status: string }> {
+    const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/render/${videoId}`, {
+        method: 'POST',
+        headers: {
+            'X-Institute-Key': apiKey,
+        },
+    });
+
+    if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to request render: ${text}`);
     }
 
     return response.json();

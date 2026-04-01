@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { PaymentConfig, PaymentType, PaymentOptionItem } from '../-types/bulk-create-types';
+import { currencyOptions } from '@/routes/settings/-constants/payments';
+import { getCurrencySymbol } from '@/routes/settings/-components/Payment/utils/utils';
 
 interface PaymentConfigDialogProps {
     open: boolean;
@@ -176,9 +178,32 @@ export function PaymentConfigDialog({
                             {(config.payment_type === 'ONE_TIME' ||
                                 config.payment_type === 'SUBSCRIPTION') && (
                                 <>
+                                    {/* Currency */}
+                                    <div className="space-y-2">
+                                        <Label className="text-sm">Currency</Label>
+                                        <Select
+                                            value={config.currency || 'INR'}
+                                            onValueChange={(value) =>
+                                                setConfig({ ...config, currency: value })
+                                            }
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {currencyOptions.map((opt) => (
+                                                    <SelectItem key={opt.code} value={opt.code}>
+                                                        {opt.symbol} - {opt.name} ({opt.code})
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label className="text-sm">Price (INR)</Label>
+                                            <Label className="text-sm">
+                                                Price ({getCurrencySymbol(config.currency || 'INR')})
+                                            </Label>
                                             <Input
                                                 type="number"
                                                 placeholder="Enter price"
@@ -189,7 +214,6 @@ export function PaymentConfigDialog({
                                                         price: e.target.value
                                                             ? Number(e.target.value)
                                                             : undefined,
-                                                        currency: 'INR',
                                                     })
                                                 }
                                             />

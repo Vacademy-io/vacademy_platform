@@ -26,7 +26,7 @@ const getAccessToken = (): string | null => {
 // Helper function to safely parse settingJson
 const parseSettingJson = (
     settingJson: string | object | undefined
-): { variables: string[]; isDefault: boolean; templateType: 'marketing' | 'utility' | 'transactional'; mjml?: string } => {
+): { variables: string[]; isDefault: boolean; templateType: 'marketing' | 'utility' | 'transactional'; mjml?: string; previewText?: string } => {
     if (!settingJson) {
         return { variables: [], isDefault: false, templateType: 'utility' };
     }
@@ -38,6 +38,7 @@ const parseSettingJson = (
             isDefault: (settingJson as any).isDefault || false,
             templateType: ((settingJson as any).templateType as 'marketing' | 'utility' | 'transactional') || 'utility',
             mjml: (settingJson as any).mjml || undefined,
+            previewText: (settingJson as any).previewText || undefined,
         };
     }
 
@@ -50,6 +51,7 @@ const parseSettingJson = (
                 isDefault: settings.isDefault || false,
                 templateType: (settings.templateType as 'marketing' | 'utility' | 'transactional') || 'utility',
                 mjml: settings.mjml || undefined,
+                previewText: settings.previewText || undefined,
             };
         } catch (error) {
             return { variables: [], isDefault: false, templateType: 'utility' };
@@ -73,19 +75,24 @@ export const createMessageTemplate = async (
             throw new Error('Institute ID not found. Please login again.');
         }
         
+        // INVOICE and INVOICE_EMAIL types are stored as-is; others are lowercased
+        const resolvedType = (template.type === 'INVOICE' || template.type === 'INVOICE_EMAIL')
+            ? template.type : (template.type?.toLowerCase() || 'email');
+
         const payload = {
-            type: template.type?.toLowerCase() || 'email',
+            type: resolvedType,
             vendorId: 'default',
             instituteId: instituteId,
             name: template.name,
             subject: template.subject || '',
-            content: template.content, // HTML content from GrapesJS editor
-            contentType: 'text/html', // HTML content with base64 images for email templates
+            content: template.content,
+            contentType: 'text/html',
             settingJson: {
                 variables: template.variables || [],
                 isDefault: template.isDefault || false,
                 templateType: template.templateType || 'utility',
-                mjml: template.mjml || undefined, // MJML JSON data for editor state
+                mjml: template.mjml || undefined,
+                previewText: template.previewText || undefined,
             },
             dynamicParameters: {},
             canDelete: true,
@@ -131,6 +138,7 @@ export const createMessageTemplate = async (
             isDefault: parsedSettings.isDefault,
             templateType: parsedSettings.templateType,
             mjml: parsedSettings.mjml,
+            previewText: parsedSettings.previewText,
             createdAt: result.createdAt || new Date().toISOString(),
             updatedAt: result.updatedAt || new Date().toISOString(),
         };
@@ -140,7 +148,7 @@ export const createMessageTemplate = async (
 };
 
 export const getMessageTemplates = async (
-    type?: 'EMAIL' | 'WHATSAPP',
+    type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL',
     page = 0,
     size = 10
 ): Promise<TemplateListResponse> => {
@@ -233,6 +241,7 @@ export const getMessageTemplates = async (
                 isDefault: parsedSettings.isDefault,
                 templateType: mappedTemplateType,
                 mjml: parsedSettings.mjml,
+            previewText: parsedSettings.previewText,
                 createdAt: (template.createdAt as string) || new Date().toISOString(),
                 updatedAt: (template.updatedAt as string) || new Date().toISOString(),
                 createdBy: template.createdBy as string | undefined,
@@ -312,6 +321,7 @@ export const getMessageTemplate = async (id: string): Promise<MessageTemplate> =
             isDefault: parsedSettings.isDefault,
             templateType: mappedTemplateType,
             mjml: parsedSettings.mjml,
+            previewText: parsedSettings.previewText,
             createdAt: result.createdAt || new Date().toISOString(),
             updatedAt: result.updatedAt || new Date().toISOString(),
             createdBy: result.createdBy,
@@ -350,9 +360,12 @@ export const updateMessageTemplate = async (
         
         const { id, ...updateData } = template;
 
+        const resolvedUpdateType = (updateData.type === 'INVOICE' || updateData.type === 'INVOICE_EMAIL')
+            ? updateData.type : (updateData.type?.toLowerCase() || 'email');
+
         const payload = {
             id: id,
-            type: updateData.type?.toLowerCase() || 'email',
+            type: resolvedUpdateType,
             vendorId: 'default',
             instituteId: instituteId,
             name: updateData.name || '',
@@ -363,7 +376,8 @@ export const updateMessageTemplate = async (
                 variables: updateData.variables || [],
                 isDefault: updateData.isDefault || false,
                 templateType: updateData.templateType || 'utility',
-                mjml: updateData.mjml || undefined, // MJML JSON data for editor state
+                mjml: updateData.mjml || undefined,
+                previewText: updateData.previewText || undefined,
             },
             dynamicParameters: {},
             canDelete: true,
@@ -409,6 +423,7 @@ export const updateMessageTemplate = async (
             isDefault: parsedSettings.isDefault,
             templateType: parsedSettings.templateType,
             mjml: parsedSettings.mjml,
+            previewText: parsedSettings.previewText,
             createdAt: result.createdAt || new Date().toISOString(),
             updatedAt: result.updatedAt || new Date().toISOString(),
         };
@@ -493,6 +508,7 @@ export const setDefaultTemplate = async (
             isDefault: parsedSettings.isDefault,
             templateType: parsedSettings.templateType,
             mjml: parsedSettings.mjml,
+            previewText: parsedSettings.previewText,
             createdAt: result.createdAt || new Date().toISOString(),
             updatedAt: result.updatedAt || new Date().toISOString(),
         };
@@ -535,6 +551,7 @@ export const duplicateTemplate = async (id: string): Promise<MessageTemplate> =>
             isDefault: parsedSettings.isDefault,
             templateType: parsedSettings.templateType,
             mjml: parsedSettings.mjml,
+            previewText: parsedSettings.previewText,
             createdAt: result.createdAt || new Date().toISOString(),
             updatedAt: result.updatedAt || new Date().toISOString(),
         };
@@ -605,6 +622,7 @@ export const searchMessageTemplates = async (searchParams: {
                     isDefault: parsedSettings.isDefault,
                     templateType: parsedSettings.templateType,
                     mjml: parsedSettings.mjml,
+            previewText: parsedSettings.previewText,
                     createdAt: (template.createdAt as string) || new Date().toISOString(),
                     updatedAt: (template.updatedAt as string) || new Date().toISOString(),
                 };

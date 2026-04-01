@@ -145,7 +145,12 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
             <html>
               <head>
                 <meta charset="utf-8" />
-                
+
+                <!-- Google Fonts (must match client-side html-processor.ts) -->
+                <link rel="preconnect" href="https://fonts.googleapis.com">
+                <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+
                 <!-- GSAP -->
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>
@@ -179,14 +184,43 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 <script src="https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js"></script>
 
                 <style>
-                  html, body { margin:0; padding:0; width:100%; height:100%; background:REPLACE_BG; overflow:hidden; }
+                  /* ===== BASE STYLES (must match client html-processor.ts getBaseStyles) ===== */
+                  :root {
+                    --text-color: #1e293b;
+                    --text-secondary: #475569;
+                    --primary-color: #2563eb;
+                    --accent-color: #f59e0b;
+                    --background-color: #ffffff;
+                  }
+                  * { box-sizing: border-box; }
+                  html, body { margin:0; padding:0; width:100%; height:100%; background:REPLACE_BG; overflow:hidden; font-family: 'Inter', sans-serif; color: var(--text-color); }
                   body { position:relative; }
+                  /* Note: body * opacity:1 is NOT set here — it's inside shadow DOM CSS only */
                   pre { white-space: pre-wrap; word-wrap: break-word; }
 
-                  /* Visual cues for interactive elements */
-                  .hover-target:hover { outline: 2px dashed #3b82f6; cursor: grab; }
-                  .is-dragging { outline: 2px solid #3b82f6; cursor: grabbing; user-select: none; }
-                  [contenteditable="true"] { outline: 2px solid #22c55e; cursor: text; min-width: 10px; }
+                  /* Typography classes */
+                  .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; }
+                  .text-h2 { font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
+                  .text-body { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; line-height: 1.5; }
+                  .text-label { font-family: 'Fira Code', monospace; font-size: 18px; text-transform: uppercase; letter-spacing: 0.1em; }
+
+                  .full-screen-center {
+                    width: 100%; height: 100%;
+                    display: flex; flex-direction: column;
+                    align-items: center; justify-content: center;
+                    text-align: center; padding: 60px 80px;
+                  }
+
+                  .highlight {
+                    background: linear-gradient(120deg, rgba(255, 226, 89, 0.6) 0%, rgba(255, 233, 148, 0.4) 100%);
+                    padding: 0 4px; border-radius: 4px;
+                  }
+                  .emphasis { color: var(--primary-color); font-weight: bold; }
+                  .mermaid { display: flex; justify-content: center; width: 100%; margin: 20px auto; }
+                  .layout-split {
+                    display: grid; grid-template-columns: 1fr 1fr; gap: 60px;
+                    width: 90%; max-width: 1700px; align-items: center;
+                  }
 
                   /* Key Takeaway Card */
                   .key-takeaway { display: flex; align-items: center; gap: 20px; padding: 24px 32px; border-left: 5px solid #10b981; background: rgba(16, 185, 129, 0.1); margin: 20px 0; }
@@ -205,12 +239,107 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   .wr-icon { font-size: 24px; margin-right: 8px; }
                   .wr-text { font-size: 24px; }
 
-                  /* Cutout asset images — transparent background, subtle depth */
+                  /* Cutout asset images */
                   .generated-image[data-cutout="true"] {
-                    background: transparent;
-                    mix-blend-mode: normal;
+                    background: transparent; mix-blend-mode: normal;
                     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
                   }
+
+                  /* ===== KEN BURNS CINEMATIC ENGINE (must match html-processor.ts getKenBurnsStyles) ===== */
+                  .image-hero { position: relative; width: 100%; height: 100%; overflow: hidden; }
+                  .image-hero > img {
+                    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+                    transform-origin: center; will-change: transform;
+                    animation-duration: var(--kb-duration, 12s);
+                    animation-timing-function: linear; animation-fill-mode: both;
+                  }
+                  .image-text-overlay {
+                    position: absolute; inset: 0; display: flex; flex-direction: column;
+                    justify-content: flex-end; padding: 80px 100px; z-index: 2;
+                  }
+                  .image-text-overlay > * { position: relative; z-index: 1; }
+                  .image-text-overlay.gradient-bottom::before,
+                  .image-text-overlay:not([class*="gradient-"])::before {
+                    content: ""; position: absolute; inset: 0;
+                    background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 40%, transparent 70%);
+                    pointer-events: none; z-index: 0;
+                  }
+                  .image-text-overlay.gradient-full::before {
+                    content: ""; position: absolute; inset: 0;
+                    background: rgba(0,0,0,0.45); pointer-events: none; z-index: 0;
+                  }
+                  .image-text-overlay.gradient-center { justify-content: center; align-items: center; text-align: center; }
+                  .image-text-overlay.gradient-center::before {
+                    content: ""; position: absolute; inset: 0;
+                    background: radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 70%);
+                    pointer-events: none; z-index: 0;
+                  }
+                  .image-text-overlay h1, .image-text-overlay .hero-title {
+                    font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800;
+                    color: #fff; line-height: 1.1; margin: 0 0 16px 0;
+                    text-shadow: 0 2px 20px rgba(0,0,0,0.3);
+                  }
+                  .image-text-overlay p, .image-text-overlay .hero-subtitle {
+                    font-family: 'Inter', sans-serif; font-size: 28px;
+                    color: rgba(255,255,255,0.9); line-height: 1.4; margin: 0; max-width: 800px;
+                  }
+
+                  /* IMAGE_SPLIT */
+                  .image-split-layout { display: grid; grid-template-columns: 1fr 1fr; width: 100%; height: 100%; overflow: hidden; }
+                  .image-split-layout .split-image { position: relative; overflow: hidden; }
+                  .image-split-layout .split-image img {
+                    width: 100%; height: 100%; object-fit: cover; will-change: transform;
+                    animation-duration: var(--kb-duration, 12s);
+                    animation-timing-function: linear; animation-fill-mode: both;
+                  }
+                  .image-split-layout .split-text { display: flex; flex-direction: column; justify-content: center; padding: 60px 80px; }
+
+                  /* LOWER_THIRD */
+                  .lower-third {
+                    position: absolute; bottom: 120px; left: 100px;
+                    display: flex; align-items: stretch;
+                    animation: ltSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; z-index: 20;
+                  }
+                  .lower-third .lt-accent-bar { width: 6px; background: linear-gradient(180deg, #3b82f6, #8b5cf6); border-radius: 3px 0 0 3px; }
+                  .lower-third .lt-content { background: rgba(0,0,0,0.85); padding: 16px 32px; border-radius: 0 8px 8px 0; display: flex; flex-direction: column; gap: 4px; }
+                  .lower-third .lt-label { font-family: 'Fira Code', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.15em; color: #3b82f6; font-weight: 600; }
+                  .lower-third .lt-text { font-family: 'Inter', sans-serif; font-size: 24px; color: #fff; font-weight: 600; }
+                  @keyframes ltSlideIn { from { transform: translateX(-40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+                  /* ANNOTATION_MAP */
+                  .annotation-map-container { position: relative; width: 100%; height: 100%; overflow: hidden; }
+                  .annotation-map-container .annotation-map-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; will-change: transform; animation-duration: var(--kb-duration, 12s); animation-timing-function: linear; animation-fill-mode: both; }
+                  .annotation-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+
+                  /* PROCESS_STEPS */
+                  .process-flow { display: flex; flex-direction: column; align-items: center; width: 80%; max-width: 960px; }
+                  .process-node { display: flex; align-items: center; gap: 24px; background: var(--card-bg, rgba(30,41,59,0.6)); border: 2px solid var(--primary-color, #3b82f6); border-radius: 12px; padding: 20px 32px; width: 100%; }
+                  .node-num { width: 52px; height: 52px; border-radius: 50%; background: var(--primary-color, #3b82f6); color: #fff; font-size: 24px; font-weight: 800; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: 'Montserrat', sans-serif; }
+                  .node-body { display: flex; flex-direction: column; gap: 4px; }
+                  .node-title { font-size: 22px; font-weight: 700; font-family: 'Montserrat', sans-serif; color: var(--text-color, #fff); }
+                  .node-desc { font-size: 16px; font-family: 'Inter', sans-serif; color: var(--text-secondary, #94a3b8); }
+                  .process-connector { width: 20px; height: 40px; flex-shrink: 0; color: var(--primary-color, #3b82f6); }
+
+                  /* EQUATION_BUILD */
+                  .equation-build-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 48px 0 32px; }
+                  .equation-build-row .eq-term, .equation-build-row .eq-sep { display: inline-flex; align-items: center; font-size: 3.5rem; }
+                  .equation-build-row .eq-sep { font-size: 3rem; margin: 0 4px; }
+
+                  /* Ken Burns motion keyframes */
+                  .kb-zoom-in     { animation-name: kbZoomIn; }
+                  .kb-zoom-out    { animation-name: kbZoomOut; }
+                  .kb-pan-left    { animation-name: kbPanLeft; }
+                  .kb-pan-right   { animation-name: kbPanRight; }
+                  .kb-pan-up      { animation-name: kbPanUp; }
+                  .kb-zoom-pan-tl { animation-name: kbZoomPanTL; }
+                  @keyframes kbZoomIn    { from { transform: scale(1.0); }  to { transform: scale(1.15); } }
+                  @keyframes kbZoomOut   { from { transform: scale(1.20); } to { transform: scale(1.05); } }
+                  @keyframes kbPanLeft   { from { transform: scale(1.15) translateX(3%); }  to { transform: scale(1.15) translateX(-3%); } }
+                  @keyframes kbPanRight  { from { transform: scale(1.15) translateX(-3%); } to { transform: scale(1.15) translateX(3%); } }
+                  @keyframes kbPanUp     { from { transform: scale(1.15) translateY(3%); }  to { transform: scale(1.15) translateY(-3%); } }
+                  @keyframes kbZoomPanTL { from { transform: scale(1.0) translate(2%, 2%); } to { transform: scale(1.15) translate(-2%, -2%); } }
+                  .shot-enter { animation: shotFadeIn 0.6s ease-out forwards; }
+                  @keyframes shotFadeIn { from { opacity: 0; } to { opacity: 1; } }
                 </style>
               </head>
               <body>
@@ -236,7 +365,8 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                                           {left: '\\\\(', right: '\\\\)', display: false},
                                           {left: '\\\\[', right: '\\\\]', display: true}
                                       ],
-                                      throwOnError : false
+                                      throwOnError : false,
+                                      strict: false
                                   });
                                } catch (e) {
                                    console.warn('KaTeX render error:', e);
@@ -254,44 +384,49 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
 
                   // SVG drawing animation
                   window.animateSVG = function(svgId, duration, callback) {
-                    if (window.Vivus) {
-                      var cb = typeof callback === 'function' ? callback : undefined;
+                    if (!window.Vivus) return;
+                    var cb = typeof callback === 'function' ? callback : undefined;
+                    function tryInit(attemptsLeft) {
+                      var el = typeof svgId === 'string' ? document.getElementById(svgId) : svgId;
+                      if (!el) {
+                        if (attemptsLeft > 0) {
+                          setTimeout(function() { tryInit(attemptsLeft - 1); }, 100);
+                        }
+                        return;
+                      }
                       try {
-                          let target = svgId;
-                          if (typeof svgId === 'string' && !svgId.startsWith('#') && !document.getElementById(svgId)) {
-                               new Vivus(svgId, {
-                                duration: duration || 100,
-                                type: 'oneByOne',
-                                animTimingFunction: Vivus.EASE_OUT
-                              }, cb);
-                          } else {
-                               new Vivus(svgId, {
-                                duration: duration || 100,
-                                type: 'oneByOne',
-                                animTimingFunction: Vivus.EASE_OUT
-                              }, cb);
-                          }
+                        new Vivus(svgId, {
+                          duration: duration || 100,
+                          type: 'oneByOne',
+                          animTimingFunction: Vivus.EASE_OUT
+                        }, cb);
                       } catch(e) { console.warn('Vivus init error', e); }
                     }
+                    tryInit(10);
                   };
 
                   // Hand-drawn annotation
                   window.annotate = function(selectorOrEl, options) {
-                    if (window.RoughNotation) {
-                      const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
-                      if (el) {
-                        const annotation = RoughNotation.annotate(el, {
-                          type: options.type || 'underline',
-                          color: options.color || '#dc2626',
-                          strokeWidth: options.strokeWidth || 3,
-                          padding: options.padding || 5,
-                          animationDuration: options.duration || 800
-                        });
-                        annotation.show();
-                        return annotation;
-                      }
-                    }
-                    return null;
+                    if (!window.RoughNotation) return null;
+                    const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
+                    if (!el) return null;
+                    // Backward compatibility: annotate(el, 'underline', 'red', 5)
+                    const opts = typeof options === 'object' ? options : {
+                      type: options || 'underline',
+                      color: arguments[2] || '#dc2626',
+                      padding: arguments[3] || 5
+                    };
+                    try {
+                      const annotation = RoughNotation.annotate(el, {
+                        type: opts.type || 'underline',
+                        color: opts.color || '#dc2626',
+                        strokeWidth: opts.strokeWidth || 3,
+                        padding: opts.padding || 5,
+                        animationDuration: opts.duration || 800
+                      });
+                      annotation.show();
+                      return annotation;
+                    } catch(e) { console.warn('annotate error', e); return null; }
                   };
 
                   // Simple fade in
@@ -312,7 +447,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     el.textContent = '';
                     el.style.opacity = '1';
                     let i = 0;
-                    const speed = (duration || 1) * 1000 / text.length;
+                    const speed = (duration || 1) * 1000 / Math.max(1, text.length);
                     setTimeout(() => {
                       const interval = setInterval(() => {
                         if (i < text.length) {
@@ -354,10 +489,12 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       window.fadeIn(el, 0.5);
                       return;
                     }
-                    gsap.fromTo(lines,
-                      {opacity: 0, y: 20},
-                      {opacity: 1, y: 0, duration: 0.4, stagger: staggerDelay || 0.3, ease: 'power2.out'}
-                    );
+                    try {
+                      gsap.fromTo(lines,
+                        {opacity: 0, y: 20},
+                        {opacity: 1, y: 0, duration: 0.4, stagger: staggerDelay || 0.3, ease: 'power2.out'}
+                      );
+                    } catch(e) { console.warn('revealLines error', e); }
                   };
 
                   // Show text then annotate
@@ -427,7 +564,224 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                           gsap.ticker.remove(gsap.ticker.tick);
                           gsap.globalTimeline.pause();
                       }
+
+                      // Monkey-patch RoughNotation to register all annotations
+                      // so we can force-show them during frame rendering
+                      window.__registeredAnnotations = [];
+                      if (window.RoughNotation && window.RoughNotation.annotate) {
+                          const _origAnnotate = window.RoughNotation.annotate;
+                          window.RoughNotation.annotate = function(el, opts) {
+                              const a = _origAnnotate(el, opts);
+                              window.__registeredAnnotations.push(a);
+                              return a;
+                          };
+                      }
                   });
+
+                  // ── Shadow DOM CSS ──
+                  // All styles that must be injected into each shadow root.
+                  // Shadow DOM is style-isolated: global <style> rules do NOT apply inside.
+                  // This must match html-processor.ts getBaseStyles() + getKenBurnsStyles().
+                  window.__SHADOW_CSS = `
+                    /* Fonts loaded via <link> in __updateSnippets — not @import (doesn't work reliably in shadow DOM) */
+
+                    :host {
+                      --text-color: #1e293b;
+                      --text-secondary: #475569;
+                      --primary-color: #2563eb;
+                      --accent-color: #f59e0b;
+                      --background-color: #ffffff;
+                    }
+
+                    /* Ensure content visible — GSAP timeline seeking doesn't reliably
+                       update computed styles inside shadow DOM. This may show elements
+                       that should be hidden at certain timestamps, but it's better than
+                       having all content invisible. */
+                    * { opacity: 1 !important; visibility: visible !important; }
+
+                    * { box-sizing: border-box; }
+                    html, body { margin:0; padding:0; width:100%; height:100%; font-family: 'Inter', sans-serif; color: var(--text-color); }
+
+                    /* Cutout asset images */
+                    .generated-image[data-cutout="true"] {
+                      background: transparent;
+                      mix-blend-mode: normal;
+                      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
+                    }
+
+                    /* Typography */
+                    .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; }
+                    .text-h2 { font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
+                    .text-body { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; line-height: 1.5; }
+                    .text-label { font-family: 'Fira Code', monospace; font-size: 18px; text-transform: uppercase; letter-spacing: 0.1em; }
+
+                    /* Layout */
+                    .full-screen-center {
+                      width: 100%; height: 100%;
+                      display: flex; flex-direction: column;
+                      align-items: center; justify-content: center;
+                      text-align: center; padding: 60px 80px;
+                    }
+                    .highlight {
+                      background: linear-gradient(120deg, rgba(255, 226, 89, 0.6) 0%, rgba(255, 233, 148, 0.4) 100%);
+                      padding: 0 4px; border-radius: 4px;
+                    }
+                    .emphasis { color: var(--primary-color); font-weight: bold; }
+                    .mermaid { display: flex; justify-content: center; width: 100%; margin: 20px auto; }
+                    .layout-split {
+                      display: grid; grid-template-columns: 1fr 1fr; gap: 60px;
+                      width: 90%; max-width: 1700px; align-items: center;
+                    }
+                    pre { white-space: pre-wrap; word-wrap: break-word; }
+
+                    /* ===== KEN BURNS CINEMATIC ENGINE ===== */
+                    .image-hero {
+                      position: relative; width: 100%; height: 100%; overflow: hidden;
+                    }
+                    .image-hero > img {
+                      position: absolute; inset: 0; width: 100%; height: 100%;
+                      object-fit: cover; transform-origin: center; will-change: transform;
+                      animation-duration: var(--kb-duration, 12s);
+                      animation-timing-function: linear; animation-fill-mode: both;
+                    }
+                    .image-text-overlay {
+                      position: absolute; inset: 0; display: flex; flex-direction: column;
+                      justify-content: flex-end; padding: 80px 100px; z-index: 2;
+                    }
+                    .image-text-overlay > * { position: relative; z-index: 1; }
+                    .image-text-overlay.gradient-bottom::before,
+                    .image-text-overlay:not([class*="gradient-"])::before {
+                      content: ""; position: absolute; inset: 0;
+                      background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 40%, transparent 70%);
+                      pointer-events: none; z-index: 0;
+                    }
+                    .image-text-overlay.gradient-full::before {
+                      content: ""; position: absolute; inset: 0;
+                      background: rgba(0,0,0,0.45); pointer-events: none; z-index: 0;
+                    }
+                    .image-text-overlay.gradient-center {
+                      justify-content: center; align-items: center; text-align: center;
+                    }
+                    .image-text-overlay.gradient-center::before {
+                      content: ""; position: absolute; inset: 0;
+                      background: radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 70%);
+                      pointer-events: none; z-index: 0;
+                    }
+                    .image-text-overlay h1, .image-text-overlay .hero-title {
+                      font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800;
+                      color: #fff; line-height: 1.1; margin: 0 0 16px 0;
+                      text-shadow: 0 2px 20px rgba(0,0,0,0.3);
+                    }
+                    .image-text-overlay p, .image-text-overlay .hero-subtitle {
+                      font-family: 'Inter', sans-serif; font-size: 28px; color: rgba(255,255,255,0.9);
+                      line-height: 1.4; margin: 0; max-width: 800px;
+                    }
+                    .image-split-layout {
+                      display: grid; grid-template-columns: 1fr 1fr;
+                      width: 100%; height: 100%; overflow: hidden;
+                    }
+                    .image-split-layout .split-image { position: relative; overflow: hidden; }
+                    .image-split-layout .split-image img {
+                      width: 100%; height: 100%; object-fit: cover; will-change: transform;
+                      animation-duration: var(--kb-duration, 12s);
+                      animation-timing-function: linear; animation-fill-mode: both;
+                    }
+                    .image-split-layout .split-text {
+                      display: flex; flex-direction: column;
+                      justify-content: center; padding: 60px 80px;
+                    }
+                    .lower-third {
+                      position: absolute; bottom: 120px; left: 100px;
+                      display: flex; align-items: stretch;
+                      animation: ltSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                      z-index: 20;
+                    }
+                    .lower-third .lt-accent-bar {
+                      width: 6px; background: linear-gradient(180deg, #3b82f6, #8b5cf6);
+                      border-radius: 3px 0 0 3px;
+                    }
+                    .lower-third .lt-content {
+                      background: rgba(0,0,0,0.85); padding: 16px 32px;
+                      border-radius: 0 8px 8px 0; display: flex; flex-direction: column; gap: 4px;
+                    }
+                    .lower-third .lt-label {
+                      font-family: 'Fira Code', monospace; font-size: 12px;
+                      text-transform: uppercase; letter-spacing: 0.15em; color: #3b82f6; font-weight: 600;
+                    }
+                    .lower-third .lt-text {
+                      font-family: 'Inter', sans-serif; font-size: 24px; color: #fff; font-weight: 600;
+                    }
+                    @keyframes ltSlideIn {
+                      from { transform: translateX(-40px); opacity: 0; }
+                      to   { transform: translateX(0); opacity: 1; }
+                    }
+                    .annotation-map-container { position: relative; width: 100%; height: 100%; overflow: hidden; }
+                    .annotation-map-container .annotation-map-bg {
+                      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                      object-fit: cover; will-change: transform;
+                      animation-duration: var(--kb-duration, 12s);
+                      animation-timing-function: linear; animation-fill-mode: both;
+                    }
+                    .annotation-overlay {
+                      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                      pointer-events: none; z-index: 5;
+                    }
+                    .process-flow {
+                      display: flex; flex-direction: column;
+                      align-items: center; width: 80%; max-width: 960px;
+                    }
+                    .process-node {
+                      display: flex; align-items: center; gap: 24px;
+                      background: var(--card-bg, rgba(30,41,59,0.6));
+                      border: 2px solid var(--primary-color, #3b82f6);
+                      border-radius: 12px; padding: 20px 32px; width: 100%;
+                    }
+                    .node-num {
+                      width: 52px; height: 52px; border-radius: 50%;
+                      background: var(--primary-color, #3b82f6); color: #fff;
+                      font-size: 24px; font-weight: 800; flex-shrink: 0;
+                      display: flex; align-items: center; justify-content: center;
+                      font-family: 'Montserrat', sans-serif;
+                    }
+                    .node-body { display: flex; flex-direction: column; gap: 4px; }
+                    .node-title {
+                      font-size: 22px; font-weight: 700;
+                      font-family: 'Montserrat', sans-serif; color: var(--text-color, #fff);
+                    }
+                    .node-desc {
+                      font-size: 16px; font-family: 'Inter', sans-serif;
+                      color: var(--text-secondary, #94a3b8);
+                    }
+                    .process-connector {
+                      width: 20px; height: 40px; flex-shrink: 0;
+                      color: var(--primary-color, #3b82f6);
+                    }
+                    .equation-build-row {
+                      display: flex; align-items: center; justify-content: center;
+                      flex-wrap: wrap; gap: 8px; margin: 48px 0 32px;
+                    }
+                    .equation-build-row .eq-term,
+                    .equation-build-row .eq-sep {
+                      display: inline-flex; align-items: center; font-size: 3.5rem;
+                    }
+                    .equation-build-row .eq-sep { font-size: 3rem; margin: 0 4px; }
+
+                    /* Ken Burns keyframes */
+                    .kb-zoom-in     { animation-name: kbZoomIn; }
+                    .kb-zoom-out    { animation-name: kbZoomOut; }
+                    .kb-pan-left    { animation-name: kbPanLeft; }
+                    .kb-pan-right   { animation-name: kbPanRight; }
+                    .kb-pan-up      { animation-name: kbPanUp; }
+                    .kb-zoom-pan-tl { animation-name: kbZoomPanTL; }
+                    @keyframes kbZoomIn    { from { transform: scale(1.0); }  to { transform: scale(1.15); } }
+                    @keyframes kbZoomOut   { from { transform: scale(1.20); } to { transform: scale(1.05); } }
+                    @keyframes kbPanLeft   { from { transform: scale(1.15) translateX(3%); }  to { transform: scale(1.15) translateX(-3%); } }
+                    @keyframes kbPanRight  { from { transform: scale(1.15) translateX(-3%); } to { transform: scale(1.15) translateX(3%); } }
+                    @keyframes kbPanUp     { from { transform: scale(1.15) translateY(3%); }  to { transform: scale(1.15) translateY(-3%); } }
+                    @keyframes kbZoomPanTL { from { transform: scale(1.0) translate(2%, 2%); } to { transform: scale(1.15) translate(-2%, -2%); } }
+                    .shot-enter { animation: shotFadeIn 0.6s ease-out forwards; }
+                    @keyframes shotFadeIn { from { opacity: 0; } to { opacity: 1; } }
+                  `;
                 </script>
               </body>
             </html>
@@ -482,11 +836,21 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
 
                   wrapper.style.textAlign = 'center';
 
-                  // Inject CSS into Shadow DOM for KaTeX and Prism
+                  // Inject ALL CSS into Shadow DOM (shadow DOM is style-isolated)
+                  // Google Fonts must be a <link> (not @import in <style>) for shadow DOM
+                  const fontLink = document.createElement('link');
+                  fontLink.rel = 'stylesheet';
+                  fontLink.href = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap';
+                  root.appendChild(fontLink);
+
+                  const shadowStyle = document.createElement('style');
+                  shadowStyle.textContent = window.__SHADOW_CSS || '';
+                  root.appendChild(shadowStyle);
+
                   const katexCss = document.createElement('link');
                   katexCss.rel = 'stylesheet';
                   katexCss.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
-                  
+
                   const prismCss = document.createElement('link');
                   prismCss.rel = 'stylesheet';
                   prismCss.href = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css';
@@ -507,7 +871,8 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                               {left: '\\(', right: '\\)', display: false},
                               {left: '\\[', right: '\\]', display: true}
                           ],
-                          throwOnError: false
+                          throwOnError: false,
+                          strict: false
                       });
                   }
 
@@ -593,6 +958,13 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       newScript.textContent = scopedCode;
                       oldScript.parentNode.replaceChild(newScript, oldScript);
                   });
+
+                  // Force-show all registered Rough Notation annotations
+                  if (window.__registeredAnnotations && window.__registeredAnnotations.length > 0) {
+                    window.__registeredAnnotations.forEach(a => {
+                      try { if (a && !a.isShowing) a.show(); } catch(e) {}
+                    });
+                  }
 
                   // Trigger Mermaid (Robust)
                   const promises = [];
@@ -809,8 +1181,11 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
 
 def _load_timeline(json_path: Path) -> List[Dict[str, Any]]:
     data = json.loads(json_path.read_text())
+    # Support both new format {"meta": {...}, "entries": [...]} and old flat list [...]
+    if isinstance(data, dict) and "entries" in data:
+        data = data["entries"]
     if not isinstance(data, list):
-        raise ValueError("JSON root must be a list of entries")
+        raise ValueError("JSON root must be a list of entries (or a dict with 'entries' key)")
     # normalize/validate
     timeline: List[Dict[str, Any]] = []
     for idx, item in enumerate(data):
@@ -1126,6 +1501,9 @@ def _validate_assets(
         try:
             import re
             timeline_data = json.loads(timeline_path.read_text())
+            # Support new format {"meta": {...}, "entries": [...]}
+            if isinstance(timeline_data, dict) and "entries" in timeline_data:
+                timeline_data = timeline_data["entries"]
             for idx, item in enumerate(timeline_data):
                 html = item.get("html", "")
                 # Find all file:// paths
@@ -1226,6 +1604,9 @@ def render_video_from_json(
     character_pose: str = "",
     avatar_video_path: str = "",
     audio_delay: float = 0.0,
+    frames_only: bool = False,
+    start_frame: Optional[int] = None,
+    end_frame: Optional[int] = None,
 ) -> Path:
     """
     Render a portrait video by placing timed HTML overlays (from JSON) on a 1080x1920 canvas
@@ -1499,23 +1880,36 @@ def render_video_from_json(
         page = context.new_page()
         
         # Hook up console logging to Python stdout for debugging
-        page.on("console", lambda msg: print(f"BROWSER CONSOLE: {msg.text}"))
+        page.on("console", lambda msg: print(f"[BROWSER {msg.type.upper()}] {msg.text}") if msg.type in ("error", "warning") else None)
+        page.on("pageerror", lambda err: print(f"[BROWSER EXCEPTION] {err}"))
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
         if not show_character:
             page.evaluate("() => window.__updateCharacter && window.__updateCharacter(null)")
 
-        for frame_index in range(total_frames):
+        _render_start = start_frame if start_frame is not None else 0
+        _render_end = end_frame if end_frame is not None else total_frames
+        print(f"DEBUG: Rendering frame range [{_render_start}, {_render_end}) of {total_frames} total")
+
+        _prev_active_ids = set()
+
+        for frame_index in range(_render_start, _render_end):
             t = frame_index / float(fps)
             active = _active_entries_at(timeline, t)
             # Add branding if enabled
             if show_branding and branding_entry:
                 active.append(branding_entry)
             # Update DOM for overlays
-            # Update DOM for current time
-            # Update DOM for overlays
-            # Update DOM for current time
             page.evaluate("async (entries) => await window.__updateSnippets(entries)", active)
+
+            # Wait for images/fonts to load when active segments change
+            _cur_active_ids = {e["id"] for e in active}
+            if _cur_active_ids != _prev_active_ids:
+                try:
+                    page.wait_for_load_state("networkidle", timeout=5000)
+                except Exception:
+                    pass  # timeout is fine — best effort
+                _prev_active_ids = _cur_active_ids
 
             # --- Calculate Camera Drift ---
             # 1. Identify active visuals (exclude branding/character)
@@ -1720,11 +2114,30 @@ def render_video_from_json(
             if frame_index % 30 == 0:
                 print(f"DEBUG: Processing frame {frame_index}/{total_frames} (t={t:.2f}s)")
 
-            # Capture frame immediately after state change (represents time t)
             # Sync GSAP animation to exact time t
             page.evaluate(f"gsap.globalTimeline.totalTime({t}); void 0;")
 
-            # Capture frame immediately after state change (represents time t)
+            # Force any pending Rough Notation annotations to render.
+            # RoughNotation uses its own animation system (not GSAP), so seeking
+            # GSAP doesn't trigger them. We force-show all registered annotations.
+            page.evaluate("""() => {
+                if (window.__registeredAnnotations) {
+                    window.__registeredAnnotations.forEach(a => {
+                        try { if (!a.isShowing) a.show(); } catch(e) {}
+                    });
+                }
+                // Also force-show any annotation elements in shadow DOMs
+                document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="branding-"]').forEach(host => {
+                    const root = host.shadowRoot;
+                    if (!root) return;
+                    root.querySelectorAll('.rough-notation-inline, svg.rough-annotation').forEach(el => {
+                        el.style.opacity = '1';
+                        el.style.visibility = 'visible';
+                    });
+                });
+            }""")
+
+            # Capture frame
             frame_path = frames_dir / f"frame_{frame_index:06d}.png"
             try:
                 page.screenshot(path=str(frame_path), type="png", timeout=5000)
@@ -1738,6 +2151,12 @@ def render_video_from_json(
         print("DEBUG: Context closed. Closing browser...")
         browser.close()
         print("DEBUG: Browser closed.")
+
+    # If frames-only mode, skip video assembly (caller handles it)
+    if frames_only:
+        rendered_count = len(list(frames_dir.glob("frame_*.png")))
+        print(f"DEBUG: Frames-only mode complete. Rendered {rendered_count} frames to {frames_dir}")
+        return frames_dir
 
     # Assemble video
     print("DEBUG: Collecting frame files...")
@@ -1831,6 +2250,9 @@ def _parse_args(argv: List[str]):
     parser.add_argument("--character-pose", default="", help="Pose name override for the animated character")
     parser.add_argument("--avatar-video", default="", help="Path to generated avatar video loop/clip")
     parser.add_argument("--audio-delay", type=float, default=0.0, help="Delay audio start by this many seconds (for intro silence)")
+    parser.add_argument("--frames-only", action="store_true", help="Only render frames (skip video assembly). Used for parallel rendering.")
+    parser.add_argument("--start-frame", type=int, default=None, help="First frame index to render (inclusive). Used with --frames-only for parallel.")
+    parser.add_argument("--end-frame", type=int, default=None, help="Last frame index to render (exclusive). Used with --frames-only for parallel.")
     return parser.parse_args(argv[1:])
 
 
@@ -1858,6 +2280,9 @@ if __name__ == "__main__":
         character_pose=args.character_pose,
         avatar_video_path=args.avatar_video,
         audio_delay=args.audio_delay,
+        frames_only=args.frames_only,
+        start_frame=args.start_frame,
+        end_frame=args.end_frame,
     )
     print(f"Video written to: {result_path}")
 

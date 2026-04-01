@@ -123,13 +123,18 @@ TOPIC_SHOT_PROFILES = {
     },
 }
 
-SCRIPT_SYSTEM_PROMPT = (
-    "You are a senior educational scriptwriter for energetic 16:9 explainer videos. "
-    "You adapt your vocabulary, examples, and concept depth based on the target audience's age/grade level. "
-    "You also classify the subject domain of the topic to guide visual design decisions. "
-    "Return JSON containing a single continuous narration script (multiple paragraphs allowed), "
-    "plus a beat outline, subject classification, and CTA notes. Respond with JSON only."
-)
+def get_script_system_prompt(width: int = 1920, height: int = 1080) -> str:
+    aspect_label = "9:16 portrait" if width < height else "16:9"
+    return (
+        f"You are a senior educational scriptwriter for energetic {aspect_label} explainer videos. "
+        "You adapt your vocabulary, examples, and concept depth based on the target audience's age/grade level. "
+        "You also classify the subject domain of the topic to guide visual design decisions. "
+        "Return JSON containing a single continuous narration script (multiple paragraphs allowed), "
+        "plus a beat outline, subject classification, and CTA notes. Respond with JSON only."
+    )
+
+# Backward compat — used when width/height not provided
+SCRIPT_SYSTEM_PROMPT = get_script_system_prompt()
 
 SCRIPT_USER_PROMPT_TEMPLATE = """
 Base idea from the user:
@@ -198,7 +203,7 @@ JSON shape:
       "summary": "...",
       "visual_type": "IMAGE_HERO or IMAGE_SPLIT or TEXT_DIAGRAM or LOWER_THIRD or ANIMATED_ASSET",
       "visual_idea": "Describe a key visual metaphor for this section",
-      "image_prompt_hint": "Only if visual_type uses images: cinematic photo description, 16:9, no text/faces",
+      "image_prompt_hint": "Only if visual_type uses images: cinematic photo description, {aspect_label}, no text/faces",
       "key_terms": ["term1", "term2"],
       "needs_recap": false,
       "emotion": "curiosity | surprise | awe | urgency | calm | excitement",
@@ -368,7 +373,7 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "```html\n"
     "<div class='image-hero'>\n"
     "  <img class='generated-image'\n"
-    "       data-img-prompt='realistic photograph of a scientist examining DNA strands under blue microscope light, cinematic, 16:9'\n"
+    "       data-img-prompt='realistic photograph of a scientist examining DNA strands under blue microscope light, cinematic, {aspect_label}'\n"
     "       data-ken-burns='zoom-in'\n"
     "       src='placeholder.png' />\n"
     "  <div class='image-text-overlay gradient-bottom'>\n"
@@ -424,10 +429,10 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "```html\n"
     "<div class='annotation-map-container'>\n"
     "  <img class='generated-image annotation-map-bg'\n"
-    "       data-img-prompt='cross-section of human heart, unlabeled, no text overlay, clinical illustration style, vibrant colors, 16:9'\n"
+    "       data-img-prompt='cross-section of human heart, unlabeled, no text overlay, clinical illustration style, vibrant colors, {aspect_label}'\n"
     "       data-ken-burns='zoom-in'\n"
     "       src='placeholder.png' />\n"
-    "  <svg id='anno-svg' class='annotation-overlay' viewBox='0 0 1920 1080'>\n"
+    "  <svg id='anno-svg' class='annotation-overlay' viewBox='0 0 {canvas_width} {canvas_height}'>\n"
     "    <defs>\n"
     "      <marker id='ah1' markerWidth='10' markerHeight='7' refX='9' refY='3.5' orient='auto'>\n"
     "        <polygon points='0 0,10 3.5,0 7' fill='#ffffff'/>\n"
@@ -569,7 +574,7 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "**IMPORTANT**: Image prompts for cutout assets MUST describe a SINGLE isolated object on a solid/plain background.\n"
     "Add `data-cutout=\"true\"` to mark images for automatic background removal.\n"
     "```html\n"
-    "<div style='position:relative; width:1920px; height:1080px; overflow:hidden;'>\n"
+    "<div style='position:relative; width:{canvas_width}px; height:{canvas_height}px; overflow:hidden;'>\n"
     "  <h1 id='title' style='opacity:0; position:absolute; top:80px; left:100px;\n"
     "      font-family:Montserrat,sans-serif; font-size:64px; font-weight:800;\n"
     "      color:var(--text-color,#fff);'>\n"
@@ -645,9 +650,9 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "- Specify style: 'realistic photograph', 'scientific illustration', 'infographic style', 'watercolor'\n"
     "- Specify composition: 'close-up', 'wide shot', 'aerial view', 'cross-section diagram'\n"
     "- Specify lighting: 'cinematic lighting', 'soft natural light', 'dramatic side lighting'\n"
-    "- Specify aspect: always think 16:9 landscape\n"
+    "- Specify aspect: always think {aspect_label}\n"
     "- AVOID: text in images, logos, watermarks, human faces (privacy)\n"
-    "Example: 'Realistic wide-shot photograph of a coral reef ecosystem, vivid colors, fish swimming through coral formations, clear blue water, underwater cinematic lighting, 16:9'\n\n"
+    "Example: 'Realistic wide-shot photograph of a coral reef ecosystem, vivid colors, fish swimming through coral formations, clear blue water, underwater cinematic lighting, {aspect_label}'\n\n"
     
     "**🎯 WHEN TO USE IMAGE SHOTS vs TEXT/DIAGRAM SHOTS**:\n"
     "Images are EXPENSIVE to generate. Only use IMAGE_HERO or IMAGE_SPLIT when the image genuinely adds understanding.\n\n"
@@ -879,69 +884,87 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
 
     "═══════════════ FEW-SHOT EXAMPLES ═══════════════\n\n"
     "Below are 3 examples of excellent shot output. Study the HTML structure, animation patterns, and visual design:\n\n"
-
-    "**EXAMPLE 1 — IMAGE_HERO (Full-screen image with Ken Burns + text overlay)**:\n"
-    "```json\n"
-    '{"offsetSeconds": 0, "durationSeconds": 10, "start_word": "The ancient city", '
-    '"htmlStartX": 0, "htmlStartY": 0, "width": 1920, "height": 1080, "z": 10,\n'
-    ' "html": "<div style=\\"width:1920px;height:1080px;position:relative;overflow:hidden\\">'
-    '<img class=\\"generated-image ken-burns zoom-in gradient-bottom\\" '
-    'data-img-prompt=\\"Ancient Roman city at sunset, marble columns and cobblestone streets, '
-    'golden hour light, cinematic wide angle, 16:9\\" '
-    'style=\\"width:100%;height:100%;object-fit:cover\\" />'
-    '<div style=\\"position:absolute;bottom:100px;left:100px;right:100px\\">'
-    '<h1 id=\\"title\\" style=\\"font-family:Montserrat;font-weight:900;font-size:64px;'
-    'color:#ffffff;margin:0;opacity:0\\">The Rise of Rome</h1>'
-    '<p id=\\"subtitle\\" style=\\"font-family:Inter;font-size:28px;color:rgba(255,255,255,0.9);'
-    'margin-top:16px;opacity:0\\">From Village to Empire</p></div>'
-    '<script>gsap.from(\\"#title\\",{y:60,opacity:0,duration:1.2,delay:0.5,ease:\\"expo.out\\"});'
-    'gsap.from(\\"#subtitle\\",{y:40,opacity:0,duration:1,delay:1,ease:\\"power2.out\\"});<\\/script></div>"}\n'
-    "```\n\n"
-
-    "**EXAMPLE 2 — TEXT_DIAGRAM (Mermaid flowchart with progressive reveal)**:\n"
-    "```json\n"
-    '{"offsetSeconds": 10, "durationSeconds": 12, "start_word": "The process begins", '
-    '"htmlStartX": 0, "htmlStartY": 0, "width": 1920, "height": 1080, "z": 10,\n'
-    ' "html": "<div style=\\"display:flex;align-items:center;justify-content:center;'
-    'width:1920px;height:1080px;padding:80px\\">'
-    '<div style=\\"flex:1;padding-right:60px\\">'
-    '<h2 id=\\"heading\\" style=\\"font-family:Montserrat;font-weight:700;font-size:48px;'
-    'color:var(--text-color);margin:0 0 24px 0;opacity:0\\">How Photosynthesis Works</h2>'
-    '<p id=\\"desc\\" style=\\"font-family:Inter;font-size:24px;line-height:1.6;'
-    'color:var(--text-color);opacity:0\\">Plants convert sunlight into energy through a series of chemical reactions.</p></div>'
-    '<div id=\\"diagram\\" style=\\"flex:1;opacity:0\\">'
-    '<div class=\\"mermaid\\">%%{init: {\\x27theme\\x27: \\x27default\\x27}}%%\\n'
-    'graph TD\\n  A[Sunlight] --> B[Chlorophyll]\\n  B --> C[Water Split]\\n  C --> D[Glucose + O2]</div></div>'
-    '<script>gsap.from(\\"#heading\\",{x:-40,opacity:0,duration:0.8,delay:0.3});'
-    'gsap.from(\\"#desc\\",{x:-40,opacity:0,duration:0.8,delay:0.6});'
-    'gsap.from(\\"#diagram\\",{scale:0.9,opacity:0,duration:1,delay:1});<\\/script></div>"}\n'
-    "```\n\n"
-
-    "**EXAMPLE 3 — IMAGE_SPLIT (Image left + annotated text right)**:\n"
-    "```json\n"
-    '{"offsetSeconds": 22, "durationSeconds": 10, "start_word": "The heart pumps", '
-    '"htmlStartX": 0, "htmlStartY": 0, "width": 1920, "height": 1080, "z": 10,\n'
-    ' "html": "<div style=\\"display:flex;width:1920px;height:1080px\\">'
-    '<div style=\\"flex:1;position:relative;overflow:hidden\\">'
-    '<img class=\\"generated-image ken-burns zoom-out\\" '
-    'data-img-prompt=\\"Anatomical illustration of human heart, cross-section showing chambers, '
-    'clean white background, medical textbook style, 16:9\\" '
-    'style=\\"width:100%;height:100%;object-fit:cover\\" /></div>'
-    '<div style=\\"flex:1;display:flex;flex-direction:column;justify-content:center;padding:80px\\">'
-    '<h2 id=\\"title\\" style=\\"font-family:Montserrat;font-weight:700;font-size:44px;'
-    'color:var(--text-color);margin:0 0 32px 0;opacity:0\\">The Human Heart</h2>'
-    '<ul id=\\"points\\" style=\\"list-style:none;padding:0;margin:0\\">'
-    '<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
-    'padding:12px 0;border-bottom:1px solid rgba(0,0,0,0.1);opacity:0\\">4 chambers pump blood</li>'
-    '<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
-    'padding:12px 0;border-bottom:1px solid rgba(0,0,0,0.1);opacity:0\\">100,000 beats per day</li>'
-    '<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
-    'padding:12px 0;opacity:0\\">Delivers oxygen to every cell</li></ul>'
-    '<script>gsap.from(\\"#title\\",{x:40,opacity:0,duration:0.8,delay:0.5});'
-    'gsap.from(\\".point\\",{x:30,opacity:0,duration:0.6,stagger:0.3,delay:1,ease:\\"power2.out\\"});<\\/script></div></div>"}\n'
-    "```\n\n"
+    "{fewshot_examples}"
     "═══════════════ END EXAMPLES ═══════════════\n"
 )
+
+
+def _get_fewshot_examples(width: int = 1920, height: int = 1080) -> str:
+    """Generate few-shot examples with correct dimensions."""
+    aspect_label = "9:16 portrait" if width < height else "16:9"
+    is_portrait = width < height
+    # For portrait: use column layout in examples instead of row
+    split_style = (
+        f'display:flex;flex-direction:column;width:{width}px;height:{height}px'
+        if is_portrait else
+        f'display:flex;width:{width}px;height:{height}px'
+    )
+    diagram_layout = (
+        f'display:flex;flex-direction:column;align-items:center;justify-content:center;width:{width}px;height:{height}px;padding:60px'
+        if is_portrait else
+        f'display:flex;align-items:center;justify-content:center;width:{width}px;height:{height}px;padding:80px'
+    )
+    return (
+        f'**EXAMPLE 1 — IMAGE_HERO (Full-screen image with Ken Burns + text overlay)**:\n'
+        f'```json\n'
+        f'{{"offsetSeconds": 0, "durationSeconds": 10, "start_word": "The ancient city", '
+        f'"htmlStartX": 0, "htmlStartY": 0, "width": {width}, "height": {height}, "z": 10,\n'
+        f' "html": "<div style=\\"width:{width}px;height:{height}px;position:relative;overflow:hidden\\">'
+        f'<img class=\\"generated-image ken-burns zoom-in gradient-bottom\\" '
+        f'data-img-prompt=\\"Ancient Roman city at sunset, marble columns and cobblestone streets, '
+        f'golden hour light, cinematic wide angle, {aspect_label}\\" '
+        f'style=\\"width:100%;height:100%;object-fit:cover\\" />'
+        f'<div style=\\"position:absolute;bottom:100px;left:100px;right:100px\\">'
+        f'<h1 id=\\"title\\" style=\\"font-family:Montserrat;font-weight:900;font-size:64px;'
+        f'color:#ffffff;margin:0;opacity:0\\">The Rise of Rome</h1>'
+        f'<p id=\\"subtitle\\" style=\\"font-family:Inter;font-size:28px;color:rgba(255,255,255,0.9);'
+        f'margin-top:16px;opacity:0\\">From Village to Empire</p></div>'
+        f'<script>gsap.from(\\"#title\\",{{y:60,opacity:0,duration:1.2,delay:0.5,ease:\\"expo.out\\"}});'
+        f'gsap.from(\\"#subtitle\\",{{y:40,opacity:0,duration:1,delay:1,ease:\\"power2.out\\"}});<\\/script></div>"}}\n'
+        f'```\n\n'
+
+        f'**EXAMPLE 2 — TEXT_DIAGRAM (Mermaid flowchart with progressive reveal)**:\n'
+        f'```json\n'
+        f'{{"offsetSeconds": 10, "durationSeconds": 12, "start_word": "The process begins", '
+        f'"htmlStartX": 0, "htmlStartY": 0, "width": {width}, "height": {height}, "z": 10,\n'
+        f' "html": "<div style=\\"{diagram_layout}\\">'
+        f'<div style=\\"flex:1;padding-right:60px\\">'
+        f'<h2 id=\\"heading\\" style=\\"font-family:Montserrat;font-weight:700;font-size:48px;'
+        f'color:var(--text-color);margin:0 0 24px 0;opacity:0\\">How Photosynthesis Works</h2>'
+        f'<p id=\\"desc\\" style=\\"font-family:Inter;font-size:24px;line-height:1.6;'
+        f'color:var(--text-color);opacity:0\\">Plants convert sunlight into energy through a series of chemical reactions.</p></div>'
+        f'<div id=\\"diagram\\" style=\\"flex:1;opacity:0\\">'
+        f'<div class=\\"mermaid\\">%%{{init: {{\\x27theme\\x27: \\x27default\\x27}}}}%%\\n'
+        f'graph TD\\n  A[Sunlight] --> B[Chlorophyll]\\n  B --> C[Water Split]\\n  C --> D[Glucose + O2]</div></div>'
+        f'<script>gsap.from(\\"#heading\\",{{x:-40,opacity:0,duration:0.8,delay:0.3}});'
+        f'gsap.from(\\"#desc\\",{{x:-40,opacity:0,duration:0.8,delay:0.6}});'
+        f'gsap.from(\\"#diagram\\",{{scale:0.9,opacity:0,duration:1,delay:1}});<\\/script></div>"}}\n'
+        f'```\n\n'
+
+        f'**EXAMPLE 3 — IMAGE_SPLIT (Image {"top" if is_portrait else "left"} + annotated text {"bottom" if is_portrait else "right"})**:\n'
+        f'```json\n'
+        f'{{"offsetSeconds": 22, "durationSeconds": 10, "start_word": "The heart pumps", '
+        f'"htmlStartX": 0, "htmlStartY": 0, "width": {width}, "height": {height}, "z": 10,\n'
+        f' "html": "<div style=\\"{split_style}\\">'
+        f'<div style=\\"flex:1;position:relative;overflow:hidden\\">'
+        f'<img class=\\"generated-image ken-burns zoom-out\\" '
+        f'data-img-prompt=\\"Anatomical illustration of human heart, cross-section showing chambers, '
+        f'clean white background, medical textbook style, {aspect_label}\\" '
+        f'style=\\"width:100%;height:100%;object-fit:cover\\" /></div>'
+        f'<div style=\\"flex:1;display:flex;flex-direction:column;justify-content:center;padding:80px\\">'
+        f'<h2 id=\\"title\\" style=\\"font-family:Montserrat;font-weight:700;font-size:44px;'
+        f'color:var(--text-color);margin:0 0 32px 0;opacity:0\\">The Human Heart</h2>'
+        f'<ul id=\\"points\\" style=\\"list-style:none;padding:0;margin:0\\">'
+        f'<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
+        f'padding:12px 0;border-bottom:1px solid rgba(0,0,0,0.1);opacity:0\\">4 chambers pump blood</li>'
+        f'<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
+        f'padding:12px 0;border-bottom:1px solid rgba(0,0,0,0.1);opacity:0\\">100,000 beats per day</li>'
+        f'<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
+        f'padding:12px 0;opacity:0\\">Delivers oxygen to every cell</li></ul>'
+        f'<script>gsap.from(\\"#title\\",{{x:40,opacity:0,duration:0.8,delay:0.5}});'
+        f'gsap.from(\\".point\\",{{x:30,opacity:0,duration:0.6,stagger:0.3,delay:1,ease:\\"power2.out\\"}});<\\/script></div></div>"}}\n'
+        f'```\n\n'
+    )
 
 HTML_GENERATION_SYSTEM_PROMPT_CLASSIC = (
     "You are an expert Educational Content Designer. You generate HTML/CSS for video overlays.\n"
@@ -981,34 +1004,57 @@ HTML_GENERATION_SYSTEM_PROMPT_CLASSIC = (
 
 HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE = HTML_GENERATION_SYSTEM_PROMPT_ADVANCED
 
-HTML_GENERATION_SAFE_AREA = (
-    "Canvas is 1920x1080. You MUST keep all critical text and distinct visual elements within the **SAFE AREA**.\n"
-    "**SAFE AREA**: x=[100, 1820], y=[80, 1000]. (Maximize use of width for split layouts).\n"
-    "**CRITICAL**: Always use `htmlStartX: 0, htmlStartY: 0, width: 1920, height: 1080` for FULL SCREEN centered layouts.\n"
-    "\n**SHOT DURATION RULES**:\n"
-    "- Each shot MUST have `durationSeconds` of at least 5 seconds (minimum)\n"
-    "- Recommended: 8-15 seconds per shot to allow content to be read\n"
-    "- Create 2-4 shots per segment, NOT more\n"
-    "\nReturn JSON ONLY in this form:\n"
-    "{\n"
-    '  "shots": [\n'
-    "    {\n"
-    '      "offsetSeconds": 0,\n'
-    '      "start_word": "The first 3-5 words...",\n'
-    '      "durationSeconds": 10,\n'
-    '      "htmlStartX": 0,\n'
-    '      "htmlStartY": 0,\n'
-    '      "width": 1920,\n'
-    '      "height": 1080,\n'
-    '      "z": 10,\n'
-    '      "html": "<div class=\\"full-screen-center\\"><div class=\\"layout-hero\\">...</div></div><script>gsap.from(\\".layout-hero > *\\", {y: 60, opacity: 0, stagger: 0.1, duration: 1.2})</script>"\n'
-    "    }\n"
-    "  ]\n"
-    "}\n"
-    "Shots MUST NOT overlap in time. \n"
-    "Ensure that the value of the `html` string property INSIDE your JSON begins with `<style>@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');</style>`. "
-    "The absolute FIRST character of your entire response must be `{` and the last character must be `}`. Add no markdown formatting, no code blocks, and no conversational text."
-)
+def get_html_generation_safe_area(width: int = 1920, height: int = 1080) -> str:
+    margin_x = int(width * 0.052)   # ~5.2% margin (100/1920)
+    margin_y = int(height * 0.074)  # ~7.4% margin (80/1080)
+    safe_x_max = width - margin_x
+    safe_y_max = height - margin_y
+    is_portrait = width < height
+    layout_hint = (
+        "(Stack content vertically — single column. Do NOT use side-by-side splits like layout-split or grid 1fr 1fr.)"
+        if is_portrait else
+        "(Maximize use of width for split layouts)."
+    )
+    return (
+        f"Canvas is {width}x{height}. You MUST keep all critical text and distinct visual elements within the **SAFE AREA**.\n"
+        f"**SAFE AREA**: x=[{margin_x}, {safe_x_max}], y=[{margin_y}, {safe_y_max}]. {layout_hint}\n"
+        f"**CRITICAL**: Always use `htmlStartX: 0, htmlStartY: 0, width: {width}, height: {height}` for FULL SCREEN centered layouts.\n"
+        + (
+            "\n**PORTRAIT MODE (9:16) LAYOUT RULES**:\n"
+            "- Stack ALL content vertically — never side-by-side.\n"
+            "- Use `grid-template-columns: 1fr` (single column) instead of `1fr 1fr`.\n"
+            "- Image-split layouts: stack TOP/BOTTOM with `grid-template-rows: 1fr 1fr`.\n"
+            "- Use larger font sizes — viewers are on mobile.\n"
+            "- Keep text blocks narrower with more vertical spacing.\n"
+            if is_portrait else ""
+        )
+        + "\n**SHOT DURATION RULES**:\n"
+        "- Each shot MUST have `durationSeconds` of at least 5 seconds (minimum)\n"
+        "- Recommended: 8-15 seconds per shot to allow content to be read\n"
+        "- Create 2-4 shots per segment, NOT more\n"
+        "\nReturn JSON ONLY in this form:\n"
+        "{\n"
+        '  "shots": [\n'
+        "    {\n"
+        '      "offsetSeconds": 0,\n'
+        '      "start_word": "The first 3-5 words...",\n'
+        '      "durationSeconds": 10,\n'
+        '      "htmlStartX": 0,\n'
+        '      "htmlStartY": 0,\n'
+        f'      "width": {width},\n'
+        f'      "height": {height},\n'
+        '      "z": 10,\n'
+        f'      "html": "<div class=\\"full-screen-center\\"><div class=\\"layout-hero\\">...</div></div><script>gsap.from(\\".layout-hero > *\\", {{y: 60, opacity: 0, stagger: 0.1, duration: 1.2}})</script>"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "Shots MUST NOT overlap in time. \n"
+        "Ensure that the value of the `html` string property INSIDE your JSON begins with `<style>@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');</style>`. "
+        "The absolute FIRST character of your entire response must be `{` and the last character must be `}`. Add no markdown formatting, no code blocks, and no conversational text."
+    )
+
+# Backward compat
+HTML_GENERATION_SAFE_AREA = get_html_generation_safe_area()
 
 HTML_GENERATION_USER_PROMPT_TEMPLATE = """
 Minute #{index}: {start:.2f}s to {end:.2f}s.
@@ -1044,7 +1090,7 @@ Use a **variety of shot types** for visual engagement:
 ```html
 <div class="image-hero">
   <img class="generated-image"
-       data-img-prompt="realistic wide-shot photograph of a coral reef ecosystem, vivid tropical fish, clear blue water, cinematic underwater lighting, 16:9"
+       data-img-prompt="realistic wide-shot photograph of a coral reef ecosystem, vivid tropical fish, clear blue water, cinematic underwater lighting, {aspect_label}"
        data-ken-burns="zoom-in"
        src="placeholder.png" />
   <div class="image-text-overlay gradient-bottom">
@@ -1093,7 +1139,7 @@ setTimeout(() => {{
 <div class="image-split-layout">
   <div class="split-image">
     <img class="generated-image"
-         data-img-prompt="close-up scientific illustration of plant cells, green chloroplasts glowing, cross-section view, detailed, 16:9"
+         data-img-prompt="close-up scientific illustration of plant cells, green chloroplasts glowing, cross-section view, detailed, {aspect_label}"
          data-ken-burns="pan-right"
          src="placeholder.png" />
   </div>

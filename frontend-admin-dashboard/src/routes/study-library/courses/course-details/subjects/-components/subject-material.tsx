@@ -129,15 +129,23 @@ export const SubjectMaterial = () => {
     );
 
     useEffect(() => {
-        setSessionList(
-            searchParams.courseId
-                ? getSessionFromPackage({ courseId: courseId, levelId: searchParams.levelId })
-                : []
-        );
-    }, [searchParams.courseId, searchParams.levelId, getSessionFromPackage]);
+        if (!searchParams.courseId) return;
+        const newList = getSessionFromPackage({ courseId: courseId, levelId: searchParams.levelId });
+        setSessionList((prev) => {
+            if (prev.length === newList.length && prev.every((s, i) => s.id === newList[i]?.id)) {
+                return prev;
+            }
+            return newList;
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams.courseId, searchParams.levelId]);
 
     useEffect(() => {
-        setCurrentSession(getInitialSession(sessionList));
+        const next = getInitialSession(sessionList);
+        setCurrentSession((prev) => {
+            if (prev?.id === next?.id) return prev;
+            return next;
+        });
     }, [sessionList]);
 
     const handleSessionChange = (value: DropdownValueType) => {

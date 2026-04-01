@@ -1,58 +1,47 @@
-import { Dialog, DialogContent, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
+import { useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
-import { EnrollManuallyButton } from './enroll-manually/enroll-manually-button';
-import { EnrollBulkButton } from '@/routes/manage-students/students-list/-components/enroll-bulk/enroll-bulk-button';
-import { DialogTitle } from '@radix-ui/react-dialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { cn } from '@/lib/utils';
-import { useBulkDialog } from '@/routes/manage-students/students-list/-context/bulk-dialog-context';
-import { useRouter } from '@tanstack/react-router';
 import { ButtonScale } from '@/components/design-system/utils/types/button-types';
 import { getTerminology } from '../layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-export const EnrollStudentsButton = ({ scale = 'large' }: { scale?: ButtonScale }) => {
+import { BulkAssignDialog } from '@/routes/manage-students/students-list/-components/enroll-bulk/bulk-assign-dialog/BulkAssignDialog';
+import { GraduationCap } from 'lucide-react';
+
+export const EnrollStudentsButton = ({
+    scale = 'medium',
+    className,
+    initialPackageSessionId,
+}: {
+    scale?: ButtonScale;
+    className?: string;
+    initialPackageSessionId?: string;
+}) => {
     const { getCourseFromPackage } = useInstituteDetailsStore();
-    const { enrollStudentDialogOpen, setEnrollStudentDialogOpen } = useBulkDialog();
-    const router = useRouter();
+    const [open, setOpen] = useState(false);
+
+    const isDisabled = getCourseFromPackage().length === 0;
 
     return (
-        <Dialog open={enrollStudentDialogOpen} onOpenChange={setEnrollStudentDialogOpen}>
-            <DialogTrigger
-                disabled={getCourseFromPackage().length === 0}
+        <>
+            <MyButton
+                buttonType="primary"
+                scale={scale}
+                layoutVariant="default"
+                id="enroll-students"
+                onClick={() => setOpen(true)}
+                disable={isDisabled}
                 className={cn(
-                    getCourseFromPackage().length === 0 && 'pointer-events-none opacity-55'
+                    'group flex items-center gap-2 px-8 py-2 text-sm',
+                    isDisabled && 'pointer-events-none opacity-55',
+                    className
                 )}
             >
-                <MyButton
-                    buttonType="primary"
-                    scale={scale}
-                    layoutVariant="default"
-                    id="enroll-students"
-                >
-                    Enroll {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
-                </MyButton>
-            </DialogTrigger>
-            <DialogContent className="p-0 font-normal">
-                <DialogTitle>
-                    <div className="bg-primary-50 px-6 py-4 text-h3 font-semibold text-primary-500">
-                        Enroll {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
-                    </div>
-                    <DialogDescription className="flex flex-col items-center justify-center gap-6 p-6 text-neutral-600">
-                        <EnrollManuallyButton />
-                        <MyButton
-                            buttonType="secondary"
-                            scale="large"
-                            layoutVariant="default"
-                            onClick={() => {
-                                router.navigate({ to: '/manage-students/enroll-requests' });
-                            }}
-                        >
-                            Enroll From Requests
-                        </MyButton>
-                        <EnrollBulkButton />
-                    </DialogDescription>
-                </DialogTitle>
-            </DialogContent>
-        </Dialog>
+                <GraduationCap className="size-4 transition-transform duration-200 group-hover:scale-110" />
+                Enroll {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
+            </MyButton>
+
+            <BulkAssignDialog open={open} onOpenChange={setOpen} initialPackageSessionId={initialPackageSessionId} />
+        </>
     );
 };

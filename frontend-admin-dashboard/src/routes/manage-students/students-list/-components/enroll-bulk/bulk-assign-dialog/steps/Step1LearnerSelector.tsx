@@ -27,7 +27,7 @@ export const Step1LearnerSelector = ({
     onSelectedLearnersChange,
 }: Props) => {
     const [searchQuery, setSearchQuery] = useState('');
-    const [mode, setMode] = useState<LearnerSourceMode>('search');
+    const [mode, setMode] = useState<LearnerSourceMode>('manual');
     const searchRef = useRef<HTMLInputElement>(null);
 
     const { data: suggestedUsers, isFetching } = useAutosuggestUsers({

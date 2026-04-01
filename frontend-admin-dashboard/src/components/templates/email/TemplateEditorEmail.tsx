@@ -65,7 +65,8 @@ export const TemplateEditorEmail: React.FC<TemplateEditorEmailProps> = ({ templa
                     variables: savedTemplate.variables,
                     isDefault: savedTemplate.isDefault,
                     templateType: savedTemplate.templateType,
-                    mjml: savedTemplate.mjml, // Store MJML JSON in settingJson for editor state
+                    mjml: savedTemplate.mjml,
+                    previewText: savedTemplate.previewText,
                 };
 
                 await updateMessageTemplate(updateRequest);
@@ -81,7 +82,8 @@ export const TemplateEditorEmail: React.FC<TemplateEditorEmailProps> = ({ templa
                     variables: savedTemplate.variables,
                     isDefault: savedTemplate.isDefault,
                     templateType: savedTemplate.templateType,
-                    mjml: savedTemplate.mjml, // Store MJML JSON in settingJson for editor state
+                    mjml: savedTemplate.mjml,
+                    previewText: savedTemplate.previewText,
                 };
 
                 const createdTemplate = await createMessageTemplate(createRequest);

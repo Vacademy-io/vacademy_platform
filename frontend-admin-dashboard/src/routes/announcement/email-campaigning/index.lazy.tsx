@@ -153,6 +153,7 @@ function EmailCampaigningPage() {
     // Template-related state
     const [useTemplate, setUseTemplate] = useState(false);
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+    const [selectedTemplateData, setSelectedTemplateData] = useState<MessageTemplate | null>(null);
     const [emailTemplates, setEmailTemplates] = useState<MessageTemplate[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const [templatesError, setTemplatesError] = useState<string | null>(null);
@@ -440,6 +441,7 @@ function EmailCampaigningPage() {
             // Fetch full template content from API
             const fullTemplate = await getMessageTemplate(templateId);
             setSelectedTemplateId(templateId);
+            setSelectedTemplateData(fullTemplate);
             if (fullTemplate.subject) {
                 setTitle(fullTemplate.subject);
             }
@@ -457,6 +459,7 @@ function EmailCampaigningPage() {
             const template = emailTemplates.find((t) => t.id === templateId);
             if (template) {
                 setSelectedTemplateId(templateId);
+                setSelectedTemplateData(template);
                 if (template.subject) {
                     setTitle(template.subject);
                 }
@@ -962,6 +965,10 @@ function EmailCampaigningPage() {
                         config: {
                             subject: title,
                             emailType: emailType,
+                            fromEmail: selectedConfig?.email,
+                            fromName: selectedConfig?.name,
+                            template: selectedTemplateData?.name,
+                            previewText: selectedTemplateData?.previewText,
                         },
                     },
                 ],

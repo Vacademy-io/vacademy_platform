@@ -901,7 +901,7 @@ async function createHtmlVideoSlideWithCode(params: CreateSlideParams): Promise<
         : 0;
 
     // Extract code content and language from slide content
-    let codeContent = '';
+    let codeContent = '# Start writing your code here';
     let codeLanguage = 'python';
     let codeTheme = 'dark';
     let layout = 'split-right';
@@ -928,7 +928,7 @@ async function createHtmlVideoSlideWithCode(params: CreateSlideParams): Promise<
                 }
 
                 if (parsed.code) {
-                    codeContent = parsed.code.content || '';
+                    codeContent = parsed.code.content || codeContent;
                     codeLanguage = parsed.code.language || 'python';
                     codeTheme = parsed.code.theme || 'dark';
                     layout = parsed.code.layout || 'split-right';
@@ -942,7 +942,7 @@ async function createHtmlVideoSlideWithCode(params: CreateSlideParams): Promise<
                     /```(?:python|javascript|typescript|java|html|css)?\s*\n?([\s\S]*?)\n?```/
                 );
                 if (codeMatch) {
-                    codeContent = codeMatch[1] || '';
+                    codeContent = codeMatch[1] || codeContent;
                     if (codeMatch[0].includes('```python')) codeLanguage = 'python';
                     else if (codeMatch[0].includes('```javascript')) codeLanguage = 'javascript';
                 } else {
@@ -1325,7 +1325,7 @@ async function createVideoCodeSlide(params: CreateSlideParams): Promise<void> {
         params;
 
     let videoUrl = '';
-    let codeContent = '';
+    let codeContent = '# Start writing your code here';
     let codeLanguage = 'python';
     let aiVideoData: any = null;
 
@@ -1354,7 +1354,7 @@ async function createVideoCodeSlide(params: CreateSlideParams): Promise<void> {
                     }
                 }
                 if (parsed.code) {
-                    codeContent = parsed.code.content || '';
+                    codeContent = parsed.code.content || codeContent;
                     codeLanguage = parsed.code.language || 'python';
                 }
             } catch (e) {

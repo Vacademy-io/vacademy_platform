@@ -9,6 +9,8 @@ import lombok.NoArgsConstructor;
 
 import jakarta.validation.constraints.NotBlank;
 
+import java.util.List;
+
 /**
  * Request DTO for combined users and audience API
  */
@@ -21,17 +23,23 @@ public class CombinedUserAudienceRequestDTO {
 
     @NotBlank(message = "Institute ID is required")
     private String instituteId;
-    
+
     // Source selection flags (control which user sources to include)
     private Boolean includeInstituteUsers;     // If true, include institute enrolled users
     private Boolean includeAudienceRespondents; // If true, include audience campaign respondents
-    
+
     // Audience/Campaign filters
     private CampaignFilterDTO campaignFilter;
-    
+
     // User filters
     private UserFilterDTO userFilter;
-    
+
+    // Enrollment filters (same as Linked Course Contacts / v2 API)
+    private List<String> statuses;
+    private List<String> packageSessionIds;
+    private List<String> paymentStatuses;
+    private List<String> subOrgUserTypes;
+
     // Pagination
     private Integer page;
     private Integer size;

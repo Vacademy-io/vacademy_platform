@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { FileUploader } from "./file-uploader";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { SUBMIT_ASSIGNMENT_SLIDE_ANSWERS, GET_ASSIGNMENT_ACTIVITY_LOGS } from "@/constants/urls";
 import { getPublicUrl } from "@/services/upload_file";
@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import "katex/dist/katex.min.css";
 import katex from "katex";
+import { toast } from "sonner";
 
 /** Returns an SVG icon string based on file extension / MIME type */
 const getFileIconSvg = (fileName: string, mimeType: string): string => {
@@ -220,22 +221,21 @@ const AssignmentSlide = ({
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [uploadedFileIds, setUploadedFileIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [questionResponses, setQuestionResponses] =
     useState<QuestionResponseMap>({});
   const [numericValuesMap, setNumericValuesMap] = useState<
     Record<string, string>
   >({});
 
-  // Fetch grading results for this assignment
+  // Fetch grading results and submission history for this assignment
   const slideId = activeItem?.id || '';
   const { data: gradingData } = useQuery({
     queryKey: ['ASSIGNMENT_GRADING_RESULTS', slideId],
     queryFn: async () => {
       const userId = await getUserId();
       const response = await authenticatedAxiosInstance.get(GET_ASSIGNMENT_ACTIVITY_LOGS, {
-        params: { userId, slideId, pageNo: 0, pageSize: 1 },
+        params: { userId, slideId, pageNo: 0, pageSize: 100 },
       });
       return response.data;
     },
@@ -243,11 +243,24 @@ const AssignmentSlide = ({
     staleTime: 30 * 1000,
   });
 
-  // Extract latest graded submission
-  const latestSubmission = gradingData?.content?.[0]?.assignment_slides?.[0];
+  // Count actual assignment submissions (exclude llm_assignment etc.)
+  const assignmentLogs = gradingData?.content?.filter(
+    (item: any) => item.source_type === 'ASSIGNMENT'
+  ) || [];
+  const submissionCount = assignmentLogs.length;
+  const maxAttempts = assignmentData.re_attempt_count || 0;
+  const attemptsExhausted = maxAttempts > 0 && submissionCount >= maxAttempts;
+
+  // Extract latest submission with tracked data
+  const latestWithData = assignmentLogs.find(
+    (item: any) => item.assignment_slides?.length > 0
+  );
+  const latestSubmission = latestWithData?.assignment_slides?.[0];
   const gradedMarks = latestSubmission?.marks ?? null;
   const gradedFeedback = latestSubmission?.feedback ?? null;
   const checkedFileId = latestSubmission?.checked_file_id ?? null;
+  const previousFileIds = latestSubmission?.comma_separated_file_ids
+    ?.split(',').filter(Boolean) || [];
   const totalMarks = assignmentData.total_marks;
   const passingMarks = assignmentData.passing_marks;
   const isPassed = gradedMarks != null && passingMarks != null ? gradedMarks >= passingMarks : null;
@@ -255,16 +268,15 @@ const AssignmentSlide = ({
   // Constants for numeric input
   const isDecimal = false;
   const maxDecimals = 2;
-  // Format date for display
+  // Format date for display (backend returns date-only strings like "2026-03-25")
   const formatDate = (dateString: string) => {
     if (!dateString) return "N/A";
-    const date = new Date(dateString);
+    // Append T00:00:00 to prevent UTC midnight timezone shift
+    const date = new Date(dateString.length <= 10 ? dateString + "T00:00:00" : dateString);
     return date.toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
       day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
     });
   };
 
@@ -400,7 +412,7 @@ const AssignmentSlide = ({
         question_slides: [],
         assignment_slides: [
           {
-            id: assignmentData.id,
+            id: uuidv4(),
             comma_separated_file_ids: uploadedFileIds.join(","),
             date_submitted: new Date().toISOString(),
             marks: 0,
@@ -432,12 +444,11 @@ const AssignmentSlide = ({
       );
     },
     onSuccess: () => {
-      setSubmitSuccess(true);
-      setSubmitError(null);
+      toast.success("Assignment submitted successfully!");
+      queryClient.invalidateQueries({ queryKey: ['ASSIGNMENT_GRADING_RESULTS'] });
     },
     onError: (error: Error) => {
-      setSubmitSuccess(false);
-      setSubmitError(error.message || "Failed to submit assignment");
+      toast.error(error.message || "Failed to submit assignment");
     },
     onSettled: () => {
       setIsSubmitting(false);
@@ -721,54 +732,92 @@ const AssignmentSlide = ({
         </Card>
       )}
 
-      {/* File Upload Section */}
-      <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
-            Upload Files
-          </CardTitle>
-          <CardDescription className="text-sm sm:text-base text-gray-600">
-            Upload any required files for this assignment
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FileUploader
-            onUpload={handleFileUpload}
-            isUploading={isUploading}
-            uploadedFiles={uploadedFiles}
-            onRemove={(index) => {
-              setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
-              setUploadedFileIds((prev) => prev.filter((_, i) => i !== index));
-            }}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Submit Button */}
-      <div className="flex justify-end">
-        <button
-          onClick={handleSubmit}
-          disabled={isSubmitting || isUploading}
-          className={`px-6 py-2.5 rounded-md text-sm sm:text-base font-medium transition-colors ${
-            isSubmitting || isUploading
-              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : "bg-gray-900 text-white hover:bg-gray-800"
-          }`}
-        >
-          {isSubmitting ? "Submitting..." : "Submit Assignment"}
-        </button>
-      </div>
-
-      {/* Success/Error Messages */}
-      {submitSuccess && (
-        <div className="mt-4 p-3 sm:p-4 bg-gray-50 text-gray-800 rounded-md text-sm sm:text-base border border-gray-200">
-          Assignment submitted successfully!
-        </div>
+      {/* Previously Submitted Files */}
+      {previousFileIds.length > 0 && (
+        <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
+              Submitted Files
+            </CardTitle>
+            <CardDescription className="text-sm sm:text-base text-gray-600">
+              Files from your previous submission
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-2">
+              {previousFileIds.map((fileId: string, idx: number) => (
+                <button
+                  key={fileId}
+                  onClick={async () => {
+                    try {
+                      const url = await getPublicUrl(fileId);
+                      if (url) window.open(url, '_blank');
+                    } catch { /* ignore */ }
+                  }}
+                  className="flex items-center gap-2 w-fit rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  File {idx + 1} — Click to download
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
-      {submitError && (
-        <div className="mt-4 p-3 sm:p-4 bg-gray-50 text-gray-800 rounded-md text-sm sm:text-base border border-gray-200">
-          Error: {submitError}
-        </div>
+
+      {/* File Upload & Submit — hidden when attempts exhausted */}
+      {attemptsExhausted ? (
+        <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
+          <CardContent className="py-6">
+            <p className="text-center text-sm text-gray-500">
+              Maximum attempts reached ({submissionCount}/{maxAttempts})
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* File Upload Section */}
+          <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
+                Upload Files
+              </CardTitle>
+              <CardDescription className="text-sm sm:text-base text-gray-600">
+                Upload any required files for this assignment
+                {maxAttempts > 0 && (
+                  <span className="ml-1">
+                    (Attempt {submissionCount + 1} of {maxAttempts})
+                  </span>
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FileUploader
+                onUpload={handleFileUpload}
+                isUploading={isUploading}
+                uploadedFiles={uploadedFiles}
+                onRemove={(index) => {
+                  setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
+                  setUploadedFileIds((prev) => prev.filter((_, i) => i !== index));
+                }}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Submit Button */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting || isUploading}
+              className={`px-6 py-2.5 rounded-md text-sm sm:text-base font-medium transition-colors ${
+                isSubmitting || isUploading
+                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                  : "bg-gray-900 text-white hover:bg-gray-800"
+              }`}
+            >
+              {isSubmitting ? "Submitting..." : "Submit Assignment"}
+            </button>
+          </div>
+        </>
       )}
 
       {/* Grading Results */}

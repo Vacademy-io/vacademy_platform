@@ -325,21 +325,26 @@ export const ActivityLogDialog = ({
 
         if (activeItem?.source_type === 'ASSIGNMENT') {
             transformedContent = activityLogs.content
-                .filter((item: ActivityContent) => item.assignment_slides?.length > 0)
-                .map((item: ActivityContent) => ({
-                    uploadDate: extractDateTime(
-                        convertToLocalDateTime(item.assignment_slides[0]?.date_submitted || '')
-                    ).date,
-                    uploadTime: extractDateTime(
-                        convertToLocalDateTime(item.assignment_slides[0]?.date_submitted || '')
-                    ).time,
-                    files: [] as AssignmentFileInfo[],
-                    rawFileIds: item.assignment_slides[0]?.comma_separated_file_ids || '',
-                    trackedId: item.assignment_slides[0]?.id || '',
-                    marks: item.assignment_slides[0]?.marks ?? null,
-                    feedback: item.assignment_slides[0]?.feedback ?? null,
-                    checkedFileId: item.assignment_slides[0]?.checked_file_id ?? null,
-                }));
+                .filter((item: ActivityContent) => item.source_type === 'ASSIGNMENT')
+                .map((item: ActivityContent) => {
+                    const submission = item.assignment_slides?.[0];
+                    const dateTime = submission?.date_submitted
+                        ? extractDateTime(convertToLocalDateTime(submission.date_submitted))
+                        : {
+                              date: formatDateTime(item.start_time_in_millis).split(',')[0],
+                              time: formatDateTime(item.start_time_in_millis).split(',')[1],
+                          };
+                    return {
+                        uploadDate: dateTime.date,
+                        uploadTime: dateTime.time,
+                        files: [] as AssignmentFileInfo[],
+                        rawFileIds: submission?.comma_separated_file_ids || '',
+                        trackedId: submission?.id || '',
+                        marks: submission?.marks ?? null,
+                        feedback: submission?.feedback ?? null,
+                        checkedFileId: submission?.checked_file_id ?? null,
+                    };
+                });
         }
 
         return {

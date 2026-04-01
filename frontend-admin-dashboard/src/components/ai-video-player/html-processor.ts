@@ -51,6 +51,15 @@ function getBaseStyles(): string {
                 color: var(--text-color);
             }
 
+            /* Default vertical centering fallback — centers content even if
+               the LLM-generated HTML doesn't use .full-screen-center */
+            body {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+            }
+
             /* Ensure content is visible even if animations fail */
             body * {
                 opacity: 1 !important;

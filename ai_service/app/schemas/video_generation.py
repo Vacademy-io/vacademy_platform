@@ -201,6 +201,7 @@ class VideoUrlsResponse(BaseModel):
     current_stage: str = Field(..., description="Current generation stage")
     updated_at: Optional[str] = Field(None, description="Last time the record was updated (ISO 8601)")
     error_message: Optional[str] = Field(None, description="Error message if generation failed or stalled")
+    render_job_id: Optional[str] = Field(None, description="Active render job ID (for tracking render progress)")
 
     class Config:
         json_schema_extra = {

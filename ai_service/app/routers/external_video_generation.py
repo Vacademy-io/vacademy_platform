@@ -273,6 +273,10 @@ async def get_video_urls_external(
         except (ValueError, TypeError):
             pass  # unparseable timestamp — fall through with original status
 
+    # Include render_job_id from metadata (if render is in progress)
+    _metadata = status.get("metadata", {}) or {}
+    _render_job_id = _metadata.get("render_job_id") if not s3_urls.get("video") else None
+
     return VideoUrlsResponse(
         video_id=video_id,
         html_url=s3_urls.get("timeline"),
@@ -284,6 +288,7 @@ async def get_video_urls_external(
         current_stage=status.get("current_stage", "UNKNOWN"),
         updated_at=updated_at_str,
         error_message=error_message,
+        render_job_id=_render_job_id,
     )
 
 
@@ -357,6 +362,7 @@ async def request_video_render(
     video_id: str,
     service: VideoGenerationService = Depends(get_video_service),
     institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
 ):
     """
     Trigger MP4 rendering for a completed video (HTML stage must be done).
@@ -417,6 +423,17 @@ async def request_video_render(
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
+    # Store render job_id in metadata so frontend can resume progress tracking after reload
+    try:
+        repo = AiVideoRepository(session=db)
+        video_record = repo.get_by_video_id(video_id)
+        if video_record:
+            meta = video_record.metadata or {}
+            meta["render_job_id"] = job_id
+            repo.update_metadata(video_id, meta)
+    except Exception as e:
+        logger.warning(f"[render] Failed to store render_job_id in metadata: {e}")
+
     # Poll the render worker in background and update DB on completion
     async def _poll_render(vid: str, jid: str):
         import asyncio as _aio
@@ -449,6 +466,36 @@ async def request_video_render(
     asyncio.create_task(_poll_render(video_id, job_id))
 
     return {"job_id": job_id, "status": "queued", "video_id": video_id}
+
+
+@router.get("/render/status/{job_id}")
+async def get_render_status(
+    job_id: str,
+    _: str = Depends(get_institute_from_api_key),
+):
+    """
+    Check the status and progress of a render job.
+
+    Returns:
+        - status: queued | running | completed | failed | unknown
+        - progress: 0-100
+        - video_url: S3 URL when completed
+        - error: error message when failed
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise HTTPException(status_code=503, detail="Render server not configured.")
+
+    render_svc = RenderService(
+        render_server_url=settings.render_server_url,
+        render_key=settings.render_server_key,
+    )
+
+    result = render_svc.check_status(job_id)
+    return result
 
 
 @router.post("/render-callback/{video_id}")

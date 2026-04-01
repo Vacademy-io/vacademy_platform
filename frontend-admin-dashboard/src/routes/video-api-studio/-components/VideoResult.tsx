@@ -12,6 +12,7 @@ import {
     requiresAudio,
     requestVideoRender,
     getVideoUrls,
+    getRenderStatus,
 } from '../-services/video-generation';
 import { LatexRenderer } from './LatexRenderer';
 import { toast } from 'sonner';
@@ -47,11 +48,13 @@ export function VideoResult({
     const [renderState, setRenderState] = useState<RenderState>('idle');
     const [videoDownloadUrl, setVideoDownloadUrl] = useState<string | null>(null);
     const [renderError, setRenderError] = useState<string | null>(null);
+    const [renderProgress, setRenderProgress] = useState<number>(0);
+    const [renderJobId, setRenderJobId] = useState<string | null>(null);
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const showDownload = (contentType === 'VIDEO' || requiresAudio(contentType)) && !!apiKey;
 
-    // Check if video_url already exists on mount
+    // Check video_url + active render on mount (survives page reload)
     useEffect(() => {
         if (!apiKey) return;
         getVideoUrls(videoId, apiKey)
@@ -59,10 +62,16 @@ export function VideoResult({
                 if (urls.video_url) {
                     setVideoDownloadUrl(urls.video_url);
                     setRenderState('done');
+                    setRenderProgress(100);
+                } else if (urls.render_job_id) {
+                    // Render is in progress — resume polling
+                    setRenderJobId(urls.render_job_id);
+                    setRenderState('rendering');
+                    startRenderPolling(urls.render_job_id);
                 }
             })
             .catch(() => {});
-    }, [videoId, apiKey]);
+    }, [videoId, apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Cleanup polling on unmount
     useEffect(() => {
@@ -105,47 +114,65 @@ export function VideoResult({
         }
     };
 
-    const handleRequestRender = useCallback(async () => {
-        if (!apiKey || renderState === 'submitting' || renderState === 'rendering') return;
-
-        setRenderState('submitting');
-        setRenderError(null);
-
-        try {
-            await requestVideoRender(videoId, apiKey);
-            setRenderState('rendering');
-            toast.info('Video rendering started. This takes 2-5 minutes.');
-
-            // Poll for completion
+    const startRenderPolling = useCallback(
+        (jobId: string) => {
+            if (!apiKey) return;
+            // Clear any existing polling to prevent double-polling
+            if (pollingRef.current) clearInterval(pollingRef.current);
             let attempts = 0;
-            const MAX_ATTEMPTS = 120; // 20 minutes at 10s interval
+            const MAX_ATTEMPTS = 180; // 30 min at 10s
+            const key = apiKey; // capture in closure to avoid stale ref
             pollingRef.current = setInterval(async () => {
                 attempts++;
                 if (attempts > MAX_ATTEMPTS) {
                     if (pollingRef.current) clearInterval(pollingRef.current);
                     setRenderState('error');
-                    setRenderError('Render is taking too long. Please check history later.');
+                    setRenderError('Render timed out. Please try again.');
                     return;
                 }
-
                 try {
-                    const urls = await getVideoUrls(videoId, apiKey);
-                    if (urls.video_url) {
+                    const status = await getRenderStatus(jobId, key);
+                    setRenderProgress(status.progress ?? 0);
+                    if (status.status === 'completed' && status.video_url) {
                         if (pollingRef.current) clearInterval(pollingRef.current);
-                        setVideoDownloadUrl(urls.video_url);
+                        setVideoDownloadUrl(status.video_url);
                         setRenderState('done');
+                        setRenderProgress(100);
                         toast.success('Video ready for download!');
+                    } else if (status.status === 'failed') {
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        setRenderState('error');
+                        setRenderError(status.error || 'Render failed');
+                        toast.error('Video render failed');
                     }
                 } catch {
-                    // ignore polling errors, keep trying
+                    // ignore polling errors — will retry next interval
                 }
             }, 10_000);
+        },
+        [apiKey]
+    );
+
+    const handleRequestRender = useCallback(async () => {
+        if (!apiKey || renderState === 'submitting' || renderState === 'rendering') return;
+
+        setRenderState('submitting');
+        setRenderError(null);
+        setRenderProgress(0);
+
+        try {
+            const result = await requestVideoRender(videoId, apiKey);
+            const jobId = result.job_id;
+            setRenderJobId(jobId);
+            setRenderState('rendering');
+            toast.info('Video rendering started. This may take a few minutes.');
+            startRenderPolling(jobId);
         } catch (error) {
             setRenderState('error');
             setRenderError(error instanceof Error ? error.message : 'Failed to start render');
             toast.error('Failed to start video render');
         }
-    }, [videoId, apiKey, renderState]);
+    }, [videoId, apiKey, renderState, startRenderPolling]);
 
     const contentLabel = getContentTypeLabel(contentType);
 
@@ -301,13 +328,23 @@ export function VideoResult({
                                         <ExternalLink className="size-3 ml-auto" />
                                     </a>
                                 ) : renderState === 'rendering' || renderState === 'submitting' ? (
-                                    <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
-                                        <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
-                                        <span className="text-xs text-muted-foreground">
-                                            {renderState === 'submitting'
-                                                ? 'Starting render...'
-                                                : 'Rendering video (2-5 min)...'}
-                                        </span>
+                                    <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                                        <div className="flex items-center gap-2">
+                                            <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+                                            <span className="text-xs text-muted-foreground">
+                                                {renderState === 'submitting'
+                                                    ? 'Starting render...'
+                                                    : `Rendering video... ${renderProgress > 0 ? `${Math.round(renderProgress)}%` : ''}`}
+                                            </span>
+                                        </div>
+                                        {renderState === 'rendering' && (
+                                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                                <div
+                                                    className="h-full rounded-full bg-violet-500 transition-all duration-500"
+                                                    style={{ width: `${Math.max(2, renderProgress)}%` }}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
                                     <Button

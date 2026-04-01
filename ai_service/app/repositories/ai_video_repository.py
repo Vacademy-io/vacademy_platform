@@ -261,6 +261,22 @@ class AiVideoRepository:
             if not self.session:
                 session.close()
     
+    def update_metadata(self, video_id: str, metadata: Dict[str, Any]) -> None:
+        """Update the metadata JSON column for a video."""
+        session = self._get_session()
+        try:
+            video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
+            if video:
+                video.metadata = metadata
+                flag_modified(video, "metadata")
+                video.updated_at = datetime.utcnow()
+                session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            if not self.session:
+                session.close()
+
     def mark_failed(
         self,
         video_id: str,

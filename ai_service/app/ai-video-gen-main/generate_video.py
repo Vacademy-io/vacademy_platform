@@ -602,6 +602,12 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     * { box-sizing: border-box; }
                     html, body { margin:0; padding:0; width:100%; height:100%; font-family: 'Inter', sans-serif; color: var(--text-color); }
 
+                    /* Default centering for content-wrapper — centers even if HTML lacks .full-screen-center */
+                    #content-wrapper {
+                      display: flex; flex-direction: column;
+                      align-items: center; justify-content: center;
+                    }
+
                     /* Cutout asset images */
                     .generated-image[data-cutout="true"] {
                       background: transparent;
@@ -823,18 +829,10 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   const root = host.attachShadow({ mode: 'open' });
                   const wrapper = document.createElement('div');
                   wrapper.id = 'content-wrapper';
-                  wrapper.style.position = 'absolute';
-                  wrapper.style.left = '0px';
-                  wrapper.style.top = '0px';
-                  wrapper.style.transformOrigin = 'top left';
-                  // Force centering
-                  wrapper.style.display = 'flex';
-                  wrapper.style.flexDirection = 'column';
-                  wrapper.style.justifyContent = 'center';
-                  wrapper.style.alignItems = 'center';
-                  wrapper.style.textAlign = 'center';
-
-                  wrapper.style.textAlign = 'center';
+                  // Fill the host container — let CSS classes like .full-screen-center handle centering
+                  wrapper.style.width = '100%';
+                  wrapper.style.height = '100%';
+                  wrapper.style.overflow = 'hidden';
 
                   // Inject ALL CSS into Shadow DOM (shadow DOM is style-isolated)
                   // Google Fonts must be a <link> (not @import in <style>) for shadow DOM
@@ -1014,33 +1012,8 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       window.Prism.highlightAllUnder(wrapper);
                   }
 
-                  Promise.all(promises).then(() => {
-                      requestAnimationFrame(scaleToFit);
-                  });
-
-                  const scaleToFit = () => {
-                    const targetW = host.clientWidth;
-                    const targetH = host.clientHeight;
-                    const rect = wrapper.getBoundingClientRect();
-                    const rawW = rect.width || wrapper.scrollWidth || 1;
-                    const rawH = rect.height || wrapper.scrollHeight || 1;
-                    const scale = Math.min(targetW / rawW, targetH / rawH);
-                    wrapper.style.transform = `scale(${scale})`;
-                    const scaledW = rawW * scale;
-                    const scaledH = rawH * scale;
-                    const offsetX = Math.max(0, (targetW - scaledW) / 2);
-                    const offsetY = Math.max(0, (targetH - scaledH) / 2);
-                    wrapper.style.left = offsetX + 'px';
-                    wrapper.style.top = offsetY + 'px';
-                  };
-                  requestAnimationFrame(scaleToFit);
-                  wrapper.querySelectorAll('img,video').forEach((el) => {
-                    if (el.complete) {
-                      requestAnimationFrame(scaleToFit);
-                    } else {
-                      el.addEventListener('load', () => requestAnimationFrame(scaleToFit), { once: true });
-                    }
-                  });
+                  // Wait for async rendering (Mermaid etc.) before proceeding
+                  Promise.all(promises).catch(() => {});
                 }
                 host.style.left = (e.x | 0) + 'px';
                 host.style.top = (e.y | 0) + 'px';
@@ -1751,8 +1724,17 @@ def render_video_from_json(
         caption_settings = _load_caption_settings(settings_p)
         caption_segments = _build_caption_segments(words, caption_settings["gap_threshold_seconds"])
         caption_styles = caption_settings
-        box = caption_settings["box"]
-        caption_box = {"x": int(box.get("x", 120)), "y": int(box.get("y", height - 280)), "w": int(box.get("w", width - 240)), "h": int(box.get("h", 200))}
+        # Always compute caption box proportionally from video dimensions
+        # (ignores hardcoded box in captions_settings.json which assumes landscape)
+        caption_box = {
+            "x": int(width * 0.05),     # 5% from left
+            "y": int(height * 0.85),    # 85% from top (bottom area)
+            "w": int(width * 0.9),      # 90% of width
+            "h": int(height * 0.12),    # 12% of height
+        }
+        # Scale caption font size proportionally to width (48px at 1920 = 2.5%)
+        caption_font_scale = width / 1920.0
+        caption_settings["font_size"] = max(24, int(caption_settings.get("font_size", 48) * caption_font_scale))
 
     branding_entry: Dict[str, Any] = {}
     if show_branding:
@@ -1884,6 +1866,11 @@ def render_video_from_json(
         page.on("pageerror", lambda err: print(f"[BROWSER EXCEPTION] {err}"))
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
+        # Wait for fonts and libraries to load before rendering frames
+        try:
+            page.wait_for_load_state("networkidle", timeout=10000)
+        except Exception:
+            pass
         if not show_character:
             page.evaluate("() => window.__updateCharacter && window.__updateCharacter(null)")
 
@@ -2055,27 +2042,21 @@ def render_video_from_json(
                                         active_index = max(0, i - 1)
                                         break
 
-                                # For single-line display, create a sliding window around the active word
-                                try:
-                                    max_words = max(1, int(style.get("max_words_per_line", 8)))
-                                except Exception:
-                                    max_words = 8
+                                # YouTube-style: show 2-line chunks, no word highlighting
+                                WORDS_PER_LINE = 7
+                                total_words = len(words_in_seg)
+                                chunk_size = WORDS_PER_LINE * 2  # 2 lines per chunk
 
-                                # Center active word when possible
-                                half = max_words // 2
-                                start_i = max(0, active_index - half)
-                                end_i = min(len(words_in_seg), start_i + max_words)
-                                start_i = max(0, end_i - max_words)
-
-                                window = words_in_seg[start_i:end_i]
+                                # Find which chunk the active word belongs to
+                                chunk_idx = active_index // chunk_size
+                                chunk_start = chunk_idx * chunk_size
+                                chunk_end = min(total_words, chunk_start + chunk_size)
+                                chunk = words_in_seg[chunk_start:chunk_end]
 
                                 pieces: List[str] = []
-                                for i, w in enumerate(window):
-                                    original_index = start_i + i
-                                    is_active = (original_index == active_index)
+                                for w in chunk:
                                     word_text = w["word"] if allow_html else _html_escape(str(w["word"]))
-                                    css = active_css if (annotate_active_word and is_active) else inactive_css
-                                    pieces.append(f"<span style=\"{css}\">{word_text}</span>")
+                                    pieces.append(word_text)
                                 content_html = " ".join(pieces) if pieces else (seg.get("text", "") if allow_html else _html_escape(seg.get("text", "")))
                     else:
                         raw_text = seg.get("text", "") if seg else ""

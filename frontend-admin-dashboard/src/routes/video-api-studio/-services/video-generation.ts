@@ -227,6 +227,7 @@ export interface VideoUrls {
     current_stage: VideoStage;
     updated_at?: string | null;
     error_message?: string | null;
+    render_job_id?: string | null;
 }
 
 export interface VideoStatusResponse {
@@ -463,6 +464,35 @@ export async function requestVideoRender(
     if (!response.ok) {
         const text = await response.text().catch(() => response.statusText);
         throw new Error(`Failed to request render: ${text}`);
+    }
+
+    return response.json();
+}
+
+export interface RenderStatus {
+    job_id: string;
+    video_id: string;
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'unknown';
+    progress: number | null;
+    video_url: string | null;
+    error: string | null;
+}
+
+export async function getRenderStatus(
+    jobId: string,
+    apiKey: string
+): Promise<RenderStatus> {
+    const response = await fetch(
+        `${AI_SERVICE_BASE_URL}/external/video/v1/render/status/${jobId}`,
+        {
+            headers: {
+                'X-Institute-Key': apiKey,
+            },
+        }
+    );
+
+    if (!response.ok) {
+        throw new Error(`Failed to get render status: ${response.statusText}`);
     }
 
     return response.json();

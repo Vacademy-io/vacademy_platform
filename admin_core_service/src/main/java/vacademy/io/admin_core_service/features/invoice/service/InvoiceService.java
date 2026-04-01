@@ -8,6 +8,9 @@ import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -1507,11 +1510,23 @@ public class InvoiceService {
 
             String subject = "Your Invoice " + invoice.getInvoiceNumber();
             String body;
-            var emailTemplates = templateService.getTemplatesByInstituteAndType(instituteId, "EMAIL");
-            var invoiceEmailTemplate = emailTemplates.stream()
-                    .filter(t -> "Invoice Email".equals(t.getName()))
-                    .findFirst();
             boolean attachPdf = pdfBytes != null && pdfBytes.length > 0;
+
+            // First: try INVOICE_EMAIL type templates (created via easy-email editor)
+            // Uses most recently created template for the institute
+            var invoiceEmailTemplates = templateService.getTemplatesByInstituteAndType(instituteId, "INVOICE_EMAIL");
+            var invoiceEmailTemplate = invoiceEmailTemplates.isEmpty()
+                    ? Optional.<vacademy.io.admin_core_service.features.institute.dto.template.TemplateResponse>empty()
+                    : Optional.of(invoiceEmailTemplates.get(0));
+
+            // Fallback: legacy EMAIL type with name "Invoice Email"
+            if (invoiceEmailTemplate.isEmpty()) {
+                var emailTemplates = templateService.getTemplatesByInstituteAndType(instituteId, "EMAIL");
+                invoiceEmailTemplate = emailTemplates.stream()
+                        .filter(t -> "Invoice Email".equals(t.getName()))
+                        .findFirst();
+            }
+
             if (invoiceEmailTemplate.isPresent()) {
                 subject = invoiceEmailTemplate.get().getSubject() != null ? invoiceEmailTemplate.get().getSubject() : subject;
                 body = invoiceEmailTemplate.get().getContent() != null ? invoiceEmailTemplate.get().getContent() : buildDefaultInvoiceEmailBody(invoice, user, instituteId, attachPdf);
@@ -1520,11 +1535,18 @@ public class InvoiceService {
             }
 
             String learnerName = user.getFullName() != null ? user.getFullName() : user.getEmail();
+            String invoiceNumber = invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "";
+            String totalAmount = invoice.getTotalAmount() != null ? invoice.getTotalAmount().toPlainString() : "0.00";
             String pdfLinkOrAttachText = attachPdf ? "Please find your invoice attached to this email." : (StringUtils.hasText(invoice.getPdfFileId()) ? mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId()) : "");
-            body = body.replace("{{invoice_number}}", invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "")
+
+            // Replace all supported placeholders (both new and legacy)
+            body = body.replace("{{invoice_number}}", invoiceNumber)
+                    .replace("{{user_name}}", learnerName)
                     .replace("{{learner_name}}", learnerName)
+                    .replace("{{total_amount}}", totalAmount)
                     .replace("{{invoice_pdf_link}}", pdfLinkOrAttachText);
-            subject = subject.replace("{{invoice_number}}", invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "")
+            subject = subject.replace("{{invoice_number}}", invoiceNumber)
+                    .replace("{{user_name}}", learnerName)
                     .replace("{{learner_name}}", learnerName);
 
             if (attachPdf) {
@@ -1601,6 +1623,19 @@ public class InvoiceService {
     public List<InvoiceDTO> getInvoicesByUserId(String userId) {
         List<Invoice> invoices = invoiceRepository.findByUserIdOrderByCreatedAtDesc(userId);
         return invoices.stream().map(this::mapToDTO).collect(Collectors.toList());
+    }
+
+    /**
+     * Get invoices by institute ID with optional filters and pagination.
+     */
+    public Page<InvoiceDTO> getInvoicesByInstituteId(
+            String instituteId, String userId, String status,
+            LocalDateTime startDate, LocalDateTime endDate,
+            int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Invoice> invoicePage = invoiceRepository.findByInstituteIdWithFilters(
+                instituteId, userId, status, startDate, endDate, pageable);
+        return invoicePage.map(this::mapToDTO);
     }
 
     /**

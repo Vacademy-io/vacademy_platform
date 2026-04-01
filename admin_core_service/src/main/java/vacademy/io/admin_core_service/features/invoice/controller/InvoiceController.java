@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.invoice.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -8,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceDTO;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -50,6 +53,25 @@ public class InvoiceController {
         } else {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    /**
+     * Get invoices by institute ID with optional filters and pagination.
+     *
+     * Usage: GET /admin-core-service/v1/invoices/institute/{instituteId}?page=0&size=20&userId=...&status=...&startDate=...&endDate=...
+     */
+    @GetMapping("/institute/{instituteId}")
+    public ResponseEntity<Page<InvoiceDTO>> getInvoicesByInstitute(
+            @PathVariable String instituteId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+        Page<InvoiceDTO> invoices = invoiceService.getInvoicesByInstituteId(
+                instituteId, userId, status, startDate, endDate, page, size);
+        return ResponseEntity.ok(invoices);
     }
 
     /**

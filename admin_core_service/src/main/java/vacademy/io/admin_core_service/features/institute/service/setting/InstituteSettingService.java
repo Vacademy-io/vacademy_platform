@@ -186,18 +186,7 @@ public class InstituteSettingService {
 
             customFieldsAndGroups.forEach(field -> {
                 customFieldsName.add(field.getFieldName());
-                if (isCompulsory(field.getFieldName())) {
-                    compulsoryCustomFields.add(field.getCustomFieldId());
-                }
-                if (field.getFieldName().equals("username")) {
-                    field.setLocations(ConstantsSettingDefaultValue.getUsernamePasswordLocations().stream().toList());
-                }
-                if (field.getFieldName().equals("password")) {
-                    field.setLocations(ConstantsSettingDefaultValue.getUsernamePasswordLocations().stream().toList());
-                }
-                if (field.getFieldName().equals("batch")) {
-                    field.setLocations(ConstantsSettingDefaultValue.getBatchLocations().stream().toList());
-                }
+                compulsoryCustomFields.add(field.getCustomFieldId());
             });
             request.setCompulsoryCustomFields(compulsoryCustomFields);
             request.setCustomFieldsName(customFieldsName);
@@ -238,7 +227,7 @@ public class InstituteSettingService {
     }
 
     private boolean isCompulsory(String field) {
-        return !field.equals("username") && !field.equals("password") && !field.equals("batch");
+        return true;
     }
 
     public void updateCustomFieldSetting(Institute institute, CustomFieldSettingRequest request) {

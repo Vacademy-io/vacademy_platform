@@ -1,14 +1,19 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Progress } from '@/components/ui/progress';
-import { CheckCircle2, Copy, Check, Code2, Link2, Download, Loader2, X } from 'lucide-react';
+import { CheckCircle2, Copy, Check, Code2, Link2, Download, Loader2, ExternalLink } from 'lucide-react';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
-import { useVideoExporter } from '@/components/ai-video-player/VideoExporter';
-import { ContentType, getContentTypeLabel, requiresAudio } from '../-services/video-generation';
+import {
+    ContentType,
+    getContentTypeLabel,
+    requiresAudio,
+    requestVideoRender,
+    getVideoUrls,
+} from '../-services/video-generation';
 import { LatexRenderer } from './LatexRenderer';
+import { toast } from 'sonner';
 
 interface VideoResultProps {
     videoId: string;
@@ -17,7 +22,10 @@ interface VideoResultProps {
     wordsUrl?: string;
     contentType?: ContentType;
     prompt: string;
+    apiKey?: string;
 }
+
+type RenderState = 'idle' | 'submitting' | 'rendering' | 'done' | 'error';
 
 export function VideoResult({
     videoId,
@@ -26,17 +34,41 @@ export function VideoResult({
     wordsUrl,
     contentType = 'VIDEO',
     prompt,
+    apiKey,
 }: VideoResultProps) {
     const [copiedUrl, setCopiedUrl] = useState(false);
     const [copiedEmbed, setCopiedEmbed] = useState(false);
-    const { startExport, cancelExport, progress: exportProgress, isExporting } = useVideoExporter();
-    const showDownload = contentType === 'VIDEO' || requiresAudio(contentType);
+    const [renderState, setRenderState] = useState<RenderState>('idle');
+    const [videoDownloadUrl, setVideoDownloadUrl] = useState<string | null>(null);
+    const [renderError, setRenderError] = useState<string | null>(null);
+    const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const showDownload = (contentType === 'VIDEO' || requiresAudio(contentType)) && !!apiKey;
+
+    // Check if video_url already exists on mount
+    useEffect(() => {
+        if (!apiKey) return;
+        getVideoUrls(videoId, apiKey)
+            .then((urls) => {
+                if (urls.video_url) {
+                    setVideoDownloadUrl(urls.video_url);
+                    setRenderState('done');
+                }
+            })
+            .catch(() => {});
+    }, [videoId, apiKey]);
+
+    // Cleanup polling on unmount
+    useEffect(() => {
+        return () => {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+        };
+    }, []);
 
     // Build the shareable URL
     const baseUrl = window.location.origin;
     const shareableUrl = `${baseUrl}/content/${videoId}?timeline=${encodeURIComponent(htmlUrl)}${audioUrl ? `&audio=${encodeURIComponent(audioUrl)}` : ''}${wordsUrl ? `&words=${encodeURIComponent(wordsUrl)}` : ''}`;
 
-    // Build the embed code
     const embedCode = `<iframe
   src="${shareableUrl}"
   width="100%"
@@ -67,6 +99,48 @@ export function VideoResult({
         }
     };
 
+    const handleRequestRender = useCallback(async () => {
+        if (!apiKey || renderState === 'submitting' || renderState === 'rendering') return;
+
+        setRenderState('submitting');
+        setRenderError(null);
+
+        try {
+            await requestVideoRender(videoId, apiKey);
+            setRenderState('rendering');
+            toast.info('Video rendering started. This takes 2-5 minutes.');
+
+            // Poll for completion
+            let attempts = 0;
+            const MAX_ATTEMPTS = 120; // 20 minutes at 10s interval
+            pollingRef.current = setInterval(async () => {
+                attempts++;
+                if (attempts > MAX_ATTEMPTS) {
+                    if (pollingRef.current) clearInterval(pollingRef.current);
+                    setRenderState('error');
+                    setRenderError('Render is taking too long. Please check history later.');
+                    return;
+                }
+
+                try {
+                    const urls = await getVideoUrls(videoId, apiKey);
+                    if (urls.video_url) {
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        setVideoDownloadUrl(urls.video_url);
+                        setRenderState('done');
+                        toast.success('Video ready for download!');
+                    }
+                } catch {
+                    // ignore polling errors, keep trying
+                }
+            }, 10_000);
+        } catch (error) {
+            setRenderState('error');
+            setRenderError(error instanceof Error ? error.message : 'Failed to start render');
+            toast.error('Failed to start video render');
+        }
+    }, [videoId, apiKey, renderState]);
+
     const contentLabel = getContentTypeLabel(contentType);
 
     return (
@@ -87,9 +161,11 @@ export function VideoResult({
                         width={1920}
                         height={1080}
                         onDownloadClick={
-                            showDownload && !isExporting
-                                ? () => startExport(htmlUrl, audioUrl, { fps: 15 })
-                                : undefined
+                            showDownload && renderState === 'idle'
+                                ? handleRequestRender
+                                : videoDownloadUrl
+                                  ? () => window.open(videoDownloadUrl, '_blank')
+                                  : undefined
                         }
                     />
                 </div>
@@ -206,52 +282,47 @@ export function VideoResult({
                                     <Download className="size-3.5" />
                                     Download Video
                                 </label>
-                                {isExporting && exportProgress ? (
-                                    <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="text-muted-foreground">
-                                                {exportProgress.message}
-                                            </span>
-                                            <button
-                                                onClick={cancelExport}
-                                                className="rounded p-0.5 text-muted-foreground hover:text-destructive"
-                                            >
-                                                <X className="size-3.5" />
-                                            </button>
-                                        </div>
-                                        <Progress value={exportProgress.percent} className="h-1.5" />
-                                        <p className="text-[10px] text-muted-foreground">
-                                            {exportProgress.phase === 'capturing' && exportProgress.totalFrames
-                                                ? `Frame ${exportProgress.currentFrame} / ${exportProgress.totalFrames}`
-                                                : exportProgress.phase === 'encoding'
-                                                  ? 'Encoding MP4...'
-                                                  : ''}
-                                        </p>
+
+                                {renderState === 'done' && videoDownloadUrl ? (
+                                    <a
+                                        href={videoDownloadUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 w-full h-9 px-3 rounded-md border bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition-colors"
+                                    >
+                                        <Download className="size-4" />
+                                        Download MP4
+                                        <ExternalLink className="size-3 ml-auto" />
+                                    </a>
+                                ) : renderState === 'rendering' || renderState === 'submitting' ? (
+                                    <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
+                                        <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+                                        <span className="text-xs text-muted-foreground">
+                                            {renderState === 'submitting'
+                                                ? 'Starting render...'
+                                                : 'Rendering video (2-5 min)...'}
+                                        </span>
                                     </div>
                                 ) : (
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         className="w-full h-9 gap-2 shadow-sm justify-start"
-                                        onClick={() => startExport(htmlUrl, audioUrl, { fps: 15 })}
-                                        disabled={isExporting}
+                                        onClick={handleRequestRender}
                                     >
-                                        {isExporting ? (
-                                            <Loader2 className="size-4 animate-spin" />
-                                        ) : (
-                                            <Download className="size-4" />
-                                        )}
-                                        Download as MP4
+                                        <Download className="size-4" />
+                                        Render & Download MP4
                                     </Button>
                                 )}
-                                {exportProgress?.phase === 'error' && (
+
+                                {renderState === 'error' && renderError && (
                                     <div className="space-y-1.5 rounded-md border border-destructive/30 bg-destructive/5 p-2">
-                                        <p className="text-xs text-destructive">{exportProgress.message}</p>
+                                        <p className="text-xs text-destructive">{renderError}</p>
                                         <Button
                                             variant="outline"
                                             size="sm"
                                             className="h-7 text-xs"
-                                            onClick={() => startExport(htmlUrl, audioUrl, { fps: 15 })}
+                                            onClick={handleRequestRender}
                                         >
                                             Retry
                                         </Button>

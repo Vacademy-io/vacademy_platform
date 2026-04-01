@@ -191,6 +191,7 @@ class VideoUrlsResponse(BaseModel):
     audio_url: Optional[str] = Field(None, description="URL to audio file (narration.mp3)")
     words_url: Optional[str] = Field(None, description="URL to time-synced words JSON for captions")
     avatar_url: Optional[str] = Field(None, description="URL to avatar talking-head video (MP4)")
+    video_url: Optional[str] = Field(None, description="URL to rendered MP4 video (from render server)")
     status: str = Field(..., description="Current video generation status (PENDING, IN_PROGRESS, COMPLETED, FAILED, STALLED)")
     current_stage: str = Field(..., description="Current generation stage")
     updated_at: Optional[str] = Field(None, description="Last time the record was updated (ISO 8601)")

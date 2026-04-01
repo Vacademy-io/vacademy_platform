@@ -929,6 +929,7 @@ function VideoConsole() {
                                 wordsUrl={currentGeneration.wordsUrl}
                                 contentType={currentGeneration.contentType}
                                 prompt={currentGeneration.prompt}
+                                apiKey={activeApiKey}
                             />
                         )}
                 </div>

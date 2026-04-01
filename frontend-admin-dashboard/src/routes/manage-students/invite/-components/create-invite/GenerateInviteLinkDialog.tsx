@@ -52,6 +52,8 @@ import {
 import { handleGetReferralProgramDetails } from './-services/referral-services';
 import PreviewInviteLink from './PreviewInviteLink';
 import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
+import createInviteLink from '../../-utils/createInviteLink';
+import { Copy } from '@phosphor-icons/react';
 
 const GenerateInviteLinkDialog = ({
     showSummaryDialog,
@@ -263,7 +265,13 @@ const GenerateInviteLinkDialog = ({
     };
 
     const onInvalid = (err: unknown) => {
-        console.error(err);
+        console.error('Form validation errors:', err);
+        if (err && typeof err === 'object') {
+            const fieldNames = Object.keys(err as Record<string, unknown>);
+            toast.error(`Validation failed on: ${fieldNames.join(', ')}`, {
+                duration: 4000,
+            });
+        }
     };
 
     const extractYouTubeVideoId = (url: string): string | null => {
@@ -732,7 +740,9 @@ const GenerateInviteLinkDialog = ({
             <DialogContent className="animate-fadeIn flex min-h-[90vh] min-w-[85vw] flex-col">
                 <DialogHeader>
                     <div className="flex items-center justify-between">
-                        <DialogTitle className="font-bold">Create Invite Link</DialogTitle>
+                        <DialogTitle className="font-bold">
+                            {isEditInviteLink ? 'Update Invite Link' : 'Create Invite Link'}
+                        </DialogTitle>
                         {/* Preview Invite Link Dialog */}
                         <PreviewInviteLink
                             form={form}
@@ -740,6 +750,38 @@ const GenerateInviteLinkDialog = ({
                             instituteLogo={instituteLogo}
                         />
                     </div>
+                    {inviteLinkDetails?.invite_code && (
+                        <div className="flex items-center gap-2 rounded-md bg-neutral-50 px-3 py-2">
+                            <span
+                                className="truncate font-mono text-xs text-neutral-600"
+                                title={createInviteLink(
+                                    inviteLinkDetails.invite_code,
+                                    instituteDetails?.learner_portal_base_url
+                                )}
+                            >
+                                {createInviteLink(
+                                    inviteLinkDetails.invite_code,
+                                    instituteDetails?.learner_portal_base_url
+                                )}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    navigator.clipboard.writeText(
+                                        createInviteLink(
+                                            inviteLinkDetails.invite_code,
+                                            instituteDetails?.learner_portal_base_url
+                                        )
+                                    );
+                                    toast.success('Invite link copied to clipboard');
+                                }}
+                                className="shrink-0 rounded p-1 hover:bg-neutral-200"
+                                title="Copy invite link"
+                            >
+                                <Copy className="size-4" />
+                            </button>
+                        </div>
+                    )}
                     <div className="my-3 border-b" />
                 </DialogHeader>
                 <div className="max-h-[70vh] flex-1 overflow-auto scroll-smooth">

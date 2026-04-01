@@ -65,15 +65,16 @@ interface VideoExporterProps {
 // Constants
 // ---------------------------------------------------------------------------
 
-const WIDTH = 1920;
-const HEIGHT = 1080;
-// Max frames to hold in FFmpeg MEMFS before triggering a warning.
-// At ~500KB/frame, 500 frames ≈ 250MB — safe for most browsers.
-const MAX_WARN_FRAMES = 500;
+// Capture at half resolution — html2canvas is ~4x faster.
+// FFmpeg upscales to 1920x1080 in the encode step.
+const CAPTURE_WIDTH = 960;
+const CAPTURE_HEIGHT = 540;
+const OUTPUT_WIDTH = 1920;
+const OUTPUT_HEIGHT = 1080;
 // Time to wait (ms) when a NEW segment appears (fonts + scripts must load)
-const SEGMENT_CHANGE_WAIT_MS = 1500;
+const SEGMENT_CHANGE_WAIT_MS = 2000;
 // Time to wait (ms) for a repeat frame of the same segment
-const SAME_SEGMENT_WAIT_MS = 30;
+const SAME_SEGMENT_WAIT_MS = 20;
 
 // ---------------------------------------------------------------------------
 // Helper: render active segments as div layers (NOT iframes)
@@ -98,8 +99,8 @@ function renderSegmentsToDivs(
         layer.style.position = 'absolute';
         layer.style.top = '0';
         layer.style.left = '0';
-        layer.style.width = `${WIDTH}px`;
-        layer.style.height = `${HEIGHT}px`;
+        layer.style.width = `${CAPTURE_WIDTH}px`;
+        layer.style.height = `${CAPTURE_HEIGHT}px`;
         layer.style.zIndex = String(entry.z || i);
         layer.style.overflow = 'hidden';
         layer.style.background = i === 0 ? '#ffffff' : 'transparent';
@@ -144,12 +145,12 @@ function wait(ms: number): Promise<void> {
 
 async function captureWithTimeout(
     element: HTMLElement,
-    timeoutMs: number = 8000
+    timeoutMs: number = 15000
 ): Promise<HTMLCanvasElement> {
     return Promise.race([
         html2canvas(element, {
-            width: WIDTH,
-            height: HEIGHT,
+            width: CAPTURE_WIDTH,
+            height: CAPTURE_HEIGHT,
             scale: 1,
             useCORS: true,
             logging: false,
@@ -166,11 +167,12 @@ async function captureWithTimeout(
 // Helper: canvas to PNG Uint8Array
 // ---------------------------------------------------------------------------
 
-async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
+async function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Uint8Array> {
     const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
             (b) => (b ? resolve(b) : reject(new Error('toBlob returned null'))),
-            'image/png'
+            'image/jpeg',
+            0.85 // Good quality, ~5x smaller than PNG
         );
     });
     return new Uint8Array(await blob.arrayBuffer());
@@ -220,11 +222,9 @@ export async function exportVideo(
         return;
     }
 
-    if (totalFrames > MAX_WARN_FRAMES) {
-        console.warn(
-            `[VideoExporter] ${totalFrames} frames will require ~${Math.round(totalFrames * 0.5)}MB of browser memory`
-        );
-    }
+    // Estimate memory: JPEG frames are ~80-120KB each (vs 500KB PNG)
+    const estimatedMB = Math.round(totalFrames * 0.1);
+    console.log(`[VideoExporter] ${totalFrames} frames, estimated ~${estimatedMB}MB in MEMFS`);
 
     // ── Phase 2: Load FFmpeg WASM ──
     onProgress({
@@ -270,8 +270,8 @@ export async function exportVideo(
     }
 
     // ── Phase 4: Set up offscreen container ──
-    offscreenContainer.style.width = `${WIDTH}px`;
-    offscreenContainer.style.height = `${HEIGHT}px`;
+    offscreenContainer.style.width = `${CAPTURE_WIDTH}px`;
+    offscreenContainer.style.height = `${CAPTURE_HEIGHT}px`;
     offscreenContainer.style.position = 'fixed';
     offscreenContainer.style.left = '0';
     offscreenContainer.style.top = '0';
@@ -282,9 +282,12 @@ export async function exportVideo(
     offscreenContainer.style.background = '#ffffff';
 
     // ── Phase 5: Capture frames ──
+    // Key optimization: only recapture when the active segment changes.
+    // For same-segment frames, reuse the last captured frame data.
     const captureStartTime = Date.now();
     let lastActiveIds: string[] = [];
     let lastGoodFrame: Uint8Array | null = null;
+    let captureCount = 0; // How many actual html2canvas calls (much less than totalFrames)
 
     for (let i = 0; i < totalFrames; i++) {
         if (isCancelled()) {
@@ -303,39 +306,40 @@ export async function exportVideo(
             activeIds.length !== lastActiveIds.length ||
             activeIds.some((id, idx) => id !== lastActiveIds[idx]);
 
+        const frameName = `frame_${String(i).padStart(6, '0')}.jpg`;
+
         if (segmentChanged) {
+            // New segment — render and capture
             renderSegmentsToDivs(offscreenContainer, entries, time, contentType);
             lastActiveIds = activeIds;
-            // Wait longer on segment change for fonts/scripts/libraries to load
             await wait(SEGMENT_CHANGE_WAIT_MS);
-        } else {
-            // Same segment — tiny wait just for a repaint cycle
-            await wait(SAME_SEGMENT_WAIT_MS);
-        }
 
-        // Capture frame with timeout protection
-        const frameName = `frame_${String(i).padStart(6, '0')}.png`;
-        try {
-            const canvas = await captureWithTimeout(offscreenContainer);
-            const frameData = await canvasToPng(canvas);
-            await ffmpeg.writeFile(frameName, frameData);
-            lastGoodFrame = frameData;
-        } catch (e) {
-            // Frame failed — write duplicate of last good frame to keep sequence intact
-            console.warn(`[VideoExporter] Frame ${i} capture failed:`, e);
+            try {
+                const canvas = await captureWithTimeout(offscreenContainer);
+                const frameData = await canvasToJpeg(canvas);
+                await ffmpeg.writeFile(frameName, frameData);
+                lastGoodFrame = frameData;
+                captureCount++;
+            } catch (e) {
+                console.warn(`[VideoExporter] Frame ${i} capture failed:`, e);
+                if (lastGoodFrame) {
+                    await ffmpeg.writeFile(frameName, lastGoodFrame);
+                } else {
+                    const placeholder = document.createElement('canvas');
+                    placeholder.width = CAPTURE_WIDTH;
+                    placeholder.height = CAPTURE_HEIGHT;
+                    const ctx = placeholder.getContext('2d')!;
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, CAPTURE_WIDTH, CAPTURE_HEIGHT);
+                    const fallback = await canvasToJpeg(placeholder);
+                    await ffmpeg.writeFile(frameName, fallback);
+                    lastGoodFrame = fallback;
+                }
+            }
+        } else {
+            // Same segment as previous frame — reuse last capture (no html2canvas call!)
             if (lastGoodFrame) {
                 await ffmpeg.writeFile(frameName, lastGoodFrame);
-            } else {
-                // No previous frame yet — create a white placeholder
-                const placeholder = document.createElement('canvas');
-                placeholder.width = WIDTH;
-                placeholder.height = HEIGHT;
-                const ctx = placeholder.getContext('2d')!;
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, WIDTH, HEIGHT);
-                const fallback = await canvasToPng(placeholder);
-                await ffmpeg.writeFile(frameName, fallback);
-                lastGoodFrame = fallback;
             }
         }
 
@@ -366,12 +370,13 @@ export async function exportVideo(
         return;
     }
 
+    console.log(`[VideoExporter] Capture done: ${captureCount} unique captures for ${totalFrames} frames`);
     onProgress({ phase: 'encoding', percent: 82, message: 'Encoding video (this may take a moment)...' });
 
     try {
         const ffmpegArgs = [
             '-framerate', String(fps),
-            '-i', 'frame_%06d.png',
+            '-i', 'frame_%06d.jpg',
         ];
 
         if (hasAudio) {
@@ -379,6 +384,8 @@ export async function exportVideo(
         }
 
         ffmpegArgs.push(
+            // Upscale from 960x540 to 1920x1080
+            '-vf', `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}`,
             '-c:v', 'libx264',
             '-pix_fmt', 'yuv420p',
             '-crf', '23',
@@ -402,7 +409,7 @@ export async function exportVideo(
         const cleanupPromises: Promise<unknown>[] = [];
         for (let i = 0; i < totalFrames; i++) {
             cleanupPromises.push(
-                ffmpeg.deleteFile(`frame_${String(i).padStart(6, '0')}.png`).catch(() => {})
+                ffmpeg.deleteFile(`frame_${String(i).padStart(6, '0')}.jpg`).catch(() => {})
             );
         }
         cleanupPromises.push(ffmpeg.deleteFile('audio.mp3').catch(() => {}));

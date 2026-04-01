@@ -21,6 +21,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus } from '@phosphor-icons/react';
 import { BatchConfig, LevelOption, SessionOption, PaymentType } from '../-types/bulk-create-types';
 import { toast } from 'sonner';
+import { currencyOptions } from '@/routes/settings/-constants/payments';
+import { getCurrencySymbol } from '@/routes/settings/-components/Payment/utils/utils';
 
 interface BatchSelectorDialogProps {
     open: boolean;
@@ -64,6 +66,7 @@ export function BatchSelectorDialog({
     const [paymentType, setPaymentType] = useState<PaymentType>('FREE');
     const [price, setPrice] = useState<string>('');
     const [validityDays, setValidityDays] = useState<string>('');
+    const [currency, setCurrency] = useState<string>('INR');
 
     const handleCreateLevel = async () => {
         if (!newLevelName.trim()) {
@@ -131,7 +134,7 @@ export function BatchSelectorDialog({
                 payment_type: paymentType,
                 price: price ? Number(price) : undefined,
                 validity_in_days: validityDays ? Number(validityDays) : undefined,
-                currency: 'INR',
+                currency: currency,
             },
         };
 
@@ -157,13 +160,14 @@ export function BatchSelectorDialog({
         setPaymentType('FREE');
         setPrice('');
         setValidityDays('');
+        setCurrency('INR');
     };
 
     const showPriceField = paymentType === 'ONE_TIME' || paymentType === 'SUBSCRIPTION';
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>Add Batch</DialogTitle>
                     <DialogDescription>
@@ -295,28 +299,48 @@ export function BatchSelectorDialog({
 
                     {/* Price - only show for paid types */}
                     {showPriceField && (
-                        <div className="grid grid-cols-2 gap-3">
+                        <>
+                            {/* Currency */}
                             <div className="space-y-2">
-                                <Label className="text-sm">Price (₹) *</Label>
-                                <Input
-                                    type="number"
-                                    placeholder="e.g., 499"
-                                    value={price}
-                                    onChange={(e) => setPrice(e.target.value)}
-                                    className="h-9 text-sm"
-                                />
+                                <Label className="text-sm">Currency</Label>
+                                <Select value={currency} onValueChange={setCurrency}>
+                                    <SelectTrigger className="h-9 text-sm">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {currencyOptions.map((opt) => (
+                                            <SelectItem key={opt.code} value={opt.code}>
+                                                {opt.symbol} - {opt.name} ({opt.code})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
-                            <div className="space-y-2">
-                                <Label className="text-sm">Validity (Days)</Label>
-                                <Input
-                                    type="number"
-                                    placeholder="e.g., 365"
-                                    value={validityDays}
-                                    onChange={(e) => setValidityDays(e.target.value)}
-                                    className="h-9 text-sm"
-                                />
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <Label className="text-sm">
+                                        Price ({getCurrencySymbol(currency)}) *
+                                    </Label>
+                                    <Input
+                                        type="number"
+                                        placeholder="e.g., 499"
+                                        value={price}
+                                        onChange={(e) => setPrice(e.target.value)}
+                                        className="h-9 text-sm"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-sm">Validity (Days)</Label>
+                                    <Input
+                                        type="number"
+                                        placeholder="e.g., 365"
+                                        value={validityDays}
+                                        onChange={(e) => setValidityDays(e.target.value)}
+                                        className="h-9 text-sm"
+                                    />
+                                </div>
                             </div>
-                        </div>
+                        </>
                     )}
 
                     {/* Max Slots */}

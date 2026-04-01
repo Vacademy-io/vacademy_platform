@@ -1,10 +1,9 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Users } from '@phosphor-icons/react';
-import { useQuery } from '@tanstack/react-query';
+import { ArrowRight, Users, UserPlus, ArrowsClockwise } from '@phosphor-icons/react';
+import { useQueries } from '@tanstack/react-query';
 import { fetchMembershipStats, getMembershipStatsQueryKey } from '@/services/membership-stats';
 import type { StudentStatsFilter } from '@/types/membership-stats';
-import { DashboardLoader } from '@/components/core/dashboard-loader';
 
 interface FilterStatsCardProps {
     requestFilters: Omit<StudentStatsFilter, 'institute_id'>;
@@ -12,12 +11,31 @@ interface FilterStatsCardProps {
 }
 
 export function FilterStatsCard({ requestFilters, onViewMembers }: FilterStatsCardProps) {
-    // Fetch count for the current filters
-    const { data, isLoading } = useQuery({
-        queryKey: getMembershipStatsQueryKey(0, 1, requestFilters), // pageSize=1 just to get total_elements
-        queryFn: () => fetchMembershipStats(0, 1, requestFilters),
-        staleTime: 30000,
+    // Fetch total, NEW_USER, and RETAINER counts in parallel
+    const results = useQueries({
+        queries: [
+            {
+                queryKey: getMembershipStatsQueryKey(0, 1, requestFilters),
+                queryFn: () => fetchMembershipStats(0, 1, requestFilters),
+                staleTime: 30000,
+            },
+            {
+                queryKey: getMembershipStatsQueryKey(0, 1, { ...requestFilters, user_types: ['NEW_USER' as const] }),
+                queryFn: () => fetchMembershipStats(0, 1, { ...requestFilters, user_types: ['NEW_USER'] }),
+                staleTime: 30000,
+            },
+            {
+                queryKey: getMembershipStatsQueryKey(0, 1, { ...requestFilters, user_types: ['RETAINER' as const] }),
+                queryFn: () => fetchMembershipStats(0, 1, { ...requestFilters, user_types: ['RETAINER'] }),
+                staleTime: 30000,
+            },
+        ],
     });
+
+    const isLoading = results.some((r) => r.isLoading);
+    const total = results[0]?.data?.total_elements || 0;
+    const newUsers = results[1]?.data?.total_elements || 0;
+    const retainers = results[2]?.data?.total_elements || 0;
 
     return (
         <Card className="border-primary-100 bg-primary-50/50">
@@ -40,11 +58,25 @@ export function FilterStatsCard({ requestFilters, onViewMembers }: FilterStatsCa
                         {isLoading ? (
                             <div className="h-8 w-16 animate-pulse rounded bg-primary-100" />
                         ) : (
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-3xl font-bold text-primary-900">
-                                    {data?.total_elements?.toLocaleString() || 0}
-                                </span>
-                                <span className="text-sm font-medium text-primary-600">users found</span>
+                            <div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-3xl font-bold text-primary-900">
+                                        {total.toLocaleString()}
+                                    </span>
+                                    <span className="text-sm font-medium text-primary-600">users found</span>
+                                </div>
+                                <div className="mt-2 flex items-center gap-4">
+                                    <div className="flex items-center gap-1.5">
+                                        <UserPlus size={14} className="text-indigo-500" />
+                                        <span className="text-sm font-semibold text-indigo-600">{newUsers.toLocaleString()}</span>
+                                        <span className="text-xs text-gray-500">New</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <ArrowsClockwise size={14} className="text-amber-500" />
+                                        <span className="text-sm font-semibold text-amber-600">{retainers.toLocaleString()}</span>
+                                        <span className="text-xs text-gray-500">Retainer</span>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>

@@ -220,6 +220,7 @@ export interface VideoUrls {
     audio_url: string | null;
     words_url: string | null;
     avatar_url?: string | null;
+    video_url?: string | null;
     status: VideoStatusType;
     current_stage: VideoStage;
     updated_at?: string | null;
@@ -440,6 +441,25 @@ export async function getVideoUrls(videoId: string, apiKey: string): Promise<Vid
 
     if (!response.ok) {
         throw new Error(`Failed to get video URLs: ${response.statusText}`);
+    }
+
+    return response.json();
+}
+
+export async function requestVideoRender(
+    videoId: string,
+    apiKey: string
+): Promise<{ job_id: string; status: string }> {
+    const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/render/${videoId}`, {
+        method: 'POST',
+        headers: {
+            'X-Institute-Key': apiKey,
+        },
+    });
+
+    if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to request render: ${text}`);
     }
 
     return response.json();

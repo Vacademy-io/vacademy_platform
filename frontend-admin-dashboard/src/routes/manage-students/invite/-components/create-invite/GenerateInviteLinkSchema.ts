@@ -59,8 +59,16 @@ const testInputFieldSchema = z.object({
     id: z.string(),
     type: z.string(),
     name: z.string(),
-    oldKey: z.boolean(),
-    isRequired: z.boolean(),
+    oldKey: z
+        .boolean()
+        .nullable()
+        .optional()
+        .transform((val) => val ?? false),
+    isRequired: z
+        .boolean()
+        .nullable()
+        .optional()
+        .transform((val) => val ?? false),
     key: z
         .string()
         .nullable()
@@ -119,10 +127,7 @@ export const inviteLinkSchema = z.object({
         .string()
         .nullable()
         .transform((val) => val ?? ''),
-    courseMedia: z.object({
-        type: z.string().optional(),
-        id: z.string().optional(),
-    }),
+    courseMedia: z.any().optional(),
     coursePreviewBlob: z.string().optional(),
     courseBannerBlob: z.string().optional(),
     courseMediaBlob: z.string().optional(),

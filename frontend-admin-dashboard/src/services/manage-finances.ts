@@ -29,7 +29,7 @@ export const fetchManageFinancesLogs = async (
     }
 
     const response = await authenticatedAxiosInstance.post<FinancalManagementPaginatedResponse>(
-        `http://localhost:8072/admin-core-service/v1/admin/student-fee/search`,
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/search`,
         filter,
         {
             params: { instituteId },

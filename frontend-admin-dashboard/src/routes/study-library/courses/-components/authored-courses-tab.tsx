@@ -310,8 +310,8 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
             to: '/study-library/courses/course-details',
             search: {
                 courseId: course.courseId,
-                sessionId: course.sessionInfo?.sessionId,
-                levelId: course.levelInfo?.levelId,
+                sessionId: course.sessionInfo?.sessionId ?? undefined,
+                levelId: course.levelInfo?.levelId ?? undefined,
             },
         });
     };
@@ -544,7 +544,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                     >
                                         <Eye size={16} />
                                         View Course
-                                    </Button>
+                                    </MyButton>
 
                                     {/* Additional Actions for Draft courses */}
                                     {course.status === 'DRAFT' && !isAdmin && (

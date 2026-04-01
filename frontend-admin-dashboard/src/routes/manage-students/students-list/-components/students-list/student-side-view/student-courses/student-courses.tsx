@@ -120,7 +120,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         }
 
         navigate({
-            to: '/study-library/courses/course-details/subjects/',
+            to: '/study-library/courses/course-details/subjects',
             search: { courseId, levelId, sessionId },
         });
     };

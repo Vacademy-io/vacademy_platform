@@ -168,7 +168,7 @@ const Students = ({
                     {/* <BulkDialogProvider>
                     <EnrollStudentsButton scale="medium" />
                 </BulkDialogProvider> */}
-                    <StudentListHeader currentSession={currentSession} titleSize="text-base" />
+                    <StudentListHeader currentSession={currentSession} titleSize="text-base" packageSessionId={packageSessionId} />
                 </InviteFormProvider>
                 {/* Filter section here */}
                 <StudentFilters

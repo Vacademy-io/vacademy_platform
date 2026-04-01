@@ -3187,7 +3187,7 @@ export const AddCourseStep2 = ({
                                                             onChange={(selected) => {
                                                                 // Build the new list from selected IDs, looking up full data
                                                                 // from current selectedInstructors first, then instructors list
-                                                                const selectedIds = new Set(selected?.map((s) => s.id) || []);
+                                                                const selectedIds = new Set(selected?.map((s) => String(s.id)) || []);
                                                                 const previousIds = new Set((selectedInstructors || []).map((i) => i.id));
 
                                                                 // Keep existing selected instructors that are still selected

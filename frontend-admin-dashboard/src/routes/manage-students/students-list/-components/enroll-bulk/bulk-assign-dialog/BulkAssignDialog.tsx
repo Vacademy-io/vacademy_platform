@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
@@ -17,6 +17,9 @@ import { Step2CourseSelector } from './steps/Step2CourseSelector';
 import { Step3EnrollConfig } from './steps/Step3EnrollConfig';
 import { Step4Preview } from './steps/Step4Preview';
 import { cn } from '@/lib/utils';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const STEPS = ['Select Learners', 'Select Courses', 'Enrollment Config', 'Preview & Confirm'];
 
@@ -24,14 +27,49 @@ interface BulkAssignDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSuccess?: () => void;
+    /** When provided, pre-selects this course/batch in Step 2 */
+    initialPackageSessionId?: string;
 }
 
-export const BulkAssignDialog = ({ open, onOpenChange, onSuccess }: BulkAssignDialogProps) => {
+export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackageSessionId }: BulkAssignDialogProps) => {
+    const { getPackageWiseLevels } = useInstituteDetailsStore();
+
+    // Build initial selection from initialPackageSessionId
+    const buildInitialSelection = (): SelectedPackageSession[] => {
+        if (!initialPackageSessionId) return [];
+        const groups = getPackageWiseLevels();
+        for (const group of groups) {
+            for (const level of group.level) {
+                if (level.package_session_id === initialPackageSessionId) {
+                    return [{
+                        packageSessionId: initialPackageSessionId,
+                        courseName: group.package_dto.package_name,
+                        sessionName: '',
+                        levelName: level.level_dto.level_name,
+                        enrollInviteId: null,
+                        accessDays: null,
+                    }];
+                }
+            }
+        }
+        return [];
+    };
+
     const [step, setStep] = useState(0);
     const [selectedLearners, setSelectedLearners] = useState<SelectedLearner[]>([]);
     const [selectedPackageSessions, setSelectedPackageSessions] = useState<
         SelectedPackageSession[]
     >([]);
+
+    // Pre-select course when dialog opens with an initialPackageSessionId
+    useEffect(() => {
+        if (open && initialPackageSessionId) {
+            const initial = buildInitialSelection();
+            if (initial.length > 0) {
+                setSelectedPackageSessions(initial);
+            }
+        }
+    }, [open, initialPackageSessionId]);
     const [options, setOptions] = useState<BulkEnrollOptions>({
         duplicateHandling: 'SKIP',
         notifyLearners: true,
@@ -106,7 +144,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess }: BulkAssignDi
     const handleClose = () => {
         setStep(0);
         setSelectedLearners([]);
-        setSelectedPackageSessions([]);
+        setSelectedPackageSessions(buildInitialSelection());
         setOptions({ duplicateHandling: 'SKIP', notifyLearners: true, sendCredentials: true });
         setPreviewResponse(null);
         onOpenChange(false);
@@ -133,7 +171,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess }: BulkAssignDi
                 {/* Header */}
                 <DialogHeader>
                     <div className="bg-primary-50 px-6 py-4">
-                        <h2 className="text-h3 font-semibold text-primary-500">Enroll in Bulk</h2>
+                        <h2 className="text-h3 font-semibold text-primary-500">Enroll {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}</h2>
                         {/* Step progress bar */}
                         <div className="mt-3 flex items-center gap-0">
                             {STEPS.map((label, idx) => (
@@ -189,6 +227,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess }: BulkAssignDi
                         <Step2CourseSelector
                             selectedPackageSessions={selectedPackageSessions}
                             onSelectedPackageSessionsChange={setSelectedPackageSessions}
+                            initialPackageSessionId={initialPackageSessionId}
                         />
                     )}
                     {step === 2 && (

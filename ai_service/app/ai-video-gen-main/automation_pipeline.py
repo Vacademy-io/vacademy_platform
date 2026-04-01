@@ -1473,11 +1473,13 @@ class VideoGenerationPipeline:
                 getattr(self, 'video_width', 1920),
                 getattr(self, 'video_height', 1080)
             )
+            _aspect = getattr(self, 'aspect_label', '16:9 landscape')
             user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(
                 base_prompt=base_prompt.strip(),
                 language=language,
                 target_audience=target_audience,
-                target_duration=target_duration
+                target_duration=target_duration,
+                aspect_label=_aspect,
             ).strip()
         else:
             # Use content-type-specific prompts
@@ -2805,9 +2807,14 @@ class VideoGenerationPipeline:
                     system_prompt = HTML_GENERATION_SYSTEM_PROMPT_CLASSIC
                 else:
                     from prompts import HTML_GENERATION_SYSTEM_PROMPT_ADVANCED
-                    # Inject dimension-aware few-shot examples
-                    system_prompt = HTML_GENERATION_SYSTEM_PROMPT_ADVANCED.replace(
-                        "{fewshot_examples}", _fewshot
+                    _aspect = getattr(self, 'aspect_label', '16:9 landscape')
+                    # Inject dimension-aware few-shot examples and resolve dimension placeholders
+                    system_prompt = (
+                        HTML_GENERATION_SYSTEM_PROMPT_ADVANCED
+                        .replace("{fewshot_examples}", _fewshot)
+                        .replace("{canvas_width}", str(_w))
+                        .replace("{canvas_height}", str(_h))
+                        .replace("{aspect_label}", _aspect)
                     )
             except ImportError:
                 # Fallback to default if import fails

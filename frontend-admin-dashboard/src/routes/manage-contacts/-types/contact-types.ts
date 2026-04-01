@@ -63,6 +63,24 @@ export interface ContactUser {
     custom_fields: CustomField[];
     // Helper property for table compatibility - will map user.id to this
     user_id?: string;
+    // Enrollment data from v2 (populated for institute users)
+    status?: string;
+    face_file_id?: string | null;
+    sub_org_name?: string;
+    sub_org_id?: string;
+    comma_separated_org_roles?: string;
+    package_session_id?: string;
+    institute_enrollment_number?: string;
+    payment_status?: string;
+    institute_id?: string;
+    fathers_name?: string;
+    mothers_name?: string;
+    parents_mobile_number?: string;
+    parents_email?: string;
+    parents_to_mother_mobile_number?: string;
+    parents_to_mother_email?: string;
+    linked_institute_name?: string;
+    custom_fields_map?: Record<string, string | null>;
 }
 
 export interface ContactListResponse {

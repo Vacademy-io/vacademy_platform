@@ -20,6 +20,16 @@ import vacademy.io.admin_core_service.features.common.repository.InstituteCustom
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import vacademy.io.admin_core_service.features.common.dto.CustomFieldValueMap;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -137,9 +147,15 @@ public class DistinctUserAudienceService {
 
         // Step 6: Fetch all custom fields for these users
         Map<String, List<CustomFieldDTO>> userIdToCustomFields = fetchCustomFieldsForUsers(
-                request.getInstituteId(), 
+                request.getInstituteId(),
                 new ArrayList<>(allUserIds)
         );
+
+        // Step 6.5: Fetch v2 enrichment data for institute users (same query as Linked Course Contacts)
+        Map<String, StudentListV2Projection> v2DataByUserId = new HashMap<>();
+        if (includeInstituteUsers && !instituteUserIds.isEmpty()) {
+            v2DataByUserId = fetchV2EnrichmentForInstituteUsers(request.getInstituteId());
+        }
 
         // Step 7: Build response DTOs
         List<UserWithCustomFieldsDTO> users = new ArrayList<>();
@@ -149,14 +165,35 @@ public class DistinctUserAudienceService {
                 continue; // Skip if user not found
             }
 
-            UserWithCustomFieldsDTO userWithCustomFields = UserWithCustomFieldsDTO.builder()
+            UserWithCustomFieldsDTO.UserWithCustomFieldsDTOBuilder builder = UserWithCustomFieldsDTO.builder()
                     .user(userDTO)
                     .isInstituteUser(instituteUserIdSet.contains(userId))
                     .isAudienceRespondent(audienceRespondentUserIdSet.contains(userId))
-                    .customFields(userIdToCustomFields.getOrDefault(userId, new ArrayList<>()))
-                    .build();
+                    .customFields(userIdToCustomFields.getOrDefault(userId, new ArrayList<>()));
 
-            users.add(userWithCustomFields);
+            // Enrich with v2 data for institute users
+            StudentListV2Projection v2Data = v2DataByUserId.get(userId);
+            if (v2Data != null) {
+                builder.status(v2Data.getStatus())
+                       .faceFileId(v2Data.getFaceFileId())
+                       .subOrgName(v2Data.getSubOrgName())
+                       .subOrgId(v2Data.getSubOrgId())
+                       .commaSeparatedOrgRoles(v2Data.getCommaSeparatedOrgRoles())
+                       .packageSessionId(v2Data.getPackageSessionId())
+                       .instituteEnrollmentNumber(v2Data.getInstituteEnrollmentNumber())
+                       .paymentStatus(v2Data.getPaymentStatus())
+                       .instituteId(v2Data.getInstituteId())
+                       .fathersName(v2Data.getFathersName())
+                       .mothersName(v2Data.getMothersName())
+                       .parentsMobileNumber(v2Data.getParentsMobileNumber())
+                       .parentsEmail(v2Data.getParentsEmail())
+                       .parentsToMotherMobileNumber(v2Data.getParentsToMotherMobileNumber())
+                       .parentsToMotherEmail(v2Data.getParentsToMotherEmail())
+                       .linkedInstituteName(v2Data.getLinkedInstituteName())
+                       .customFieldsMap(parseCustomFieldsJson(v2Data.getCustomFieldsJson()));
+            }
+
+            users.add(builder.build());
         }
 
         // Step 8: Apply filters
@@ -317,6 +354,73 @@ public class DistinctUserAudienceService {
 
         logger.info("Built custom fields for {} users with {} fields each", userIds.size(), customFieldTemplate.size());
         return userIdToCustomFields;
+    }
+
+    /**
+     * Fetch enrichment data from the v2 student query for institute users.
+     * Uses the same repository method as the Linked Course Contacts (v2) API.
+     * Groups by userId and picks the best enrollment (prefers ACTIVE status, most recent).
+     */
+    private Map<String, StudentListV2Projection> fetchV2EnrichmentForInstituteUsers(String instituteId) {
+        // Call the same v2 repo method used by StudentListManager/Linked Course Contacts
+        Pageable pageable = PageRequest.of(0, Integer.MAX_VALUE);
+        Page<StudentListV2Projection> v2Page = instituteStudentRepository.getAllStudentV2WithFilterRaw(
+                null,   // statuses - get all
+                null,   // gender
+                List.of(instituteId),
+                null,   // groupIds
+                null,   // packageSessionIds
+                null,   // paymentStatuses
+                List.of(StatusEnum.ACTIVE.name()), // customFieldStatus
+                null,   // subOrgUserTypes
+                null,   // startDate
+                null,   // endDate
+                pageable
+        );
+
+        if (v2Page == null || v2Page.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        // Group by userId, prefer ACTIVE enrollment, then most recent
+        Map<String, StudentListV2Projection> bestPerUser = new HashMap<>();
+        for (StudentListV2Projection p : v2Page.getContent()) {
+            String userId = p.getUserId();
+            if (userId == null) continue;
+
+            StudentListV2Projection existing = bestPerUser.get(userId);
+            if (existing == null) {
+                bestPerUser.put(userId, p);
+            } else {
+                // Prefer ACTIVE status over others
+                boolean newIsActive = "ACTIVE".equalsIgnoreCase(p.getStatus());
+                boolean existingIsActive = "ACTIVE".equalsIgnoreCase(existing.getStatus());
+                if (newIsActive && !existingIsActive) {
+                    bestPerUser.put(userId, p);
+                }
+            }
+        }
+
+        logger.info("Fetched v2 enrichment data for {} institute users", bestPerUser.size());
+        return bestPerUser;
+    }
+
+    /**
+     * Parse custom fields JSON from v2 projection into a Map.
+     */
+    private Map<String, String> parseCustomFieldsJson(String json) {
+        if (json == null || json.equals("[]")) return new HashMap<>();
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            List<CustomFieldValueMap> list = mapper.readValue(json, new TypeReference<List<CustomFieldValueMap>>() {});
+            Map<String, String> map = new HashMap<>();
+            for (CustomFieldValueMap cf : list) {
+                map.put(cf.getCustomFieldId(), cf.getValue());
+            }
+            return map;
+        } catch (JsonProcessingException e) {
+            return new HashMap<>();
+        }
     }
 
     /**

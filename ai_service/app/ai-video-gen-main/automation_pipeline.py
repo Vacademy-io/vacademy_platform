@@ -3443,8 +3443,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # shorter than ~12s would produce fewer than the requested 3-4 shots at 5s each).
         return max(3.0, duration)
 
-    @staticmethod
-    def _resolve_shot_box(shot: Dict[str, Any]) -> Tuple[int, int, int, int, bool]:
+    def _resolve_shot_box(self, shot: Dict[str, Any]) -> Tuple[int, int, int, int, bool]:
         def coerce_int(value, fallback):
             try:
                 return int(round(float(value)))
@@ -4542,8 +4541,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
 
     # --- Timeline + video -------------------------------------------------
-    @staticmethod
     def _write_timeline(
+        self,
         html_segments: List[Dict[str, Any]],
         run_dir: Path,
         branding_config: Optional[Dict[str, Any]] = None,

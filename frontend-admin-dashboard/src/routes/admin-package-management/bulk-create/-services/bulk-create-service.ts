@@ -64,9 +64,15 @@ export const fetchPaymentOptions = async (): Promise<PaymentOptionItem[]> => {
     const instituteId = getCurrentInstituteId();
 
     const response = await authenticatedAxiosInstance<any[]>({
-        method: 'GET',
+        method: 'POST',
         url: GET_PAYMENT_OPTIONS,
-        params: { instituteId },
+        data: {
+            types: [],
+            source: 'INSTITUTE',
+            source_id: instituteId,
+            require_approval: true,
+            not_require_approval: true,
+        },
     });
 
     return response.data.map((option) => ({

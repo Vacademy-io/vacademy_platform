@@ -152,9 +152,26 @@ public class DistinctUserAudienceService {
         );
 
         // Step 6.5: Fetch v2 enrichment data for institute users (same query as Linked Course Contacts)
+        // Also applies enrollment filters (status, batch, payment status, role)
         Map<String, StudentListV2Projection> v2DataByUserId = new HashMap<>();
+        boolean hasEnrollmentFilters = hasActiveEnrollmentFilters(request);
         if (includeInstituteUsers && !instituteUserIds.isEmpty()) {
-            v2DataByUserId = fetchV2EnrichmentForInstituteUsers(request.getInstituteId());
+            v2DataByUserId = fetchV2EnrichmentForInstituteUsers(request);
+        }
+
+        // If enrollment filters are active, restrict institute users to only those matching
+        if (hasEnrollmentFilters && !v2DataByUserId.isEmpty()) {
+            Set<String> matchedInstituteUserIds = v2DataByUserId.keySet();
+            allUserIds.retainAll(matchedInstituteUserIds);
+            allUserIds.addAll(audienceRespondentUserIds); // keep audience users unaffected
+            instituteUserIdSet.retainAll(matchedInstituteUserIds);
+            logger.info("After enrollment filters: {} users remain", allUserIds.size());
+        } else if (hasEnrollmentFilters && v2DataByUserId.isEmpty()) {
+            // Enrollment filters active but no matches — remove all institute users
+            allUserIds.removeAll(instituteUserIds);
+            allUserIds.addAll(audienceRespondentUserIds);
+            instituteUserIdSet.clear();
+            logger.info("Enrollment filters active but no matches, {} audience-only users remain", allUserIds.size());
         }
 
         // Step 7: Build response DTOs
@@ -357,24 +374,39 @@ public class DistinctUserAudienceService {
     }
 
     /**
+     * Check if enrollment-specific filters are active in the request.
+     */
+    private boolean hasActiveEnrollmentFilters(CombinedUserAudienceRequestDTO request) {
+        return !CollectionUtils.isEmpty(request.getStatuses())
+                || !CollectionUtils.isEmpty(request.getPackageSessionIds())
+                || !CollectionUtils.isEmpty(request.getPaymentStatuses())
+                || !CollectionUtils.isEmpty(request.getSubOrgUserTypes());
+    }
+
+    /**
      * Fetch enrichment data from the v2 student query for institute users.
      * Uses the same repository method as the Linked Course Contacts (v2) API.
-     * Groups by userId and picks the best enrollment (prefers ACTIVE status, most recent).
+     * Passes enrollment filters (status, batch, payment status, role) to the query.
+     * Groups by userId and picks the best enrollment (prefers ACTIVE status).
      */
-    private Map<String, StudentListV2Projection> fetchV2EnrichmentForInstituteUsers(String instituteId) {
+    private Map<String, StudentListV2Projection> fetchV2EnrichmentForInstituteUsers(CombinedUserAudienceRequestDTO request) {
+        // Extract gender from userFilter if present
+        List<String> genders = (request.getUserFilter() != null && !CollectionUtils.isEmpty(request.getUserFilter().getGenders()))
+                ? request.getUserFilter().getGenders() : null;
+
         // Call the same v2 repo method used by StudentListManager/Linked Course Contacts
         Pageable pageable = PageRequest.of(0, Integer.MAX_VALUE);
         Page<StudentListV2Projection> v2Page = instituteStudentRepository.getAllStudentV2WithFilterRaw(
-                null,   // statuses - get all
-                null,   // gender
-                List.of(instituteId),
-                null,   // groupIds
-                null,   // packageSessionIds
-                null,   // paymentStatuses
-                List.of(StatusEnum.ACTIVE.name()), // customFieldStatus
-                null,   // subOrgUserTypes
-                null,   // startDate
-                null,   // endDate
+                request.getStatuses(),                      // statuses
+                genders,                                     // gender
+                List.of(request.getInstituteId()),           // instituteIds
+                null,                                        // groupIds
+                request.getPackageSessionIds(),              // packageSessionIds
+                request.getPaymentStatuses(),                // paymentStatuses
+                List.of(StatusEnum.ACTIVE.name()),           // customFieldStatus
+                request.getSubOrgUserTypes(),                // subOrgUserTypes
+                null,                                        // startDate
+                null,                                        // endDate
                 pageable
         );
 

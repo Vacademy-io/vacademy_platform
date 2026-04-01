@@ -47,30 +47,75 @@ export const useContactFilters = () => {
             initialFilters.push({ id: 'source', value: sourceOptions });
         }
 
-        // Add more URL params parsing here if needed (region, etc)
+        if (searchParams.status) {
+            const statuses = Array.isArray(searchParams.status) ? searchParams.status : [searchParams.status];
+            const statusOptions = statuses.map((s: string) => ({ id: s, label: s }));
+            initialFilters.push({ id: 'statuses', value: statusOptions });
+        }
+
+        if (searchParams.batch) {
+            const batches = Array.isArray(searchParams.batch) ? searchParams.batch : [searchParams.batch];
+            const batchOptions = batches.map((b: string) => ({ id: b, label: b }));
+            initialFilters.push({ id: 'batch', value: batchOptions });
+        }
+
+        if (searchParams.audience) {
+            const audiences = Array.isArray(searchParams.audience) ? searchParams.audience : [searchParams.audience];
+            const audienceOptions = audiences.map((a: string) => ({ id: a, label: a }));
+            initialFilters.push({ id: 'audience_list', value: audienceOptions });
+        }
 
         if (initialFilters.length > 0) {
             setColumnFilters(initialFilters);
             setClearFilters(false);
 
-            // Calculate sources based on URL
-            const sourceFilter = initialFilters.find(f => f.id === 'source');
-            const sourceIds = sourceFilter?.value.map(v => v.id) || [];
-            const includeInst = sourceIds.length > 0 ? sourceIds.includes('INSTITUTE') : true;
-            const includeAud = sourceIds.length > 0 ? sourceIds.includes('AUDIENCE') : true;
-
-            setAppliedFilters(prev => ({
-                ...prev,
-                include_institute_users: includeInst,
-                include_audience_respondents: includeAud,
-                user_filter: {
-                    ...prev.user_filter,
-                    name_search: searchParams.name,
-                    genders: searchParams.gender ? (Array.isArray(searchParams.gender) ? searchParams.gender : [searchParams.gender]) : undefined
-                }
-            }));
+            const newApplied = buildAppliedFilters(initialFilters, searchParams.name || '');
+            setAppliedFilters(prev => ({ ...prev, ...newApplied }));
         }
     }, [searchParams]);
+
+    const buildAppliedFilters = (
+        filters: { id: string; value: { id: string; label: string }[] }[],
+        nameSearch: string
+    ): Partial<ContactListRequest> => {
+        // Source filter
+        const sourceFilter = filters.find(f => f.id === 'source');
+        const sourceIds = sourceFilter?.value.map(v => v.id) || [];
+        const includeInst = sourceIds.length > 0 ? sourceIds.includes('INSTITUTE') : true;
+        const includeAud = sourceIds.length > 0 ? sourceIds.includes('AUDIENCE') : true;
+
+        // Gender filter
+        const genderFilter = filters.find(f => f.id === 'gender');
+        const genders = genderFilter?.value.map(v => v.label);
+
+        // Status filter (enrollment status for institute users)
+        const statusFilter = filters.find(f => f.id === 'statuses');
+        const statuses = statusFilter?.value.map(v => v.label);
+
+        // Batch filter (package session IDs)
+        const batchFilter = filters.find(f => f.id === 'batch');
+        const packageSessionIds = batchFilter?.value.map(v => v.id);
+
+        // Audience list filter
+        const audienceFilter = filters.find(f => f.id === 'audience_list');
+        const audienceIds = audienceFilter?.value.map(v => v.id);
+
+        // When filtering by specific audience, only show audience respondents
+        const hasAudienceFilter = audienceIds && audienceIds.length > 0;
+
+        return {
+            include_institute_users: hasAudienceFilter ? false : includeInst,
+            include_audience_respondents: includeAud,
+            user_filter: {
+                name_search: nameSearch || undefined,
+                genders: genders,
+            },
+            statuses: statuses && statuses.length > 0 ? statuses : undefined,
+            package_session_ids: packageSessionIds && packageSessionIds.length > 0 ? packageSessionIds : undefined,
+            campaign_filter: audienceIds && audienceIds.length > 0 ? { audience_ids: audienceIds } : {},
+            page: 0,
+        };
+    };
 
     const handleSearchInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         setSearchInput(event.target.value);
@@ -93,7 +138,7 @@ export const useContactFilters = () => {
                 ...prev.user_filter,
                 name_search: searchInput,
             },
-            page: 0 // reset page on search
+            page: 0
         }));
     };
 
@@ -122,42 +167,34 @@ export const useContactFilters = () => {
     };
 
     const handleFilterClick = () => {
+        const newApplied = buildAppliedFilters(columnFilters, searchFilter);
+
+        // Update URL
+        const currentParams = new URLSearchParams(window.location.search);
+        ['gender', 'source', 'status', 'batch', 'audience', 'name'].forEach(k => currentParams.delete(k));
+
+        if (searchFilter) currentParams.set('name', searchFilter);
+
         const genderFilter = columnFilters.find(f => f.id === 'gender');
-        const genders = genderFilter?.value.map(v => v.id);
+        genderFilter?.value.forEach(g => currentParams.append('gender', g.label));
 
         const sourceFilter = columnFilters.find(f => f.id === 'source');
-        const sourceIds = sourceFilter?.value.map(v => v.id) || [];
+        sourceFilter?.value.forEach(s => currentParams.append('source', s.id));
 
-        // If filter is active, use selection. If not active (empty), default to true for both.
-        // Wait, if user deselects all in UI, it implies "None"? Or "All"?
-        // Typically with filters: No selection = All.
-        const includeInst = sourceIds.length > 0 ? sourceIds.includes('INSTITUTE') : true;
-        const includeAud = sourceIds.length > 0 ? sourceIds.includes('AUDIENCE') : true;
+        const statusFilter = columnFilters.find(f => f.id === 'statuses');
+        statusFilter?.value.forEach(s => currentParams.append('status', s.label));
 
-        const currentParams = new URLSearchParams(window.location.search);
+        const batchFilter = columnFilters.find(f => f.id === 'batch');
+        batchFilter?.value.forEach(b => currentParams.append('batch', b.id));
 
-        currentParams.delete('gender');
-        genders?.forEach(g => currentParams.append('gender', g));
-
-        currentParams.delete('source');
-        sourceIds?.forEach(s => currentParams.append('source', s));
-
-        if (searchFilter) {
-            currentParams.set('name', searchFilter);
-        }
+        const audienceFilter = columnFilters.find(f => f.id === 'audience_list');
+        audienceFilter?.value.forEach(a => currentParams.append('audience', a.id));
 
         window.history.replaceState({}, '', `${window.location.pathname}?${currentParams.toString()}`);
 
         setAppliedFilters((prev) => ({
             ...prev,
-            include_institute_users: includeInst,
-            include_audience_respondents: includeAud,
-            user_filter: {
-                ...prev.user_filter,
-                name_search: searchFilter,
-                genders: genders
-            },
-            page: 0
+            ...newApplied,
         }));
     };
 
@@ -168,8 +205,7 @@ export const useContactFilters = () => {
         setSearchInput('');
 
         const currentParams = new URLSearchParams(window.location.search);
-        currentParams.delete('name');
-        currentParams.delete('gender');
+        ['name', 'gender', 'source', 'status', 'batch', 'audience'].forEach(k => currentParams.delete(k));
         window.history.replaceState({}, '', `${window.location.pathname}?${currentParams.toString()}`);
 
         setAppliedFilters({
@@ -184,10 +220,9 @@ export const useContactFilters = () => {
     };
 
     const getActiveFiltersState = useCallback(() => {
-        const genderFilter = columnFilters.find((filter) => filter.id === 'gender');
         const hasName = Boolean(appliedFilters.user_filter?.name_search?.trim());
-        const hasGender = Boolean(genderFilter?.value && genderFilter.value.length > 0);
-        return hasName || hasGender;
+        const hasColumnFilter = columnFilters.some(f => f.value && f.value.length > 0);
+        return hasName || hasColumnFilter;
     }, [columnFilters, appliedFilters]);
 
     return {

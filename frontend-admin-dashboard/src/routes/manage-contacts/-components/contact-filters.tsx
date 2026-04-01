@@ -2,7 +2,14 @@ import { MyButton } from '@/components/design-system/button';
 import { Funnel, X } from '@phosphor-icons/react';
 import { Filters } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/myFilter';
 import { StudentSearchBox } from '@/components/common/student-search-box';
-import { useContactFilters } from '../-hooks/useContactFilters';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { removeDefaultPrefix } from '@/utils/helpers/removeDefaultPrefix';
+import { useSelectedSessionStore } from '@/stores/study-library/selected-session-store';
+import { useQuery } from '@tanstack/react-query';
+import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 interface ContactFiltersProps {
     filters: {
@@ -35,25 +42,24 @@ export const ContactFilters = ({ filters }: ContactFiltersProps) => {
         clearFilters,
     } = filters;
 
-    const filterConfig = [
-        {
-            id: 'gender',
-            title: 'Gender',
-            filterList: [
-                { id: 'MALE', label: 'Male' },
-                { id: 'FEMALE', label: 'Female' },
-                { id: 'OTHER', label: 'Other' },
-            ],
-        },
-        {
-            id: 'source',
-            title: 'Source',
-            filterList: [
-                { id: 'INSTITUTE', label: 'Institute Users' },
-                { id: 'AUDIENCE', label: 'Audience Respondents' },
-            ],
-        },
-    ];
+    const { instituteDetails } = useInstituteDetailsStore();
+    const { selectedSession } = useSelectedSessionStore();
+    const instituteId = getCurrentInstituteId() || '';
+
+    // Fetch audience/campaign list for the audience filter
+    const { data: campaignsData } = useQuery(
+        handleFetchCampaignsList({
+            institute_id: instituteId,
+            page: 0,
+            size: 100,
+        })
+    );
+
+    const filterConfig = buildFilterConfig(
+        instituteDetails,
+        selectedSession?.id || '',
+        campaignsData?.content
+    );
 
     return (
         <div className="animate-fadeIn space-y-4">
@@ -120,3 +126,76 @@ export const ContactFilters = ({ filters }: ContactFiltersProps) => {
         </div>
     );
 };
+
+function buildFilterConfig(
+    instituteDetails: ReturnType<typeof useInstituteDetailsStore>['instituteDetails'],
+    currentSessionId: string,
+    campaigns?: { id?: string; audience_id?: string; campaign_name: string }[]
+) {
+    const filters: { id: string; title: string; filterList: { id: string; label: string }[] }[] = [];
+
+    // Batch/Course filter
+    const batches = (instituteDetails?.batches_for_sessions || [])
+        .filter((batch) => batch.session.id === currentSessionId)
+        .map((batch) => ({
+            id: batch.id,
+            label: `${removeDefaultPrefix(batch.package_dto.package_name)}${batch.level.level_name && batch.level.level_name !== 'DEFAULT' ? ` - ${removeDefaultPrefix(batch.level.level_name)}` : ''}`.trim(),
+        }))
+        .slice(0, 10);
+
+    if (batches.length > 0) {
+        filters.push({
+            id: 'batch',
+            title: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
+            filterList: batches,
+        });
+    }
+
+    // Status filter
+    const statuses = (instituteDetails?.student_statuses || []).map((status, index) => ({
+        id: index.toString(),
+        label: status,
+    }));
+    if (statuses.length > 0) {
+        filters.push({ id: 'statuses', title: 'Status', filterList: statuses });
+    }
+
+    // Gender filter
+    const genders = (instituteDetails?.genders || []).map((gender, index) => ({
+        id: index.toString(),
+        label: gender,
+    }));
+    if (genders.length > 0) {
+        filters.push({ id: 'gender', title: 'Gender', filterList: genders });
+    }
+
+    // Source filter (Institute Users / Audience Respondents)
+    filters.push({
+        id: 'source',
+        title: 'Source',
+        filterList: [
+            { id: 'INSTITUTE', label: 'Institute Users' },
+            { id: 'AUDIENCE', label: 'Audience Respondents' },
+        ],
+    });
+
+    // Audience filter
+    if (campaigns && campaigns.length > 0) {
+        const audienceOptions = campaigns
+            .filter((c) => c.id)
+            .map((c) => ({
+                id: c.id!,
+                label: c.campaign_name,
+            }));
+
+        if (audienceOptions.length > 0) {
+            filters.push({
+                id: 'audience_list',
+                title: 'Audience',
+                filterList: audienceOptions,
+            });
+        }
+    }
+
+    return filters;
+}

@@ -50,4 +50,18 @@ public interface InvoiceRepository extends JpaRepository<Invoice, String> {
        long countByInvoiceNumberStartingWith(String prefix);
 
        boolean existsByInvoiceNumber(String invoiceNumber);
+
+       @Query("SELECT i FROM Invoice i WHERE i.instituteId = :instituteId " +
+                     "AND (:userId IS NULL OR i.userId = :userId) " +
+                     "AND (:status IS NULL OR i.status = :status) " +
+                     "AND (:startDate IS NULL OR i.invoiceDate >= :startDate) " +
+                     "AND (:endDate IS NULL OR i.invoiceDate <= :endDate) " +
+                     "ORDER BY i.createdAt DESC")
+       Page<Invoice> findByInstituteIdWithFilters(
+                     @Param("instituteId") String instituteId,
+                     @Param("userId") String userId,
+                     @Param("status") String status,
+                     @Param("startDate") LocalDateTime startDate,
+                     @Param("endDate") LocalDateTime endDate,
+                     Pageable pageable);
 }

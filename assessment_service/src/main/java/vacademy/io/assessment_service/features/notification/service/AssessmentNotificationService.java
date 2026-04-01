@@ -64,13 +64,13 @@ public class AssessmentNotificationService {
 
     public void sendNotificationsToAdminsAfterReleasingTheResult(Assessment assessment, String instituteId) {
         NotificationDTO notificationDTO = buildAdminNotificationDTO(assessment, instituteId);
-        notificationService.sendEmailToUsers(notificationDTO);
+        notificationService.sendEmailToUsers(notificationDTO, instituteId);
     }
 
     private void sendNotificationToUsers(String subject, String body, Assessment assessment) {
         List<AssessmentUserRegistration> userRegistrations = getActiveUsersForAssessment(assessment.getId());
         NotificationDTO notificationDTO = buildNotificationDTO(subject, body, assessment, userRegistrations);
-        notificationService.sendEmailToUsers(notificationDTO);
+        notificationService.sendEmailToUsers(notificationDTO, null);
     }
 
     private List<AssessmentUserRegistration> getActiveUsersForAssessment(String assessmentId) {
@@ -146,7 +146,7 @@ public class AssessmentNotificationService {
 
     public void sendNotificationsToAdminsAfterReevaluating(Assessment assessment, String instituteId) {
         NotificationDTO notificationDTO = buildAdminNotificationDTO(assessment, instituteId);
-        notificationService.sendEmailToUsers(notificationDTO);
+        notificationService.sendEmailToUsers(notificationDTO, instituteId);
     }
 
     private NotificationDTO buildAdminNotificationDTOAfterReevaluating(Assessment assessment, String instituteId) {

@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -8,56 +7,15 @@ import {
     TrendingUp,
     Users,
 } from 'lucide-react';
-import { PackageSessionInventory } from '../-types/inventory-types';
+import { useInventoryStats } from '../-hooks/use-inventory-data';
 
-interface InventoryStatsCardsProps {
-    inventoryItems: PackageSessionInventory[];
-    isLoading: boolean;
-}
-
-export const InventoryStatsCards = ({ inventoryItems, isLoading }: InventoryStatsCardsProps) => {
-    const stats = useMemo(() => {
-        const result = {
-            totalSessions: inventoryItems.length,
-            unlimitedSessions: 0,
-            limitedSessions: 0,
-            lowAvailabilitySessions: 0,
-            criticalAvailabilitySessions: 0,
-            totalCapacity: 0,
-            totalAvailable: 0,
-        };
-
-        inventoryItems.forEach((item) => {
-            if (item.isUnlimited) {
-                result.unlimitedSessions++;
-            } else if (item.maxSeats !== undefined) {
-                result.limitedSessions++;
-                result.totalCapacity += item.maxSeats || 0;
-                result.totalAvailable += item.availableSlots || 0;
-
-                // Check availability levels
-                if (
-                    item.maxSeats &&
-                    item.availableSlots !== undefined &&
-                    item.availableSlots !== null
-                ) {
-                    const percentage = ((item.availableSlots ?? 0) / item.maxSeats) * 100;
-                    if (percentage <= 10 && percentage >= 0) {
-                        result.criticalAvailabilitySessions++;
-                    } else if (percentage <= 20 && percentage > 10) {
-                        result.lowAvailabilitySessions++;
-                    }
-                }
-            }
-        });
-
-        return result;
-    }, [inventoryItems]);
+export const InventoryStatsCards = () => {
+    const { data: stats, isLoading } = useInventoryStats();
 
     const statCards = [
         {
             title: 'Total Sessions',
-            value: stats.totalSessions,
+            value: stats?.total_sessions ?? 0,
             subtitle: 'Package sessions',
             icon: Users,
             gradient: 'from-blue-500 to-cyan-500',
@@ -65,7 +23,7 @@ export const InventoryStatsCards = ({ inventoryItems, isLoading }: InventoryStat
         },
         {
             title: 'Unlimited',
-            value: stats.unlimitedSessions,
+            value: stats?.unlimited_sessions ?? 0,
             subtitle: 'No capacity limit',
             icon: InfinityIcon,
             gradient: 'from-emerald-500 to-teal-500',
@@ -73,29 +31,29 @@ export const InventoryStatsCards = ({ inventoryItems, isLoading }: InventoryStat
         },
         {
             title: 'Total Capacity',
-            value: stats.totalCapacity.toLocaleString(),
-            subtitle: `${stats.totalAvailable.toLocaleString()} available`,
+            value: (stats?.total_capacity ?? 0).toLocaleString(),
+            subtitle: `${(stats?.total_available ?? 0).toLocaleString()} available`,
             icon: TrendingUp,
             gradient: 'from-violet-500 to-purple-500',
             bgGradient: 'from-violet-500/10 to-purple-500/10',
         },
         {
             title: 'Critical',
-            value: stats.criticalAvailabilitySessions,
+            value: stats?.critical_sessions ?? 0,
             subtitle: '< 10% remaining',
             icon: AlertCircle,
             gradient: 'from-red-500 to-rose-600',
             bgGradient: 'from-red-500/10 to-rose-600/10',
-            critical: stats.criticalAvailabilitySessions > 0,
+            critical: (stats?.critical_sessions ?? 0) > 0,
         },
         {
             title: 'Low Availability',
-            value: stats.lowAvailabilitySessions,
+            value: stats?.low_availability_sessions ?? 0,
             subtitle: '10-20% remaining',
             icon: AlertTriangle,
             gradient: 'from-orange-500 to-amber-500',
             bgGradient: 'from-orange-500/10 to-amber-500/10',
-            warning: stats.lowAvailabilitySessions > 0,
+            warning: (stats?.low_availability_sessions ?? 0) > 0,
         },
     ];
 

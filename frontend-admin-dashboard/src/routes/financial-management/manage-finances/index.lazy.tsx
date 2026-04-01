@@ -4,7 +4,8 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { useQuery } from '@tanstack/react-query';
-import { CreditCard, Coins, WarningCircle, Receipt, Users } from '@phosphor-icons/react';
+import { MyDropdown } from '@/components/design-system/dropdown';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { ManageFinancesFilters } from './-components/ManageFinancesFilters';
 import { ManageFinancesTable } from './-components/ManageFinancesTable';
 import { fetchManageFinancesLogs, getManageFinancesQueryKey } from '@/services/manage-finances';
@@ -18,16 +19,11 @@ export const Route = createLazyFileRoute('/financial-management/manage-finances/
     ),
 });
 
-// Helper to format large currency values
-const formatCurrencyShort = (val: number | undefined) => {
-    if (val === undefined || val === null) return '₹ 0';
-    if (val >= 10000000) return `₹ ${(val / 10000000).toFixed(2)} Cr`;
-    if (val >= 100000) return `₹ ${(val / 100000).toFixed(2)} L`;
-    return `₹ ${val.toLocaleString('en-IN')}`;
-};
-
 function ManageFinancesLayoutPage() {
     const { setNavHeading } = useNavHeadingStore();
+    const { getAllSessions } = useInstituteDetailsStore();
+
+    const [selectedSessionId, setSelectedSessionId] = useState<string>('');
 
     const [filter, setFilter] = useState<FeeSearchFilterDTO>({
         page: 0,
@@ -40,6 +36,28 @@ function ManageFinancesLayoutPage() {
     useEffect(() => {
         setNavHeading(<h1 className="text-lg">Manage Finances</h1>);
     }, [setNavHeading]);
+
+    // Build session dropdown list
+    const sessions = getAllSessions();
+    const sessionDropdownList = [
+        'All',
+        ...sessions.map((s: any) => s.session_name || s.id),
+    ];
+
+    const handleSessionChange = (value: string) => {
+        if (value === 'All') {
+            setSelectedSessionId('');
+        } else {
+            const session = sessions.find(
+                (s: any) => (s.session_name || s.id) === value
+            );
+            setSelectedSessionId(session?.id || '');
+        }
+    };
+
+    const currentSessionLabel = selectedSessionId
+        ? sessions.find((s: any) => s.id === selectedSessionId)?.session_name || 'All'
+        : 'All';
 
     const {
         data: financesData,
@@ -64,13 +82,6 @@ function ManageFinancesLayoutPage() {
         }));
     };
 
-    // Derive pagination info from response (handle both camel/snake)
-    const d = financesData as any;
-    const totalRecords = d?.totalElements ?? d?.total_elements ?? 0;
-    const totalPages = d?.totalPages ?? d?.total_pages ?? 0;
-    const pageNumber = d?.number ?? d?.page_no ?? 0;
-    const pageSize = d?.size ?? d?.page_size ?? 0;
-
     return (
         <>
             <Helmet>
@@ -81,67 +92,19 @@ function ManageFinancesLayoutPage() {
                 />
             </Helmet>
 
-            <div className="flex flex-col gap-6 p-6 animate-in fade-in duration-300 w-full max-w-[1400px] mx-auto">
-                {/* Summary Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {[
-                        {
-                            title: 'Total Records',
-                            value: totalRecords.toLocaleString(),
-                            icon: Users,
-                            bgColor: 'bg-blue-50',
-                            iconColor: 'text-blue-600',
-                            borderColor: 'border-blue-100',
-                        },
-                        {
-                            title: 'Current Page',
-                            value: totalPages > 0 ? `${pageNumber + 1} of ${totalPages}` : '—',
-                            icon: Receipt,
-                            bgColor: 'bg-purple-50',
-                            iconColor: 'text-purple-600',
-                            borderColor: 'border-purple-100',
-                        },
-                        {
-                            title: 'Page Size',
-                            value: pageSize.toString(),
-                            icon: CreditCard,
-                            bgColor: 'bg-orange-50',
-                            iconColor: 'text-orange-500',
-                            borderColor: 'border-orange-100',
-                        },
-                        {
-                            title: 'Filters Active',
-                            value: Object.values(filter.filters).filter(
-                                (v) =>
-                                    v !== undefined &&
-                                    v !== '' &&
-                                    !(Array.isArray(v) && v.length === 0)
-                            ).length.toString(),
-                            icon: WarningCircle,
-                            bgColor: 'bg-green-50',
-                            iconColor: 'text-green-600',
-                            borderColor: 'border-green-100',
-                        },
-                    ].map((card, idx) => (
-                        <div
-                            key={idx}
-                            className={`bg-white border ${card.borderColor} rounded-xl p-4 shadow-sm flex flex-col relative overflow-hidden transition hover:shadow-md`}
-                        >
-                            <div className="flex justify-between items-start mb-1">
-                                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                                    {card.title}
-                                </span>
-                                <div
-                                    className={`p-1.5 bg-gray-50/50 rounded-full ${card.iconColor}`}
-                                >
-                                    <card.icon size={18} weight="duotone" />
-                                </div>
-                            </div>
-                            <div className="text-xl font-extrabold text-gray-800 mt-1">
-                                {card.value}
-                            </div>
-                        </div>
-                    ))}
+            <div className="flex flex-col gap-4 p-6 animate-in fade-in duration-300 w-full max-w-[1400px] mx-auto">
+                {/* Page header with session dropdown */}
+                <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-bold text-gray-800">Manage Finances</h2>
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-500">Session -</span>
+                        <MyDropdown
+                            currentValue={currentSessionLabel}
+                            dropdownList={sessionDropdownList}
+                            handleChange={handleSessionChange}
+                            placeholder="All"
+                        />
+                    </div>
                 </div>
 
                 {/* Filters */}
@@ -149,6 +112,7 @@ function ManageFinancesLayoutPage() {
                     filter={filter}
                     onFilterChange={setFilter}
                     onClearFilters={handleClearFilters}
+                    selectedSessionId={selectedSessionId}
                 />
 
                 {/* Table */}
@@ -158,6 +122,7 @@ function ManageFinancesLayoutPage() {
                     error={error as Error}
                     currentPage={filter.page}
                     onPageChange={handlePageChange}
+                    isFeeTypeFiltered={!!filter.filters.feeTypeIds?.length}
                 />
             </div>
         </>

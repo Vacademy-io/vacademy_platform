@@ -6,9 +6,9 @@ import { useNavigate } from '@tanstack/react-router';
 
 interface TemplateFormData {
     name: string;
-    type: 'EMAIL' | 'WHATSAPP';
+    type: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL';
     subject: string;
-    templateType: 'marketing' | 'utility' | 'transactional';
+    templateType: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL';
     isDefault: boolean;
 }
 

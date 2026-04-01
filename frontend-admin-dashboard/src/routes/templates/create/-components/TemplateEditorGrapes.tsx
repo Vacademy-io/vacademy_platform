@@ -54,9 +54,9 @@ export const TemplateEditorGrapes: React.FC<TemplateEditorGrapesProps> = ({ temp
     const [template, setTemplate] = useState<MessageTemplate | null>(null);
     const [formData, setFormData] = useState({
         name: '',
-        type: 'EMAIL' as 'EMAIL' | 'WHATSAPP',
+        type: 'EMAIL' as 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL',
         subject: '',
-        templateType: 'utility' as 'marketing' | 'utility' | 'transactional',
+        templateType: 'utility' as 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL',
         isDefault: false,
     });
     // Text placeholder that survives GrapesJS re-renders and sanitation

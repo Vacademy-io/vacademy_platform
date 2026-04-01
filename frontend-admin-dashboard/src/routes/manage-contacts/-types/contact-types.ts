@@ -21,6 +21,11 @@ export interface ContactListRequest {
     include_audience_respondents?: boolean;
     campaign_filter?: CampaignFilter;
     user_filter?: UserFilter;
+    // Enrollment filters (same as Linked Course Contacts)
+    statuses?: string[];
+    package_session_ids?: string[];
+    payment_statuses?: string[];
+    sub_org_user_types?: string[];
     page: number;
     size: number;
     sort_by?: string;

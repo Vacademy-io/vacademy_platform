@@ -74,6 +74,7 @@ public class QuestionWiseMarksService {
                 .timeTakenInSeconds(timeTakenInSecs)
                 .responseJson(responseJson)
                 .section(section)
+                .status(answerStatus)
                 .marks(marks).build();
 
 

@@ -1,40 +1,89 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
-import PackageSelector from '@/components/design-system/PackageSelector';
-import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import { MagnifyingGlass, X, FunnelSimple, Package, CheckCircle } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { MagnifyingGlass, X } from '@phosphor-icons/react';
+import { FilterChips } from '@/components/design-system/chips';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { FeeSearchFilterDTO } from '@/types/manage-finances';
+import {
+    fetchFeeTypesForInstitute,
+    getFeeTypesQueryKey,
+} from '@/services/manage-finances';
 
 interface ManageFinancesFiltersProps {
     filter: FeeSearchFilterDTO;
     onFilterChange: (filter: FeeSearchFilterDTO) => void;
     onClearFilters: () => void;
+    selectedSessionId: string;
 }
 
-const STATUS_CONFIG = [
-    { value: 'PAID', label: 'Paid', activeBg: 'bg-emerald-100', activeText: 'text-emerald-700', activeBorder: 'border-emerald-300' },
-    { value: 'PARTIAL', label: 'Partial', activeBg: 'bg-amber-100', activeText: 'text-amber-700', activeBorder: 'border-amber-300' },
-    { value: 'PENDING', label: 'Pending', activeBg: 'bg-slate-200', activeText: 'text-slate-700', activeBorder: 'border-slate-300' },
-    { value: 'OVERDUE', label: 'Overdue', activeBg: 'bg-red-100', activeText: 'text-red-700', activeBorder: 'border-red-300' },
+const STATUS_OPTIONS = [
+    { id: 'PAID', label: 'Paid' },
+    { id: 'PARTIAL', label: 'Partial' },
+    { id: 'PENDING', label: 'Pending' },
+    { id: 'OVERDUE', label: 'Overdue' },
 ];
+
+type FilterItem = { id: string; label: string };
 
 export function ManageFinancesFilters({
     filter,
     onFilterChange,
     onClearFilters,
+    selectedSessionId,
 }: ManageFinancesFiltersProps) {
-    const [showPackageFilter, setShowPackageFilter] = useState(false);
+    const { getCourseFromPackage, getAllLevels, instituteDetails } =
+        useInstituteDetailsStore();
+
     const [searchInput, setSearchInput] = useState(filter.filters.studentSearchQuery || '');
     const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
+    // Keep a ref to the latest filter to avoid stale closures in effects
+    const filterRef = useRef(filter);
+    filterRef.current = filter;
+
+    const [selectedPackages, setSelectedPackages] = useState<FilterItem[]>([]);
+    const [selectedLevels, setSelectedLevels] = useState<FilterItem[]>([]);
+    const [selectedFeeTypes, setSelectedFeeTypes] = useState<FilterItem[]>([]);
+    const [selectedStatuses, setSelectedStatuses] = useState<FilterItem[]>(
+        (filter.filters.statuses || []).map((s) => ({
+            id: s,
+            label: STATUS_OPTIONS.find((o) => o.id === s)?.label || s,
+        }))
+    );
+
+    // Fetch fee types from API
+    const { data: feeTypesData } = useQuery({
+        queryKey: getFeeTypesQueryKey(),
+        queryFn: fetchFeeTypesForInstitute,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    // Build fee type options — group by name, collect all IDs per name
+    const feeTypeOptions: FilterItem[] = useMemo(() => {
+        if (!feeTypesData) return [];
+        const nameMap = new Map<string, string[]>();
+        for (const ft of feeTypesData) {
+            const ids = nameMap.get(ft.name) || [];
+            ids.push(ft.id);
+            nameMap.set(ft.name, ids);
+        }
+        // Use first ID as the FilterItem id, store all IDs joined with comma
+        return Array.from(nameMap.entries()).map(([name, ids]) => ({
+            id: ids.join(','),
+            label: name,
+        }));
+    }, [feeTypesData]);
+
+    // Debounced search
     useEffect(() => {
         debounceRef.current = setTimeout(() => {
+            const current = filterRef.current;
             onFilterChange({
-                ...filter,
+                ...current,
                 page: 0,
                 filters: {
-                    ...filter.filters,
+                    ...current.filters,
                     studentSearchQuery: searchInput || undefined,
                 },
             });
@@ -49,169 +98,226 @@ export function ManageFinancesFilters({
         }
     }, [filter.filters.studentSearchQuery]);
 
-    const handlePackageSessionChange = (selection: {
-        packageSessionId: string | null;
-        packageSessionIds?: string[];
-    }) => {
+    // Clear local selections when external clear happens
+    useEffect(() => {
+        if (
+            !filter.filters.statuses?.length &&
+            !filter.filters.packageSessionIds?.length &&
+            !filter.filters.feeTypeIds?.length &&
+            !filter.filters.studentSearchQuery
+        ) {
+            setSelectedPackages([]);
+            setSelectedLevels([]);
+            setSelectedFeeTypes([]);
+            setSelectedStatuses([]);
+        }
+    }, [filter.filters]);
+
+    // Build package options from store
+    const packageOptions: FilterItem[] = useMemo(() => {
+        const courses = getCourseFromPackage({});
+        return courses.map((c) => ({
+            id: c.id,
+            label: c.name || c.id,
+        }));
+    }, [getCourseFromPackage]);
+
+    const levelOptions: FilterItem[] = useMemo(() => {
+        return getAllLevels().map((l: any) => ({
+            id: l.id,
+            label: l.level_name || l.id,
+        }));
+    }, [getAllLevels]);
+
+    // Handle status changes
+    const handleStatusSelect = (option: FilterItem) => {
+        const exists = selectedStatuses.some((s) => s.id === option.id);
+        const updated = exists
+            ? selectedStatuses.filter((s) => s.id !== option.id)
+            : [...selectedStatuses, option];
+        setSelectedStatuses(updated);
+        const current = filterRef.current;
         onFilterChange({
-            ...filter,
+            ...current,
             page: 0,
             filters: {
-                ...filter.filters,
-                packageSessionIds: selection.packageSessionIds?.length
-                    ? selection.packageSessionIds
-                    : selection.packageSessionId
-                      ? [selection.packageSessionId]
-                      : [],
+                ...current.filters,
+                statuses: updated.map((s) => s.id),
             },
         });
     };
 
-    const toggleStatus = (statusValue: string) => {
-        const current = filter.filters.statuses || [];
-        const updated = current.includes(statusValue)
-            ? current.filter((s) => s !== statusValue)
-            : [...current, statusValue];
+    const handlePackageSelect = (option: FilterItem) => {
+        setSelectedPackages((prev) => {
+            const exists = prev.some((p) => p.id === option.id);
+            return exists ? prev.filter((p) => p.id !== option.id) : [...prev, option];
+        });
+    };
 
+    const handleLevelSelect = (option: FilterItem) => {
+        setSelectedLevels((prev) => {
+            const exists = prev.some((l) => l.id === option.id);
+            return exists ? prev.filter((l) => l.id !== option.id) : [...prev, option];
+        });
+    };
+
+    // Handle fee type changes — send all IDs (comma-joined per option) to backend
+    const handleFeeTypeSelect = (option: FilterItem) => {
+        const exists = selectedFeeTypes.some((f) => f.id === option.id);
+        const updated = exists
+            ? selectedFeeTypes.filter((f) => f.id !== option.id)
+            : [...selectedFeeTypes, option];
+        setSelectedFeeTypes(updated);
+
+        // Flatten all comma-joined IDs into a single array
+        const allFeeTypeIds = updated.flatMap((f) => f.id.split(','));
+        const current = filterRef.current;
         onFilterChange({
-            ...filter,
+            ...current,
             page: 0,
             filters: {
-                ...filter.filters,
-                statuses: updated,
+                ...current.filters,
+                feeTypeIds: allFeeTypeIds.length > 0 ? allFeeTypeIds : undefined,
             },
         });
     };
 
-    const clearStatuses = () => {
+    // When package/level/session selection changes, compute matching packageSessionIds
+    useEffect(() => {
+        const current = filterRef.current;
+
+        if (
+            selectedPackages.length === 0 &&
+            selectedLevels.length === 0 &&
+            !selectedSessionId
+        ) {
+            if (current.filters.packageSessionIds?.length) {
+                onFilterChange({
+                    ...current,
+                    page: 0,
+                    filters: { ...current.filters, packageSessionIds: [] },
+                });
+            }
+            return;
+        }
+
+        const batches = instituteDetails?.batches_for_sessions || [];
+        const matchingIds = batches
+            .filter((batch: any) => {
+                const pkgMatch =
+                    selectedPackages.length === 0 ||
+                    selectedPackages.some((p) => p.id === batch.package_dto?.id);
+                const lvlMatch =
+                    selectedLevels.length === 0 ||
+                    selectedLevels.some((l) => l.id === batch.level?.id);
+                const sessMatch =
+                    !selectedSessionId || batch.session?.id === selectedSessionId;
+                return pkgMatch && lvlMatch && sessMatch;
+            })
+            .map((batch: any) => batch.id);
+
         onFilterChange({
-            ...filter,
+            ...current,
             page: 0,
-            filters: {
-                ...filter.filters,
-                statuses: [],
-            },
+            filters: { ...current.filters, packageSessionIds: matchingIds },
         });
-    };
+    }, [selectedPackages, selectedLevels, selectedSessionId]);
 
     const hasActiveFilters =
         !!filter.filters.studentSearchQuery ||
-        (filter.filters.statuses && filter.filters.statuses.length > 0) ||
-        (filter.filters.packageSessionIds && filter.filters.packageSessionIds.length > 0);
-
-    const selectedStatuses = filter.filters.statuses || [];
+        selectedStatuses.length > 0 ||
+        selectedPackages.length > 0 ||
+        selectedLevels.length > 0 ||
+        selectedFeeTypes.length > 0;
 
     return (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col gap-5 p-5">
-            {/* Header row */}
-            <div className="flex items-center gap-6 pb-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                    <FunnelSimple size={20} weight="duotone" className="text-gray-600" />
-                    <h2 className="text-base font-bold text-gray-800 tracking-wide">Filters</h2>
-                </div>
-
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3">
+            <div className="flex items-center gap-3">
                 {/* Search input */}
-                <div className="relative w-80 ml-auto">
+                <div className="relative w-64 flex-shrink-0">
                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                         <MagnifyingGlass className="h-4 w-4 text-gray-400" />
                     </div>
                     <Input
                         type="search"
-                        placeholder="Search student name or phone..."
-                        className="pl-10 h-9 rounded-md border-gray-300 bg-gray-50 text-sm font-medium text-gray-700 focus:border-blue-500 hover:bg-white"
+                        placeholder="Search by name or phone..."
+                        className="pl-9 h-8 rounded-lg border-gray-300 bg-gray-50 text-sm font-medium text-gray-700 focus:border-blue-500 hover:bg-white"
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
                     />
                 </div>
 
+                {/* Package filter */}
+                <FilterChips
+                    label="Package"
+                    filterList={packageOptions}
+                    selectedFilters={selectedPackages}
+                    handleSelect={handlePackageSelect}
+                    handleClearFilters={() => setSelectedPackages([])}
+                />
+
+                {/* Fee Type filter */}
+                <FilterChips
+                    label="Fee Type"
+                    filterList={feeTypeOptions}
+                    selectedFilters={selectedFeeTypes}
+                    handleSelect={handleFeeTypeSelect}
+                    handleClearFilters={() => {
+                        setSelectedFeeTypes([]);
+                        const current = filterRef.current;
+                        onFilterChange({
+                            ...current,
+                            page: 0,
+                            filters: { ...current.filters, feeTypeIds: undefined },
+                        });
+                    }}
+                />
+
+                {/* Status filter */}
+                <FilterChips
+                    label="Status"
+                    filterList={STATUS_OPTIONS}
+                    selectedFilters={selectedStatuses}
+                    handleSelect={handleStatusSelect}
+                    handleClearFilters={() => {
+                        setSelectedStatuses([]);
+                        const current = filterRef.current;
+                        onFilterChange({
+                            ...current,
+                            page: 0,
+                            filters: { ...current.filters, statuses: [] },
+                        });
+                    }}
+                />
+
+                {/* Level filter */}
+                <FilterChips
+                    label="Level"
+                    filterList={levelOptions}
+                    selectedFilters={selectedLevels}
+                    handleSelect={handleLevelSelect}
+                    handleClearFilters={() => setSelectedLevels([])}
+                />
+
+                {/* Spacer + Clear all */}
+                <div className="flex-1" />
                 {hasActiveFilters && (
                     <button
-                        onClick={onClearFilters}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition shadow-sm"
+                        onClick={() => {
+                            setSelectedPackages([]);
+                            setSelectedLevels([]);
+                            setSelectedFeeTypes([]);
+                            setSelectedStatuses([]);
+                            setSearchInput('');
+                            onClearFilters();
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition flex-shrink-0"
                     >
                         <X size={12} weight="bold" />
                         Clear All
                     </button>
                 )}
             </div>
-
-            {/* Status pills row */}
-            <div className="flex flex-wrap items-center gap-3">
-                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">
-                    Status
-                </span>
-
-                {/* "All" pill */}
-                <button
-                    onClick={clearStatuses}
-                    className={cn(
-                        'px-4 py-1.5 rounded-full text-sm font-semibold transition shadow-sm border',
-                        selectedStatuses.length === 0
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200'
-                    )}
-                >
-                    All
-                </button>
-
-                {/* Individual status pills */}
-                {STATUS_CONFIG.map((s) => {
-                    const isActive = selectedStatuses.includes(s.value);
-                    return (
-                        <button
-                            key={s.value}
-                            onClick={() => toggleStatus(s.value)}
-                            className={cn(
-                                'px-4 py-1.5 rounded-full text-sm font-semibold transition shadow-sm border',
-                                isActive
-                                    ? `${s.activeBg} ${s.activeText} ${s.activeBorder}`
-                                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                            )}
-                        >
-                            {s.label}
-                        </button>
-                    );
-                })}
-
-                {/* Package filter toggle */}
-                <div className="ml-auto">
-                    <button
-                        onClick={() => setShowPackageFilter(!showPackageFilter)}
-                        className={cn(
-                            'flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold transition shadow-sm border',
-                            showPackageFilter || (filter.filters.packageSessionIds && filter.filters.packageSessionIds.length > 0)
-                                ? 'bg-blue-100 text-blue-700 border-blue-300'
-                                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                        )}
-                    >
-                        <Package size={14} weight="duotone" />
-                        Course Filter
-                        {filter.filters.packageSessionIds && filter.filters.packageSessionIds.length > 0 && (
-                            <span className="flex items-center justify-center size-5 rounded-full bg-blue-600 text-white text-[10px] font-bold">
-                                {filter.filters.packageSessionIds.length}
-                            </span>
-                        )}
-                    </button>
-                </div>
-            </div>
-
-            {/* Expandable Package/Session selector */}
-            {showPackageFilter && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50/60 p-4 animate-in slide-in-from-top-2 duration-200">
-                    <div className="flex items-center gap-2 mb-3">
-                        <CheckCircle size={16} weight="duotone" className="text-blue-600" />
-                        <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Select Course / Session
-                        </span>
-                    </div>
-                    <PackageSelector
-                        instituteId={getCurrentInstituteId() || ''}
-                        onChange={handlePackageSessionChange}
-                        multiSelect={true}
-                        initialPackageSessionIds={filter.filters.packageSessionIds}
-                    />
-                </div>
-            )}
         </div>
     );
 }

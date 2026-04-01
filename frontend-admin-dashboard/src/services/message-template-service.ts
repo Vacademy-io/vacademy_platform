@@ -75,14 +75,18 @@ export const createMessageTemplate = async (
             throw new Error('Institute ID not found. Please login again.');
         }
         
+        // INVOICE and INVOICE_EMAIL types are stored as-is; others are lowercased
+        const resolvedType = (template.type === 'INVOICE' || template.type === 'INVOICE_EMAIL')
+            ? template.type : (template.type?.toLowerCase() || 'email');
+
         const payload = {
-            type: template.type?.toLowerCase() || 'email',
+            type: resolvedType,
             vendorId: 'default',
             instituteId: instituteId,
             name: template.name,
             subject: template.subject || '',
-            content: template.content, // HTML content from GrapesJS editor
-            contentType: 'text/html', // HTML content with base64 images for email templates
+            content: template.content,
+            contentType: 'text/html',
             settingJson: {
                 variables: template.variables || [],
                 isDefault: template.isDefault || false,
@@ -144,7 +148,7 @@ export const createMessageTemplate = async (
 };
 
 export const getMessageTemplates = async (
-    type?: 'EMAIL' | 'WHATSAPP',
+    type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL',
     page = 0,
     size = 10
 ): Promise<TemplateListResponse> => {
@@ -356,9 +360,12 @@ export const updateMessageTemplate = async (
         
         const { id, ...updateData } = template;
 
+        const resolvedUpdateType = (updateData.type === 'INVOICE' || updateData.type === 'INVOICE_EMAIL')
+            ? updateData.type : (updateData.type?.toLowerCase() || 'email');
+
         const payload = {
             id: id,
-            type: updateData.type?.toLowerCase() || 'email',
+            type: resolvedUpdateType,
             vendorId: 'default',
             instituteId: instituteId,
             name: updateData.name || '',

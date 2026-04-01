@@ -85,6 +85,9 @@ public class StudentAttempt {
     @Column(name = "evaluated_file_id")
     private String evaluatedFileId;
 
+    @Column(name = "report_pdf_file_id")
+    private String reportPdfFileId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

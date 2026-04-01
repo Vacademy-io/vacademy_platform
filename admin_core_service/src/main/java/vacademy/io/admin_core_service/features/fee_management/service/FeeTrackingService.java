@@ -154,6 +154,8 @@ public class FeeTrackingService {
 
                 for (Map.Entry<String, List<StudentFeePayment>> entry : groupedPayments.entrySet()) {
                     List<StudentFeePayment> group = entry.getValue();
+                    // Sort by due date for consistent ordering in progress bar
+                    group.sort(Comparator.comparing(StudentFeePayment::getDueDate, Comparator.nullsLast(Comparator.naturalOrder())));
                     StudentFeePayment first = group.get(0);
 
                     BigDecimal totalExpectedAmount = BigDecimal.ZERO;
@@ -197,8 +199,13 @@ public class FeeTrackingService {
                         }
                     }
 
+                    // Collect per-installment statuses (already sorted by due date)
+                    List<String> installmentStatuses = group.stream()
+                            .map(StudentFeePayment::getStatus)
+                            .collect(Collectors.toList());
+
                     UserDTO user = userMap.get(first.getUserId());
-                    
+
                     aggregatedRows.add(StudentFeePaymentRowDTO.builder()
                             .studentId(first.getUserId())
                             .cpoId(first.getCpoId())
@@ -211,6 +218,7 @@ public class FeeTrackingService {
                             .dueAmount(dueAmount)
                             .overdueAmount(overdueAmount)
                             .status(status)
+                            .installmentStatuses(installmentStatuses)
                             .build());
                 }
 
@@ -899,5 +907,22 @@ public class FeeTrackingService {
                         String feeTypeName,
                         String feeTypeCode,
                         String feeTypeDescription) {
+        }
+
+        /**
+         * Returns all fee types for an institute by looking up all CPOs
+         * belonging to the institute and then fetching their fee types.
+         */
+        @Transactional(readOnly = true)
+        public List<Map<String, String>> getFeeTypesForInstitute(String instituteId) {
+                List<ComplexPaymentOption> cpos = complexPaymentOptionRepository.findByInstituteId(instituteId);
+                List<String> cpoIds = cpos.stream().map(ComplexPaymentOption::getId).collect(Collectors.toList());
+                if (cpoIds.isEmpty()) return Collections.emptyList();
+
+                List<FeeType> feeTypes = feeTypeRepository.findByCpoIdInAndStatusNot(cpoIds, "DELETED");
+
+                return feeTypes.stream()
+                        .map(ft -> Map.of("id", ft.getId(), "name", ft.getName()))
+                        .collect(Collectors.toList());
         }
 }

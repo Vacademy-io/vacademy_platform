@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.fee_management.repository;
 import jakarta.persistence.criteria.*;
 import org.springframework.data.jpa.domain.Specification;
 import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
+import vacademy.io.admin_core_service.features.fee_management.entity.AssignedFeeValue;
 import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 
@@ -45,9 +46,13 @@ public class StudentFeePaymentSpecification {
                 predicates.add(root.get("cpoId").in(filters.getCpoIds()));
             }
 
-            // --- 3. Filter by Fee Type IDs (direct column on student_fee_payment) ---
+            // --- 3. Filter by Fee Type IDs (via assigned_fee_value join) ---
             if (filters.getFeeTypeIds() != null && !filters.getFeeTypeIds().isEmpty()) {
-                predicates.add(root.get("feeTypeId").in(filters.getFeeTypeIds()));
+                Subquery<String> asvSubquery = query.subquery(String.class);
+                Root<AssignedFeeValue> asvRoot = asvSubquery.from(AssignedFeeValue.class);
+                asvSubquery.select(asvRoot.get("id"));
+                asvSubquery.where(asvRoot.get("feeTypeId").in(filters.getFeeTypeIds()));
+                predicates.add(root.get("asvId").in(asvSubquery));
             }
 
             // --- 4. Status filter is done in-memory after aggregation per architect requirements ---

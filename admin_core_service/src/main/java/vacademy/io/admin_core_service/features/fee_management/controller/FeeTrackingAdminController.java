@@ -247,6 +247,13 @@ public class FeeTrackingAdminController {
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(feeTrackingService.getPaymentDetails(studentId, cpoId));
     }
+    @GetMapping("/fee-types")
+    public ResponseEntity<List<Map<String, String>>> getFeeTypesForInstitute(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(feeTrackingService.getFeeTypesForInstitute(instituteId));
+    }
+
     // ---- Fee-type priority configuration endpoints ----
 
     @PutMapping("/priority")

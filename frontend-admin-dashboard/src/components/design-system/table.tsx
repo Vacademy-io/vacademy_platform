@@ -28,7 +28,7 @@ import { useDialogStore } from '../../routes/manage-students/students-list/-hook
 import { DeleteStudentDialog } from './table-components/student-menu-options/delete-student-dialog';
 import { ColumnWidthConfig } from './utils/constants/table-layout';
 import { DashboardLoader } from '../core/dashboard-loader';
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useCompactMode } from '@/hooks/use-compact-mode';
 import { cn } from '@/lib/utils';
 
@@ -110,6 +110,7 @@ interface MyTableProps<T> {
     tableState?: { columnVisibility: VisibilityState };
     onCellClick?: (row: T, column: ColumnDef<T>) => void;
     onHeaderClick?: () => void;
+    renderExpandedRow?: (row: T) => React.ReactNode | null;
     enableColumnResizing?: boolean;
     columnResizeMode?: ColumnResizeMode;
     onColumnSizingChange?: (sizing: any) => void;
@@ -132,6 +133,7 @@ export function MyTable<T>({
     tableState,
     onCellClick,
     onHeaderClick,
+    renderExpandedRow,
     enableColumnResizing = true,
     columnResizeMode = 'onChange',
     onColumnSizingChange,
@@ -454,8 +456,8 @@ export function MyTable<T>({
                             }}
                         >
                             {table.getRowModel().rows.map((row) => (
+                                <React.Fragment key={row.id}>
                                 <tr
-                                    key={row.id}
                                     className="cursor-pointer border-b transition-colors hover:bg-white data-[state=selected]:bg-muted"
                                     style={{
                                         transform: 'translate3d(0, 0, 0)',
@@ -548,6 +550,19 @@ export function MyTable<T>({
                                         </td>
                                     ))}
                                 </tr>
+                                {renderExpandedRow && (() => {
+                                    const expanded = renderExpandedRow(row.original);
+                                    if (!expanded) return null;
+                                    const colCount = row.getVisibleCells().length;
+                                    return (
+                                        <tr>
+                                            <td colSpan={colCount} className="p-0 border-b bg-gray-50/50">
+                                                {expanded}
+                                            </td>
+                                        </tr>
+                                    );
+                                })()}
+                                </React.Fragment>
                             ))}
                         </tbody>
                     </table>

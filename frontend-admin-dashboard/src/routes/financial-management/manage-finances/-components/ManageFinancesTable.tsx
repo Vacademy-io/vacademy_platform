@@ -1,15 +1,21 @@
 import { useState, useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { MyTable, TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { Eye } from '@phosphor-icons/react';
+import { Eye, CaretDown, CaretRight } from '@phosphor-icons/react';
 import {
     FinancalManagementPaginatedResponse,
     StudentFeePaymentRowDTO,
+    InstallmentDetailDTO,
 } from '@/types/manage-finances';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { InstallmentDetailsModal } from './InstallmentDetailsModal';
+import {
+    fetchInstallmentDetails,
+    getInstallmentDetailsQueryKey,
+} from '@/services/manage-finances';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -19,6 +25,7 @@ interface ManageFinancesTableProps {
     error: unknown;
     currentPage: number;
     onPageChange: (page: number) => void;
+    isFeeTypeFiltered?: boolean;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -28,6 +35,14 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> =
     OVERDUE: { bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-500' },
     PARTIAL: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' },
     PENDING: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
+};
+
+const INSTALLMENT_STATUS_COLORS: Record<string, { bg: string; label: string }> = {
+    PAID: { bg: '#10b981', label: 'Paid' },
+    PARTIAL_PAID: { bg: '#f59e0b', label: 'Partial' },
+    OVERDUE: { bg: '#ef4444', label: 'Overdue' },
+    PENDING: { bg: '#e5e7eb', label: 'Pending' },
+    WAIVED: { bg: '#3b82f6', label: 'Waived' },
 };
 
 function StatusPill({ status }: { status: string }) {
@@ -45,6 +60,232 @@ function StatusPill({ status }: { status: string }) {
 const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 
+// ─── Percentage Progress Bar (parent row) ──────────────────────────────────
+
+function PercentageProgressBar({
+    paid,
+    due,
+    overdue,
+    total,
+}: {
+    paid: number;
+    due: number;
+    overdue: number;
+    total: number;
+}) {
+    if (total <= 0) return <span className="text-gray-400">—</span>;
+
+    const paidPct = Math.round((paid / total) * 100);
+    const overduePct = Math.round((overdue / total) * 100);
+    const duePct = Math.max(0, 100 - paidPct - overduePct);
+
+    return (
+        <div className="flex flex-col gap-1 min-w-[120px] max-w-[180px]">
+            <div className="flex h-3 w-full overflow-hidden rounded-full bg-gray-100">
+                {paidPct > 0 && (
+                    <div
+                        className="h-full bg-emerald-500 transition-all"
+                        style={{ width: `${paidPct}%` }}
+                        title={`Paid: ${paidPct}%`}
+                    />
+                )}
+                {overduePct > 0 && (
+                    <div
+                        className="h-full bg-red-500 transition-all"
+                        style={{ width: `${overduePct}%` }}
+                        title={`Overdue: ${overduePct}%`}
+                    />
+                )}
+                {duePct > 0 && (
+                    <div
+                        className="h-full bg-orange-400 transition-all"
+                        style={{ width: `${duePct}%` }}
+                        title={`Due: ${duePct}%`}
+                    />
+                )}
+            </div>
+            <div className="text-[10px] text-gray-500 font-medium">{paidPct}% paid</div>
+        </div>
+    );
+}
+
+// ─── Installment Progress Bar (per fee type in expanded row) ───────────────
+
+function InstallmentProgressBar({ statuses }: { statuses: string[] }) {
+    if (!statuses || statuses.length === 0) return <span className="text-gray-400">—</span>;
+
+    return (
+        <div className="flex items-center gap-[2px] min-w-[80px] max-w-[160px]">
+            {statuses.map((status, idx) => {
+                const config =
+                    INSTALLMENT_STATUS_COLORS[status] || INSTALLMENT_STATUS_COLORS['PENDING']!;
+                return (
+                    <div
+                        key={idx}
+                        className="relative group h-5 flex-1 rounded-sm cursor-default"
+                        style={{ backgroundColor: config.bg }}
+                    >
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-50 pointer-events-none">
+                            <div className="rounded bg-gray-800 px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap shadow-lg">
+                                #{idx + 1}: {config.label}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ─── Expanded Row Content ──────────────────────────────────────────────────
+
+interface FeeTypeGroup {
+    feeTypeName: string;
+    totalExpected: number;
+    totalPaid: number;
+    totalDue: number;
+    totalOverdue: number;
+    installmentStatuses: string[];
+}
+
+function groupByFeeType(installments: InstallmentDetailDTO[]): FeeTypeGroup[] {
+    const map = new Map<string, FeeTypeGroup>();
+    for (const inst of installments) {
+        const key = inst.fee_type_name;
+        let group = map.get(key);
+        if (!group) {
+            group = {
+                feeTypeName: key,
+                totalExpected: 0,
+                totalPaid: 0,
+                totalDue: 0,
+                totalOverdue: 0,
+                installmentStatuses: [],
+            };
+            map.set(key, group);
+        }
+        group.totalExpected += inst.amount_expected;
+        group.totalPaid += inst.amount_paid;
+        const instDue = inst.due_amount ?? 0;
+        if (inst.status === 'OVERDUE') {
+            group.totalOverdue += instDue;
+        } else {
+            group.totalDue += instDue;
+        }
+        group.installmentStatuses.push(inst.status);
+    }
+    return Array.from(map.values());
+}
+
+function ExpandedRowContent({ studentId, cpoId }: { studentId: string; cpoId: string }) {
+    const { data, isLoading, error } = useQuery({
+        queryKey: getInstallmentDetailsQueryKey(studentId, cpoId),
+        queryFn: () => fetchInstallmentDetails(studentId, cpoId),
+        enabled: !!studentId && !!cpoId,
+        staleTime: 30000,
+    });
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center py-4">
+                <DashboardLoader />
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="px-6 py-3 text-sm text-red-600">
+                Failed to load installment details.
+            </div>
+        );
+    }
+
+    if (!data || data.length === 0) {
+        return (
+            <div className="px-6 py-3 text-sm text-gray-500">No installments found.</div>
+        );
+    }
+
+    const feeTypeGroups = groupByFeeType(data);
+
+    return (
+        <div className="px-6 py-3 space-y-2">
+            {/* Legend */}
+            <div className="flex items-center gap-4 mb-1">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                    Installment Status:
+                </span>
+                {Object.entries(INSTALLMENT_STATUS_COLORS).map(([key, config]) => (
+                    <div key={key} className="flex items-center gap-1">
+                        <span
+                            className="inline-block h-2.5 w-2.5 rounded-sm"
+                            style={{ backgroundColor: config.bg }}
+                        />
+                        <span className="text-[10px] text-gray-500">{config.label}</span>
+                    </div>
+                ))}
+            </div>
+
+            {/* Fee type rows */}
+            <div className="rounded-lg border border-gray-200 overflow-hidden">
+                <table className="w-full text-left text-sm">
+                    <thead>
+                        <tr className="bg-gray-100/80 border-b border-gray-200">
+                            <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                Fee Type
+                            </th>
+                            <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                Expected
+                            </th>
+                            <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                Paid
+                            </th>
+                            <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                Due
+                            </th>
+                            <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                                Overdue
+                            </th>
+                            <th className="py-2 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider min-w-[140px]">
+                                Installments
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {feeTypeGroups.map((group) => (
+                            <tr key={group.feeTypeName} className="hover:bg-gray-50/60">
+                                <td className="py-2 px-4 font-semibold text-gray-800">
+                                    {group.feeTypeName}
+                                </td>
+                                <td className="py-2 px-4 text-gray-700">
+                                    {formatCurrency(group.totalExpected)}
+                                </td>
+                                <td className="py-2 px-4 font-semibold text-emerald-700">
+                                    {formatCurrency(group.totalPaid)}
+                                </td>
+                                <td className="py-2 px-4 font-semibold text-orange-600">
+                                    {group.totalDue > 0 ? formatCurrency(group.totalDue) : '—'}
+                                </td>
+                                <td className="py-2 px-4 font-semibold text-red-600">
+                                    {group.totalOverdue > 0
+                                        ? formatCurrency(group.totalOverdue)
+                                        : '—'}
+                                </td>
+                                <td className="py-2 px-4">
+                                    <InstallmentProgressBar
+                                        statuses={group.installmentStatuses}
+                                    />
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function ManageFinancesTable({
@@ -53,16 +294,38 @@ export function ManageFinancesTable({
     error,
     currentPage,
     onPageChange,
+    isFeeTypeFiltered = false,
 }: ManageFinancesTableProps) {
     const { getDetailsFromPackageSessionId, instituteDetails } = useInstituteDetailsStore();
 
-    // Modal state
+    // Modal state (eye button only)
     const [selectedRow, setSelectedRow] = useState<{
         studentId: string;
         cpoId: string;
         studentName: string;
         cpoName: string;
     } | null>(null);
+
+    // Expanded rows state
+    const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+    const toggleExpand = useCallback((studentId: string, cpoId: string) => {
+        const key = `${studentId}_${cpoId}`;
+        setExpandedRows((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) {
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+    }, []);
+
+    const isExpanded = useCallback(
+        (studentId: string, cpoId: string) => expandedRows.has(`${studentId}_${cpoId}`),
+        [expandedRows]
+    );
 
     // Map package_session_id → "Package Name - Level"
     const getPackageName = useCallback(
@@ -103,6 +366,30 @@ export function ManageFinancesTable({
 
     const columns = useMemo<ColumnDef<StudentFeePaymentRowDTO>[]>(
         () => [
+            {
+                id: 'expand',
+                header: '',
+                cell: ({ row }) => {
+                    const r = row.original;
+                    const expanded = isExpanded(r.student_id, r.cpo_id);
+                    return (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                toggleExpand(r.student_id, r.cpo_id);
+                            }}
+                            className="p-1 text-gray-400 hover:text-gray-700 transition-colors"
+                        >
+                            {expanded ? (
+                                <CaretDown size={14} weight="bold" />
+                            ) : (
+                                <CaretRight size={14} weight="bold" />
+                            )}
+                        </button>
+                    );
+                },
+                size: 40,
+            },
             {
                 id: 'student',
                 header: 'Student',
@@ -217,6 +504,29 @@ export function ManageFinancesTable({
                 size: 120,
             },
             {
+                id: 'progress',
+                header: 'Progress',
+                cell: ({ row }) => {
+                    const r = row.original;
+                    if (isFeeTypeFiltered) {
+                        return (
+                            <InstallmentProgressBar
+                                statuses={r.installment_statuses || []}
+                            />
+                        );
+                    }
+                    return (
+                        <PercentageProgressBar
+                            paid={r.total_paid_amount ?? 0}
+                            due={r.due_amount ?? 0}
+                            overdue={r.overdue_amount ?? 0}
+                            total={r.total_expected_amount ?? 0}
+                        />
+                    );
+                },
+                size: 180,
+            },
+            {
                 id: 'actions',
                 header: '',
                 cell: ({ row }) => (
@@ -240,7 +550,17 @@ export function ManageFinancesTable({
                 size: 50,
             },
         ],
-        [getPackageName]
+        [getPackageName, isExpanded, toggleExpand, isFeeTypeFiltered]
+    );
+
+    // ── Render expanded row ────────────────────────────────────────────
+
+    const renderExpandedRow = useCallback(
+        (row: StudentFeePaymentRowDTO) => {
+            if (!isExpanded(row.student_id, row.cpo_id)) return null;
+            return <ExpandedRowContent studentId={row.student_id} cpoId={row.cpo_id} />;
+        },
+        [isExpanded]
     );
 
     // ── Render states ───────────────────────────────────────────────────
@@ -291,14 +611,12 @@ export function ManageFinancesTable({
                         scrollable={true}
                         enableColumnResizing={true}
                         enableColumnPinning={false}
-                        onCellClick={(row: StudentFeePaymentRowDTO) => {
-                            setSelectedRow({
-                                studentId: row.student_id,
-                                cpoId: row.cpo_id,
-                                studentName: row.student_name,
-                                cpoName: row.cpo_name,
-                            });
+                        onCellClick={(row: StudentFeePaymentRowDTO, column: ColumnDef<StudentFeePaymentRowDTO>) => {
+                            const colId = column.id || (column as any).accessorKey;
+                            if (colId === 'actions' || colId === 'expand') return;
+                            toggleExpand(row.student_id, row.cpo_id);
                         }}
+                        renderExpandedRow={renderExpandedRow}
                     />
                 </div>
 
@@ -330,7 +648,7 @@ export function ManageFinancesTable({
                 </div>
             </div>
 
-            {/* Installment Details Popup */}
+            {/* Installment Details Popup (eye button only) */}
             {selectedRow && (
                 <InstallmentDetailsModal
                     open={!!selectedRow}

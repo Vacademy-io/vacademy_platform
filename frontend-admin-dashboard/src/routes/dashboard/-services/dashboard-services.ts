@@ -58,51 +58,34 @@ export const fetchFacultyList = async (
 ) => {
     try {
         const response = await authenticatedAxiosInstance({
-            method: 'GET',
-            url: GET_FACULTY_BY_INSTITUTE_CREATORS_ONLY,
+            method: 'POST',
+            url: GET_ALL_FACULTY_V2,
             params: {
                 instituteId,
+                pageNo,
+                pageSize,
             },
-            data: filters,
+            data: {
+                name: filters.name,
+                subjects: filters.subjects,
+                batches: filters.batches,
+                status: filters.status,
+                sortColumns: filters.sort_columns,
+            },
         });
+        const data = response.data as Record<string, unknown>;
+        if (data && typeof data === 'object') {
+            return {
+                content: data.content ?? [],
+                page_no: data.page_no ?? data.pageNo ?? pageNo,
+                page_size: data.page_size ?? data.pageSize ?? pageSize,
+                total_elements: data.total_elements ?? data.totalElements ?? 0,
+                total_pages: data.total_pages ?? data.totalPages ?? 0,
+                last: data.last ?? true,
+            };
+        }
         return response.data;
     } catch (error: unknown) {
-        const status = (error as { response?: { status?: number } })?.response?.status;
-        if (status === 403) {
-            try {
-                const fallbackResponse = await authenticatedAxiosInstance({
-                    method: 'POST',
-                    url: GET_ALL_FACULTY_V2,
-                    params: {
-                        instituteId,
-                        pageNo,
-                        pageSize,
-                    },
-                    data: {
-                        name: filters.name,
-                        subjects: filters.subjects,
-                        batches: filters.batches,
-                        status: filters.status,
-                        sortColumns: filters.sort_columns,
-                    },
-                });
-                const data = fallbackResponse.data as Record<string, unknown>;
-                if (data && typeof data === 'object') {
-                    return {
-                        content: data.content ?? [],
-                        page_no: data.page_no ?? data.pageNo ?? pageNo,
-                        page_size: data.page_size ?? data.pageSize ?? pageSize,
-                        total_elements: data.total_elements ?? data.totalElements ?? 0,
-                        total_pages: data.total_pages ?? data.totalPages ?? 0,
-                        last: data.last ?? true,
-                    };
-                }
-                return fallbackResponse.data;
-            } catch (fallbackError) {
-                console.error('Fallback faculty list also failed:', fallbackError);
-                throw fallbackError;
-            }
-        }
         console.error('Error fetching faculty list:', error);
         throw error;
     }
@@ -249,7 +232,8 @@ export const handleInviteUsers = async (
 
 export const handleInviteTeachers = async (
     instituteId: string | undefined,
-    data: z.infer<typeof inviteTeacherSchema>
+    data: z.infer<typeof inviteTeacherSchema>,
+    isNewUser: boolean = true
 ) => {
     const userData = {
         email: data.email,
@@ -257,22 +241,13 @@ export const handleInviteTeachers = async (
         roles: ['TEACHER'],
         root_user: false,
     };
-    type UserPayload =
-        | typeof userData
-        | {
-              user: typeof userData;
-              batch_subject_mappings: typeof data.batch_subject_mappings;
-              new_user: boolean;
-          };
-    let payload: UserPayload = userData;
-    payload = {
+    const payload = {
         user: userData,
-        // @ts-expect-error : batch_subject_mappings is not defined in the type
-        batch_subject_mappings: data.batch_subject_mappings.map((batch) => ({
+        batch_subject_mappings: (data.batch_subject_mappings || []).map((batch) => ({
             batch_id: batch.batchId,
             subject_ids: batch.subjectIds,
         })),
-        new_user: true,
+        new_user: isNewUser,
     };
     const response = await authenticatedAxiosInstance({
         method: 'POST',

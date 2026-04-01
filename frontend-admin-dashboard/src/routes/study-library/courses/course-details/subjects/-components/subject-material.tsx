@@ -110,29 +110,42 @@ export const SubjectMaterial = () => {
 
     const courseId: string = searchParams.courseId || '';
     const levelId: string = searchParams.levelId || '';
+    const urlSessionId: string = searchParams.sessionId || '';
 
     const [sessionList, setSessionList] = useState<DropdownItemType[]>(
         searchParams.courseId ? getSessionFromPackage({ courseId: courseId, levelId: levelId }) : []
     );
-    const initialSession: DropdownItemType | undefined = {
-        id: sessionList[0]?.id || '',
-        name: sessionList[0]?.name || '',
+
+    const getInitialSession = (sessions: DropdownItemType[]): DropdownItemType | undefined => {
+        if (urlSessionId) {
+            const matched = sessions.find((s) => s.id === urlSessionId);
+            if (matched) return matched;
+        }
+        return sessions[0] ? { id: sessions[0].id, name: sessions[0].name } : undefined;
     };
 
     const [currentSession, setCurrentSession] = useState<DropdownItemType | undefined>(
-        () => initialSession
+        () => getInitialSession(sessionList)
     );
 
     useEffect(() => {
-        setSessionList(
-            searchParams.courseId
-                ? getSessionFromPackage({ courseId: courseId, levelId: searchParams.levelId })
-                : []
-        );
-    }, [searchParams.courseId, searchParams.levelId, getSessionFromPackage]);
+        if (!searchParams.courseId) return;
+        const newList = getSessionFromPackage({ courseId: courseId, levelId: searchParams.levelId });
+        setSessionList((prev) => {
+            if (prev.length === newList.length && prev.every((s, i) => s.id === newList[i]?.id)) {
+                return prev;
+            }
+            return newList;
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams.courseId, searchParams.levelId]);
 
     useEffect(() => {
-        setCurrentSession({ id: sessionList[0]?.id || '', name: sessionList[0]?.name || '' });
+        const next = getInitialSession(sessionList);
+        setCurrentSession((prev) => {
+            if (prev?.id === next?.id) return prev;
+            return next;
+        });
     }, [sessionList]);
 
     const handleSessionChange = (value: DropdownValueType) => {

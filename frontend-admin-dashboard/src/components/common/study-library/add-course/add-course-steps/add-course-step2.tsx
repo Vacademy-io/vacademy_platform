@@ -1340,7 +1340,9 @@ export const AddCourseStep2 = ({
             status: [{ id: '1', name: 'ACTIVE' }],
         })
             .then((res) => {
-                const allInstructors = res.map((instructor: UserRolesDataEntry) => ({
+                // API may return a plain array or paginated { content: [...] }
+                const usersList = Array.isArray(res) ? res : (res?.content || []);
+                const allInstructors = usersList.map((instructor: UserRolesDataEntry) => ({
                     id: instructor.id,
                     email: instructor.email,
                     name: instructor.full_name,
@@ -3162,6 +3164,7 @@ export const AddCourseStep2 = ({
                                                             onCancel={() =>
                                                                 setShowInviteDialog(false)
                                                             }
+                                                            existingMembers={instructors}
                                                         />
                                                     )}
 
@@ -3182,49 +3185,58 @@ export const AddCourseStep2 = ({
                                                                 })
                                                             )}
                                                             onChange={(selected) => {
-                                                                const selectedInstructorsList: Instructor[] =
-                                                                    selected
-                                                                        ?.map((s) => {
-                                                                            const instructor =
-                                                                                instructors?.find(
-                                                                                    (i) =>
-                                                                                        i.id ===
-                                                                                        s.id
-                                                                                );
-                                                                            return {
-                                                                                id:
-                                                                                    instructor?.id ||
-                                                                                    '',
-                                                                                email:
-                                                                                    instructor?.email ||
-                                                                                    '',
-                                                                                name:
-                                                                                    instructor?.name ||
-                                                                                    '',
-                                                                                profilePicId:
-                                                                                    instructor?.profilePicId ||
-                                                                                    '',
-                                                                                roles:
-                                                                                    instructor?.roles ||
-                                                                                    [],
-                                                                            };
-                                                                        })
-                                                                        ?.filter(
-                                                                            (i) =>
-                                                                                i.id &&
-                                                                                i.email &&
-                                                                                i.name
-                                                                        );
+                                                                // Build the new list from selected IDs, looking up full data
+                                                                // from current selectedInstructors first, then instructors list
+                                                                const selectedIds = new Set(selected?.map((s) => s.id) || []);
+                                                                const previousIds = new Set((selectedInstructors || []).map((i) => i.id));
 
-                                                                setSelectedInstructors(
-                                                                    selectedInstructorsList
+                                                                // Keep existing selected instructors that are still selected
+                                                                const kept = (selectedInstructors || []).filter(
+                                                                    (i) => selectedIds.has(i.id)
                                                                 );
-                                                                form.setValue(
-                                                                    'selectedInstructors',
-                                                                    selectedInstructorsList
+                                                                // Find newly added ones (in selected but not in previous)
+                                                                const newIds = [...selectedIds].filter((id) => !previousIds.has(id));
+                                                                const newlyAdded: Instructor[] = newIds
+                                                                    .map((id) => {
+                                                                        const instructor = instructors?.find((i) => i.id === id);
+                                                                        return instructor
+                                                                            ? { ...instructor }
+                                                                            : null;
+                                                                    })
+                                                                    .filter((i): i is Instructor => i !== null);
+
+                                                                const selectedInstructorsList = [...kept, ...newlyAdded];
+
+                                                                // Find removed instructors
+                                                                const removedIds = new Set(
+                                                                    [...previousIds].filter((id) => !selectedIds.has(id))
                                                                 );
 
-                                                                selectedInstructorsList.forEach(
+                                                                setSelectedInstructors(selectedInstructorsList);
+                                                                form.setValue('selectedInstructors', selectedInstructorsList);
+
+                                                                // Clean up removed instructors from mappings and sessions
+                                                                if (removedIds.size > 0) {
+                                                                    setInstructorMappings((prev) =>
+                                                                        prev.filter((m) => !removedIds.has(m.id))
+                                                                    );
+                                                                    const updatedSessions = form
+                                                                        .getValues('sessions')
+                                                                        .map((session) => ({
+                                                                            ...session,
+                                                                            levels: session.levels.map((level) => ({
+                                                                                ...level,
+                                                                                userIds: level.userIds.filter(
+                                                                                    (user: Instructor) => !removedIds.has(user.id)
+                                                                                ),
+                                                                            })),
+                                                                        }));
+                                                                    form.setValue('sessions', updatedSessions, {
+                                                                        shouldDirty: true,
+                                                                    });
+                                                                }
+
+                                                                newlyAdded.forEach(
                                                                     (instructor) => {
                                                                         const allSessionLevels =
                                                                             getAllSessionLevelsForInstructor(

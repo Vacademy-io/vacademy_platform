@@ -322,16 +322,30 @@ export const CourseDetailsPage = () => {
     const STORAGE_KEY_SESSION = `preserved_session_${searchParams.courseId}`;
     const STORAGE_KEY_LEVEL = `preserved_level_${searchParams.courseId}`;
 
-    // Initialize refs from localStorage on component mount
+    // Initialize refs from URL params first, then localStorage on component mount
     useEffect(() => {
-        const storedSession = localStorage.getItem(STORAGE_KEY_SESSION);
-        const storedLevel = localStorage.getItem(STORAGE_KEY_LEVEL);
+        // URL params take priority over localStorage
+        const urlSessionId = searchParams.sessionId as string | undefined;
+        const urlLevelId = searchParams.levelId as string | undefined;
 
-        if (storedSession) {
-            preservedSessionRef.current = storedSession;
+        if (urlSessionId) {
+            preservedSessionRef.current = urlSessionId;
+            localStorage.setItem(STORAGE_KEY_SESSION, urlSessionId);
+        } else {
+            const storedSession = localStorage.getItem(STORAGE_KEY_SESSION);
+            if (storedSession) {
+                preservedSessionRef.current = storedSession;
+            }
         }
-        if (storedLevel) {
-            preservedLevelRef.current = storedLevel;
+
+        if (urlLevelId) {
+            preservedLevelRef.current = urlLevelId;
+            localStorage.setItem(STORAGE_KEY_LEVEL, urlLevelId);
+        } else {
+            const storedLevel = localStorage.getItem(STORAGE_KEY_LEVEL);
+            if (storedLevel) {
+                preservedLevelRef.current = storedLevel;
+            }
         }
     }, []);
 
@@ -881,18 +895,23 @@ export const CourseDetailsPage = () => {
                             levelToRestore = localStorage.getItem(STORAGE_KEY_LEVEL) || '';
                         }
 
-                        if (sessionToRestore && levelToRestore) {
+                        if (sessionToRestore) {
                             // Check if preserved session still exists in the new data
-                            const sessionExists = transformedData.sessions?.some(
-                                (session: { sessionDetails: { id: string } }) =>
+                            const matchingSession = transformedData.sessions?.find(
+                                (session: { sessionDetails: { id: string }; levelDetails: { id: string }[] }) =>
                                     session.sessionDetails.id === sessionToRestore
                             );
 
-                            if (sessionExists) {
+                            if (matchingSession) {
                                 // Set flags to prevent auto-selection interference
                                 setIsRestoringSelections(true);
                                 skipAutoSelectionRef.current = true;
                                 hasRestoredOnceRef.current = true;
+
+                                // If no level to restore, pick the first level from the matching session
+                                if (!levelToRestore && matchingSession.levelDetails?.length > 0) {
+                                    levelToRestore = matchingSession.levelDetails[0]!.id;
+                                }
 
                                 // Update our backup stores first
                                 updatePreservedSession(sessionToRestore);

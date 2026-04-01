@@ -52,6 +52,7 @@ export const useLearnerPackagesQuery = ({
     type,
     status = [],
     levelIds = [],
+    packageSessionIds = [],
 }: {
     instituteId: string;
     userId: string;
@@ -60,11 +61,12 @@ export const useLearnerPackagesQuery = ({
     type: 'PROGRESS' | 'COMPLETED' | 'PAST';
     status?: string[];
     levelIds?: string[];
+    packageSessionIds?: string[];
 }) => {
     return useQuery<LearnerPackagesResponse>({
-        queryKey: ['GET_LEARNER_PACKAGES', instituteId, userId, page, size, type, status, levelIds],
+        queryKey: ['GET_LEARNER_PACKAGES', instituteId, userId, page, size, type, status, levelIds, packageSessionIds],
         queryFn: async () => {
-            const body = {
+            const body: Record<string, unknown> = {
                 status: status,
                 level_ids: levelIds,
                 faculty_ids: [],
@@ -77,6 +79,9 @@ export const useLearnerPackagesQuery = ({
                     created_at: 'DESC',
                 },
             };
+            if (packageSessionIds.length > 0) {
+                body.package_session_ids = packageSessionIds;
+            }
             const response = await authenticatedAxiosInstance.post(
                 GET_LEARNER_PACKAGES_BY_USER_ID,
                 body,

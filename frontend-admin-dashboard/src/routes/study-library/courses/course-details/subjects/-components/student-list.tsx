@@ -36,6 +36,24 @@ const Students = ({
     const [rowSelections, setRowSelections] = useState<Record<number, Record<string, boolean>>>({});
     const tableRef = useRef<HTMLDivElement>(null);
     const [allPagesData, setAllPagesData] = useState<Record<number, StudentTable[]>>({});
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                tableRef.current &&
+                !tableRef.current.contains(event.target as Node) &&
+                isSidebarOpen
+            ) {
+                setIsSidebarOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isSidebarOpen]);
+
     const {
         columnFilters,
         clearFilters,
@@ -221,6 +239,7 @@ const Students = ({
                                             selectedTab={'ENDED,PENDING,LIVE'}
                                             examType={'EXAM'}
                                             isStudentList={true}
+                                            packageSessionId={packageSessionId}
                                         />
                                     </div>
                                 </SidebarProvider>

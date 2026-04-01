@@ -305,10 +305,14 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
         setFilteredCourses(filtered);
     }, [courses, searchValue]);
 
-    const handleViewCourse = (courseId: string) => {
+    const handleViewCourse = (course: DisplayCourse) => {
         navigate({
             to: '/study-library/courses/course-details',
-            search: { courseId: courseId },
+            search: {
+                courseId: course.courseId,
+                sessionId: course.sessionInfo?.sessionId,
+                levelId: course.levelInfo?.levelId,
+            },
         });
     };
 
@@ -533,11 +537,10 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                 {/* Action Buttons */}
                                 <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4">
                                     {/* View Course Button */}
-                                    <Button
-                                        variant="default"
-                                        size="sm"
-                                        className="bg-primary-500 text-white hover:bg-primary-600"
-                                        onClick={() => handleViewCourse(course.courseId)}
+                                    <MyButton
+                                        className="flex-1 text-sm"
+                                        buttonType="primary"
+                                        onClick={() => handleViewCourse(course)}
                                     >
                                         <Eye size={16} />
                                         View Course

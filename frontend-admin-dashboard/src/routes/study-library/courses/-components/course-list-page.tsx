@@ -423,7 +423,7 @@ const CourseListPage = ({
                                     <div
                                         key={packageId}
                                         className="animate-fade-in group relative flex h-fit cursor-pointer flex-col rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-transform duration-500 hover:scale-[1.02] hover:shadow-md sm:hover:scale-[1.025]"
-                                        onClick={() => navigate({ to: '/study-library/courses/course-details', search: { courseId: packageId } })}
+                                        onClick={() => navigate({ to: '/study-library/courses/course-details', search: { courseId: packageId, sessionId: course.session_id, levelId: course.level_id } })}
                                     >
                                         {isLoadingImages ? (
                                             <CourseImageShimmer />
@@ -485,7 +485,7 @@ const CourseListPage = ({
                                                 {course.is_course_published_to_catalaouge ? (<><Eye className="size-4" /> In Catalog</>) : (<><EyeSlash className="size-4" /> Private</>)}
                                             </span>
                                             <div className="mt-3 flex gap-2 sm:mt-4">
-                                                <MyButton className="flex-1 text-sm" buttonType="primary" onClick={(e) => { e.stopPropagation(); navigate({ to: '/study-library/courses/course-details', search: { courseId: packageId } }); }}>
+                                                <MyButton className="flex-1 text-sm" buttonType="primary" onClick={(e) => { e.stopPropagation(); navigate({ to: '/study-library/courses/course-details', search: { courseId: packageId, sessionId: course.session_id, levelId: course.level_id } }); }}>
                                                     View {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                                                 </MyButton>
                                                 {showDeleteButton && (
@@ -528,7 +528,7 @@ const CourseListPage = ({
                                     <div
                                         key={`${course.id}-${course.package_session_id}`}
                                         className="animate-fade-in group relative flex h-fit cursor-pointer flex-col rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-transform duration-500 hover:scale-[1.02] hover:shadow-md sm:hover:scale-[1.025]"
-                                        onClick={() => navigate({ to: '/study-library/courses/course-details', search: { courseId: course.id } })}
+                                        onClick={() => navigate({ to: '/study-library/courses/course-details', search: { courseId: course.id, sessionId: course.session_id, levelId: course.level_id } })}
                                     >
                                         {isLoadingImages ? (
                                             <CourseImageShimmer />
@@ -585,7 +585,7 @@ const CourseListPage = ({
                                                 {course.is_course_published_to_catalaouge ? (<><Eye className="size-4" /> In Catalog</>) : (<><EyeSlash className="size-4" /> Private</>)}
                                             </span>
                                             <div className="mt-3 flex gap-2 sm:mt-4">
-                                                <MyButton className="flex-1 text-sm" buttonType="primary" onClick={(e) => { e.stopPropagation(); navigate({ to: '/study-library/courses/course-details', search: { courseId: course.id } }); }}>
+                                                <MyButton className="flex-1 text-sm" buttonType="primary" onClick={(e) => { e.stopPropagation(); navigate({ to: '/study-library/courses/course-details', search: { courseId: course.id, sessionId: course.session_id, levelId: course.level_id } }); }}>
                                                     View {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                                                 </MyButton>
                                                 {showDeleteButton && (

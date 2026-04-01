@@ -148,7 +148,7 @@ export const createMessageTemplate = async (
 };
 
 export const getMessageTemplates = async (
-    type?: 'EMAIL' | 'WHATSAPP',
+    type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL',
     page = 0,
     size = 10
 ): Promise<TemplateListResponse> => {

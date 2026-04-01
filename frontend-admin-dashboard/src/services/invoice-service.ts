@@ -1,5 +1,8 @@
 import { BASE_URL } from '@/constants/urls';
-import { getTokenFromCookies } from '@/lib/auth/sessionUtility';
+import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
+
+const getAccessToken = (): string | null => getTokenFromCookie(TokenKey.accessToken);
 
 const INVOICES_BASE_URL = `${BASE_URL}/admin-core-service/v1/invoices`;
 
@@ -44,7 +47,7 @@ export interface InvoicePaginatedResponse {
 }
 
 export async function fetchUserInvoices(userId: string): Promise<InvoiceDTO[]> {
-    const token = getTokenFromCookies();
+    const token = getAccessToken();
     const response = await fetch(`${INVOICES_BASE_URL}/user/${userId}`, {
         headers: {
             Authorization: `Bearer ${token}`,
@@ -75,7 +78,7 @@ export async function fetchInstituteInvoices(
     if (filters?.startDate) params.set('startDate', filters.startDate);
     if (filters?.endDate) params.set('endDate', filters.endDate);
 
-    const token = getTokenFromCookies();
+    const token = getAccessToken();
     const response = await fetch(`${INVOICES_BASE_URL}/institute/${instituteId}?${params}`, {
         headers: {
             Authorization: `Bearer ${token}`,

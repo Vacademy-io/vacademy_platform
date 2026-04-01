@@ -1,91 +1,50 @@
 import { useState, useMemo } from 'react';
 import { LayoutGrid, List, Package, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useQuery } from '@tanstack/react-query';
-import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { useInstituteFullQuery } from '@/services/student-list-section/getInstituteDetails';
 import { InventoryTableView } from './inventory-table-view';
 import { InventoryCardView } from './inventory-card-view';
 import { InventoryFilters as InventoryFiltersComponent } from './inventory-filters';
 import { InventoryStatsCards } from './inventory-stats-cards';
-import { useMultipleInventoryAvailability } from '../-hooks/use-inventory-data';
+import {
+    usePaginatedBatches,
+    useBatchInventoryAvailability,
+    useBatchesSummary,
+} from '../-hooks/use-inventory-data';
 import { InventoryFilters, ViewMode, PackageSessionInventory } from '../-types/inventory-types';
+
+const PAGE_SIZE = 20;
 
 const ManageInventoryPage = () => {
     const [viewMode, setViewMode] = useState<ViewMode>('table');
     const [filters, setFilters] = useState<InventoryFilters>({});
+    const [page, setPage] = useState(0);
 
-    // Fetch full institute data including batches_for_sessions
-    const instituteFullQueryOptions = useInstituteFullQuery();
-    const { isLoading: isLoadingInstitute } = useQuery(instituteFullQueryOptions);
+    // Fetch paginated batches with server-side filtering
+    const {
+        data: batchesResponse,
+        isLoading: isLoadingBatches,
+        refetch: refetchBatches,
+    } = usePaginatedBatches(filters, page, PAGE_SIZE);
 
-    const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
-    const batchesForSessions = useMemo(
-        () => instituteDetails?.batches_for_sessions || [],
-        [instituteDetails?.batches_for_sessions]
-    );
+    const batches = batchesResponse?.content ?? [];
 
-    // Get all package session IDs for inventory fetching
-    const allPackageSessionIds = useMemo(
-        () => batchesForSessions.map((batch) => batch.id),
-        [batchesForSessions]
-    );
+    // Extract IDs for current page to fetch inventory
+    const currentPageIds = useMemo(() => batches.map((b) => b.id), [batches]);
 
-    // Fetch inventory data for all sessions
+    // Fetch inventory for current page items only (1 API call)
     const {
         data: inventoryMap,
         isLoading: isLoadingInventory,
         refetch: refetchInventory,
-    } = useMultipleInventoryAvailability(allPackageSessionIds);
+    } = useBatchInventoryAvailability(currentPageIds);
 
-    // Filter batches based on selected filters
-    const filteredBatches = useMemo(() => {
-        return batchesForSessions.filter((batch) => {
-            if (filters.courseId && batch.package_dto.id !== filters.courseId) {
-                return false;
-            }
-            if (filters.levelId && batch.level.id !== filters.levelId) {
-                return false;
-            }
-            if (filters.sessionId && batch.session.id !== filters.sessionId) {
-                return false;
-            }
+    // Fetch summary for filter dropdowns
+    const { data: summary } = useBatchesSummary();
 
-            // Filter by availability status
-            if (
-                filters.availabilityStatus &&
-                filters.availabilityStatus !== 'all' &&
-                inventoryMap
-            ) {
-                const inventory = inventoryMap.get(batch.id);
-                if (inventory) {
-                    switch (filters.availabilityStatus) {
-                        case 'unlimited':
-                            if (!inventory.isUnlimited) return false;
-                            break;
-                        case 'limited':
-                            if (inventory.isUnlimited) return false;
-                            break;
-                        case 'low':
-                            if (inventory.isUnlimited) return false;
-                            if (inventory.maxSeats && inventory.availableSlots) {
-                                const percentage =
-                                    (inventory.availableSlots / inventory.maxSeats) * 100;
-                                if (percentage > 20) return false;
-                            }
-                            break;
-                    }
-                }
-            }
-
-            return true;
-        });
-    }, [batchesForSessions, filters, inventoryMap]);
-
-    // Transform batches into inventory items with inventory data
+    // Transform batches + inventory into display items
     const inventoryItems: PackageSessionInventory[] = useMemo(() => {
-        return filteredBatches.map((batch) => {
-            const inventory = inventoryMap?.get(batch.id);
+        return batches.map((batch) => {
+            const inventory = inventoryMap?.[batch.id];
             return {
                 id: batch.id,
                 packageName: batch.package_dto.package_name,
@@ -99,26 +58,27 @@ const ManageInventoryPage = () => {
                 isLoadingInventory: isLoadingInventory,
             };
         });
-    }, [filteredBatches, inventoryMap, isLoadingInventory]);
+    }, [batches, inventoryMap, isLoadingInventory]);
 
-    // Get available filter options
+    // Filter options from summary endpoint
     const filterOptions = useMemo(() => {
-        const courses = new Map<string, string>();
-        const levels = new Map<string, string>();
-        const sessions = new Map<string, string>();
-
-        batchesForSessions.forEach((batch) => {
-            courses.set(batch.package_dto.id, batch.package_dto.package_name);
-            levels.set(batch.level.id, batch.level.level_name);
-            sessions.set(batch.session.id, batch.session.session_name);
-        });
-
+        if (!summary) return { courses: [], levels: [], sessions: [] };
         return {
-            courses: Array.from(courses.entries()).map(([id, name]) => ({ id, name })),
-            levels: Array.from(levels.entries()).map(([id, name]) => ({ id, name })),
-            sessions: Array.from(sessions.entries()).map(([id, name]) => ({ id, name })),
+            courses: summary.packages.map((p) => ({ id: p.id, name: p.name })),
+            levels: summary.levels.map((l) => ({ id: l.id, name: l.name })),
+            sessions: summary.sessions.map((s) => ({ id: s.id, name: s.name })),
         };
-    }, [batchesForSessions]);
+    }, [summary]);
+
+    const handleFiltersChange = (newFilters: InventoryFilters) => {
+        setFilters(newFilters);
+        setPage(0); // Reset to first page on filter change
+    };
+
+    const handleRefresh = () => {
+        refetchBatches();
+        refetchInventory();
+    };
 
     return (
         <div className="container mx-auto space-y-6 py-6">
@@ -142,12 +102,12 @@ const ManageInventoryPage = () => {
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => refetchInventory()}
-                        disabled={isLoadingInventory}
+                        onClick={handleRefresh}
+                        disabled={isLoadingBatches || isLoadingInventory}
                         className="gap-2"
                     >
                         <RefreshCw
-                            className={`size-4 ${isLoadingInventory ? 'animate-spin' : ''}`}
+                            className={`size-4 ${isLoadingBatches || isLoadingInventory ? 'animate-spin' : ''}`}
                         />
                         Refresh
                     </Button>
@@ -177,22 +137,22 @@ const ManageInventoryPage = () => {
             </div>
 
             {/* Stats Cards */}
-            <InventoryStatsCards inventoryItems={inventoryItems} isLoading={isLoadingInventory} />
+            <InventoryStatsCards />
 
             {/* Filters */}
             <InventoryFiltersComponent
                 filters={filters}
-                onFiltersChange={setFilters}
+                onFiltersChange={handleFiltersChange}
                 filterOptions={filterOptions}
             />
 
             {/* Content */}
-            {isLoadingInstitute ? (
+            {isLoadingBatches && batches.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                     <Loader2 className="text-primary mb-4 size-12 animate-spin" />
                     <p className="text-muted-foreground">Loading package sessions...</p>
                 </div>
-            ) : batchesForSessions.length === 0 ? (
+            ) : batches.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                     <div className="mb-4 rounded-full bg-muted p-4">
                         <Package className="size-12 text-muted-foreground" />
@@ -201,12 +161,20 @@ const ManageInventoryPage = () => {
                         No Package Sessions Found
                     </h3>
                     <p className="max-w-md text-muted-foreground">
-                        You don&apos;t have any package sessions configured yet. Create package
-                        sessions to manage their inventory.
+                        {filters.courseId || filters.levelId || filters.sessionId || filters.search
+                            ? 'No results match your filters. Try adjusting your search criteria.'
+                            : "You don't have any package sessions configured yet. Create package sessions to manage their inventory."}
                     </p>
                 </div>
             ) : viewMode === 'table' ? (
-                <InventoryTableView items={inventoryItems} isLoading={isLoadingInventory} />
+                <InventoryTableView
+                    items={inventoryItems}
+                    isLoading={isLoadingInventory}
+                    page={page}
+                    totalPages={batchesResponse?.total_pages ?? 0}
+                    totalElements={batchesResponse?.total_elements ?? 0}
+                    onPageChange={setPage}
+                />
             ) : (
                 <InventoryCardView items={inventoryItems} isLoading={isLoadingInventory} />
             )}

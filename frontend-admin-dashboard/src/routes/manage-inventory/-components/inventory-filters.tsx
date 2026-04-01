@@ -1,6 +1,8 @@
-import { X, Filter } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Filter, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
     Select,
     SelectContent,
@@ -33,19 +35,33 @@ export const InventoryFilters = ({
     onFiltersChange,
     filterOptions,
 }: InventoryFiltersProps) => {
+    const [searchInput, setSearchInput] = useState(filters.search ?? '');
+
+    // Debounce search input
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (searchInput !== (filters.search ?? '')) {
+                onFiltersChange({
+                    ...filters,
+                    search: searchInput || undefined,
+                });
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchInput]);
+
     const hasActiveFilters =
-        filters.courseId ||
-        filters.levelId ||
-        filters.sessionId ||
-        (filters.availabilityStatus && filters.availabilityStatus !== 'all');
+        filters.courseId || filters.levelId || filters.sessionId || filters.search;
 
     const clearAllFilters = () => {
+        setSearchInput('');
         onFiltersChange({});
     };
 
     const removeFilter = (key: keyof FiltersType) => {
         const newFilters = { ...filters };
         delete newFilters[key];
+        if (key === 'search') setSearchInput('');
         onFiltersChange(newFilters);
     };
 
@@ -57,8 +73,8 @@ export const InventoryFilters = ({
                 return filterOptions.levels.find((l) => l.id === value)?.name || value;
             case 'sessionId':
                 return filterOptions.sessions.find((s) => s.id === value)?.name || value;
-            case 'availabilityStatus':
-                return value.charAt(0).toUpperCase() + value.slice(1);
+            case 'search':
+                return `Search: "${value}"`;
             default:
                 return value;
         }
@@ -71,6 +87,17 @@ export const InventoryFilters = ({
                     <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                         <Filter className="size-4" />
                         Filters
+                    </div>
+
+                    {/* Search */}
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            placeholder="Search by name..."
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            className="h-9 w-[200px] pl-8"
+                        />
                     </div>
 
                     {/* Course Filter */}
@@ -142,27 +169,6 @@ export const InventoryFilters = ({
                         </SelectContent>
                     </Select>
 
-                    {/* Availability Status Filter */}
-                    <Select
-                        value={filters.availabilityStatus || 'all'}
-                        onValueChange={(value) =>
-                            onFiltersChange({
-                                ...filters,
-                                availabilityStatus: value as FiltersType['availabilityStatus'],
-                            })
-                        }
-                    >
-                        <SelectTrigger className="h-9 w-[180px]">
-                            <SelectValue placeholder="Availability" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Availability</SelectItem>
-                            <SelectItem value="unlimited">Unlimited</SelectItem>
-                            <SelectItem value="limited">Limited</SelectItem>
-                            <SelectItem value="low">Low Availability</SelectItem>
-                        </SelectContent>
-                    </Select>
-
                     {/* Clear All Button */}
                     {hasActiveFilters && (
                         <Button
@@ -183,7 +189,7 @@ export const InventoryFilters = ({
                         {Object.entries(filters)
                             .filter(
                                 ([key, value]) =>
-                                    value && (key !== 'availabilityStatus' || value !== 'all')
+                                    value && key !== 'availabilityStatus'
                             )
                             .map(([key, value]) => (
                                 <Badge

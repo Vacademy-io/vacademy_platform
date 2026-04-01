@@ -26,6 +26,10 @@ import {
     Infinity as InfinityIcon,
     AlertTriangle,
     Loader2,
+    ChevronLeft,
+    ChevronRight,
+    ChevronsLeft,
+    ChevronsRight,
 } from 'lucide-react';
 import { PackageSessionInventory } from '../-types/inventory-types';
 import { UpdateCapacityDialog } from './update-capacity-dialog';
@@ -35,9 +39,20 @@ import { toast } from 'sonner';
 interface InventoryTableViewProps {
     items: PackageSessionInventory[];
     isLoading: boolean;
+    page: number;
+    totalPages: number;
+    totalElements: number;
+    onPageChange: (page: number) => void;
 }
 
-export const InventoryTableView = ({ items, isLoading }: InventoryTableViewProps) => {
+export const InventoryTableView = ({
+    items,
+    isLoading,
+    page,
+    totalPages,
+    totalElements,
+    onPageChange,
+}: InventoryTableViewProps) => {
     const [selectedItem, setSelectedItem] = useState<PackageSessionInventory | null>(null);
     const [isCapacityDialogOpen, setIsCapacityDialogOpen] = useState(false);
 
@@ -193,7 +208,7 @@ export const InventoryTableView = ({ items, isLoading }: InventoryTableViewProps
                     <CardTitle className="text-lg font-semibold">
                         Package Sessions Inventory
                         <span className="ml-2 text-sm font-normal text-muted-foreground">
-                            ({items.length} sessions)
+                            ({totalElements} sessions)
                         </span>
                     </CardTitle>
                 </CardHeader>
@@ -301,6 +316,53 @@ export const InventoryTableView = ({ items, isLoading }: InventoryTableViewProps
                                     ))}
                                 </TableBody>
                             </Table>
+                        </div>
+                    )}
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between border-t px-4 py-3">
+                            <p className="text-sm text-muted-foreground">
+                                Page {page + 1} of {totalPages}
+                            </p>
+                            <div className="flex items-center gap-1">
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="size-8"
+                                    onClick={() => onPageChange(0)}
+                                    disabled={page === 0}
+                                >
+                                    <ChevronsLeft className="size-4" />
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="size-8"
+                                    onClick={() => onPageChange(page - 1)}
+                                    disabled={page === 0}
+                                >
+                                    <ChevronLeft className="size-4" />
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="size-8"
+                                    onClick={() => onPageChange(page + 1)}
+                                    disabled={page >= totalPages - 1}
+                                >
+                                    <ChevronRight className="size-4" />
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="size-8"
+                                    onClick={() => onPageChange(totalPages - 1)}
+                                    disabled={page >= totalPages - 1}
+                                >
+                                    <ChevronsRight className="size-4" />
+                                </Button>
+                            </div>
                         </div>
                     )}
                 </CardContent>

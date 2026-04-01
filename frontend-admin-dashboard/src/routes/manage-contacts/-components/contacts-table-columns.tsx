@@ -41,7 +41,16 @@ export const useClickHandlers = () => {
 };
 
 const mapContactToStudent = (contact: ContactUser): StudentTable => {
-    // Best effort mapping
+    // Build custom_fields map: prefer v2 customFieldsMap, fallback to custom_fields array
+    const customFields: Record<string, string | null> = contact.custom_fields_map || {};
+    if (!contact.custom_fields_map && contact.custom_fields) {
+        for (const cf of contact.custom_fields) {
+            if (cf.custom_field_id) {
+                customFields[cf.custom_field_id] = cf.value || null;
+            }
+        }
+    }
+
     return {
         id: contact.user.id,
         user_id: contact.user.id,
@@ -53,8 +62,7 @@ const mapContactToStudent = (contact: ContactUser): StudentTable => {
         region: contact.user.region || null,
         city: contact.user.city || '',
         date_of_birth: contact.user.date_of_birth || '',
-        created_at: '', // Not in base user currently?
-        // Defaults or missing
+        created_at: '',
         address_line: contact.user.address_line || '',
         attendance_percent: 0,
         referral_count: 0,
@@ -67,21 +75,24 @@ const mapContactToStudent = (contact: ContactUser): StudentTable => {
         mother_email: '',
         linked_institute_name: null,
         updated_at: '',
-        package_session_id: '',
-        institute_enrollment_id: '',
-        status: 'INACTIVE', // Default
+        package_session_id: contact.package_session_id || '',
+        institute_enrollment_id: contact.institute_enrollment_number || '',
+        status: (contact.status as 'ACTIVE' | 'TERMINATED' | 'INACTIVE') || 'INACTIVE',
         session_expiry_days: 0,
         institute_id: '',
         expiry_date: 0,
-        face_file_id: contact.user.profile_pic_file_id || null,
+        face_file_id: contact.face_file_id || contact.user.profile_pic_file_id || null,
         parents_email: '',
         parents_mobile_number: '',
         parents_to_mother_email: '',
         parents_to_mother_mobile_number: '',
         destination_package_session_id: '',
         enroll_invite_id: '',
-        payment_status: '',
-        custom_fields: {}, // Map custom fields array to record if needed
+        payment_status: contact.payment_status || '',
+        custom_fields: customFields,
+        sub_org_name: contact.sub_org_name,
+        sub_org_id: contact.sub_org_id,
+        comma_separated_org_roles: contact.comma_separated_org_roles,
     };
 };
 

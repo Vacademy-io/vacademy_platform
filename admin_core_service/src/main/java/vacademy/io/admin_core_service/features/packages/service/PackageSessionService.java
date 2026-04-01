@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.learner_invitation.util.LearnerInvitationDefaultFormGenerator;
+import vacademy.io.admin_core_service.features.packages.dto.InventoryStatsDTO;
 import vacademy.io.admin_core_service.features.packages.dto.ParentChildBatchMappingResponseDTO;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
@@ -235,6 +236,37 @@ public class PackageSessionService {
         map.put("availableSlots", packageSession.getAvailableSlots());
         map.put("isUnlimited", packageSession.getMaxSeats() == null);
         return map;
+    }
+
+    public java.util.Map<String, java.util.Map<String, Object>> getBatchAvailability(List<String> packageSessionIds) {
+        java.util.Map<String, java.util.Map<String, Object>> result = new java.util.HashMap<>();
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+            return result;
+        }
+        List<PackageSession> sessions = packageRepository.findAllById(packageSessionIds);
+        for (PackageSession ps : sessions) {
+            java.util.Map<String, Object> map = new java.util.HashMap<>();
+            map.put("packageSessionId", ps.getId());
+            map.put("maxSeats", ps.getMaxSeats());
+            map.put("availableSlots", ps.getAvailableSlots());
+            map.put("isUnlimited", ps.getMaxSeats() == null);
+            result.put(ps.getId(), map);
+        }
+        return result;
+    }
+
+    public InventoryStatsDTO getInventoryStats(String instituteId) {
+        PackageSessionRepository.InventoryStatsProjection projection =
+                packageRepository.getInventoryStats(instituteId, List.of("ACTIVE"));
+        return new InventoryStatsDTO(
+                projection.getTotalSessions(),
+                projection.getUnlimitedSessions(),
+                projection.getLimitedSessions(),
+                projection.getTotalCapacity(),
+                projection.getTotalAvailable(),
+                projection.getCriticalSessions(),
+                projection.getLowAvailabilitySessions()
+        );
     }
 
     @Async

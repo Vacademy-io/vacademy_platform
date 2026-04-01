@@ -377,4 +377,37 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
      */
     List<PackageSession> findByParentIdAndStatusIn(String parentId, List<String> statuses);
 
+    /**
+     * Get aggregated inventory stats for all package sessions of an institute.
+     */
+    @Query(value = """
+            SELECT
+                COUNT(*) AS totalSessions,
+                COUNT(CASE WHEN ps.max_seats IS NULL THEN 1 END) AS unlimitedSessions,
+                COUNT(CASE WHEN ps.max_seats IS NOT NULL THEN 1 END) AS limitedSessions,
+                COALESCE(SUM(ps.max_seats), 0) AS totalCapacity,
+                COALESCE(SUM(ps.available_slots), 0) AS totalAvailable,
+                COUNT(CASE WHEN ps.max_seats IS NOT NULL AND ps.max_seats > 0
+                    AND (ps.available_slots * 100.0 / ps.max_seats) <= 10 THEN 1 END) AS criticalSessions,
+                COUNT(CASE WHEN ps.max_seats IS NOT NULL AND ps.max_seats > 0
+                    AND (ps.available_slots * 100.0 / ps.max_seats) > 10
+                    AND (ps.available_slots * 100.0 / ps.max_seats) <= 20 THEN 1 END) AS lowAvailabilitySessions
+            FROM package_session ps
+            JOIN package_institute pi ON ps.package_id = pi.package_id
+            WHERE pi.institute_id = :instituteId AND ps.status IN (:statuses)
+            """, nativeQuery = true)
+    InventoryStatsProjection getInventoryStats(
+            @Param("instituteId") String instituteId,
+            @Param("statuses") List<String> statuses);
+
+    interface InventoryStatsProjection {
+        long getTotalSessions();
+        long getUnlimitedSessions();
+        long getLimitedSessions();
+        long getTotalCapacity();
+        long getTotalAvailable();
+        long getCriticalSessions();
+        long getLowAvailabilitySessions();
+    }
+
 }

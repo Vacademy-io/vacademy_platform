@@ -3,6 +3,7 @@ import { Funnel, X } from '@phosphor-icons/react';
 import { Filters } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/myFilter';
 import { StudentSearchBox } from '@/components/common/student-search-box';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { InstituteDetailsType } from '@/schemas/student/student-list/institute-schema';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { removeDefaultPrefix } from '@/utils/helpers/removeDefaultPrefix';
@@ -128,7 +129,7 @@ export const ContactFilters = ({ filters }: ContactFiltersProps) => {
 };
 
 function buildFilterConfig(
-    instituteDetails: ReturnType<typeof useInstituteDetailsStore>['instituteDetails'],
+    instituteDetails: InstituteDetailsType | null,
     currentSessionId: string,
     campaigns?: { id?: string; audience_id?: string; campaign_name: string }[]
 ) {

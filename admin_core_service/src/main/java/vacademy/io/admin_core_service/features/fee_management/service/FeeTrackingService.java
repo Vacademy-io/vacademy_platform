@@ -154,6 +154,8 @@ public class FeeTrackingService {
 
                 for (Map.Entry<String, List<StudentFeePayment>> entry : groupedPayments.entrySet()) {
                     List<StudentFeePayment> group = entry.getValue();
+                    // Sort by due date for consistent ordering in progress bar
+                    group.sort(Comparator.comparing(StudentFeePayment::getDueDate, Comparator.nullsLast(Comparator.naturalOrder())));
                     StudentFeePayment first = group.get(0);
 
                     BigDecimal totalExpectedAmount = BigDecimal.ZERO;
@@ -197,8 +199,13 @@ public class FeeTrackingService {
                         }
                     }
 
+                    // Collect per-installment statuses (already sorted by due date)
+                    List<String> installmentStatuses = group.stream()
+                            .map(StudentFeePayment::getStatus)
+                            .collect(Collectors.toList());
+
                     UserDTO user = userMap.get(first.getUserId());
-                    
+
                     aggregatedRows.add(StudentFeePaymentRowDTO.builder()
                             .studentId(first.getUserId())
                             .cpoId(first.getCpoId())
@@ -211,6 +218,7 @@ public class FeeTrackingService {
                             .dueAmount(dueAmount)
                             .overdueAmount(overdueAmount)
                             .status(status)
+                            .installmentStatuses(installmentStatuses)
                             .build());
                 }
 

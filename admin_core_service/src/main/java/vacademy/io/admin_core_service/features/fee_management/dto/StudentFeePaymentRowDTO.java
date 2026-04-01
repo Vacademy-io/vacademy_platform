@@ -40,4 +40,7 @@ public class StudentFeePaymentRowDTO {
 
     // Status: PENDING, PAID, PARTIAL_PAID, OVERDUE, WAIVED
     private String status;
+
+    // Per-installment statuses ordered by due date (for progress bar)
+    private List<String> installmentStatuses;
 }

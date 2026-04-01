@@ -30,6 +30,62 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> =
     PENDING: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
 };
 
+const INSTALLMENT_STATUS_COLORS: Record<string, { bg: string; label: string }> = {
+    PAID: { bg: '#10b981', label: 'Paid' },
+    PARTIAL_PAID: { bg: '#f59e0b', label: 'Partial' },
+    OVERDUE: { bg: '#ef4444', label: 'Overdue' },
+    PENDING: { bg: '#e5e7eb', label: 'Pending' },
+    WAIVED: { bg: '#3b82f6', label: 'Waived' },
+};
+
+function InstallmentProgressBar({ statuses }: { statuses: string[] }) {
+    if (!statuses || statuses.length === 0) return <span className="text-gray-400">—</span>;
+
+    return (
+        <div className="flex items-center gap-[2px] min-w-[100px] max-w-[180px]">
+            {statuses.map((status, idx) => {
+                const config = INSTALLMENT_STATUS_COLORS[status] || INSTALLMENT_STATUS_COLORS['PENDING']!;
+                return (
+                    <div
+                        key={idx}
+                        className="relative group h-6 flex-1 rounded-sm cursor-default"
+                        style={{ backgroundColor: config.bg }}
+                    >
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-50 pointer-events-none">
+                            <div className="rounded bg-gray-800 px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap shadow-lg">
+                                #{idx + 1}: {config.label}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function ProgressHeaderWithLegend() {
+    return (
+        <div className="relative group cursor-default">
+            <span>Progress</span>
+            <div className="absolute top-full left-0 mt-1 hidden group-hover:block z-50 pointer-events-none">
+                <div className="rounded-lg bg-gray-800 px-3 py-2 shadow-lg">
+                    {Object.entries(INSTALLMENT_STATUS_COLORS).map(([key, config]) => (
+                        <div key={key} className="flex items-center gap-2 py-0.5">
+                            <span
+                                className="inline-block h-2.5 w-2.5 rounded-sm"
+                                style={{ backgroundColor: config.bg }}
+                            />
+                            <span className="text-[10px] text-white whitespace-nowrap">
+                                {config.label}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function StatusPill({ status }: { status: string }) {
     const style = STATUS_STYLES[status] || STATUS_STYLES['PENDING']!;
     return (
@@ -215,6 +271,16 @@ export function ManageFinancesTable({
                 accessorFn: (row) => row.status || '',
                 cell: ({ row }) => <StatusPill status={row.original.status} />,
                 size: 120,
+            },
+            {
+                id: 'progress',
+                header: () => <ProgressHeaderWithLegend />,
+                cell: ({ row }) => (
+                    <InstallmentProgressBar
+                        statuses={row.original.installment_statuses || []}
+                    />
+                ),
+                size: 180,
             },
             {
                 id: 'actions',

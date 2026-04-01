@@ -9,11 +9,13 @@ import { cn } from '@/lib/utils';
 interface Props {
     selectedPackageSessions: SelectedPackageSession[];
     onSelectedPackageSessionsChange: (sessions: SelectedPackageSession[]) => void;
+    initialPackageSessionId?: string;
 }
 
 export const Step2CourseSelector = ({
     selectedPackageSessions,
     onSelectedPackageSessionsChange,
+    initialPackageSessionId,
 }: Props) => {
     const [searchQuery, setSearchQuery] = useState('');
     const { getPackageWiseLevels } = useInstituteDetailsStore();
@@ -34,7 +36,15 @@ export const Step2CourseSelector = ({
                     : true
             ),
         }))
-        .filter((g) => g.level.length > 0);
+        .filter((g) => g.level.length > 0)
+        .sort((a, b) => {
+            if (!initialPackageSessionId) return 0;
+            const aHas = a.level.some((l) => l.package_session_id === initialPackageSessionId);
+            const bHas = b.level.some((l) => l.package_session_id === initialPackageSessionId);
+            if (aHas && !bHas) return -1;
+            if (!aHas && bHas) return 1;
+            return 0;
+        });
 
     const isSelected = (packageSessionId: string) =>
         selectedPackageSessions.some((s) => s.packageSessionId === packageSessionId);
@@ -128,7 +138,7 @@ export const Step2CourseSelector = ({
                                             <span className="font-medium text-neutral-700">
                                                 {levelEntry.level_dto.level_name}
                                             </span>
-                                            {levelEntry.level_dto.duration_in_days && (
+                                            {(levelEntry.level_dto.duration_in_days ?? 0) > 0 && (
                                                 <span className="ml-2 text-xs text-neutral-400">
                                                     • {levelEntry.level_dto.duration_in_days} days
                                                 </span>

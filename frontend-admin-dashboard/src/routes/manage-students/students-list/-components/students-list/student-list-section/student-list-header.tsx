@@ -164,9 +164,11 @@ import { useCompactMode } from '@/hooks/use-compact-mode';
 export const StudentListHeader = ({
     currentSession,
     titleSize,
+    packageSessionId,
 }: {
     currentSession?: DropdownItemType;
     titleSize?: string;
+    packageSessionId?: string;
 }) => {
     const [openInviteLinksDialog, setOpenInviteLinksDialog] = useState(false);
     const { instituteDetails } = useInstituteDetailsStore();
@@ -236,14 +238,7 @@ export const StudentListHeader = ({
                             }
                         />
                     ) : (
-                        <div className={cn(
-                            "[&>button]:scale-90",
-                            isCompact
-                                ? "[&>button]:px-2 [&>button]:py-0.5 [&>button]:text-[10px]"
-                                : "[&>button]:px-2.5 [&>button]:py-1 [&>button]:text-xs"
-                        )}>
-                            <EnrollStudentsButton />
-                        </div>
+                        <EnrollStudentsButton initialPackageSessionId={packageSessionId} />
                     )}
                 </BulkDialogProvider>
             </div>

@@ -150,12 +150,12 @@ public class LearnerReportService {
                                                      String attemptId, String instituteId) {
         // Get overview stats
         AssessmentOverviewDto overview = studentAttemptRepository.findAssessmentOverviewDetails(assessmentId, instituteId);
-        if (overview == null) throw new VacademyException("Assessment overview not found");
+        if (overview == null) return null;
 
         // Get student's own overall detail
         ParticipantsQuestionOverallDetailDto studentDetail = studentAttemptRepository
                 .findParticipantsQuestionOverallDetails(assessmentId, instituteId, attemptId);
-        if (studentDetail == null) throw new VacademyException("Student attempt details not found");
+        if (studentDetail == null) return null;
 
         // Get marks distribution
         List<MarksRankDto> marksDistribution = studentAttemptRepository.findMarkRankForAssessment(assessmentId, instituteId);

@@ -493,7 +493,7 @@ public class HtmlBuilderService {
         html.append(".report-footer { background-color: #f8f9fc; padding: 14px 28px; text-align: center; font-size: 11px; color: #999; }");
         // Watermark CSS — using @page margin box or fixed positioning
         html.append(".watermark { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }");
-        html.append(".watermark-text { position: absolute; top: 50%; left: 50%; font-size: 60px; font-weight: bold; white-space: nowrap; transform: rotate(-35deg); margin-left: -200px; margin-top: -30px; }");
+        html.append(".watermark-text { position: absolute; top: 360pt; left: 100pt; font-size: 60px; font-weight: bold; white-space: nowrap; transform: rotate(-35deg); }");
         html.append("</style></head><body>");
 
         // ===== WATERMARK (fixed div outside container — repeats on every page in iText) =====

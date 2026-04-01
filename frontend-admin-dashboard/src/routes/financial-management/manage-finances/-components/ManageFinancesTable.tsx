@@ -25,6 +25,7 @@ interface ManageFinancesTableProps {
     error: unknown;
     currentPage: number;
     onPageChange: (page: number) => void;
+    isFeeTypeFiltered?: boolean;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -293,6 +294,7 @@ export function ManageFinancesTable({
     error,
     currentPage,
     onPageChange,
+    isFeeTypeFiltered = false,
 }: ManageFinancesTableProps) {
     const { getDetailsFromPackageSessionId, instituteDetails } = useInstituteDetailsStore();
 
@@ -506,6 +508,13 @@ export function ManageFinancesTable({
                 header: 'Progress',
                 cell: ({ row }) => {
                     const r = row.original;
+                    if (isFeeTypeFiltered) {
+                        return (
+                            <InstallmentProgressBar
+                                statuses={r.installment_statuses || []}
+                            />
+                        );
+                    }
                     return (
                         <PercentageProgressBar
                             paid={r.total_paid_amount ?? 0}
@@ -541,7 +550,7 @@ export function ManageFinancesTable({
                 size: 50,
             },
         ],
-        [getPackageName, isExpanded, toggleExpand]
+        [getPackageName, isExpanded, toggleExpand, isFeeTypeFiltered]
     );
 
     // ── Render expanded row ────────────────────────────────────────────

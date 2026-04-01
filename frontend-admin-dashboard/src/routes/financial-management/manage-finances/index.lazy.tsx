@@ -122,6 +122,7 @@ function ManageFinancesLayoutPage() {
                     error={error as Error}
                     currentPage={filter.page}
                     onPageChange={handlePageChange}
+                    isFeeTypeFiltered={!!filter.filters.feeTypeIds?.length}
                 />
             </div>
         </>

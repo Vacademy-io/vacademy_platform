@@ -7,6 +7,7 @@ export interface FeeSearchFilterDTO {
     filters: {
         packageSessionIds?: string[];
         cpoIds?: string[];
+        feeTypeIds?: string[];
         statuses?: string[]; // PAID | OVERDUE | PARTIAL | PENDING
         studentSearchQuery?: string;
     };

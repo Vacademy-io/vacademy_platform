@@ -1,9 +1,14 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { MagnifyingGlass, X } from '@phosphor-icons/react';
 import { FilterChips } from '@/components/design-system/chips';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { FeeSearchFilterDTO } from '@/types/manage-finances';
+import {
+    fetchFeeTypesForInstitute,
+    getFeeTypesQueryKey,
+} from '@/services/manage-finances';
 
 interface ManageFinancesFiltersProps {
     filter: FeeSearchFilterDTO;
@@ -33,8 +38,13 @@ export function ManageFinancesFilters({
     const [searchInput, setSearchInput] = useState(filter.filters.studentSearchQuery || '');
     const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
+    // Keep a ref to the latest filter to avoid stale closures in effects
+    const filterRef = useRef(filter);
+    filterRef.current = filter;
+
     const [selectedPackages, setSelectedPackages] = useState<FilterItem[]>([]);
     const [selectedLevels, setSelectedLevels] = useState<FilterItem[]>([]);
+    const [selectedFeeTypes, setSelectedFeeTypes] = useState<FilterItem[]>([]);
     const [selectedStatuses, setSelectedStatuses] = useState<FilterItem[]>(
         (filter.filters.statuses || []).map((s) => ({
             id: s,
@@ -42,14 +52,38 @@ export function ManageFinancesFilters({
         }))
     );
 
+    // Fetch fee types from API
+    const { data: feeTypesData } = useQuery({
+        queryKey: getFeeTypesQueryKey(),
+        queryFn: fetchFeeTypesForInstitute,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    // Build fee type options — group by name, collect all IDs per name
+    const feeTypeOptions: FilterItem[] = useMemo(() => {
+        if (!feeTypesData) return [];
+        const nameMap = new Map<string, string[]>();
+        for (const ft of feeTypesData) {
+            const ids = nameMap.get(ft.name) || [];
+            ids.push(ft.id);
+            nameMap.set(ft.name, ids);
+        }
+        // Use first ID as the FilterItem id, store all IDs joined with comma
+        return Array.from(nameMap.entries()).map(([name, ids]) => ({
+            id: ids.join(','),
+            label: name,
+        }));
+    }, [feeTypesData]);
+
     // Debounced search
     useEffect(() => {
         debounceRef.current = setTimeout(() => {
+            const current = filterRef.current;
             onFilterChange({
-                ...filter,
+                ...current,
                 page: 0,
                 filters: {
-                    ...filter.filters,
+                    ...current.filters,
                     studentSearchQuery: searchInput || undefined,
                 },
             });
@@ -69,10 +103,12 @@ export function ManageFinancesFilters({
         if (
             !filter.filters.statuses?.length &&
             !filter.filters.packageSessionIds?.length &&
+            !filter.filters.feeTypeIds?.length &&
             !filter.filters.studentSearchQuery
         ) {
             setSelectedPackages([]);
             setSelectedLevels([]);
+            setSelectedFeeTypes([]);
             setSelectedStatuses([]);
         }
     }, [filter.filters]);
@@ -100,11 +136,12 @@ export function ManageFinancesFilters({
             ? selectedStatuses.filter((s) => s.id !== option.id)
             : [...selectedStatuses, option];
         setSelectedStatuses(updated);
+        const current = filterRef.current;
         onFilterChange({
-            ...filter,
+            ...current,
             page: 0,
             filters: {
-                ...filter.filters,
+                ...current.filters,
                 statuses: updated.map((s) => s.id),
             },
         });
@@ -124,18 +161,41 @@ export function ManageFinancesFilters({
         });
     };
 
+    // Handle fee type changes — send all IDs (comma-joined per option) to backend
+    const handleFeeTypeSelect = (option: FilterItem) => {
+        const exists = selectedFeeTypes.some((f) => f.id === option.id);
+        const updated = exists
+            ? selectedFeeTypes.filter((f) => f.id !== option.id)
+            : [...selectedFeeTypes, option];
+        setSelectedFeeTypes(updated);
+
+        // Flatten all comma-joined IDs into a single array
+        const allFeeTypeIds = updated.flatMap((f) => f.id.split(','));
+        const current = filterRef.current;
+        onFilterChange({
+            ...current,
+            page: 0,
+            filters: {
+                ...current.filters,
+                feeTypeIds: allFeeTypeIds.length > 0 ? allFeeTypeIds : undefined,
+            },
+        });
+    };
+
     // When package/level/session selection changes, compute matching packageSessionIds
     useEffect(() => {
+        const current = filterRef.current;
+
         if (
             selectedPackages.length === 0 &&
             selectedLevels.length === 0 &&
             !selectedSessionId
         ) {
-            if (filter.filters.packageSessionIds?.length) {
+            if (current.filters.packageSessionIds?.length) {
                 onFilterChange({
-                    ...filter,
+                    ...current,
                     page: 0,
-                    filters: { ...filter.filters, packageSessionIds: [] },
+                    filters: { ...current.filters, packageSessionIds: [] },
                 });
             }
             return;
@@ -157,9 +217,9 @@ export function ManageFinancesFilters({
             .map((batch: any) => batch.id);
 
         onFilterChange({
-            ...filter,
+            ...current,
             page: 0,
-            filters: { ...filter.filters, packageSessionIds: matchingIds },
+            filters: { ...current.filters, packageSessionIds: matchingIds },
         });
     }, [selectedPackages, selectedLevels, selectedSessionId]);
 
@@ -167,7 +227,8 @@ export function ManageFinancesFilters({
         !!filter.filters.studentSearchQuery ||
         selectedStatuses.length > 0 ||
         selectedPackages.length > 0 ||
-        selectedLevels.length > 0;
+        selectedLevels.length > 0 ||
+        selectedFeeTypes.length > 0;
 
     return (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3">
@@ -195,6 +256,23 @@ export function ManageFinancesFilters({
                     handleClearFilters={() => setSelectedPackages([])}
                 />
 
+                {/* Fee Type filter */}
+                <FilterChips
+                    label="Fee Type"
+                    filterList={feeTypeOptions}
+                    selectedFilters={selectedFeeTypes}
+                    handleSelect={handleFeeTypeSelect}
+                    handleClearFilters={() => {
+                        setSelectedFeeTypes([]);
+                        const current = filterRef.current;
+                        onFilterChange({
+                            ...current,
+                            page: 0,
+                            filters: { ...current.filters, feeTypeIds: undefined },
+                        });
+                    }}
+                />
+
                 {/* Status filter */}
                 <FilterChips
                     label="Status"
@@ -203,10 +281,11 @@ export function ManageFinancesFilters({
                     handleSelect={handleStatusSelect}
                     handleClearFilters={() => {
                         setSelectedStatuses([]);
+                        const current = filterRef.current;
                         onFilterChange({
-                            ...filter,
+                            ...current,
                             page: 0,
-                            filters: { ...filter.filters, statuses: [] },
+                            filters: { ...current.filters, statuses: [] },
                         });
                     }}
                 />
@@ -227,6 +306,7 @@ export function ManageFinancesFilters({
                         onClick={() => {
                             setSelectedPackages([]);
                             setSelectedLevels([]);
+                            setSelectedFeeTypes([]);
                             setSelectedStatuses([]);
                             setSearchInput('');
                             onClearFilters();

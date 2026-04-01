@@ -55,7 +55,7 @@ const fontList = [
 ];
 
 // Merge tags configuration
-const mergeTags = {
+const defaultMergeTags = {
     User: {
         Name: '{{name}}',
         Email: '{{email}}',
@@ -73,6 +73,16 @@ const mergeTags = {
     },
 };
 
+// Invoice-specific merge tags (shown when template type is INVOICE or INVOICE_EMAIL)
+const invoiceMergeTags = {
+    Invoice: {
+        'Invoice Number': '{{invoice_number}}',
+        'User Name': '{{user_name}}',
+        'Line Items (HTML)': '{{line_items}}',
+        'Total Amount': '{{total_amount}}',
+    },
+};
+
 // Inner toolbar component to access form context
 const EditorToolbar: React.FC<{
     onBack: () => void;
@@ -80,10 +90,11 @@ const EditorToolbar: React.FC<{
     setTemplateName: (name: string) => void;
     onOpenAssets: () => void;
     isSaving: boolean;
-    templateType?: 'marketing' | 'utility' | 'transactional';
-    onTemplateTypeChange?: (type: 'marketing' | 'utility' | 'transactional') => void;
+    templateType?: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL';
+    onTemplateTypeChange?: (type: 'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL') => void;
     previewText?: string;
     onPreviewTextChange?: (text: string) => void;
+    mergeTags?: Record<string, Record<string, string>>;
 }> = ({
     onBack,
     templateName,
@@ -94,6 +105,7 @@ const EditorToolbar: React.FC<{
     onTemplateTypeChange,
     previewText = '',
     onPreviewTextChange,
+    mergeTags = defaultMergeTags,
 }) => {
     const form = useForm();
     const { dirty, values } = useFormState({
@@ -236,6 +248,8 @@ const EditorToolbar: React.FC<{
                         <option value="utility">Utility</option>
                         <option value="marketing">Marketing</option>
                         <option value="transactional">Transactional</option>
+                        <option value="INVOICE">Invoice (PDF Layout)</option>
+                        <option value="INVOICE_EMAIL">Invoice Email</option>
                     </select>
                 </div>
                 <div style={styles.subjectContainer}>
@@ -302,7 +316,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
     const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
     const [imageResolve, setImageResolve] = useState<((url: string) => void) | null>(null);
     const [templateName, setTemplateName] = useState(template?.name || 'Untitled Template');
-    const [templateType, setTemplateType] = useState<'marketing' | 'utility' | 'transactional'>(
+    const [templateType, setTemplateType] = useState<'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL'>(
         template?.templateType || 'utility'
     );
     const [isSaving, setIsSaving] = useState(false);
@@ -528,10 +542,14 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                 const mjmlJsonString = JSON.stringify(values.content);
 
                 // 5. Create template object with MJML stored in mjml field
+                // For INVOICE/INVOICE_EMAIL types, use that as the DB type directly
+                const resolvedType = (templateType === 'INVOICE' || templateType === 'INVOICE_EMAIL')
+                    ? templateType : 'EMAIL';
+
                 const savedTemplate: MessageTemplate = {
                     id: template?.id || '',
                     name: templateName,
-                    type: 'EMAIL',
+                    type: resolvedType,
                     subject: values.subject,
                     content: processedHtml, // Save as HTML for sending emails
                     variables: template?.variables || [],
@@ -624,6 +642,14 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
         }
     }, [imageResolve]);
 
+    // Merge tags change based on template type
+    const mergeTags = useMemo(() => {
+        if (templateType === 'INVOICE' || templateType === 'INVOICE_EMAIL') {
+            return { ...invoiceMergeTags, ...defaultMergeTags };
+        }
+        return defaultMergeTags;
+    }, [templateType]);
+
     const handleOpenAssets = () => {
         openAssetPicker().then((url) => {
             if (url) {
@@ -658,6 +684,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                                 onTemplateTypeChange={setTemplateType}
                                 previewText={previewText}
                                 onPreviewTextChange={setPreviewText}
+                                mergeTags={mergeTags}
                             />
                             <div style={{ flex: 1, overflow: 'hidden' }}>
                                 <SimpleLayout showSourceCode={true} mjmlReadOnly={false}>

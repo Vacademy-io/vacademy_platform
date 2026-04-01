@@ -47,6 +47,9 @@ public class UnifiedSendRequest {
         private String emailSubject;
         private String emailBody;
         private String emailType;
+        private String pushTitle;
+        private String pushBody;
+        private Map<String, String> pushData;
         private String source;
         private String sourceId;
     }

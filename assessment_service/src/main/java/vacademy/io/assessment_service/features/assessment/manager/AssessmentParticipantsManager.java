@@ -111,6 +111,13 @@ public class AssessmentParticipantsManager {
     @Autowired
     private FileService fileService;
 
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private vacademy.io.assessment_service.features.learner_assessment.service.LearnerReportService learnerReportService;
+
+    @Autowired
+    private vacademy.io.assessment_service.features.client.AdminCoreServiceClient adminCoreServiceClient;
+
     @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user,
             AssessmentRegistrationsDto assessmentRegistrationsDto, String assessmentId, String instituteId,
@@ -774,7 +781,9 @@ public class AssessmentParticipantsManager {
                 throw new VacademyException("Section and Question Mapping Not Found");
 
             Question currentQuestion = questionWiseMarks.getQuestion();
-            String questionHtml = currentQuestion.getTextData().getContent();
+            // H: Guard against null textData
+            String questionHtml = currentQuestion.getTextData() != null
+                    ? currentQuestion.getTextData().getContent() : "";
             String questionType = currentQuestion.getQuestionType();
 
             if (StringUtils.isEmpty(questionType)) {
@@ -783,7 +792,7 @@ public class AssessmentParticipantsManager {
 
             return StudentReportAnswerReviewDto.builder()
                     .questionId(currentQuestion.getId())
-                    .questionText(currentQuestion.getTextData().toDTO())
+                    .questionText(currentQuestion.getTextData() != null ? currentQuestion.getTextData().toDTO() : null)
                     .parentId(currentQuestion.getParentRichText() != null ? currentQuestion.getParentRichText().getId()
                             : null)
                     .parentRichText(
@@ -804,7 +813,8 @@ public class AssessmentParticipantsManager {
                     .timeTakenInSeconds(questionWiseMarks.getTimeTakenInSeconds())
                     .build();
         } catch (Exception e) {
-            return StudentReportAnswerReviewDto.builder().build();
+            // G: Return null instead of empty DTO — caller filters nulls
+            return null;
         }
     }
 
@@ -944,29 +954,107 @@ public class AssessmentParticipantsManager {
             handleParticipantsReportCreationForManualAssessment(attemptList, assessment, instituteId);
             return;
         }
+        // Fetch report branding once for the institute
+        vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto branding = null;
+        try {
+            branding = adminCoreServiceClient.getReportBranding(instituteId);
+        } catch (Exception e) {
+            log.warn("Failed to fetch report branding for institute {}: {}", instituteId, e.getMessage());
+        }
+        final vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto finalBranding = branding;
+
+        // Pre-compute option distribution once for the entire assessment (shared across all students)
+        java.util.Map<String, java.util.Map<String, Double>> optionDist = null;
+        try {
+            optionDist = learnerReportService.computeOptionDistribution(assessment.getId());
+        } catch (Exception e) {
+            log.warn("Failed to compute option distribution for assessment {}: {}", assessment.getId(), e.getMessage());
+        }
+
+        final java.util.Map<String, java.util.Map<String, Double>> finalOptionDist = optionDist;
         Map<StudentAttempt, byte[]> reportMap = new HashMap<>();
         attemptList.forEach(attempt -> {
-            // Generate student report details
-            StudentReportOverallDetailDto studentReportOverallDetailDto = createStudentReportDetailResponse(
-                    assessment.getId(), attempt.getId(), instituteId);
+            try {
+                // Skip attempts that were never submitted (no meaningful report to generate)
+                String attemptStatus = attempt.getStatus();
+                if (attemptStatus == null || (!attemptStatus.equals("LIVE") && !attemptStatus.equals("ENDED"))) {
+                    log.info("Skipping report for attempt {} with status '{}' (not submitted)", attempt.getId(), attemptStatus);
+                    updateAttemptDataReleaseData(attempt);
+                    return;
+                }
 
-            // Convert report to HTML
-            String studentReportHtml = htmlBuilderService.generateStudentReportHtml(assessment.getName(),
-                    studentReportOverallDetailDto);
+                // Generate student report details
+                StudentReportOverallDetailDto studentReportOverallDetailDto = createStudentReportDetailResponse(
+                        assessment.getId(), attempt.getId(), instituteId);
 
-            // Convert HTML report to PDF
-            ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
-            ConverterProperties converterProperties = new ConverterProperties();
-            HtmlConverter.convertToPdf(studentReportHtml, pdfOutputStream, converterProperties);
+                // Build comparison data for rich PDF
+                String userId = attempt.getRegistration() != null ? attempt.getRegistration().getUserId() : null;
+                vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto comparison = null;
+                try {
+                    comparison = learnerReportService.buildComparisonData(
+                            userId, assessment.getId(), attempt.getId(), instituteId);
+                } catch (Exception e) {
+                    log.warn("Failed to build comparison for attempt {}: {}", attempt.getId(), e.getMessage());
+                }
 
-            // Convert the PDF stream to a byte array
-            byte[] participantPdfReport = pdfOutputStream.toByteArray();
+                // Convert report to rich HTML with comparison data and branding
+                String studentReportHtml = htmlBuilderService.generateStudentReportHtml(
+                        assessment.getName(), studentReportOverallDetailDto, comparison, finalOptionDist, finalBranding);
 
-            // Update attempt status
-            updateAttemptDataReleaseData(attempt);
+                // Convert HTML report to PDF
+                ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
+                ConverterProperties converterProperties = new ConverterProperties();
+                HtmlConverter.convertToPdf(studentReportHtml, pdfOutputStream, converterProperties);
 
-            // Send notification to the student
-            reportMap.put(attempt, participantPdfReport);
+                // Convert the PDF stream to a byte array
+                byte[] participantPdfReport = pdfOutputStream.toByteArray();
+
+                // Upload PDF to storage and cache the file ID
+                try {
+                    String fileName = "report_" + attempt.getId() + ".pdf";
+                    Map<String, String> presignedData = fileService.getPresignedUploadUrl(
+                            fileName, "application/pdf", "ASSESSMENT_REPORT", assessment.getId());
+                    String fileId = presignedData.get("id");
+                    String uploadUrl = presignedData.get("url");
+
+                    // PUT the PDF bytes to the presigned S3 URL
+                    java.net.URL url = new java.net.URL(uploadUrl);
+                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("PUT");
+                    conn.setDoOutput(true);
+                    conn.setRequestProperty("Content-Type", "application/pdf");
+                    conn.setRequestProperty("Content-Length", String.valueOf(participantPdfReport.length));
+                    try (java.io.OutputStream os = conn.getOutputStream()) {
+                        os.write(participantPdfReport);
+                        os.flush();
+                    }
+                    int responseCode = conn.getResponseCode();
+                    if (responseCode == 200 || responseCode == 201) {
+                        attempt.setReportPdfFileId(fileId);
+                        log.info("Uploaded report PDF for attempt {}, fileId: {}", attempt.getId(), fileId);
+                    } else {
+                        String errorBody = "";
+                        try (java.io.InputStream errStream = conn.getErrorStream()) {
+                            if (errStream != null) errorBody = new String(errStream.readAllBytes());
+                        } catch (Exception ignored) {}
+                        log.warn("S3 upload returned {} for attempt {}. URL: {}, Error: {}",
+                                responseCode, attempt.getId(), uploadUrl, errorBody);
+                    }
+                    conn.disconnect();
+                } catch (Exception e) {
+                    log.warn("Failed to upload PDF for attempt {}: {}", attempt.getId(), e.getMessage());
+                }
+
+                // Update attempt status
+                updateAttemptDataReleaseData(attempt);
+
+                // Send notification to the student
+                reportMap.put(attempt, participantPdfReport);
+            } catch (Exception e) {
+                log.error("Failed to generate report for attempt {}: {}", attempt.getId(), e.getMessage());
+                // Still release the attempt even if PDF generation fails
+                updateAttemptDataReleaseData(attempt);
+            }
         });
         sendNotificationToStudent(reportMap, assessment.getId());
     }

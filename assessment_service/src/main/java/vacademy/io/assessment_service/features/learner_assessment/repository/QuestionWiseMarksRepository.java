@@ -72,6 +72,42 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
 
     List<QuestionWiseMarks> findByStudentAttemptId(String attemptId);
 
+    @Query(value = """
+            SELECT qwm.* FROM question_wise_marks qwm
+            WHERE qwm.attempt_id = :attemptId
+            AND qwm.section_id = :sectionId
+            """, nativeQuery = true)
+    List<QuestionWiseMarks> findByStudentAttemptIdAndSectionId(
+            @Param("attemptId") String attemptId,
+            @Param("sectionId") String sectionId);
+
+    @Query(value = """
+            SELECT
+                qwm.section_id AS sectionId,
+                AVG(attempt_marks.total_marks) AS avgMarks,
+                MAX(attempt_marks.total_marks) AS maxMarks,
+                SUM(CASE WHEN qwm.status = 'CORRECT' THEN 1 ELSE 0 END) AS totalCorrect,
+                COUNT(*) AS totalQuestions
+            FROM question_wise_marks qwm
+            JOIN student_attempt sa ON sa.id = qwm.attempt_id
+            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+            JOIN (
+                SELECT attempt_id, section_id, SUM(marks) AS total_marks
+                FROM question_wise_marks
+                WHERE assessment_id = :assessmentId
+                GROUP BY attempt_id, section_id
+            ) attempt_marks ON attempt_marks.attempt_id = qwm.attempt_id AND attempt_marks.section_id = qwm.section_id
+            WHERE aur.assessment_id = :assessmentId
+            AND aur.institute_id = :instituteId
+            AND sa.status IN ('LIVE', 'ENDED')
+            AND qwm.section_id IN (:sectionIds)
+            GROUP BY qwm.section_id
+            """, nativeQuery = true)
+    List<Object[]> findSectionWiseAggregation(
+            @Param("assessmentId") String assessmentId,
+            @Param("instituteId") String instituteId,
+            @Param("sectionIds") List<String> sectionIds);
+
     /**
      * Fetch QuestionWiseMarks with eagerly loaded Question and Options to avoid
      * lazy initialization errors
@@ -95,6 +131,14 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
     List<QuestionWiseMarks> findByAssessmentIdAndQuestionIdAndSectionId(@Param("questionId") String questionId,
             @Param("assessmentId") String assessmentId,
             @Param("sectionId") String sectionId);
+
+    @Query(value = """
+            SELECT qwm.question_id AS questionId, qwm.response_json AS responseJson
+            FROM question_wise_marks qwm
+            WHERE qwm.assessment_id = :assessmentId
+            AND qwm.response_json IS NOT NULL
+            """, nativeQuery = true)
+    List<Object[]> findOptionResponsesByAssessmentId(@Param("assessmentId") String assessmentId);
 
     @Query(value = """
             select COUNT(distinct aur.user_id) from question_wise_marks qwm

@@ -405,9 +405,41 @@ async def request_video_render(
             avatar_video_url=s3_urls.get("avatar"),
             show_captions=True,
         )
-        return {"job_id": job_id, "status": "queued", "video_id": video_id}
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+    # Poll the render worker in background and update DB on completion
+    async def _poll_render(vid: str, jid: str):
+        import asyncio as _aio
+        try:
+            deadline = 5400  # 90 min
+            elapsed = 0
+            while elapsed < deadline:
+                await _aio.sleep(15)
+                elapsed += 15
+                status_resp = render_svc.check_status(jid)
+                rs = status_resp.get("status", "")
+                if rs == "completed":
+                    video_url = status_resp.get("video_url", "")
+                    if video_url:
+                        with make_db_session() as bg_session:
+                            repo = AiVideoRepository(session=bg_session)
+                            repo.update_files(
+                                video_id=vid,
+                                file_ids={"video": f"{vid}-video"},
+                                s3_urls={"video": video_url},
+                            )
+                        logger.info(f"[render-poll] Video {vid} render done, DB updated: {video_url}")
+                    return
+                elif rs == "failed":
+                    logger.error(f"[render-poll] Video {vid} render failed: {status_resp.get('error')}")
+                    return
+        except Exception as e:
+            logger.error(f"[render-poll] Polling error for {vid}: {e}")
+
+    asyncio.create_task(_poll_render(video_id, job_id))
+
+    return {"job_id": job_id, "status": "queued", "video_id": video_id}
 
 
 @router.post("/render-callback/{video_id}")

@@ -112,65 +112,138 @@ class RenderWorker:
             if on_progress:
                 on_progress(15)
 
-            # ── Build render command ──
+            # ── Parallel frame rendering ──
+            # Split frames across N parallel Playwright processes for speed.
+            # Each process renders a subset of frames, then we assemble with FFmpeg.
+            NUM_WORKERS = int(os.environ.get("RENDER_PARALLEL_WORKERS", "2"))
+            FPS = 22
             output_path = work_dir / "output.mp4"
             frames_dir = work_dir / ".render_frames"
+            frames_dir.mkdir(parents=True, exist_ok=True)
 
-            cmd = [
+            # First, compute total frames by doing a dry-run parse of timeline + audio
+            import json as _json
+            tl_data = _json.loads(timeline_path.read_text())
+            if isinstance(tl_data, dict) and "entries" in tl_data:
+                tl_entries = tl_data["entries"]
+            else:
+                tl_entries = tl_data
+            from moviepy import AudioFileClip as _AFC
+            _audio_dur = _AFC(str(audio_path)).duration
+            tl_max_end = max((e.get("exitTime", 0) for e in tl_entries), default=0)
+            total_duration = max(_audio_dur + audio_delay, tl_max_end)
+            total_frames = int(total_duration * FPS) + 1
+            logger.info(f"Total frames: {total_frames}, splitting across {NUM_WORKERS} workers")
+
+            # Build base command (shared across all workers)
+            base_cmd = [
                 sys.executable,
                 str(RENDER_SCRIPT),
                 str(audio_path),
                 str(timeline_path),
-                str(output_path),
+                str(output_path),  # not used in frames-only mode, but required arg
                 "--frames-dir", str(frames_dir),
                 "--background", "#000000",
-                "--fps", "22",
+                "--fps", str(FPS),
+                "--frames-only",
             ]
-
             if VIDEO_OPTIONS.exists():
-                cmd.extend(["--video-options", str(VIDEO_OPTIONS)])
+                base_cmd.extend(["--video-options", str(VIDEO_OPTIONS)])
             if words_url and words_path.exists():
-                cmd.extend(["--captions-words", str(words_path)])
+                base_cmd.extend(["--captions-words", str(words_path)])
             if CAPTIONS_SETTINGS.exists():
-                cmd.extend(["--captions-settings", str(CAPTIONS_SETTINGS)])
+                base_cmd.extend(["--captions-settings", str(CAPTIONS_SETTINGS)])
             if audio_delay > 0:
-                cmd.extend(["--audio-delay", str(audio_delay)])
+                base_cmd.extend(["--audio-delay", str(audio_delay)])
             if show_captions:
-                cmd.append("--show-captions")
-            if avatar_path and avatar_path.exists():
-                cmd.extend(["--avatar-video", str(avatar_path)])
+                base_cmd.append("--show-captions")
 
-            logger.info(f"Render command: {' '.join(cmd[:6])}...")
+            # Split frame ranges
+            chunk_size = (total_frames + NUM_WORKERS - 1) // NUM_WORKERS
+            frame_ranges = []
+            for i in range(NUM_WORKERS):
+                start = i * chunk_size
+                end = min(start + chunk_size, total_frames)
+                if start < total_frames:
+                    frame_ranges.append((start, end))
 
-            # ── Run generate_video.py ──
             if on_progress:
                 on_progress(20)
 
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    cmd,
-                    check=False,  # Don't raise — we check manually for better logging
+            # Run workers in parallel
+            logger.info(f"Launching {len(frame_ranges)} parallel render workers: {frame_ranges}")
+
+            def _run_chunk(start: int, end: int) -> subprocess.CompletedProcess:
+                chunk_cmd = base_cmd + ["--start-frame", str(start), "--end-frame", str(end)]
+                return subprocess.run(
+                    chunk_cmd,
+                    check=False,
                     cwd=str(REPO_ROOT),
                     capture_output=True,
                     text=True,
-                    timeout=5400,  # 90-minute timeout
+                    timeout=5400,
+                )
+
+            loop = asyncio.get_event_loop()
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=NUM_WORKERS) as pool:
+                futures = [
+                    loop.run_in_executor(pool, _run_chunk, start, end)
+                    for start, end in frame_ranges
+                ]
+                results = await asyncio.gather(*futures)
+
+            # Check all workers succeeded
+            for i, result in enumerate(results):
+                if result.returncode != 0:
+                    logger.error(f"Worker {i} STDERR:\n{result.stderr[-2000:]}")
+                    logger.error(f"Worker {i} STDOUT:\n{result.stdout[-1000:]}")
+                    raise RuntimeError(
+                        f"Render worker {i} (frames {frame_ranges[i]}) failed: "
+                        f"{result.stderr[-500:]}"
+                    )
+                logger.info(f"Worker {i} done: {result.stdout[-200:]}")
+
+            rendered_frames = sorted(frames_dir.glob("frame_*.png"))
+            logger.info(f"Total rendered frames: {len(rendered_frames)}")
+
+            if on_progress:
+                on_progress(75)
+
+            # ── Assemble with FFmpeg ──
+            logger.info("Assembling video with FFmpeg...")
+            ffmpeg_cmd = [
+                "ffmpeg", "-y",
+                "-framerate", str(FPS),
+                "-i", str(frames_dir / "frame_%06d.png"),
+                "-i", str(audio_path),
+                "-filter_complex", f"[1:a]adelay={int(audio_delay * 1000)}|{int(audio_delay * 1000)}[delayed_audio]",
+                "-map", "0:v",
+                "-map", "[delayed_audio]",
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-crf", "23",
+                "-preset", "fast",
+                "-c:a", "aac",
+                "-shortest",
+                str(output_path),
+            ]
+
+            ffmpeg_result = await loop.run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    ffmpeg_cmd, check=False, capture_output=True, text=True, timeout=600
                 ),
             )
 
-            if result.returncode != 0:
-                logger.error(f"Render STDERR:\n{result.stderr[-2000:]}")
-                logger.error(f"Render STDOUT:\n{result.stdout[-1000:]}")
-                raise RuntimeError(
-                    f"generate_video.py exited with code {result.returncode}. "
-                    f"Error: {result.stderr[-500:]}"
-                )
-
-            logger.info(f"Render stdout (last 500 chars): ...{result.stdout[-500:]}")
+            if ffmpeg_result.returncode != 0:
+                logger.error(f"FFmpeg STDERR:\n{ffmpeg_result.stderr[-2000:]}")
+                raise RuntimeError(f"FFmpeg assembly failed: {ffmpeg_result.stderr[-500:]}")
 
             if not output_path.exists():
-                raise RuntimeError(f"Render completed but output.mp4 not found at {output_path}")
+                raise RuntimeError(f"FFmpeg completed but output.mp4 not found at {output_path}")
+
+            logger.info(f"Video assembled: {output_path} ({output_path.stat().st_size / 1024 / 1024:.1f} MB)")
 
             if on_progress:
                 on_progress(85)

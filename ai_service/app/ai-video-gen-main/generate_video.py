@@ -1232,6 +1232,9 @@ def render_video_from_json(
     character_pose: str = "",
     avatar_video_path: str = "",
     audio_delay: float = 0.0,
+    frames_only: bool = False,
+    start_frame: Optional[int] = None,
+    end_frame: Optional[int] = None,
 ) -> Path:
     """
     Render a portrait video by placing timed HTML overlays (from JSON) on a 1080x1920 canvas
@@ -1511,7 +1514,11 @@ def render_video_from_json(
         if not show_character:
             page.evaluate("() => window.__updateCharacter && window.__updateCharacter(null)")
 
-        for frame_index in range(total_frames):
+        _render_start = start_frame if start_frame is not None else 0
+        _render_end = end_frame if end_frame is not None else total_frames
+        print(f"DEBUG: Rendering frame range [{_render_start}, {_render_end}) of {total_frames} total")
+
+        for frame_index in range(_render_start, _render_end):
             t = frame_index / float(fps)
             active = _active_entries_at(timeline, t)
             # Add branding if enabled
@@ -1745,6 +1752,12 @@ def render_video_from_json(
         browser.close()
         print("DEBUG: Browser closed.")
 
+    # If frames-only mode, skip video assembly (caller handles it)
+    if frames_only:
+        rendered_count = len(list(frames_dir.glob("frame_*.png")))
+        print(f"DEBUG: Frames-only mode complete. Rendered {rendered_count} frames to {frames_dir}")
+        return frames_dir
+
     # Assemble video
     print("DEBUG: Collecting frame files...")
     frame_files = sorted(str(p) for p in frames_dir.glob("frame_*.png"))
@@ -1837,6 +1850,9 @@ def _parse_args(argv: List[str]):
     parser.add_argument("--character-pose", default="", help="Pose name override for the animated character")
     parser.add_argument("--avatar-video", default="", help="Path to generated avatar video loop/clip")
     parser.add_argument("--audio-delay", type=float, default=0.0, help="Delay audio start by this many seconds (for intro silence)")
+    parser.add_argument("--frames-only", action="store_true", help="Only render frames (skip video assembly). Used for parallel rendering.")
+    parser.add_argument("--start-frame", type=int, default=None, help="First frame index to render (inclusive). Used with --frames-only for parallel.")
+    parser.add_argument("--end-frame", type=int, default=None, help="Last frame index to render (exclusive). Used with --frames-only for parallel.")
     return parser.parse_args(argv[1:])
 
 
@@ -1864,6 +1880,9 @@ if __name__ == "__main__":
         character_pose=args.character_pose,
         avatar_video_path=args.avatar_video,
         audio_delay=args.audio_delay,
+        frames_only=args.frames_only,
+        start_frame=args.start_frame,
+        end_frame=args.end_frame,
     )
     print(f"Video written to: {result_path}")
 

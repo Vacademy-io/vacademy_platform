@@ -161,7 +161,7 @@ const ManageInventoryPage = () => {
                         No Package Sessions Found
                     </h3>
                     <p className="max-w-md text-muted-foreground">
-                        {filters.courseId || filters.levelId || filters.sessionId || filters.search
+                        {filters.levelId || filters.sessionId || filters.search
                             ? 'No results match your filters. Try adjusting your search criteria.'
                             : "You don't have any package sessions configured yet. Create package sessions to manage their inventory."}
                     </p>

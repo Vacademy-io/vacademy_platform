@@ -51,7 +51,7 @@ export const InventoryFilters = ({
     }, [searchInput]);
 
     const hasActiveFilters =
-        filters.courseId || filters.levelId || filters.sessionId || filters.search;
+        filters.levelId || filters.sessionId || filters.search;
 
     const clearAllFilters = () => {
         setSearchInput('');
@@ -67,8 +67,6 @@ export const InventoryFilters = ({
 
     const getFilterLabel = (key: keyof FiltersType, value: string): string => {
         switch (key) {
-            case 'courseId':
-                return filterOptions.courses.find((c) => c.id === value)?.name || value;
             case 'levelId':
                 return filterOptions.levels.find((l) => l.id === value)?.name || value;
             case 'sessionId':
@@ -99,29 +97,6 @@ export const InventoryFilters = ({
                             className="h-9 w-[200px] pl-8"
                         />
                     </div>
-
-                    {/* Course Filter */}
-                    <Select
-                        value={filters.courseId || '__all__'}
-                        onValueChange={(value) =>
-                            onFiltersChange({
-                                ...filters,
-                                courseId: value === '__all__' ? undefined : value,
-                            })
-                        }
-                    >
-                        <SelectTrigger className="h-9 w-[180px]">
-                            <SelectValue placeholder="All Courses" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="__all__">All Courses</SelectItem>
-                            {filterOptions.courses.map((course) => (
-                                <SelectItem key={course.id} value={course.id}>
-                                    {course.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
 
                     {/* Level Filter */}
                     <Select

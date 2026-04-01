@@ -19,7 +19,7 @@ public class AssessmentReportNotificationService {
     @Autowired
     private NotificationService notificationService;
 
-    public void sendAssessmentReportsToLearners(Map<StudentAttempt, byte[]> participantPdfReport, String assessmentId) {
+    public void sendAssessmentReportsToLearners(Map<StudentAttempt, byte[]> participantPdfReport, String assessmentId, String instituteId) {
         List<AttachmentUsersDTO> usersList = new ArrayList<>();
 
         for (Map.Entry<StudentAttempt, byte[]> entry : participantPdfReport.entrySet()) {
@@ -41,7 +41,7 @@ public class AssessmentReportNotificationService {
         }
 
         AttachmentNotificationDTO attachmentNotificationDTO = getAttachmentNotificationDTO(usersList, assessmentId);
-        sendNotification(attachmentNotificationDTO);
+        sendNotification(attachmentNotificationDTO, instituteId);
     }
 
     private AttachmentNotificationDTO getAttachmentNotificationDTO(List<AttachmentUsersDTO> usersList,
@@ -56,9 +56,9 @@ public class AssessmentReportNotificationService {
         return attachmentNotificationDTO;
     }
 
-    private void sendNotification(AttachmentNotificationDTO notificationDTO) {
+    private void sendNotification(AttachmentNotificationDTO notificationDTO, String instituteId) {
         try {
-            notificationService.sendAttachmentEmailToUsers(notificationDTO);
+            notificationService.sendAttachmentEmailToUsers(notificationDTO, instituteId);
         } catch (Exception e) {
             SentryLogger.SentryEventBuilder.error(e)
                     .withMessage("Failed to send assessment report notification")
@@ -82,7 +82,7 @@ public class AssessmentReportNotificationService {
                                                      String assessmentId, String assessmentName, String instituteId) {
         // 1. Send email with PDF (existing flow) — catch so it doesn't block other channels
         try {
-            sendAssessmentReportsToLearners(participantPdfReport, assessmentId);
+            sendAssessmentReportsToLearners(participantPdfReport, assessmentId, instituteId);
         } catch (Exception e) {
             SentryLogger.SentryEventBuilder.error(e)
                     .withMessage("Failed to send email report, continuing with other channels")

@@ -30,7 +30,7 @@ public class NotificationService {
     @Value("${notification.server.baseurl}")
     private String notificationServerBaseUrl;
 
-    public void sendEmailToUsers(NotificationDTO dto) {
+    public void sendEmailToUsers(NotificationDTO dto, String instituteId) {
         List<UnifiedSendRequest.Recipient> recipients = new ArrayList<>();
         if (dto.getUsers() != null) {
             for (NotificationToUserDTO user : dto.getUsers()) {
@@ -43,7 +43,7 @@ public class NotificationService {
         }
 
         UnifiedSendRequest request = UnifiedSendRequest.builder()
-                .instituteId("")
+                .instituteId(instituteId != null ? instituteId : "")
                 .channel("EMAIL")
                 .recipients(recipients)
                 .options(UnifiedSendRequest.SendOptions.builder()
@@ -64,7 +64,7 @@ public class NotificationService {
         }
     }
 
-    public void sendAttachmentEmailToUsers(AttachmentNotificationDTO dto) {
+    public void sendAttachmentEmailToUsers(AttachmentNotificationDTO dto, String instituteId) {
         List<UnifiedSendRequest.Recipient> recipients = new ArrayList<>();
 
         if (dto.getUsers() != null) {
@@ -89,7 +89,7 @@ public class NotificationService {
         }
 
         UnifiedSendRequest request = UnifiedSendRequest.builder()
-                .instituteId("")
+                .instituteId(instituteId != null ? instituteId : "")
                 .channel("EMAIL")
                 .recipients(recipients)
                 .options(UnifiedSendRequest.SendOptions.builder()

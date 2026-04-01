@@ -1056,7 +1056,7 @@ public class AssessmentParticipantsManager {
                 updateAttemptDataReleaseData(attempt);
             }
         });
-        sendNotificationToStudent(reportMap, assessment.getId());
+        sendNotificationToStudent(reportMap, assessment.getId(), instituteId);
     }
 
     private void handleParticipantsReportCreationForManualAssessment(List<StudentAttempt> attemptList,
@@ -1073,7 +1073,7 @@ public class AssessmentParticipantsManager {
             // Send notification to the student
             reportMap.put(attempt, participantPdfReport);
         });
-        sendNotificationToStudent(reportMap, assessment.getId());
+        sendNotificationToStudent(reportMap, assessment.getId(), instituteId);
     }
 
     /**
@@ -1092,8 +1092,8 @@ public class AssessmentParticipantsManager {
      *
      * @param participantPdfReport The generated PDF report as a byte array.
      */
-    private void sendNotificationToStudent(Map<StudentAttempt, byte[]> participantPdfReport, String assessmentId) {
-        assessmentReportNotificationService.sendAssessmentReportsToLearners(participantPdfReport, assessmentId);
+    private void sendNotificationToStudent(Map<StudentAttempt, byte[]> participantPdfReport, String assessmentId, String instituteId) {
+        assessmentReportNotificationService.sendAssessmentReportsToLearners(participantPdfReport, assessmentId, instituteId);
         log.info("Notification Check");
     }
 

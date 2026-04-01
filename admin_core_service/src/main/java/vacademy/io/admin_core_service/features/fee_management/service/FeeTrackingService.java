@@ -908,4 +908,21 @@ public class FeeTrackingService {
                         String feeTypeCode,
                         String feeTypeDescription) {
         }
+
+        /**
+         * Returns all fee types for an institute by looking up all CPOs
+         * belonging to the institute and then fetching their fee types.
+         */
+        @Transactional(readOnly = true)
+        public List<Map<String, String>> getFeeTypesForInstitute(String instituteId) {
+                List<ComplexPaymentOption> cpos = complexPaymentOptionRepository.findByInstituteId(instituteId);
+                List<String> cpoIds = cpos.stream().map(ComplexPaymentOption::getId).collect(Collectors.toList());
+                if (cpoIds.isEmpty()) return Collections.emptyList();
+
+                List<FeeType> feeTypes = feeTypeRepository.findByCpoIdInAndStatusNot(cpoIds, "DELETED");
+
+                return feeTypes.stream()
+                        .map(ft -> Map.of("id", ft.getId(), "name", ft.getName()))
+                        .collect(Collectors.toList());
+        }
 }

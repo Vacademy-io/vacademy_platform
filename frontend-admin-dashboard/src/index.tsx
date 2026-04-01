@@ -57,6 +57,16 @@ if (import.meta.env.VITE_ENABLE_SENTRY === 'true') {
     Sentry.init({
         dsn: import.meta.env.VITE_SENTRY_DSN,
         sendDefaultPii: true,
+        ignoreErrors: [
+            // Known non-fatal Slate/Yoopta race condition: toDOMNode is called
+            // before React commits the new DOM after setEditorValue or paste.
+            // The editor remains fully functional — this is cosmetic noise.
+            'Cannot resolve a DOM node from Slate node',
+            // React DOM reconciliation error caused by external DOM mutations
+            // (browser extensions, autofill, translation, etc.) — not actionable.
+            "Failed to execute 'removeChild' on 'Node'",
+            "Failed to execute 'insertBefore' on 'Node'",
+        ],
     });
 }
 

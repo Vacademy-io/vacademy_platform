@@ -124,6 +124,7 @@ class RenderWorker:
                 str(output_path),
                 "--frames-dir", str(frames_dir),
                 "--background", "#000000",
+                "--fps", "22",
             ]
 
             if VIDEO_OPTIONS.exists():
@@ -150,13 +151,22 @@ class RenderWorker:
                 None,
                 lambda: subprocess.run(
                     cmd,
-                    check=True,
+                    check=False,  # Don't raise — we check manually for better logging
                     cwd=str(REPO_ROOT),
                     capture_output=True,
                     text=True,
-                    timeout=1800,  # 30-minute timeout
+                    timeout=5400,  # 90-minute timeout
                 ),
             )
+
+            if result.returncode != 0:
+                logger.error(f"Render STDERR:\n{result.stderr[-2000:]}")
+                logger.error(f"Render STDOUT:\n{result.stdout[-1000:]}")
+                raise RuntimeError(
+                    f"generate_video.py exited with code {result.returncode}. "
+                    f"Error: {result.stderr[-500:]}"
+                )
+
             logger.info(f"Render stdout (last 500 chars): ...{result.stdout[-500:]}")
 
             if not output_path.exists():

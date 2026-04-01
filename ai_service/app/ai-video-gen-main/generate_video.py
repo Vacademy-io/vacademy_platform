@@ -809,8 +809,11 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
 
 def _load_timeline(json_path: Path) -> List[Dict[str, Any]]:
     data = json.loads(json_path.read_text())
+    # Support both new format {"meta": {...}, "entries": [...]} and old flat list [...]
+    if isinstance(data, dict) and "entries" in data:
+        data = data["entries"]
     if not isinstance(data, list):
-        raise ValueError("JSON root must be a list of entries")
+        raise ValueError("JSON root must be a list of entries (or a dict with 'entries' key)")
     # normalize/validate
     timeline: List[Dict[str, Any]] = []
     for idx, item in enumerate(data):
@@ -1126,6 +1129,9 @@ def _validate_assets(
         try:
             import re
             timeline_data = json.loads(timeline_path.read_text())
+            # Support new format {"meta": {...}, "entries": [...]}
+            if isinstance(timeline_data, dict) and "entries" in timeline_data:
+                timeline_data = timeline_data["entries"]
             for idx, item in enumerate(timeline_data):
                 html = item.get("html", "")
                 # Find all file:// paths

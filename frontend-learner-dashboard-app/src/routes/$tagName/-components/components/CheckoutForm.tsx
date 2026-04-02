@@ -477,6 +477,16 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             const razorpayKeyId = response.data?.payment_response?.response_data?.razorpayKeyId;
 
             if (razorpayOrderId && razorpayKeyId) {
+                // Dynamically load Razorpay script if not already loaded
+                if (!(window as any).Razorpay) {
+                    await new Promise<void>((resolve, reject) => {
+                        const script = document.createElement("script");
+                        script.src = "https://checkout.razorpay.com/v1/checkout.js";
+                        script.onload = () => resolve();
+                        script.onerror = () => reject(new Error("Failed to load Razorpay SDK"));
+                        document.body.appendChild(script);
+                    });
+                }
                 const options = {
                     key: razorpayKeyId,
                     amount: response.data?.payment_response?.response_data?.amountDue || (totalAmount * 100),

@@ -509,6 +509,28 @@ export const CourseDetailsPage = () => {
         }
     }, [courseDetailsData, selectedSession]);
 
+    // Sync packageSessionIdForCurrentLevel from course-init data whenever session/level changes
+    useEffect(() => {
+        if (!selectedSession || !selectedLevel || !courseDetailsData?.sessions) return;
+
+        const session = courseDetailsData.sessions.find(
+            (s: { session_dto: { id: string } }) => s.session_dto.id === selectedSession
+        );
+        if (!session) return;
+
+        const level = session.level_with_details?.find(
+            (l: { id: string }) => l.id === selectedLevel
+        );
+        if (level?.package_session_id) {
+            setPackageSessionIdForCurrentLevel(level.package_session_id);
+        }
+        if (level?.read_time_in_minutes) {
+            setBackendReadTimeMinutes(level.read_time_in_minutes);
+        } else {
+            setBackendReadTimeMinutes(null);
+        }
+    }, [selectedSession, selectedLevel, courseDetailsData]);
+
     useEffect(() => {
         const loadCourseData = async () => {
             if (courseDetailsData?.course) {

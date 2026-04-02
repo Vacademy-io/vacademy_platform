@@ -89,16 +89,17 @@ export async function generateCourseOutline(
             if (line.startsWith('data: ')) {
                 const data = line.slice(6);
 
-                // Check for error events (e.g. credits exhausted)
+                // Check for error events from SSE stream
                 if (data.startsWith('{') && data.includes('"type"') && data.includes('"ERROR"')) {
                     try {
                         const errorData = JSON.parse(data);
-                        if (errorData.type === 'ERROR' && errorData.code === 402) {
-                            throw new Error('Your OpenRouter credits have been exhausted. Please recharge your credits to continue using AI features.');
+                        if (errorData.type === 'ERROR') {
+                            throw new Error(errorData.message || `Server error (code: ${errorData.code || 'unknown'})`);
                         }
                     } catch (e) {
-                        if (e instanceof Error && e.message.includes('OpenRouter credits')) throw e;
-                        // Not a valid error JSON, continue processing
+                        // Re-throw if this was our intentional error, not a JSON parse failure
+                        if (e instanceof Error && e.name !== 'SyntaxError') throw e;
+                        // JSON parse failed - not a valid error event, continue processing
                     }
                 }
 

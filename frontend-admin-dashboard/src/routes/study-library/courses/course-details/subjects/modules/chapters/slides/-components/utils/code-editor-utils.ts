@@ -285,11 +285,11 @@ export const initializeLanguageStates = (codeData?: CodeEditorData): AllLanguage
     if (codeData?.allLanguagesData) {
         return {
             python: {
-                code: codeData.allLanguagesData.python.code || DEFAULT_CODE.python,
+                code: codeData.allLanguagesData.python.code ?? DEFAULT_CODE.python,
                 lastEdited: codeData.allLanguagesData.python.lastEdited,
             },
             javascript: {
-                code: codeData.allLanguagesData.javascript.code || DEFAULT_CODE.javascript,
+                code: codeData.allLanguagesData.javascript.code ?? DEFAULT_CODE.javascript,
                 lastEdited: codeData.allLanguagesData.javascript.lastEdited,
             },
         };
@@ -303,7 +303,7 @@ export const initializeLanguageStates = (codeData?: CodeEditorData): AllLanguage
         python: {
             code:
                 currentLanguage === 'python'
-                    ? currentCode || DEFAULT_CODE.python
+                    ? currentCode ?? DEFAULT_CODE.python
                     : DEFAULT_CODE.python,
             lastEdited: currentLanguage === 'python' ? Date.now() : undefined,
         },

@@ -785,6 +785,20 @@ export function RouteComponent() {
                         if (line.startsWith('data: ')) {
                             const data = line.slice(6);
 
+                            // Check for error events from SSE stream
+                            if (data.startsWith('{') && data.includes('"type"') && data.includes('"ERROR"')) {
+                                try {
+                                    const errorData = JSON.parse(data);
+                                    if (errorData.type === 'ERROR') {
+                                        throw new Error(errorData.message || `Server error (code: ${errorData.code || 'unknown'})`);
+                                    }
+                                } catch (e) {
+                                    // Re-throw if this was our intentional error, not a JSON parse failure
+                                    if (e instanceof Error && e.name !== 'SyntaxError') throw e;
+                                    // JSON parse failed - not a valid error event, continue processing
+                                }
+                            }
+
                             // Check if it's a progress message
                             if (data.startsWith('[Generating...]')) {
                                 const progressMsg = data.replace('[Generating...]', '').trim();

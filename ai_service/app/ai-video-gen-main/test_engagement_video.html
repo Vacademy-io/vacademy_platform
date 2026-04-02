@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Engagement Test — "How Do Batteries Work?"</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+    <script src="https://unpkg.com/rough-notation/lib/rough-notation.iife.js"></script>
+    <style>
+        :root {
+            --text-color: #ffffff;
+            --text-secondary: #cbd5e1;
+            --primary-color: #3b82f6;
+            --accent-color: #f59e0b;
+            --bg-color: #0f172a;
+            --card-bg: rgba(30,41,59,0.8);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Inter', sans-serif; }
+
+        /* Player chrome */
+        .player-wrapper {
+            width: 100vw; height: 100vh; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; background: #000;
+        }
+        .viewport {
+            width: 1920px; height: 1080px; position: relative; overflow: hidden;
+            transform-origin: center center; background: var(--bg-color);
+        }
+        .shot { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+        .shot.active { opacity: 1; pointer-events: auto; }
+
+        /* Controls */
+        .controls {
+            position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+            padding: 12px 24px; display: flex; align-items: center; gap: 16px;
+        }
+        .controls button {
+            background: var(--primary-color); color: #fff; border: none; padding: 8px 20px;
+            border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;
+        }
+        .controls button:hover { opacity: 0.9; }
+        .progress-bar { flex: 1; height: 4px; background: #334155; border-radius: 2px; cursor: pointer; }
+        .progress-fill { height: 100%; background: var(--primary-color); border-radius: 2px; transition: width 0.3s; }
+        .time-label { color: #94a3b8; font-size: 13px; font-family: 'Fira Code', monospace; min-width: 50px; }
+        .shot-label { color: #f59e0b; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+
+        /* Common shot styles */
+        .full-center { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 80px 120px; }
+        .layout-split { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; width: 100%; height: 100%; align-items: center; padding: 60px 100px; }
+
+        /* Ken Burns */
+        .image-hero { position: relative; width: 100%; height: 100%; overflow: hidden; }
+        .image-hero > .hero-bg {
+            position: absolute; inset: -5%; width: 110%; height: 110%;
+            background-size: cover; background-position: center;
+            animation: kbZoomIn 15s linear forwards;
+        }
+        .image-hero .overlay {
+            position: absolute; inset: 0; display: flex; flex-direction: column;
+            justify-content: flex-end; padding: 80px 100px; z-index: 2;
+            background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.3) 40%, transparent 65%);
+        }
+        @keyframes kbZoomIn { from { transform: scale(1); } to { transform: scale(1.12); } }
+        @keyframes kbPanLeft { from { transform: scale(1.1) translateX(2%); } to { transform: scale(1.1) translateX(-2%); } }
+        @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulseGlow { 0%,100% { filter: drop-shadow(0 0 8px rgba(59,130,246,0.3)); } 50% { filter: drop-shadow(0 0 20px rgba(59,130,246,0.6)); } }
+    </style>
+</head>
+<body>
+<div class="player-wrapper">
+    <div class="viewport" id="viewport">
+
+        <!-- ═══════════ SHOT 1: HOOK — IMAGE_HERO (0s-8s) ═══════════ -->
+        <div class="shot" id="shot-1">
+            <div class="image-hero">
+                <div class="hero-bg" style="background: linear-gradient(135deg, #0c1445 0%, #1a0a3e 40%, #2d1b69 100%);"></div>
+                <!-- Floating battery icon -->
+                <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);z-index:3">
+                    <iconify-icon icon="mdi:battery-charging-high" width="200" style="color:#f59e0b;animation:pulseGlow 2s ease-in-out infinite;opacity:0" id="s1-icon"></iconify-icon>
+                </div>
+                <div class="overlay">
+                    <div style="font-family:Fira Code,monospace;font-size:16px;color:#f59e0b;letter-spacing:0.15em;text-transform:uppercase;opacity:0" id="s1-label">SCIENCE • CHEMISTRY</div>
+                    <h1 style="font-family:Montserrat,sans-serif;font-size:72px;font-weight:900;color:#fff;line-height:1.05;margin:12px 0;opacity:0" id="s1-title">How Do Batteries<br/>Actually Work?</h1>
+                    <p style="font-size:26px;color:rgba(255,255,255,0.8);max-width:700px;opacity:0" id="s1-sub">The chemistry hiding inside your phone</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ SHOT 2: CONCEPT — COMPARISON DIAGRAM (8s-18s) ═══════════ -->
+        <div class="shot" id="shot-2">
+            <div class="full-center" style="background:var(--bg-color)">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:40px;opacity:0" id="s2-header">
+                    <iconify-icon icon="mdi:atom-variant" width="36" style="color:var(--primary-color)"></iconify-icon>
+                    <span style="font-family:Montserrat;font-size:38px;font-weight:800;color:#fff">Two Halves, One Reaction</span>
+                </div>
+                <div style="display:flex;gap:48px;width:90%;max-width:1500px" id="s2-comparison">
+                    <!-- Anode side -->
+                    <div style="flex:1;padding:40px;border:2px solid #ef444440;border-radius:16px;background:#ef444408;opacity:0" class="s2-col">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+                            <iconify-icon icon="mdi:minus-circle" width="28" style="color:#ef4444"></iconify-icon>
+                            <span style="font-family:Montserrat;font-size:28px;font-weight:700;color:#ef4444">Anode (−)</span>
+                        </div>
+                        <div style="font-size:22px;color:#cbd5e1;line-height:1.6">
+                            <div style="padding:10px 0;border-bottom:1px solid #ef444420;opacity:0" class="s2-item">Oxidation happens here</div>
+                            <div style="padding:10px 0;border-bottom:1px solid #ef444420;opacity:0" class="s2-item"><span id="s2-term1">Loses electrons</span> → released into wire</div>
+                            <div style="padding:10px 0;opacity:0" class="s2-item">Usually zinc or lithium</div>
+                        </div>
+                    </div>
+                    <!-- Arrow -->
+                    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0" id="s2-arrow">
+                        <div style="font-family:Fira Code;font-size:14px;color:#f59e0b;letter-spacing:0.1em">ELECTRON FLOW</div>
+                        <svg width="120" height="40" viewBox="0 0 120 40">
+                            <path d="M10,20 L90,20" stroke="#f59e0b" stroke-width="3" fill="none" stroke-dasharray="8,5"/>
+                            <polygon points="90,12 110,20 90,28" fill="#f59e0b"/>
+                        </svg>
+                        <div style="font-family:Fira Code;font-size:12px;color:#64748b">e⁻ → → →</div>
+                    </div>
+                    <!-- Cathode side -->
+                    <div style="flex:1;padding:40px;border:2px solid #10b98140;border-radius:16px;background:#10b98108;opacity:0" class="s2-col">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+                            <iconify-icon icon="mdi:plus-circle" width="28" style="color:#10b981"></iconify-icon>
+                            <span style="font-family:Montserrat;font-size:28px;font-weight:700;color:#10b981">Cathode (+)</span>
+                        </div>
+                        <div style="font-size:22px;color:#cbd5e1;line-height:1.6">
+                            <div style="padding:10px 0;border-bottom:1px solid #10b98120;opacity:0" class="s2-item">Reduction happens here</div>
+                            <div style="padding:10px 0;border-bottom:1px solid #10b98120;opacity:0" class="s2-item"><span id="s2-term2">Gains electrons</span> → absorbed</div>
+                            <div style="padding:10px 0;opacity:0" class="s2-item">Usually copper or carbon</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ SHOT 3: PROCESS — ANIMATED STEPS (18s-28s) ═══════════ -->
+        <div class="shot" id="shot-3">
+            <div class="full-center" style="background:var(--bg-color)">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:48px;opacity:0" id="s3-header">
+                    <iconify-icon icon="mdi:lightning-bolt" width="36" style="color:#f59e0b"></iconify-icon>
+                    <span style="font-family:Montserrat;font-size:38px;font-weight:800;color:#fff" id="s3-title">How Current Flows</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:0;width:70%;max-width:900px">
+                    <div class="s3-step" style="display:flex;align-items:center;gap:20px;width:100%;padding:18px 28px;border:2px solid var(--primary-color);border-radius:12px;background:var(--card-bg);opacity:0">
+                        <div style="width:48px;height:48px;border-radius:50%;background:var(--primary-color);color:#fff;font-size:22px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:Montserrat">1</div>
+                        <div>
+                            <div style="font-size:20px;font-weight:700;color:#fff;font-family:Montserrat">Chemical Reaction Starts</div>
+                            <div style="font-size:16px;color:#94a3b8">Zinc atoms at the anode begin to dissolve</div>
+                        </div>
+                    </div>
+                    <svg width="24" height="36" class="s3-conn" style="opacity:0"><path d="M12,0 L12,36" stroke="var(--primary-color)" stroke-width="2" stroke-dasharray="4,3"/></svg>
+                    <div class="s3-step" style="display:flex;align-items:center;gap:20px;width:100%;padding:18px 28px;border:2px solid var(--primary-color);border-radius:12px;background:var(--card-bg);opacity:0">
+                        <div style="width:48px;height:48px;border-radius:50%;background:var(--primary-color);color:#fff;font-size:22px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:Montserrat">2</div>
+                        <div>
+                            <div style="font-size:20px;font-weight:700;color:#fff;font-family:Montserrat">Electrons Released</div>
+                            <div style="font-size:16px;color:#94a3b8">Free electrons travel through the external wire</div>
+                        </div>
+                    </div>
+                    <svg width="24" height="36" class="s3-conn" style="opacity:0"><path d="M12,0 L12,36" stroke="var(--primary-color)" stroke-width="2" stroke-dasharray="4,3"/></svg>
+                    <div class="s3-step" style="display:flex;align-items:center;gap:20px;width:100%;padding:18px 28px;border:2px solid var(--primary-color);border-radius:12px;background:var(--card-bg);opacity:0">
+                        <div style="width:48px;height:48px;border-radius:50%;background:var(--primary-color);color:#fff;font-size:22px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:Montserrat">3</div>
+                        <div>
+                            <div style="font-size:20px;font-weight:700;color:#fff;font-family:Montserrat">Current Powers Device</div>
+                            <div style="font-size:16px;color:#94a3b8">Electron flow = electrical current = your phone turns on</div>
+                        </div>
+                    </div>
+                    <svg width="24" height="36" class="s3-conn" style="opacity:0"><path d="M12,0 L12,36" stroke="var(--primary-color)" stroke-width="2" stroke-dasharray="4,3"/></svg>
+                    <div class="s3-step" style="display:flex;align-items:center;gap:20px;width:100%;padding:18px 28px;border:2px solid #10b981;border-radius:12px;background:rgba(16,185,129,0.08);opacity:0">
+                        <div style="width:48px;height:48px;border-radius:50%;background:#10b981;color:#fff;font-size:22px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:Montserrat">4</div>
+                        <div>
+                            <div style="font-size:20px;font-weight:700;color:#fff;font-family:Montserrat">Cathode Absorbs</div>
+                            <div style="font-size:16px;color:#94a3b8">Electrons arrive at the cathode, completing the circuit</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ SHOT 4: DATA — BAR CHART (28s-36s) ═══════════ -->
+        <div class="shot" id="shot-4">
+            <div class="layout-split" style="background:var(--bg-color)">
+                <div>
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;opacity:0" id="s4-header">
+                        <iconify-icon icon="mdi:chart-bar" width="32" style="color:var(--primary-color)"></iconify-icon>
+                        <span style="font-family:Montserrat;font-size:34px;font-weight:800;color:#fff">Battery Types Compared</span>
+                    </div>
+                    <p style="font-size:22px;color:#94a3b8;line-height:1.6;opacity:0" id="s4-desc">Energy density determines how long your device lasts. Lithium-ion dominates because it packs the most energy per kilogram.</p>
+                    <div style="margin-top:28px;display:flex;flex-direction:column;gap:12px" id="s4-legend">
+                        <div style="display:flex;align-items:center;gap:10px;opacity:0" class="s4-leg">
+                            <iconify-icon icon="mdi:battery-alert" width="20" style="color:#64748b"></iconify-icon>
+                            <span style="font-size:16px;color:#94a3b8">Alkaline — cheapest, shortest life</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;opacity:0" class="s4-leg">
+                            <iconify-icon icon="mdi:battery-medium" width="20" style="color:#f59e0b"></iconify-icon>
+                            <span style="font-size:16px;color:#94a3b8">NiMH — rechargeable, moderate</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;opacity:0" class="s4-leg">
+                            <iconify-icon icon="mdi:battery-charging-high" width="20" style="color:#3b82f6"></iconify-icon>
+                            <span style="font-size:16px;color:#94a3b8">Li-ion — phones, laptops, EVs</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:flex-end;gap:40px;height:400px;padding:40px 20px;justify-content:center">
+                    <div style="display:flex;flex-direction:column;align-items:center;opacity:0" class="s4-bar">
+                        <span style="font-family:Montserrat;font-size:20px;font-weight:700;color:#fff;margin-bottom:8px">150</span>
+                        <div style="width:80px;height:0;background:linear-gradient(to top,#475569,#64748b);border-radius:6px 6px 0 0" data-h="120"></div>
+                        <span style="font-size:14px;color:#94a3b8;margin-top:10px">Alkaline</span>
+                        <span style="font-size:11px;color:#64748b">Wh/kg</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:center;opacity:0" class="s4-bar">
+                        <span style="font-family:Montserrat;font-size:20px;font-weight:700;color:#fff;margin-bottom:8px">300</span>
+                        <div style="width:80px;height:0;background:linear-gradient(to top,#d97706,#f59e0b);border-radius:6px 6px 0 0" data-h="240"></div>
+                        <span style="font-size:14px;color:#94a3b8;margin-top:10px">NiMH</span>
+                        <span style="font-size:11px;color:#64748b">Wh/kg</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:center;opacity:0" class="s4-bar">
+                        <span style="font-family:Montserrat;font-size:20px;font-weight:700;color:#fff;margin-bottom:8px">700</span>
+                        <div style="width:80px;height:0;background:linear-gradient(to top,#2563eb,#60a5fa);border-radius:6px 6px 0 0" data-h="360"></div>
+                        <span style="font-size:14px;color:#94a3b8;margin-top:10px">Li-ion</span>
+                        <span style="font-size:11px;color:#64748b">Wh/kg</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ SHOT 5: KEY TAKEAWAY (36s-44s) ═══════════ -->
+        <div class="shot" id="shot-5">
+            <div class="full-center" style="background:var(--bg-color)">
+                <iconify-icon icon="mdi:lightbulb-on" width="72" style="color:#f59e0b;opacity:0" id="s5-icon"></iconify-icon>
+                <div style="font-family:Fira Code,monospace;font-size:14px;color:#10b981;letter-spacing:0.15em;text-transform:uppercase;margin:20px 0 12px;opacity:0" id="s5-label">KEY TAKEAWAY</div>
+                <div style="font-family:Montserrat;font-size:42px;font-weight:800;color:#fff;max-width:1000px;line-height:1.3;opacity:0" id="s5-title">
+                    A battery converts <span id="s5-chem" style="color:#f59e0b">chemical energy</span> into <span id="s5-elec" style="color:#3b82f6">electrical energy</span> through a controlled chemical reaction.
+                </div>
+                <div style="margin-top:40px;padding:20px 32px;border-left:4px solid #10b981;background:rgba(16,185,129,0.08);border-radius:0 8px 8px 0;max-width:800px;opacity:0" id="s5-tip">
+                    <div style="font-size:12px;color:#10b981;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px">Remember</div>
+                    <div style="font-size:20px;color:#e2e8f0">Anode = oxidation (loses e⁻) • Cathode = reduction (gains e⁻)</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Controls -->
+<div class="controls">
+    <button id="play-btn" onclick="togglePlay()">▶ Play</button>
+    <div class="time-label" id="time-display">0:00</div>
+    <div class="progress-bar" onclick="seekTo(event)">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+    </div>
+    <div class="time-label">0:44</div>
+    <div class="shot-label" id="shot-label">HOOK</div>
+</div>
+
+<script>
+// ── splitReveal ──
+window.splitReveal = function(sel, opts) {
+    var el = typeof sel === 'string' ? document.querySelector(sel) : sel;
+    if (!el || !window.gsap) return;
+    var o = Object.assign({ type:'chars', stagger:0.03, duration:0.5, delay:0, ease:'power2.out', y:20 }, opts);
+    var text = el.textContent; if (!text) return;
+    el.innerHTML = ''; el.style.opacity = '1';
+    var units = o.type === 'words' ? text.split(/\s+/) : text.split('');
+    units.forEach(function(u, i) {
+        var s = document.createElement('span');
+        s.style.display = 'inline-block'; s.style.opacity = '0';
+        s.textContent = u + (o.type === 'words' && i < units.length-1 ? '\u00A0' : '');
+        el.appendChild(s);
+    });
+    gsap.fromTo(el.children, {opacity:0,y:o.y}, {opacity:1,y:0,duration:o.duration,stagger:o.stagger,delay:o.delay,ease:o.ease});
+};
+
+// ── Shot Timeline ──
+var TOTAL = 44;
+var shots = [
+    { id: 'shot-1', start: 0, end: 8, label: 'HOOK', play: playShot1 },
+    { id: 'shot-2', start: 8, end: 18, label: 'CONCEPT', play: playShot2 },
+    { id: 'shot-3', start: 18, end: 28, label: 'PROCESS', play: playShot3 },
+    { id: 'shot-4', start: 28, end: 36, label: 'DATA', play: playShot4 },
+    { id: 'shot-5', start: 36, end: 44, label: 'TAKEAWAY', play: playShot5 },
+];
+var currentTime = 0, playing = false, animFrame = null, lastTimestamp = 0;
+var playedShots = new Set();
+
+function scaleViewport() {
+    var vp = document.getElementById('viewport');
+    var w = window.innerWidth, h = window.innerHeight - 50;
+    var scale = Math.min(w / 1920, h / 1080);
+    vp.style.transform = 'scale(' + scale + ')';
+}
+window.addEventListener('resize', scaleViewport);
+scaleViewport();
+
+function tick(ts) {
+    if (!playing) return;
+    if (!lastTimestamp) lastTimestamp = ts;
+    var dt = (ts - lastTimestamp) / 1000;
+    lastTimestamp = ts;
+    currentTime = Math.min(currentTime + dt, TOTAL);
+    updateUI();
+    if (currentTime >= TOTAL) { playing = false; document.getElementById('play-btn').textContent = '↺ Replay'; return; }
+    animFrame = requestAnimationFrame(tick);
+}
+
+function updateUI() {
+    var pct = (currentTime / TOTAL) * 100;
+    document.getElementById('progress-fill').style.width = pct + '%';
+    var m = Math.floor(currentTime / 60), s = Math.floor(currentTime % 60);
+    document.getElementById('time-display').textContent = m + ':' + (s < 10 ? '0' : '') + s;
+
+    shots.forEach(function(shot) {
+        var el = document.getElementById(shot.id);
+        if (currentTime >= shot.start && currentTime < shot.end) {
+            el.classList.add('active');
+            document.getElementById('shot-label').textContent = shot.label;
+            if (!playedShots.has(shot.id)) {
+                playedShots.add(shot.id);
+                shot.play();
+            }
+        } else {
+            el.classList.remove('active');
+        }
+    });
+}
+
+function togglePlay() {
+    if (currentTime >= TOTAL) { currentTime = 0; playedShots.clear(); resetAll(); }
+    playing = !playing;
+    document.getElementById('play-btn').textContent = playing ? '⏸ Pause' : '▶ Play';
+    if (playing) { lastTimestamp = 0; animFrame = requestAnimationFrame(tick); }
+}
+
+function seekTo(e) {
+    var rect = e.currentTarget.getBoundingClientRect();
+    currentTime = ((e.clientX - rect.left) / rect.width) * TOTAL;
+    playedShots.clear();
+    resetAll();
+    // Trigger any shot that should already be visible
+    shots.forEach(function(s) {
+        if (currentTime >= s.start && currentTime < s.end) {
+            playedShots.add(s.id); s.play();
+        }
+    });
+    updateUI();
+}
+
+function resetAll() {
+    document.querySelectorAll('[id^="s1-"],[id^="s2-"],[id^="s3-"],[id^="s4-"],[id^="s5-"]').forEach(function(el) {
+        el.style.opacity = '0';
+    });
+    document.querySelectorAll('.s2-col,.s2-item,.s3-step,.s3-conn,.s4-bar,.s4-leg').forEach(function(el) {
+        el.style.opacity = '0';
+    });
+    document.querySelectorAll('[data-h]').forEach(function(b) { b.style.height = '0'; });
+}
+
+// ── Shot Animations ──
+
+function playShot1() {
+    // Layer 1: BG Ken Burns (already CSS animation)
+    // Layer 2: Icon pulse
+    gsap.to('#s1-icon', { opacity: 1, duration: 0.8, delay: 0.3, ease: 'power2.out' });
+    // Layer 3: Text (fast, staggered)
+    gsap.to('#s1-label', { opacity: 1, duration: 0.4, delay: 0.8 });
+    splitReveal(document.getElementById('s1-title'), { type: 'words', stagger: 0.06, delay: 1.2, y: 30, duration: 0.6 });
+    gsap.to('#s1-sub', { opacity: 1, y: 0, duration: 0.5, delay: 2.5 });
+    gsap.from('#s1-sub', { y: 20, duration: 0.5, delay: 2.5 });
+}
+
+function playShot2() {
+    // Header
+    gsap.to('#s2-header', { opacity: 1, duration: 0.5, delay: 0.2 });
+    // Columns pop in
+    gsap.to('.s2-col', { opacity: 1, duration: 0.5, stagger: 0.3, delay: 0.6 });
+    gsap.from('.s2-col', { y: 20, duration: 0.5, stagger: 0.3, delay: 0.6 });
+    // Items stagger
+    gsap.to('.s2-item', { opacity: 1, duration: 0.4, stagger: 0.15, delay: 1.4 });
+    gsap.from('.s2-item', { x: -10, duration: 0.4, stagger: 0.15, delay: 1.4 });
+    // Arrow
+    gsap.to('#s2-arrow', { opacity: 1, duration: 0.4, delay: 2.2 });
+    // Annotations on key terms
+    setTimeout(function() {
+        if (window.RoughNotation) {
+            var a1 = RoughNotation.annotate(document.getElementById('s2-term1'), { type: 'underline', color: '#ef4444', strokeWidth: 2, padding: 2, animationDuration: 600 });
+            var a2 = RoughNotation.annotate(document.getElementById('s2-term2'), { type: 'underline', color: '#10b981', strokeWidth: 2, padding: 2, animationDuration: 600 });
+            a1.show(); setTimeout(function() { a2.show(); }, 400);
+        }
+    }, 3000);
+}
+
+function playShot3() {
+    gsap.to('#s3-header', { opacity: 1, duration: 0.4, delay: 0.2 });
+    var steps = document.querySelectorAll('.s3-step');
+    var conns = document.querySelectorAll('.s3-conn');
+    steps.forEach(function(step, i) {
+        gsap.to(step, { opacity: 1, duration: 0.5, delay: 0.8 + i * 1.2 });
+        gsap.from(step, { x: -30, duration: 0.5, delay: 0.8 + i * 1.2, ease: 'power2.out' });
+        if (conns[i]) {
+            gsap.to(conns[i], { opacity: 1, duration: 0.3, delay: 0.8 + i * 1.2 + 0.5 });
+        }
+    });
+}
+
+function playShot4() {
+    gsap.to('#s4-header', { opacity: 1, duration: 0.4, delay: 0.2 });
+    gsap.to('#s4-desc', { opacity: 1, duration: 0.5, delay: 0.6 });
+    gsap.from('#s4-desc', { y: 15, duration: 0.5, delay: 0.6 });
+    // Bars animate
+    var bars = document.querySelectorAll('.s4-bar');
+    bars.forEach(function(bar, i) {
+        gsap.to(bar, { opacity: 1, duration: 0.3, delay: 1.2 + i * 0.4 });
+        var rect = bar.querySelector('[data-h]');
+        if (rect) gsap.to(rect, { height: parseInt(rect.getAttribute('data-h')), duration: 0.8, delay: 1.4 + i * 0.4, ease: 'power2.out' });
+    });
+    // Legend
+    gsap.to('.s4-leg', { opacity: 1, duration: 0.3, stagger: 0.2, delay: 3 });
+}
+
+function playShot5() {
+    gsap.to('#s5-icon', { opacity: 1, scale: 1, duration: 0.5, delay: 0.3 });
+    gsap.from('#s5-icon', { scale: 0.5, duration: 0.5, delay: 0.3, ease: 'back.out(1.7)' });
+    gsap.to('#s5-label', { opacity: 1, duration: 0.4, delay: 0.6 });
+    splitReveal(document.getElementById('s5-title'), { type: 'words', stagger: 0.06, delay: 1, y: 20, duration: 0.5 });
+    // Annotations on key terms after text reveals
+    setTimeout(function() {
+        if (window.RoughNotation) {
+            var a1 = RoughNotation.annotate(document.getElementById('s5-chem'), { type: 'highlight', color: 'rgba(245,158,11,0.25)', animationDuration: 800 });
+            var a2 = RoughNotation.annotate(document.getElementById('s5-elec'), { type: 'highlight', color: 'rgba(59,130,246,0.25)', animationDuration: 800 });
+            a1.show(); setTimeout(function() { a2.show(); }, 500);
+        }
+    }, 3500);
+    gsap.to('#s5-tip', { opacity: 1, duration: 0.5, delay: 5 });
+    gsap.from('#s5-tip', { x: -20, duration: 0.5, delay: 5, ease: 'power2.out' });
+}
+</script>
+</body>
+</html>

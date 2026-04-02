@@ -2437,6 +2437,8 @@ class VideoGenerationPipeline:
                     beat_label = beat_outline[beat_idx].get("label", f"Section {idx + 1}") if beat_idx < len(beat_outline) else f"Section {idx + 1}"
                     key_terms = beat_outline[beat_idx].get("key_terms", []) if beat_idx < len(beat_outline) else []
 
+                    complexity_level = beat_outline[beat_idx].get("complexity_level", "moderate") if beat_idx < len(beat_outline) else "moderate"
+
                     segments.append({
                         "index": idx + 1,
                         "start": round(start_time, 3),
@@ -2446,6 +2448,7 @@ class VideoGenerationPipeline:
                         "needs_recap": needs_recap,
                         "beat_label": beat_label,
                         "key_terms": key_terms,
+                        "complexity_level": complexity_level,
                     })
         
         return segments
@@ -2838,6 +2841,17 @@ class VideoGenerationPipeline:
                     "Use the key-takeaway card style.\n"
                 )
 
+            # Inject SVG map availability for geography-related content
+            # Uses smart matching: searches narration for country names, cities, etc.
+            if subject_domain in ("history", "general", "science"):
+                try:
+                    from map_assets import find_relevant_maps, format_maps_for_prompt
+                    _relevant_maps = find_relevant_maps(seg.get("text", ""), max_results=5)
+                    if _relevant_maps:
+                        topic_guidance += format_maps_for_prompt(_relevant_maps)
+                except ImportError:
+                    pass  # map_assets.py not available — skip gracefully
+
             # Use dimension-aware safe area
             _safe_area = get_html_generation_safe_area(self.video_width, self.video_height) if hasattr(self, 'video_width') else HTML_GENERATION_SAFE_AREA
             _aspect_label = "9:16 portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "16:9"
@@ -2914,6 +2928,10 @@ class VideoGenerationPipeline:
                             "Choose the most relevant image(s) for this specific segment, or skip if none fit. "
                             "These are real URLs — do NOT use data-img-prompt for these images."
                         )
+
+            # Inject complexity level for this segment (guides shot duration & animation layering)
+            _complexity = seg.get("complexity_level", "moderate")
+            user_prompt += f"\n\n**COMPLEXITY LEVEL FOR THIS SEGMENT**: {_complexity}\n"
 
             # Retry logic: distinguishes server overload (500), rate-limit (429),
             # and JSON parse failures so each gets an appropriate delay.

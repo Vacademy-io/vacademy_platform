@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>New Features Integration Test</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- GSAP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+    <!-- Iconify -->
+    <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+
+    <style>
+        :root {
+            --text-color: #1e293b;
+            --text-secondary: #475569;
+            --primary-color: #2563eb;
+            --accent-color: #f59e0b;
+            --background-color: #ffffff;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; color: var(--text-color); background: #f8fafc; }
+        .test-section {
+            max-width: 1200px; margin: 40px auto; padding: 32px;
+            background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .test-section h2 {
+            font-family: 'Montserrat', sans-serif; font-size: 24px; font-weight: 800;
+            color: var(--primary-color); margin: 0 0 8px; display: flex; align-items: center; gap: 8px;
+        }
+        .test-section .status {
+            font-size: 12px; padding: 4px 8px; border-radius: 4px; font-weight: 600;
+        }
+        .pass { background: #dcfce7; color: #166534; }
+        .fail { background: #fecaca; color: #991b1b; }
+        .test-row { display: flex; gap: 24px; margin: 16px 0; flex-wrap: wrap; }
+        .test-box { flex: 1; min-width: 300px; padding: 20px; background: #f1f5f9; border-radius: 8px; }
+        .result-log { font-family: 'Fira Code', monospace; font-size: 13px; background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 8px; margin-top: 12px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <div style="max-width:1200px;margin:0 auto;padding:20px">
+        <h1 style="font-family:Montserrat,sans-serif;font-weight:900;font-size:32px;color:#0f172a">
+            AI Video Gen — New Features Integration Test
+        </h1>
+        <p style="color:#64748b;margin-bottom:32px">Tests all 6 priority changes. Open in browser to verify.</p>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TEST 1: Iconify Icons -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="test-section" id="test-iconify">
+        <h2>
+            <iconify-icon icon="mdi:check-circle" width="24" style="color:#16a34a"></iconify-icon>
+            Test 1: Iconify Icons
+        </h2>
+        <p>Verifies that Iconify web components render correctly.</p>
+        <div class="test-row">
+            <div class="test-box">
+                <p><strong>Material Design:</strong></p>
+                <iconify-icon icon="mdi:atom" width="48"></iconify-icon>
+                <iconify-icon icon="mdi:brain" width="48"></iconify-icon>
+                <iconify-icon icon="mdi:flask" width="48"></iconify-icon>
+                <iconify-icon icon="mdi:earth" width="48"></iconify-icon>
+                <iconify-icon icon="mdi:dna" width="48"></iconify-icon>
+            </div>
+            <div class="test-box">
+                <p><strong>Lucide & Tabler:</strong></p>
+                <iconify-icon icon="lucide:globe" width="48"></iconify-icon>
+                <iconify-icon icon="lucide:book-open" width="48"></iconify-icon>
+                <iconify-icon icon="tabler:math-function" width="48"></iconify-icon>
+                <iconify-icon icon="tabler:code" width="48"></iconify-icon>
+            </div>
+            <div class="test-box">
+                <p><strong>Noto Emoji:</strong></p>
+                <iconify-icon icon="noto:rocket" width="48"></iconify-icon>
+                <iconify-icon icon="noto:light-bulb" width="48"></iconify-icon>
+                <iconify-icon icon="noto:globe-showing-americas" width="48"></iconify-icon>
+            </div>
+        </div>
+        <div class="result-log" id="iconify-log">Checking Iconify...</div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TEST 2: splitReveal Animation -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="test-section" id="test-splitreveal">
+        <h2>Test 2: splitReveal Animation</h2>
+        <p>Click each button to trigger the animation.</p>
+        <div class="test-row">
+            <div class="test-box">
+                <p id="sr-chars" style="font-family:Montserrat,sans-serif;font-size:28px;font-weight:700;opacity:0">
+                    The Mitochondria is the Powerhouse
+                </p>
+                <button onclick="window.splitReveal('#sr-chars', {type:'chars', stagger:0.03, delay:0})" style="margin-top:8px;padding:8px 16px;cursor:pointer">
+                    splitReveal (chars)
+                </button>
+            </div>
+            <div class="test-box">
+                <p id="sr-words" style="font-family:Inter,sans-serif;font-size:22px;opacity:0">
+                    Photosynthesis converts carbon dioxide and water into glucose and oxygen using sunlight
+                </p>
+                <button onclick="window.splitReveal('#sr-words', {type:'words', stagger:0.08, delay:0})" style="margin-top:8px;padding:8px 16px;cursor:pointer">
+                    splitReveal (words)
+                </button>
+            </div>
+        </div>
+        <div class="result-log" id="splitreveal-log">Checking splitReveal...</div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TEST 3: Diagram Templates -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="test-section" id="test-diagrams">
+        <h2>Test 3: Diagram Templates (7 types)</h2>
+        <p>All diagrams should auto-render with GSAP animations on page load.</p>
+
+        <div class="test-row">
+            <div class="test-box">
+                <p><strong>3a. Timeline:</strong></p>
+                <div data-diagram="timeline" data-items='[{"year":"1687","label":"Principia","desc":"Newton publishes laws of motion"},{"year":"1905","label":"Relativity","desc":"Einstein's special relativity"},{"year":"1915","label":"General Relativity","desc":"Curved spacetime"},{"year":"2012","label":"Higgs Boson","desc":"Discovered at CERN"}]'></div>
+            </div>
+        </div>
+        <div class="test-row">
+            <div class="test-box">
+                <p><strong>3b. Comparison:</strong></p>
+                <div data-diagram="comparison" data-left='{"title":"Plant Cell","items":["Cell wall","Chloroplast","Large vacuole","No centrioles"]}' data-right='{"title":"Animal Cell","items":["No cell wall","No chloroplast","Small vacuoles","Centrioles"]}'></div>
+            </div>
+            <div class="test-box">
+                <p><strong>3c. Cycle:</strong></p>
+                <div data-diagram="cycle" data-items='["Evaporation","Condensation","Precipitation","Collection"]'></div>
+            </div>
+        </div>
+        <div class="test-row">
+            <div class="test-box">
+                <p><strong>3d. Hierarchy:</strong></p>
+                <div data-diagram="hierarchy" data-root='{"label":"Kingdom","children":[{"label":"Phylum","children":[{"label":"Class"},{"label":"Order"}]},{"label":"Division"}]}'></div>
+            </div>
+            <div class="test-box">
+                <p><strong>3e. Venn:</strong></p>
+                <div data-diagram="venn" data-sets='[{"label":"Mammals"},{"label":"Marine Animals"}]' data-overlap='["Whales","Dolphins"]'></div>
+            </div>
+        </div>
+        <div class="test-row">
+            <div class="test-box">
+                <p><strong>3f. Labeled Diagram:</strong></p>
+                <div data-diagram="labeled-diagram" data-labels='[{"x":25,"y":30,"text":"Nucleus"},{"x":60,"y":50,"text":"Mitochondria"},{"x":40,"y":75,"text":"Cell Membrane"}]' style="height:300px;background:#f8fafc;border-radius:8px"></div>
+            </div>
+            <div class="test-box">
+                <p><strong>3g. Data Chart (bar):</strong></p>
+                <div data-diagram="data-chart" data-type="bar" data-values='[{"label":"Physics","value":85},{"label":"Chemistry","value":72},{"label":"Biology","value":91},{"label":"Math","value":68}]'></div>
+            </div>
+        </div>
+        <div class="result-log" id="diagram-log">Checking diagram templates...</div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TEST 4: Multi-layer Animation -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="test-section" id="test-multilayer">
+        <h2>Test 4: Multi-layer Animation (3 speeds)</h2>
+        <p>Click to trigger: Background (slow) + Mid-ground (medium) + Foreground (fast)</p>
+        <div class="test-box" style="position:relative;height:300px;overflow:hidden;background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:12px">
+            <!-- Layer 1: Background (slow drift) -->
+            <div id="ml-bg" style="position:absolute;inset:0;background:radial-gradient(circle at 30% 40%, rgba(59,130,246,0.2), transparent 60%);opacity:0"></div>
+            <!-- Layer 2: Mid-ground (diagram) -->
+            <svg id="ml-diagram" viewBox="0 0 200 60" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:400px;opacity:0">
+                <circle cx="40" cy="30" r="25" fill="none" stroke="#3b82f6" stroke-width="2"/>
+                <text x="40" y="34" text-anchor="middle" fill="#fff" font-size="10" font-family="Inter">Input</text>
+                <line x1="65" y1="30" x2="135" y2="30" stroke="#3b82f6" stroke-width="2" stroke-dasharray="4,3"/>
+                <circle cx="160" cy="30" r="25" fill="none" stroke="#10b981" stroke-width="2"/>
+                <text x="160" y="34" text-anchor="middle" fill="#fff" font-size="10" font-family="Inter">Output</text>
+            </svg>
+            <!-- Layer 3: Foreground (text) -->
+            <div id="ml-title" style="position:absolute;bottom:40px;left:40px;font-family:Montserrat,sans-serif;font-size:28px;font-weight:800;color:#fff;opacity:0">
+                Neural Network Architecture
+            </div>
+        </div>
+        <button onclick="triggerMultiLayer()" style="margin-top:12px;padding:8px 16px;cursor:pointer">
+            Trigger 3-layer animation
+        </button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TEST 5: Combined Shot (everything together) -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="test-section" id="test-combined">
+        <h2>Test 5: Combined — Simulated Video Frame</h2>
+        <p>All features used in a single 1920x1080 shot, scaled to fit.</p>
+        <div style="width:100%;aspect-ratio:16/9;background:#0f172a;border-radius:12px;overflow:hidden;position:relative">
+            <div style="transform:scale(0.5);transform-origin:top left;width:1920px;height:1080px;position:relative">
+                <!-- Title with icon -->
+                <div style="position:absolute;top:60px;left:100px;display:flex;align-items:center;gap:16px">
+                    <iconify-icon icon="mdi:flask-outline" width="64" style="color:#3b82f6"></iconify-icon>
+                    <div id="combined-title" style="font-family:Montserrat,sans-serif;font-size:48px;font-weight:800;color:#fff;opacity:0">
+                        The Water Cycle
+                    </div>
+                </div>
+                <!-- Cycle diagram -->
+                <div style="position:absolute;top:200px;left:100px;width:800px" data-diagram="cycle" data-items='["Evaporation","Condensation","Precipitation","Collection"]'></div>
+                <!-- Data chart -->
+                <div style="position:absolute;top:200px;right:100px;width:700px" data-diagram="data-chart" data-type="bar" data-values='[{"label":"Oceans","value":97},{"label":"Ice","value":2},{"label":"Fresh","value":1}]'></div>
+                <!-- Bottom subtitle with splitReveal -->
+                <div id="combined-subtitle" style="position:absolute;bottom:80px;left:100px;font-family:Inter,sans-serif;font-size:28px;color:#94a3b8;opacity:0">
+                    Understanding how water moves through Earth's systems
+                </div>
+            </div>
+        </div>
+        <button onclick="triggerCombined()" style="margin-top:12px;padding:8px 16px;cursor:pointer">
+            Play combined animation
+        </button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- Scripts -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <script>
+        // ── splitReveal (same as in generate_video.py) ──
+        window.splitReveal = function(selectorOrEl, options) {
+            var el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
+            if (!el || !window.gsap) return;
+            var opts = Object.assign({
+                type: 'chars', stagger: 0.03, duration: 0.5,
+                delay: 0, ease: 'power2.out', y: 20
+            }, options);
+            var text = el.textContent;
+            if (!text || !text.trim()) return;
+            el.innerHTML = '';
+            el.style.opacity = '1';
+            var units = opts.type === 'words' ? text.split(/\s+/) : text.split('');
+            units.forEach(function(unit, i) {
+                var span = document.createElement('span');
+                span.style.display = 'inline-block';
+                span.style.opacity = '0';
+                span.textContent = unit + (opts.type === 'words' && i < units.length - 1 ? '\u00A0' : '');
+                el.appendChild(span);
+            });
+            try {
+                gsap.fromTo(el.children,
+                    { opacity: 0, y: opts.y },
+                    { opacity: 1, y: 0, duration: opts.duration, stagger: opts.stagger, delay: opts.delay, ease: opts.ease }
+                );
+            } catch(e) { el.textContent = text; el.style.opacity = '1'; }
+        };
+
+        // ── Diagram Templates (same IIFE as diagram-templates.ts, simplified for test) ──
+        window.initDiagramTemplates = function(scope) {
+            var root = scope || document;
+            var els = root.querySelectorAll('[data-diagram]');
+            var pj = function(s, f) { try { return JSON.parse(s); } catch(e) { return f; } };
+            var gc = function(n, f) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || f; };
+            var primary = gc('--primary-color', '#2563eb');
+            var textColor = gc('--text-color', '#1e293b');
+
+            els.forEach(function(el) {
+                if (el.getAttribute('data-rendered') === 'true') return;
+                var type = el.getAttribute('data-diagram');
+                try {
+                    if (type === 'timeline') {
+                        var items = pj(el.getAttribute('data-items'), []);
+                        var html = '<div style="display:flex;flex-direction:column;gap:24px;padding:20px">';
+                        items.forEach(function(item, i) {
+                            html += '<div class="dg-tl-item" style="display:flex;align-items:flex-start;gap:16px;opacity:0">'
+                                + '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'
+                                + '<div style="width:14px;height:14px;border-radius:50%;background:'+primary+';border:3px solid '+primary+'30"></div>'
+                                + (i < items.length - 1 ? '<div style="width:3px;flex:1;min-height:40px;background:'+primary+'30"></div>' : '')
+                                + '</div><div>'
+                                + '<div style="font-family:Fira Code,monospace;font-size:14px;color:'+primary+';font-weight:600">'+(item.year||'')+'</div>'
+                                + '<div style="font-family:Montserrat,sans-serif;font-size:22px;font-weight:700;color:'+textColor+'">'+(item.label||'')+'</div>'
+                                + (item.desc ? '<div style="font-family:Inter,sans-serif;font-size:16px;color:'+textColor+'99;margin-top:4px">'+item.desc+'</div>' : '')
+                                + '</div></div>';
+                        });
+                        html += '</div>';
+                        el.innerHTML = html;
+                        gsap.fromTo(el.querySelectorAll('.dg-tl-item'), {opacity:0,y:20}, {opacity:1,y:0,duration:0.5,stagger:0.2,delay:0.3,ease:'power2.out'});
+                    }
+                    else if (type === 'comparison') {
+                        var left = pj(el.getAttribute('data-left'), {title:'',items:[]});
+                        var right = pj(el.getAttribute('data-right'), {title:'',items:[]});
+                        function renderCol(data, accent) {
+                            var h = '<div style="flex:1;padding:24px;border:2px solid '+accent+'40;border-radius:12px;background:'+accent+'08">';
+                            h += '<div style="font-family:Montserrat,sans-serif;font-size:24px;font-weight:700;color:'+accent+';margin-bottom:16px">'+data.title+'</div>';
+                            (data.items||[]).forEach(function(item) {
+                                h += '<div class="dg-cmp-item" style="font-family:Inter;font-size:18px;color:'+textColor+';padding:8px 0;border-bottom:1px solid '+accent+'15;opacity:0">'+item+'</div>';
+                            });
+                            return h + '</div>';
+                        }
+                        el.innerHTML = '<div style="display:flex;gap:32px;width:100%">'+renderCol(left,primary)+renderCol(right,'#10b981')+'</div>';
+                        gsap.fromTo(el.querySelectorAll('.dg-cmp-item'), {opacity:0,y:20}, {opacity:1,y:0,duration:0.5,stagger:0.12,delay:0.3,ease:'power2.out'});
+                    }
+                    else if (type === 'cycle') {
+                        var items = pj(el.getAttribute('data-items'), []);
+                        var n = items.length, cx=200, cy=200, r=150;
+                        var svg = '<svg viewBox="0 0 400 400" width="100%" style="max-width:400px;margin:0 auto;display:block">';
+                        items.forEach(function(_, i) {
+                            var a1 = (2*Math.PI*i/n) - Math.PI/2, a2 = (2*Math.PI*(i+1)/n) - Math.PI/2;
+                            var mid = (a1+a2)/2;
+                            svg += '<path d="M'+(cx+r*Math.cos(a1+0.15))+','+(cy+r*Math.sin(a1+0.15))+' Q'+(cx+(r+15)*Math.cos(mid))+','+(cy+(r+15)*Math.sin(mid))+' '+(cx+r*Math.cos(a2-0.15))+','+(cy+r*Math.sin(a2-0.15))+'" fill="none" stroke="'+primary+'40" stroke-width="2" stroke-dasharray="6,4"/>';
+                        });
+                        items.forEach(function(item, i) {
+                            var angle = (2*Math.PI*i/n) - Math.PI/2;
+                            var x = cx+r*Math.cos(angle), y = cy+r*Math.sin(angle);
+                            svg += '<g class="dg-cyc-node" style="opacity:0"><circle cx="'+x+'" cy="'+y+'" r="30" fill="'+primary+'"/>'
+                                + '<text x="'+x+'" y="'+(y+1)+'" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="11" font-family="Inter" font-weight="600">'+(typeof item==='string'?item.substring(0,12):'')+'</text></g>';
+                        });
+                        svg += '</svg>';
+                        el.innerHTML = svg;
+                        gsap.fromTo(el.querySelectorAll('.dg-cyc-node'), {opacity:0}, {opacity:1,duration:0.5,stagger:0.2,delay:0.3});
+                    }
+                    else if (type === 'hierarchy') {
+                        var root = pj(el.getAttribute('data-root'), {label:'',children:[]});
+                        function renderNode(node, depth) {
+                            var bg = depth===0 ? primary : primary+'80';
+                            var h = '<div class="dg-hier-node" style="display:flex;flex-direction:column;align-items:center;opacity:0">'
+                                + '<div style="background:'+bg+';color:#fff;padding:10px 20px;border-radius:8px;font-family:Montserrat;font-size:'+(22-depth*4)+'px;font-weight:700">'+node.label+'</div>';
+                            if (node.children && node.children.length) {
+                                h += '<div style="width:2px;height:20px;background:'+primary+'40"></div><div style="display:flex;gap:16px">';
+                                node.children.forEach(function(c) { h += renderNode(c, depth+1); });
+                                h += '</div>';
+                            }
+                            return h + '</div>';
+                        }
+                        el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center">'+renderNode(root,0)+'</div>';
+                        gsap.fromTo(el.querySelectorAll('.dg-hier-node'), {opacity:0,y:-15}, {opacity:1,y:0,duration:0.5,stagger:0.15,delay:0.3});
+                    }
+                    else if (type === 'venn') {
+                        var sets = pj(el.getAttribute('data-sets'), []);
+                        var overlap = pj(el.getAttribute('data-overlap'), []);
+                        var svg = '<svg viewBox="0 0 500 340" width="100%" style="max-width:500px;margin:0 auto;display:block">';
+                        svg += '<circle class="dg-venn-circle" cx="180" cy="170" r="100" fill="'+primary+'" opacity="0" style="mix-blend-mode:multiply"/>';
+                        svg += '<circle class="dg-venn-circle" cx="320" cy="170" r="100" fill="#10b981" opacity="0" style="mix-blend-mode:multiply"/>';
+                        svg += '<text x="180" y="60" text-anchor="middle" fill="'+textColor+'" font-size="16" font-family="Montserrat" font-weight="700">'+(sets[0]?sets[0].label:'')+'</text>';
+                        svg += '<text x="320" y="60" text-anchor="middle" fill="'+textColor+'" font-size="16" font-family="Montserrat" font-weight="700">'+(sets[1]?sets[1].label:'')+'</text>';
+                        overlap.forEach(function(item, i) {
+                            svg += '<text x="250" y="'+(165+i*20)+'" text-anchor="middle" fill="#fff" font-size="13" font-family="Inter" font-weight="600">'+item+'</text>';
+                        });
+                        svg += '</svg>';
+                        el.innerHTML = svg;
+                        gsap.to(el.querySelectorAll('.dg-venn-circle'), {opacity:0.25, duration:0.8, stagger:0.3, delay:0.3});
+                    }
+                    else if (type === 'labeled-diagram') {
+                        var labels = pj(el.getAttribute('data-labels'), []);
+                        var html = '<div style="position:relative;width:100%;height:100%">';
+                        labels.forEach(function(label) {
+                            html += '<div class="dg-label" style="position:absolute;left:'+label.x+'%;top:'+label.y+'%;transform:translate(-50%,-100%);opacity:0">'
+                                + '<div style="background:'+primary+';color:#fff;padding:6px 12px;border-radius:6px;font-family:Inter;font-size:14px;font-weight:600;white-space:nowrap">'+label.text+'</div>'
+                                + '<div style="width:2px;height:20px;background:'+primary+';margin:0 auto"></div>'
+                                + '<div style="width:8px;height:8px;border-radius:50%;background:'+primary+';margin:0 auto"></div></div>';
+                        });
+                        html += '</div>';
+                        el.innerHTML = html;
+                        gsap.fromTo(el.querySelectorAll('.dg-label'), {opacity:0,y:-10}, {opacity:1,y:0,duration:0.5,stagger:0.25,delay:0.3});
+                    }
+                    else if (type === 'data-chart') {
+                        var vals = pj(el.getAttribute('data-values'), []);
+                        var mx = Math.max.apply(null, vals.map(function(v){return v.value||0;})) || 1;
+                        var html = '<div style="display:flex;align-items:flex-end;gap:16px;height:200px;padding:20px;justify-content:center">';
+                        vals.forEach(function(v) {
+                            var h = Math.max(8, (v.value/mx)*160);
+                            html += '<div class="dg-bar-col" style="display:flex;flex-direction:column;align-items:center;opacity:0">'
+                                + '<div style="font-size:14px;font-weight:700;color:'+textColor+';margin-bottom:4px">'+v.value+'</div>'
+                                + '<div style="width:48px;height:0;background:'+primary+';border-radius:4px 4px 0 0" data-th="'+h+'"></div>'
+                                + '<div style="font-size:12px;color:'+textColor+'99;margin-top:6px">'+(v.label||'')+'</div></div>';
+                        });
+                        html += '</div>';
+                        el.innerHTML = html;
+                        el.querySelectorAll('[data-th]').forEach(function(b,i){ gsap.to(b,{height:parseInt(b.getAttribute('data-th')),duration:0.6,delay:0.3+i*0.1,ease:'power2.out'}); });
+                        gsap.to(el.querySelectorAll('.dg-bar-col'), {opacity:1,duration:0.3,stagger:0.08,delay:0.2});
+                    }
+                    el.setAttribute('data-rendered', 'true');
+                } catch(e) { console.warn('Diagram error ('+type+'):', e); }
+            });
+        };
+
+        // ── Multi-layer trigger ──
+        function triggerMultiLayer() {
+            // Layer 1: Background (SLOW — 8s)
+            gsap.to('#ml-bg', { opacity: 1, duration: 2, ease: 'power1.inOut' });
+            gsap.to('#ml-bg', { backgroundPosition: '70% 60%', duration: 8, ease: 'sine.inOut' });
+            // Layer 2: Mid-ground (MEDIUM — 2s)
+            gsap.to('#ml-diagram', { opacity: 1, duration: 1, delay: 0.5, ease: 'power2.out' });
+            // Layer 3: Foreground (FAST — 0.5s with splitReveal)
+            setTimeout(function() {
+                splitReveal('#ml-title', { type: 'words', stagger: 0.08, delay: 0 });
+            }, 1500);
+        }
+
+        // ── Combined shot trigger ──
+        function triggerCombined() {
+            splitReveal('#combined-title', { type: 'chars', stagger: 0.02, delay: 0 });
+            setTimeout(function() {
+                splitReveal('#combined-subtitle', { type: 'words', stagger: 0.06, delay: 0 });
+            }, 1000);
+        }
+
+        // ── Auto-test on load ──
+        window.addEventListener('load', function() {
+            // Test Iconify
+            setTimeout(function() {
+                var icons = document.querySelectorAll('iconify-icon');
+                var rendered = 0;
+                icons.forEach(function(ic) {
+                    if (ic.shadowRoot && ic.shadowRoot.querySelector('svg')) rendered++;
+                });
+                var log = document.getElementById('iconify-log');
+                log.textContent = 'Iconify: ' + rendered + '/' + icons.length + ' icons rendered\n';
+                log.textContent += rendered === icons.length ? 'PASS' : 'PARTIAL — some icons may still be loading';
+            }, 2000);
+
+            // Test splitReveal
+            var log2 = document.getElementById('splitreveal-log');
+            log2.textContent = typeof window.splitReveal === 'function'
+                ? 'splitReveal: DEFINED ✓\nClick buttons above to test animations.'
+                : 'splitReveal: NOT DEFINED ✗';
+
+            // Test diagrams
+            window.initDiagramTemplates();
+            setTimeout(function() {
+                var diagrams = document.querySelectorAll('[data-diagram]');
+                var rendered = 0;
+                diagrams.forEach(function(d) { if (d.getAttribute('data-rendered') === 'true') rendered++; });
+                var log3 = document.getElementById('diagram-log');
+                log3.textContent = 'Diagrams: ' + rendered + '/' + diagrams.length + ' rendered\n';
+                diagrams.forEach(function(d) {
+                    log3.textContent += '  ' + d.getAttribute('data-diagram') + ': ' + (d.getAttribute('data-rendered') === 'true' ? 'PASS' : 'FAIL') + '\n';
+                });
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

@@ -183,6 +183,9 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 <!-- Howler -->
                 <script src="https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js"></script>
 
+                <!-- Iconify (Web Component — 275k+ icons) -->
+                <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+
                 <style>
                   /* ===== BASE STYLES (must match client html-processor.ts getBaseStyles) ===== */
                   :root {
@@ -439,8 +442,12 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     } catch (e) { console.warn('fadeIn error', e); }
                   };
 
-                  // Typewriter effect
-                  window.typewriter = function(selectorOrEl, duration, delay) {
+                  // Typewriter effect (supports useSplit flag for smoother splitReveal-based animation)
+                  window.typewriter = function(selectorOrEl, duration, delay, useSplit) {
+                    if (useSplit && window.splitReveal) {
+                      window.splitReveal(selectorOrEl, { type: 'chars', stagger: (duration || 1) / 50, delay: delay || 0 });
+                      return;
+                    }
                     const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
                     if (!el) return;
                     const text = el.textContent;
@@ -480,13 +487,17 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     } catch (e) { console.warn('slideUp error', e); }
                   };
 
-                  // Reveal lines with stagger
+                  // Reveal lines with stagger (falls back to splitReveal word-by-word if no .line children)
                   window.revealLines = function(selectorOrEl, staggerDelay) {
                     const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
                     if (!el) return;
                     const lines = el.querySelectorAll('.line');
                     if (lines.length === 0) {
-                      window.fadeIn(el, 0.5);
+                      if (window.splitReveal) {
+                        window.splitReveal(el, { type: 'words', stagger: staggerDelay || 0.05 });
+                      } else {
+                        window.fadeIn(el, 0.5);
+                      }
                       return;
                     }
                     try {
@@ -509,6 +520,38 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     }, ((textDelay || 0) + (annotationDelay || 0.8)) * 1000);
                   };
 
+                  // Split text into chars or words and animate with stagger (SplitText alternative)
+                  window.splitReveal = function(selectorOrEl, options) {
+                    const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
+                    if (!el || !window.gsap) return;
+                    const opts = Object.assign({
+                      type: 'chars', stagger: 0.03, duration: 0.5,
+                      delay: 0, ease: 'power2.out', y: 20
+                    }, options);
+                    const text = el.textContent;
+                    if (!text || !text.trim()) return;
+                    el.innerHTML = '';
+                    el.style.opacity = '1';
+                    const units = opts.type === 'words' ? text.split(/\\s+/) : text.split('');
+                    units.forEach(function(unit, i) {
+                      var span = document.createElement('span');
+                      span.style.display = 'inline-block';
+                      span.style.opacity = '0';
+                      span.textContent = unit + (opts.type === 'words' && i < units.length - 1 ? '\u00A0' : '');
+                      el.appendChild(span);
+                    });
+                    try {
+                      gsap.fromTo(el.children,
+                        { opacity: 0, y: opts.y },
+                        { opacity: 1, y: 0, duration: opts.duration, stagger: opts.stagger, delay: opts.delay, ease: opts.ease }
+                      );
+                    } catch(e) {
+                      // Fallback: just show the text
+                      el.textContent = text;
+                      el.style.opacity = '1';
+                    }
+                  };
+
                   window.sounds = {
                     pop: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
                     click: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
@@ -522,6 +565,50 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       audio.volume = 0.5;
                       audio.play().catch(e => console.log('Sound play failed:', e));
                     }
+                  };
+
+                  // ── Diagram Templates (auto-render data-diagram elements) ──
+                  window.initDiagramTemplates = function(scope) {
+                    var root = scope || document;
+                    var els = root.querySelectorAll('[data-diagram]');
+                    els.forEach(function(el) {
+                      if (el.getAttribute('data-rendered') === 'true') return;
+                      try {
+                        var type = el.getAttribute('data-diagram');
+                        var pj = function(s, f) { try { return JSON.parse(s); } catch(e) { return f; } };
+                        var gc = function(n, f) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || f; };
+                        var primary = gc('--primary-color', '#2563eb');
+                        var textColor = gc('--text-color', '#1e293b');
+                        var animIn = function(nodes, opts) {
+                          if (!window.gsap) { Array.from(nodes).forEach(function(n){ n.style.opacity='1'; }); return; }
+                          try { gsap.fromTo(nodes, {opacity:0,y:opts.y||20}, {opacity:1,y:0,duration:opts.dur||0.5,stagger:opts.stg||0.15,delay:opts.del||0.3,ease:'power2.out'}); }
+                          catch(e) { Array.from(nodes).forEach(function(n){ n.style.opacity='1'; }); }
+                        };
+                        if (type === 'data-chart') {
+                          var vals = pj(el.getAttribute('data-values'), []);
+                          var ctype = el.getAttribute('data-type') || 'bar';
+                          if (ctype === 'bar' && vals.length) {
+                            var mx = Math.max.apply(null, vals.map(function(v){return v.value||0;})) || 1;
+                            var h = '<div style="display:flex;align-items:flex-end;gap:12px;height:200px;padding:20px;justify-content:center">';
+                            vals.forEach(function(v) {
+                              var bh = Math.max(8, (v.value/mx)*160);
+                              h += '<div class="dg-bar" style="display:flex;flex-direction:column;align-items:center;opacity:0">'
+                                + '<div style="font-size:14px;font-weight:700;color:'+textColor+';margin-bottom:4px">'+v.value+'</div>'
+                                + '<div style="width:48px;height:0;background:'+primary+';border-radius:4px 4px 0 0" data-th="'+bh+'"></div>'
+                                + '<div style="font-size:12px;color:'+textColor+'99;margin-top:6px">'+( v.label||'')+'</div></div>';
+                            });
+                            h += '</div>';
+                            el.innerHTML = h;
+                            if (window.gsap) {
+                              el.querySelectorAll('[data-th]').forEach(function(b,i){ gsap.to(b,{height:parseInt(b.getAttribute('data-th')),duration:0.6,delay:0.3+i*0.1,ease:'power2.out'}); });
+                              gsap.to(el.querySelectorAll('.dg-bar'), {opacity:1,duration:0.3,stagger:0.08,delay:0.2});
+                            }
+                          }
+                        }
+                        // More diagram types are handled client-side via diagram-templates.ts
+                        el.setAttribute('data-rendered', 'true');
+                      } catch(e) { console.warn('Diagram template error:', e); }
+                    });
                   };
 
                   // Render Mermaid
@@ -558,6 +645,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       if(window.mermaid) mermaid.initialize({startOnLoad:true});
                       if(window.renderMathInElement && window.katex) window.renderMath();
                       if(window.Prism) window.highlightCode();
+                      if(window.initDiagramTemplates) window.initDiagramTemplates();
                       
                       // Pause global timeline for frame rendering
                       if (window.gsap) {
@@ -606,6 +694,9 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     #content-wrapper {
                       display: flex; flex-direction: column;
                       align-items: center; justify-content: center;
+                      min-height: 100%; width: 100%;
+                      padding-bottom: 12%;
+                      box-sizing: border-box;
                     }
 
                     /* Cutout asset images */
@@ -614,6 +705,10 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       mix-blend-mode: normal;
                       filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
                     }
+
+                    /* SVG Maps */
+                    .map-svg { display: block; margin: 0 auto; }
+                    .map-svg path { transition: fill 0.3s ease; }
 
                     /* Typography */
                     .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; }
@@ -820,8 +915,6 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   host.id = e.id;
                   host.style.position = 'absolute';
                   host.style.overflow = 'visible'; // Allow annotations to flow outside
-                  host.style.pointerEvents = 'none';
-                  host.style.background = 'transparent';
                   host.style.pointerEvents = 'none';
                   host.style.background = 'transparent';
                   const world = document.getElementById('world-layer') || document.body;
@@ -1048,6 +1141,11 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       window.Prism.highlightAllUnder(wrapper);
                   }
 
+                  // Trigger diagram templates inside this shadow root's wrapper
+                  if (window.initDiagramTemplates) {
+                      window.initDiagramTemplates(wrapper);
+                  }
+
                   // Wait for async rendering (Mermaid etc.) before proceeding
                   Promise.all(promises).catch(() => {});
                 }
@@ -1076,17 +1174,14 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 host.style.overflow = 'hidden';
                 host.style.pointerEvents = 'none';
                 host.style.background = 'transparent';
-                host.style.pointerEvents = 'none';
-                host.style.background = 'transparent';
                 const ui = document.getElementById('ui-layer') || document.body;
                 ui.appendChild(host);
                 const root = host.attachShadow({ mode: 'open' });
                 const wrapper = document.createElement('div');
                 wrapper.id = 'content-wrapper';
-                wrapper.style.position = 'absolute';
-                wrapper.style.left = '0px';
-                wrapper.style.top = '0px';
-                wrapper.style.transformOrigin = 'top left';
+                wrapper.style.width = '100%';
+                wrapper.style.height = '100%';
+                wrapper.style.overflow = 'hidden';
                 root.appendChild(wrapper);
                 window.__activeSnippets.set(id, host);
               }
@@ -1097,21 +1192,6 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
               host.style.top = (e.y | 0) + 'px';
               host.style.width = (e.w | 0) + 'px';
               host.style.height = (e.h | 0) + 'px';
-              requestAnimationFrame(() => {
-                const targetW = host.clientWidth;
-                const targetH = host.clientHeight;
-                const rect = wrapper.getBoundingClientRect();
-                const rawW = rect.width || wrapper.scrollWidth || 1;
-                const rawH = rect.height || wrapper.scrollHeight || 1;
-                const scale = Math.min(targetW / rawW, targetH / rawH);
-                wrapper.style.transform = `scale(${scale})`;
-                const scaledW = rawW * scale;
-                const scaledH = rawH * scale;
-                const offsetX = Math.max(0, (targetW - scaledW) / 2);
-                const offsetY = Math.max(0, (targetH - scaledH) / 2);
-                wrapper.style.left = offsetX + 'px';
-                wrapper.style.top = offsetY + 'px';
-              });
             };
           }
 
@@ -1764,9 +1844,9 @@ def render_video_from_json(
         # (ignores hardcoded box in captions_settings.json which assumes landscape)
         caption_box = {
             "x": int(width * 0.05),     # 5% from left
-            "y": int(height * 0.85),    # 85% from top (bottom area)
+            "y": int(height * 0.88),    # 88% from top — below content padding-bottom zone
             "w": int(width * 0.9),      # 90% of width
-            "h": int(height * 0.12),    # 12% of height
+            "h": int(height * 0.10),    # 10% of height
         }
         # Scale caption font size proportionally to width (48px at 1920 = 2.5%)
         caption_font_scale = width / 1920.0

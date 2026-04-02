@@ -4,6 +4,7 @@
  */
 
 import { ContentType, Entry } from './types';
+import { DIAGRAM_TEMPLATES_SCRIPT } from './diagram-templates';
 
 /**
  * Get the common libraries and styles for iframe content
@@ -20,6 +21,31 @@ function getCommonLibraries(): string {
         <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
         <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+        <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+        <script>
+        // splitReveal — split text into chars/words and animate with GSAP stagger
+        window.splitReveal = function(selectorOrEl, options) {
+            var el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
+            if (!el || !window.gsap) return;
+            var opts = Object.assign({ type: 'chars', stagger: 0.03, duration: 0.5, delay: 0, ease: 'power2.out', y: 20 }, options);
+            var text = el.textContent;
+            if (!text || !text.trim()) return;
+            el.innerHTML = '';
+            el.style.opacity = '1';
+            var units = opts.type === 'words' ? text.split(/\\s+/) : text.split('');
+            units.forEach(function(unit, i) {
+                var span = document.createElement('span');
+                span.style.display = 'inline-block';
+                span.style.opacity = '0';
+                span.textContent = unit + (opts.type === 'words' && i < units.length - 1 ? '\\u00A0' : '');
+                el.appendChild(span);
+            });
+            try {
+                gsap.fromTo(el.children, { opacity: 0, y: opts.y }, { opacity: 1, y: 0, duration: opts.duration, stagger: opts.stagger, delay: opts.delay, ease: opts.ease });
+            } catch(e) { el.textContent = text; el.style.opacity = '1'; }
+        };
+        </script>
+        <script>${DIAGRAM_TEMPLATES_SCRIPT}</script>
     `;
 }
 

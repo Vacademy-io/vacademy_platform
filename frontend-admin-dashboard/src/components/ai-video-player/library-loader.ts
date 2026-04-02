@@ -19,6 +19,7 @@ const LIBRARY_CONFIG: Record<ContentType, string[]> = {
         'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js',
         'https://cdn.jsdelivr.net/npm/prismjs@1.29/prism.min.js',
         'https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js',
+        'https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js',
     ],
     QUIZ: [
         'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js',
@@ -48,7 +49,10 @@ const LIBRARY_CONFIG: Record<ContentType, string[]> = {
         'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js',
         'https://cdn.jsdelivr.net/npm/swiper@10/swiper-bundle.min.js',
     ],
-    MAP_EXPLORATION: ['https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js'],
+    MAP_EXPLORATION: [
+        'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js',
+        'https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js',
+    ],
     WORKSHEET: [
         'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js',
         // Minimal JS - mostly print-friendly
@@ -58,7 +62,10 @@ const LIBRARY_CONFIG: Record<ContentType, string[]> = {
         'https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-javascript.min.js',
         'https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-python.min.js',
     ],
-    TIMELINE: ['https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js'],
+    TIMELINE: [
+        'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js',
+        'https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js',
+    ],
     CONVERSATION: [
         'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js',
         'https://cdn.jsdelivr.net/npm/howler@2.2/dist/howler.min.js',

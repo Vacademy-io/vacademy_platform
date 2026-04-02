@@ -42,6 +42,10 @@ BACKGROUND_PRESETS = {
     },
 }
 
+# Pre-built SVG maps — structured registry in map_assets.py
+# Re-export for backwards compatibility
+from map_assets import MAP_BASE_URL, AVAILABLE_MAPS  # noqa: F401
+
 # Topic-aware shot profiles: maps subject domains to recommended visual mixes
 TOPIC_SHOT_PROFILES = {
     "coding": {
@@ -154,11 +158,11 @@ Target Audience: {target_audience}
 
 Target Duration: {target_duration}
 
-**DURATION GUIDELINES** (based on speaking rate of ~130 words/minute):
-- 2-3 minutes = 250-400 words
-- 5 minutes = ~650 words
-- 7 minutes = ~900 words  
-- 10 minutes = ~1300 words
+**DURATION GUIDELINES** (based on speaking rate of ~155 words/minute):
+- 2-3 minutes = 300-465 words
+- 5 minutes = ~775 words
+- 7 minutes = ~1085 words
+- 10 minutes = ~1550 words
 
 Requirements:
 - **MATCH vocabulary and examples to the target audience's age/grade level.**
@@ -277,7 +281,7 @@ SCRIPT_REVIEW_USER_PROMPT_TEMPLATE = """Review and improve this educational vide
 
 3. **Analogies & examples**: For every abstract concept, ensure there is at least one concrete, age-appropriate analogy or real-world example. Replace weak analogies with more vivid, memorable ones.
 
-4. **Pacing**: Check word count against the target duration (~130 words/minute). Trim fluff or expand thin sections.
+4. **Pacing**: Check word count against the target duration (~155 words/minute). Trim fluff or expand thin sections. Trim filler words and hedging phrases ('basically', 'actually', 'kind of', 'you know') that slow pacing without adding value.
 
 5. **Emotional arc**: Verify the beat `emotion` fields create a varied arc (not all "calm" or all "excitement"). Adjust if monotone.
 
@@ -360,8 +364,16 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "2. **Code**: Use `<pre><code class='language-python'>...</code></pre>` (Prism.js).\n"
     "3. **Diagrams**: Use `<div class='mermaid'>graph TD; A-->B;</div>` (Mermaid.js).\n"
     "4. **SVG Animations**: **USE THIS FOR EXPLAINING CONCEPTS** - Draw lines, animate icons, show processes.\n"
-    "5. **Images**: Include 1-2 AI images: `<img class='generated-image' data-img-prompt='...' src='placeholder.png' />`.\n\n"
-    
+    "5. **Images**: Include 1-2 AI images: `<img class='generated-image' data-img-prompt='...' src='placeholder.png' />`.\n"
+    "6. **Icons**: Use Iconify web component for instant icons: `<iconify-icon icon='mdi:atom' width='48'></iconify-icon>`. "
+    "Common sets: `mdi:` (material design), `lucide:` (clean line), `tabler:` (clean), `noto:` (emoji-style), `fluent-emoji:` (colorful). "
+    "Use icons alongside headings, in bullet points, and inside diagram nodes for visual richness. "
+    "Examples: `mdi:brain`, `mdi:flask`, `lucide:globe`, `noto:rocket`, `tabler:math-function`.\n"
+    "7. **SVG Maps**: For geography/history topics, embed pre-built country/continent maps: "
+    "`<img src='https://vacademy-media.s3.ap-south-1.amazonaws.com/assets/maps/us.svg' class='map-svg' id='us-map' style='width:80%;max-height:70vh' />`. "
+    "Animate regions with GSAP: `gsap.to('#us-map path[data-region=\"california\"]', {fill:'#ef4444', duration:0.5})`. "
+    "Available maps: world, us, in, cn, gb, fr, de, jp, br, au, ca, ru, europe, asia, africa, and 25+ more.\n\n"
+
     "**🎬 CINEMATIC SHOT TYPES (USE THESE FOR HIGH-QUALITY VIDEOS!)**:\n"
     "These shot types make videos look like professional documentaries/YouTube explainers.\n"
     "**MIX** these with regular text-based shots for visual variety. Use at least 1 cinematic shot per segment.\n\n"
@@ -681,7 +693,9 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "4. **GSAP** - General animations\n"
     "5. **Howler.js** - Sound effects\n"
     "6. **KaTeX** - Math: `$$ E=mc^2 $$`\n"
-    "7. **Mermaid** - Flowcharts\n\n"
+    "7. **Mermaid** - Flowcharts\n"
+    "8. **Iconify** - 275k+ icons as web components (use `<iconify-icon icon='mdi:name' width='48'></iconify-icon>`)\n"
+    "9. **splitReveal** - Cinematic char-by-char or word-by-word text entrance with GSAP stagger\n\n"
     
     "**📝 TEXT APPEARANCE (HOW TEXT SHOWS UP IN LEARNING VIDEOS)**:\n"
     "In educational videos, text appears SIMPLY (no flying/bouncing), then key parts get annotated.\n\n"
@@ -697,6 +711,10 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "\n"
     "// REVEAL LINES (for multi-line text, each line appears)\n"
     "revealLines('#my-text', 0.3);  // stagger delay between lines\n"
+    "\n"
+    "// SPLIT REVEAL (cinematic character-by-character or word-by-word entrance)\n"
+    "splitReveal('#my-title', { type: 'chars', stagger: 0.03, delay: 0 });  // each char pops in\n"
+    "splitReveal('#my-subtitle', { type: 'words', stagger: 0.08, delay: 0.5 });  // each word pops in\n"
     "\n"
     "// SHOW THEN ANNOTATE (THE PATTERN FOR LEARNING VIDEOS!)\n"
     "// Text fades in → pause → key term gets underlined/circled\n"
@@ -760,6 +778,20 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "// Available: sounds.pop, sounds.click, sounds.whoosh, sounds.success\n"
     "```\n\n"
     
+    "**📊 PRE-BUILT DIAGRAM TEMPLATES (USE FOR STRUCTURED DATA!)**:\n"
+    "Instead of building diagrams from scratch with raw HTML/SVG, use data-attribute templates that auto-render with GSAP animations.\n"
+    "Just provide the data — the template handles layout, styling, and animation.\n\n"
+    "Available templates:\n"
+    "1. **Timeline**: `<div data-diagram='timeline' data-items='[{\"year\":\"1969\",\"label\":\"Moon Landing\",\"desc\":\"Apollo 11\"}]'></div>`\n"
+    "2. **Comparison**: `<div data-diagram='comparison' data-left='{\"title\":\"Pros\",\"items\":[\"Fast\",\"Simple\"]}' data-right='{\"title\":\"Cons\",\"items\":[\"Limited\"]}'></div>`\n"
+    "3. **Cycle**: `<div data-diagram='cycle' data-items='[\"Evaporation\",\"Condensation\",\"Precipitation\",\"Collection\"]'></div>`\n"
+    "4. **Hierarchy**: `<div data-diagram='hierarchy' data-root='{\"label\":\"Kingdom\",\"children\":[{\"label\":\"Phylum\",\"children\":[{\"label\":\"Class\"}]}]}'></div>`\n"
+    "5. **Venn**: `<div data-diagram='venn' data-sets='[{\"label\":\"Plants\"},{\"label\":\"Animals\"}]' data-overlap='[\"Eukaryotic\",\"Need Energy\"]'></div>`\n"
+    "6. **Labeled Diagram**: `<div data-diagram='labeled-diagram' data-image-prompt='anatomy of a cell, scientific illustration' data-labels='[{\"x\":30,\"y\":40,\"text\":\"Nucleus\"},{\"x\":60,\"y\":55,\"text\":\"Mitochondria\"}]'></div>`\n"
+    "7. **Data Chart**: `<div data-diagram='data-chart' data-type='bar' data-values='[{\"label\":\"Q1\",\"value\":42},{\"label\":\"Q2\",\"value\":67}]'></div>` (types: bar, pie)\n\n"
+    "These render automatically with GSAP animations. Use them instead of Mermaid for simple structured diagrams.\n"
+    "Mermaid is still preferred for complex flowcharts and sequence diagrams.\n\n"
+
     "**🎓 EDUCATIONAL DESIGN PRINCIPLES**:\n"
     "1. **ONE CONCEPT AT A TIME**: Each shot = one idea. No clutter.\n"
     "2. **ANNOTATE KEY TERMS**: Use Rough Notation to underline/circle important words.\n"
@@ -1028,9 +1060,11 @@ def get_html_generation_safe_area(width: int = 1920, height: int = 1080) -> str:
             "- Keep text blocks narrower with more vertical spacing.\n"
             if is_portrait else ""
         )
-        + "\n**SHOT DURATION RULES**:\n"
-        "- Each shot MUST have `durationSeconds` of at least 5 seconds (minimum)\n"
-        "- Recommended: 8-15 seconds per shot to allow content to be read\n"
+        + "\n**SHOT DURATION RULES (by complexity)**:\n"
+        "- **simple** (1-2 elements on screen): 4-7 seconds per shot\n"
+        "- **moderate** (3-4 elements): 6-10 seconds per shot\n"
+        "- **dense** (rich diagram or multi-part layout): 8-15 seconds per shot\n"
+        "- If no complexity_level is provided, default to moderate (6-10s)\n"
         "- Create 2-4 shots per segment, NOT more\n"
         "\nReturn JSON ONLY in this form:\n"
         "{\n"
@@ -1224,9 +1258,9 @@ setTimeout(() => annotate('#energy-term', {{type: 'underline', color: '{annotati
 - NEVER use delays longer than (shot_end - shot_start) seconds
 
 **⏸️ STRATEGIC PAUSES (what makes professional videos feel polished)**:
-- After showing a new concept (text + diagram), wait 1-1.5s before adding annotations — this gives the viewer time to read
-- After annotation, wait 0.5s before the next transition — prevents visual rush
-- Between staggered element reveals, use 300-500ms gaps — never reveal everything at once
+- After showing a new concept (text + diagram), wait 0.6-1s before adding annotations — enough to read, not so long it drags
+- After annotation, wait 0.3s before the next transition — prevents visual rush
+- Between staggered element reveals, use 200-350ms gaps — never reveal everything at once
 - If a shot is 12+ seconds, build the visual in 2-3 phases with pauses between, not one continuous animation
 - Think like Khan Academy: show → pause → annotate → pause → next element
 
@@ -1234,6 +1268,21 @@ setTimeout(() => annotate('#energy-term', {{type: 'underline', color: '{annotati
 - Animations should trigger within ±200ms of word timing
 - If exact sync is impossible, show elements BEFORE they're mentioned (early by 0.3s) rather than after
 - Viewers perceive "slightly early" as natural; "slightly late" feels laggy and broken
+
+**🎭 MULTI-LAYER ANIMATION (makes videos feel cinematic)**:
+Build each shot with 2-3 animation layers running at different speeds for visual depth:
+
+Layer guidelines by complexity_level:
+- **simple** (1-2 layers): Background slow motion (Ken Burns on image) + foreground text fade/popIn
+- **moderate** (2 layers): Background ambient (Ken Burns / gradient shift) + foreground content reveal (splitReveal / stagger)
+- **dense** (2-3 layers): Background slow motion + mid-ground diagram draw (Vivus / Mermaid) + foreground labels (splitReveal)
+
+Speed hierarchy (different layers at different speeds creates cinematic depth):
+- Background animations: SLOW (8-15s duration, subtle movement — Ken Burns, slow scale drift)
+- Mid-ground animations: MEDIUM (2-4s, the main visual story — diagram draws, chart builds)
+- Foreground text: FAST (0.3-0.8s per element, snappy reveals — fadeIn, splitReveal, popIn)
+- NEVER stack more than 3 layers — more creates visual noise, not depth
+- If complexity_level is 'simple', keep it to 1-2 layers only
 
 {topic_guidance}
 

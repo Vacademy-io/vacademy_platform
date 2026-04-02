@@ -34,6 +34,7 @@ export const getMembershipPlans = async (
                 faculty_ids: [],
                 search_by_name: "",
                 tag: [],
+                packageTypes: ["MEMBERSHIP"],
                 min_percentage_completed: 0,
                 max_percentage_completed: 0,
             },
@@ -50,24 +51,7 @@ export const getMembershipPlans = async (
             }
         );
 
-        // Log all package types to see what we have
-        if (response.data?.content) {
-            const packageTypes = response.data.content.map((item: any) => item.package_type);
-            console.log("[MembershipPlanService] Package types in response:", packageTypes);
-        }
-
-        // Filter to only include MEMBERSHIP package types
-        const membershipPlans = (response.data?.content || []).filter(
-            (item: any) => {
-                const isMembership = item.package_type === "MEMBERSHIP";
-                if (isMembership) {
-                    console.log("[MembershipPlanService] Found MEMBERSHIP plan:", item.package_name);
-                }
-                return isMembership;
-            }
-        );
-
-        return membershipPlans;
+        return response.data?.content || [];
     } catch (error) {
         console.error("[MembershipPlanService] Error fetching membership plans:", error);
         if (axios.isAxiosError(error)) {

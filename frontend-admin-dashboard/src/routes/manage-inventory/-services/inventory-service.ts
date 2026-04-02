@@ -1,5 +1,4 @@
-// TODO: revert to imports from '@/constants/urls' before merging
-// import { PAGINATED_BATCHES, BATCHES_SUMMARY } from '@/constants/urls';
+import { BASE_URL, PAGINATED_BATCHES, BATCHES_SUMMARY } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
@@ -12,16 +11,11 @@ import {
     InventoryStats,
 } from '../-types/inventory-types';
 
-// TODO: revert to BASE_URL and imports before merging
-const LOCAL_BASE = 'http://localhost:8072';
-const PAGINATED_BATCHES = `${LOCAL_BASE}/admin-core-service/institute/v1/paginated-batches`;
-const BATCHES_SUMMARY = `${LOCAL_BASE}/admin-core-service/institute/v1/batches-summary`;
-
 /**
  * Base URL for inventory management endpoints
  */
 const INVENTORY_BASE = (packageSessionId: string) =>
-    `${LOCAL_BASE}/admin-core-service/package-session/${packageSessionId}/inventory`;
+    `${BASE_URL}/admin-core-service/package-session/${packageSessionId}/inventory`;
 
 /**
  * Get availability for a specific package session
@@ -116,7 +110,7 @@ export const fetchBatchInventoryAvailability = async (
 
     const response = await authenticatedAxiosInstance<BatchAvailabilityMap>({
         method: 'POST',
-        url: `${LOCAL_BASE}/admin-core-service/package-session/inventory/batch-availability`,
+        url: `${BASE_URL}/admin-core-service/package-session/inventory/batch-availability`,
         data: packageSessionIds,
     });
 
@@ -145,7 +139,7 @@ export const fetchInventoryStats = async (): Promise<InventoryStats> => {
 
     const response = await authenticatedAxiosInstance<InventoryStats>({
         method: 'GET',
-        url: `${LOCAL_BASE}/admin-core-service/package-session/inventory/stats`,
+        url: `${BASE_URL}/admin-core-service/package-session/inventory/stats`,
         params: { instituteId },
     });
 

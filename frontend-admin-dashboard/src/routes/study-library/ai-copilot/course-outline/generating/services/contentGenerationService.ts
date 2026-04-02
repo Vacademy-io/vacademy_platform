@@ -195,55 +195,57 @@ export async function generateContent(
                             continue;
                         }
 
+                        let update: any;
                         try {
-                            const update = JSON.parse(data);
-
-                            // Check for credits exhausted error
-                            if (update.type === 'ERROR' && update.code === 402) {
-                                throw new Error('Your OpenRouter credits have been exhausted. Please recharge your credits to continue using AI features.');
-                            }
-
-                            totalProcessed++;
-
-                            if (update.type === 'SLIDE_CONTENT_UPDATE' || update.type === 'SLIDE_CONTENT_ERROR') {
-                                console.log(`📦 Content update #${totalProcessed} received:`, {
-                                    type: update.type,
-                                    path: update.path,
-                                    slideType: update.slideType,
-                                    contentDataSize: update.contentData ? JSON.stringify(update.contentData).length : 0
-                                });
-
-                                // Validate the update structure
-                                if (update.type === 'SLIDE_CONTENT_UPDATE') {
-                                    // For AI_VIDEO, contentData might be undefined in intermediate events
-                                    if (!update.path || !update.slideType) {
-                                        console.error('❌ Invalid SLIDE_CONTENT_UPDATE structure:', update);
-                                        continue; // Skip this update but continue processing
-                                    }
-                                    // Allow contentData to be undefined for AI_VIDEO intermediate events
-                                    if (update.contentData === undefined && update.slideType !== 'AI_VIDEO') {
-                                        console.warn('⚠️ SLIDE_CONTENT_UPDATE missing contentData (non-AI_VIDEO):', update);
-                                        // Continue processing anyway for AI_VIDEO
-                                    }
-                                }
-
-                                try {
-                                    onUpdate(update as ContentUpdate);
-                                } catch (callbackError) {
-                                    console.error('❌ Error in update callback:', callbackError);
-                                    // Continue processing other updates
-                                }
-
-                                if (onProgress && update.type === 'SLIDE_CONTENT_UPDATE') {
-                                    onProgress(`Generated ${update.slideType} for ${update.path}`);
-                                }
-                            }
+                            update = JSON.parse(data);
                         } catch (parseError) {
                             // Skip invalid JSON lines but log for debugging
                             console.warn('⚠️ Failed to parse content update:', {
                                 data: data.substring(0, 200) + (data.length > 200 ? '...' : ''),
                                 error: parseError instanceof Error ? parseError.message : 'Unknown error'
                             });
+                            continue;
+                        }
+
+                        // Check for error events from SSE stream - throw immediately to break out of the loop
+                        if (update.type === 'ERROR') {
+                            throw new Error(update.message || `Server error (code: ${update.code || 'unknown'})`);
+                        }
+
+                        totalProcessed++;
+
+                        if (update.type === 'SLIDE_CONTENT_UPDATE' || update.type === 'SLIDE_CONTENT_ERROR') {
+                            console.log(`📦 Content update #${totalProcessed} received:`, {
+                                type: update.type,
+                                path: update.path,
+                                slideType: update.slideType,
+                                contentDataSize: update.contentData ? JSON.stringify(update.contentData).length : 0
+                            });
+
+                            // Validate the update structure
+                            if (update.type === 'SLIDE_CONTENT_UPDATE') {
+                                // For AI_VIDEO, contentData might be undefined in intermediate events
+                                if (!update.path || !update.slideType) {
+                                    console.error('❌ Invalid SLIDE_CONTENT_UPDATE structure:', update);
+                                    continue; // Skip this update but continue processing
+                                }
+                                // Allow contentData to be undefined for AI_VIDEO intermediate events
+                                if (update.contentData === undefined && update.slideType !== 'AI_VIDEO') {
+                                    console.warn('⚠️ SLIDE_CONTENT_UPDATE missing contentData (non-AI_VIDEO):', update);
+                                    // Continue processing anyway for AI_VIDEO
+                                }
+                            }
+
+                            try {
+                                onUpdate(update as ContentUpdate);
+                            } catch (callbackError) {
+                                console.error('❌ Error in update callback:', callbackError);
+                                // Continue processing other updates
+                            }
+
+                            if (onProgress && update.type === 'SLIDE_CONTENT_UPDATE') {
+                                onProgress(`Generated ${update.slideType} for ${update.path}`);
+                            }
                         }
                     }
                 }
@@ -306,8 +308,15 @@ export async function generateContent(
         console.error('Error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
 
-        // Retry logic for certain types of errors
-        const shouldRetry = retryCount < 2 && (
+        // Don't retry SSE errors from backend (they have a specific message to show the user)
+        const isSSEError = errorMessage.startsWith('Stream processing failed:') &&
+            !errorMessage.toLowerCase().includes('aborted') &&
+            !errorMessage.toLowerCase().includes('network') &&
+            !errorMessage.toLowerCase().includes('timeout') &&
+            !errorMessage.toLowerCase().includes('buffer');
+
+        // Retry logic for certain types of errors (but not SSE backend errors)
+        const shouldRetry = !isSSEError && retryCount < 2 && (
             errorMessage.toLowerCase().includes('aborted') ||
             errorMessage.toLowerCase().includes('network') ||
             errorMessage.toLowerCase().includes('timeout')
@@ -325,7 +334,9 @@ export async function generateContent(
             return generateContent(todos, instituteId, onUpdate, onError, onProgress, retryCount + 1);
         }
 
-        onError(errorMessage);
+        // Strip "Stream processing failed: " prefix for cleaner error display
+        const cleanMessage = errorMessage.replace(/^Stream processing failed:\s*/, '');
+        onError(cleanMessage);
         throw error;
     }
 }

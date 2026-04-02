@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import type { SlideGeneration, SlideType } from '../../../shared/types';
 import { markdownToHtml } from '../../../shared/utils/markdownToHtml';
@@ -24,13 +25,13 @@ export const useContentGeneration = (
     const handleConfirmGenerateCourseAssets = async () => {
         // Check if we have todos to generate content for
         if (!outlineTodos || outlineTodos.length === 0) {
-            alert('No todos found. Please regenerate the course outline.');
+            toast.error('No todos found. Please regenerate the course outline.');
             return;
         }
 
         const instituteId = getInstituteId();
         if (!instituteId) {
-            alert('Institute ID not found. Please login again.');
+            toast.error('Institute ID not found. Please login again.');
             return;
         }
 
@@ -59,7 +60,7 @@ export const useContentGeneration = (
             );
 
             if (contentTodos.length === 0) {
-                alert('No content todos found to generate. Please check your course outline.');
+                toast.error('No content todos found to generate. Please check your course outline.');
                 setIsGeneratingContent(false);
                 return;
             }
@@ -402,12 +403,19 @@ export const useContentGeneration = (
                         // Prepare content based on type
                         let content = '';
                         if (update.slideType === 'DOCUMENT') {
-                            const rawContent = update.contentData || '';
+                            // Ensure rawContent is a string — backend may send an object
+                            const rawContent =
+                                typeof update.contentData === 'string'
+                                    ? update.contentData
+                                    : update.contentData?.html ??
+                                      update.contentData?.content ??
+                                      update.contentData?.text ??
+                                      (update.contentData ? JSON.stringify(update.contentData) : '');
 
-                            // Check if content is wrapped in markdown code blocks (```html...```)
-                            if (rawContent.includes('```html')) {
-                                // Extract HTML from markdown code blocks
-                                const htmlMatch = rawContent.match(/```html\s*\n?([\s\S]*?)\n?```/);
+                            // Check if the ENTIRE content is wrapped in ```html...```
+                            const trimmed = rawContent.trim();
+                            if (trimmed.startsWith('```html') && trimmed.endsWith('```')) {
+                                const htmlMatch = trimmed.match(/^```html\s*\n?([\s\S]*?)\n?```$/);
                                 if (htmlMatch && htmlMatch[1]) {
                                     content = htmlMatch[1].trim();
                                 } else {
@@ -954,17 +962,17 @@ export const useContentGeneration = (
                 (error) => {
                     console.error('Content generation failed:', error);
 
-                    const errorMessage = error;
                     let userFriendlyMessage = `Content generation failed: ${error}`;
 
                     // Special handling for different error types
                     if (typeof error === 'string') {
                         const lowerError = error.toLowerCase();
 
-                        if (lowerError.includes('openrouter credits')) {
+                        if (lowerError.includes('openrouter') || lowerError.includes('api key') || lowerError.includes('credits') || lowerError.includes('quota')) {
+                            // Backend SSE error messages - show as-is
                             userFriendlyMessage = error;
                         } else if (lowerError.includes('402')) {
-                            userFriendlyMessage = 'Your OpenRouter credits have been exhausted. Please recharge your credits to continue using AI features.';
+                            userFriendlyMessage = error;
                         } else if (lowerError.includes('500')) {
                             console.error('🔴 500 error detected');
                             userFriendlyMessage = `Content generation encountered a server error (500). Try generating with fewer slides or contact support.`;
@@ -987,7 +995,7 @@ export const useContentGeneration = (
                         }
                     }
 
-                    alert(userFriendlyMessage);
+                    toast.error(userFriendlyMessage, { duration: 8000 });
 
                     setIsGeneratingContent(false);
                     setAbortController(null);
@@ -1012,8 +1020,9 @@ export const useContentGeneration = (
             }, 2000);
         } catch (error) {
             console.error('Error generating content:', error);
-            alert(
-                `Failed to generate content: ${error instanceof Error ? error.message : 'Unknown error'}`
+            toast.error(
+                `Failed to generate content: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                { duration: 8000 }
             );
             setIsGeneratingContent(false);
         }

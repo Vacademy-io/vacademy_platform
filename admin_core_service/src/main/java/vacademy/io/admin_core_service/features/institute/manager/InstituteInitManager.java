@@ -188,9 +188,8 @@ public class InstituteInitManager {
                                         () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
                                                         activeStatuses));
 
-                        // Filter by faculty mapping: only apply when user has HAS_FACULTY_ASSIGNED permission.
-                        // Admin/root users and users without this permission see all package sessions.
-                        if (user != null && hasFacultyAssignedPermission(user)) {
+                        // Filter by faculty mapping: skip for root users and users with ADMIN/TEACHER role.
+                        if (user != null && !user.isRootUser() && !hasRole(user, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
                                 List<String> allowedAccessIds = facultyMappingRepository
                                                 .findAccessIdsByUserIdAndInstituteId(
                                                                 user.getUserId(), instId, List.of("ACTIVE"));
@@ -550,6 +549,17 @@ public class InstituteInitManager {
          * Checks if the user has HAS_FACULTY_ASSIGNED permission.
          * Falls back to checking FSPSSM directly if not found in Spring Security authorities.
          */
+        private boolean hasRole(CustomUserDetails user, String... roles) {
+                return user.getAuthorities().stream()
+                                .map(auth -> auth.getAuthority())
+                                .anyMatch(authority -> {
+                                        for (String role : roles) {
+                                                if (role.equalsIgnoreCase(authority)) return true;
+                                        }
+                                        return false;
+                                });
+        }
+
         private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
                 boolean fromAuthorities = user.getAuthorities().stream()
                                 .map(auth -> auth.getAuthority())

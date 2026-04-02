@@ -34,7 +34,7 @@ export const getMembershipPlans = async (
                 faculty_ids: [],
                 search_by_name: "",
                 tag: [],
-                packageTypes: ["MEMBERSHIP"],
+                package_types: ["MEMBERSHIP"],
                 min_percentage_completed: 0,
                 max_percentage_completed: 0,
             },
@@ -51,7 +51,15 @@ export const getMembershipPlans = async (
             }
         );
 
-        return response.data?.content || [];
+        const content: MembershipPlan[] = response.data?.content || [];
+
+        // API returns one row per package_session — deduplicate by package id
+        const seen = new Set<string>();
+        return content.filter((plan) => {
+            if (seen.has(plan.id)) return false;
+            seen.add(plan.id);
+            return true;
+        });
     } catch (error) {
         console.error("[MembershipPlanService] Error fetching membership plans:", error);
         if (axios.isAxiosError(error)) {

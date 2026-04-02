@@ -1419,6 +1419,7 @@ class VideoGenerationPipeline:
                 questions=getattr(self, '_current_questions', None),
                 language=language,
                 audio_path=tts_outputs.get("audio_path"),
+                style_guide=style_guide,
             )
         
         avatar_video_path = None
@@ -4771,6 +4772,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         questions: Optional[List[Dict[str, Any]]] = None,
         language: str = "English",
         audio_path: Optional[Path] = None,
+        style_guide: Optional[Dict[str, Any]] = None,
     ) -> Path:
         """
         Write timeline JSON with branding support.

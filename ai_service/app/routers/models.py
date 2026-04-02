@@ -68,7 +68,7 @@ async def list_models(
     
     Models from this list can be used in outline and content generation APIs.
     """
-    models: List[ModelInfo] = ALL_MODELS
+    models: List[ModelInfo] = ALL_MODELS()
     
     # Apply filters
     if category:
@@ -125,7 +125,7 @@ async def get_categories() -> dict:
                 "id": "free",
                 "name": "Free Models",
                 "description": "Free tier models available through OpenRouter",
-                "count": len(FREE_MODELS),
+                "count": len(FREE_MODELS()),
             },
             {
                 "id": "paid",
@@ -152,7 +152,7 @@ async def get_categories() -> dict:
                 "count": len(OPENROUTER_MODELS),
             },
         ],
-        "total_models": len(ALL_MODELS),
+        "total_models": len(ALL_MODELS()),
     }
 
 
@@ -165,7 +165,7 @@ async def get_providers() -> dict:
     Get list of available model providers.
     """
     providers = {}
-    for model in ALL_MODELS:
+    for model in ALL_MODELS():
         provider = model.provider
         if provider not in providers:
             providers[provider] = 0

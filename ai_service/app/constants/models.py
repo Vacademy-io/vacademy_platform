@@ -388,19 +388,20 @@ def _ensure_models_loaded():
         refresh_models_cache()
 
 
-@property
+# Module-level model lists — these are evaluated lazily via get_all_models()
+# NOTE: @property only works on class methods, NOT module-level functions.
+# These are plain functions that return fresh lists each time.
+
 def ALL_MODELS() -> List[ModelInfo]:
     """Get all models."""
     return get_all_models()
 
 
-@property  
 def FREE_MODELS() -> List[ModelInfo]:
     """Get free tier models."""
     return [m for m in get_all_models() if m.is_free]
 
 
-@property
 def PAID_MODELS() -> List[ModelInfo]:
     """Get paid models."""
     return [m for m in get_all_models() if not m.is_free]

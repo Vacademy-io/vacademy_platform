@@ -20,6 +20,7 @@ public class FacultyBatchSubjectDTO {
     }
 
     @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class SubjectAssignment {
         private String subjectId;
         private boolean isNewAssignment;

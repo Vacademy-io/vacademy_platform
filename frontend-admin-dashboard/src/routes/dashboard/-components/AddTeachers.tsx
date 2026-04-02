@@ -13,7 +13,12 @@ import { INVITE_TEACHERS_URL, GET_INSTITUTE_USERS } from '@/constants/urls';
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { Loader2, Search, UserPlus, Users } from 'lucide-react';
 
-const LazyBatchSubjectForm = lazy(() => import('./BatchAndSubjectSelection'));
+const LazyBatchSubjectForm = lazy(() =>
+    import('./BatchAndSubjectSelection').catch(() => {
+        window.location.reload();
+        return import('./BatchAndSubjectSelection');
+    })
+);
 
 export const inviteTeacherSchema = z.object({
     name: z.string().min(1, 'Full name is required'),
@@ -123,8 +128,8 @@ const AddTeachers = ({ packageSessionId }: { packageSessionId: string }) => {
             queryClient.invalidateQueries({ queryKey: ['facultyList'] });
             setOpen(false);
         },
-        onError: (error: unknown) => {
-            throw error;
+        onError: () => {
+            // error is handled by react-query; no need to re-throw
         },
     });
 
@@ -171,7 +176,8 @@ const AddTeachers = ({ packageSessionId }: { packageSessionId: string }) => {
         if (!batch || batch.length === 0) {
             return false;
         }
-        return true;
+        // Require at least one subject selected per batch
+        return batch.every((b) => b.subjectIds && b.subjectIds.length > 0);
     };
 
     function onSubmit(values: inviteUsersFormValues) {

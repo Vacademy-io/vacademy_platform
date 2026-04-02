@@ -93,7 +93,9 @@ export const AddChapterForm = ({
     // we treat the chapter as belonging ONLY to that package_session_id and
     // do not allow multi-batch visibility selection.
     const isPerBatchMode = Boolean(package_session_id_override);
-    const { getPackageWiseLevels, getPackageSessionId } = useInstituteDetailsStore();
+    const { getPackageWiseLevels, getPackageSessionId, getAllSessions } = useInstituteDetailsStore();
+    const allSessions = getAllSessions();
+    const [selectedVisibilitySessionId, setSelectedVisibilitySessionId] = useState<string>(sessionId);
 
     // Image upload states
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -113,14 +115,14 @@ export const AddChapterForm = ({
 
     // Memoize the courses calculation to prevent re-renders
     const coursesWithLevels = useMemo(() => {
-        // Get courses from current sessionId
+        // Get courses from selected visibility session
         const currentSessionCourses = getPackageWiseLevels({
-            sessionId: sessionId,
+            sessionId: selectedVisibilitySessionId,
         });
 
         // Get courses from DEFAULT sessionId
         const defaultSessionCourses =
-            sessionId !== 'DEFAULT'
+            selectedVisibilitySessionId !== 'DEFAULT'
                 ? getPackageWiseLevels({
                       sessionId: 'DEFAULT',
                   })
@@ -141,7 +143,7 @@ export const AddChapterForm = ({
         });
 
         return combinedCourses;
-    }, [sessionId, getPackageWiseLevels]);
+    }, [selectedVisibilitySessionId, getPackageWiseLevels]);
 
     // Create default visibility object - memoized to prevent effect re-triggering
     const defaultVisibility = useMemo(
@@ -159,12 +161,12 @@ export const AddChapterForm = ({
     // Get default session courses for checking in the UI - memoized
     const defaultSessionCoursesList = useMemo(
         () =>
-            sessionId !== 'DEFAULT'
+            selectedVisibilitySessionId !== 'DEFAULT'
                 ? getPackageWiseLevels({
                       sessionId: 'DEFAULT',
                   })
                 : [],
-        [sessionId, getPackageWiseLevels]
+        [selectedVisibilitySessionId, getPackageWiseLevels]
     );
 
     const form = useForm<FormValues>({
@@ -303,11 +305,15 @@ export const AddChapterForm = ({
         fetchCompleteChapterData();
     }, [mode, initialValues, subjectId, completeChapterData, isLoadingCompleteData]);
 
-    // Update form when complete chapter data is loaded
+    // Update form when complete chapter data is loaded (runs once when data arrives)
+    const hasAppliedCompleteData = useRef(false);
     useEffect(() => {
-        if (completeChapterData && mode === 'edit') {
-            // Create visibility map using complete data
-            const updatedVisibilityMap = { ...defaultVisibility };
+        if (completeChapterData && mode === 'edit' && !hasAppliedCompleteData.current) {
+            hasAppliedCompleteData.current = true;
+
+            // Merge into existing form values so we don't lose selections from other sessions
+            const currentVisibility = form.getValues('visibility');
+            const updatedVisibilityMap = { ...currentVisibility };
 
             // Process the complete chapter_in_package_sessions data
             completeChapterData.chapter_in_package_sessions.forEach((psId) => {
@@ -326,10 +332,10 @@ export const AddChapterForm = ({
                 }
             });
 
-            // Update form with new visibility data
+            // Update form with merged visibility data
             form.setValue('visibility', updatedVisibilityMap);
         }
-    }, [completeChapterData, mode, defaultVisibility, form]);
+    }, [completeChapterData, mode, form]);
 
     // Load existing thumbnail preview
     useEffect(() => {
@@ -401,7 +407,7 @@ export const AddChapterForm = ({
         field: ControllerRenderProps<FormValues, `visibility.${string}`>,
         isDefaultSessionCourse: boolean
     ) => {
-        const courseSessionId = isDefaultSessionCourse ? 'DEFAULT' : sessionId;
+        const courseSessionId = isDefaultSessionCourse ? 'DEFAULT' : selectedVisibilitySessionId;
 
         const allPackageSessionIds = levels
             .map((level) => {
@@ -649,6 +655,26 @@ export const AddChapterForm = ({
                             visibility at any time.
                         </div>
 
+                        {allSessions.length > 1 && (
+                            <div className="flex items-center gap-2">
+                                <label className="text-sm font-medium text-neutral-600">
+                                    Academic Session:
+                                </label>
+                                <select
+                                    className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                                    value={selectedVisibilitySessionId}
+                                    onChange={(e) => setSelectedVisibilitySessionId(e.target.value)}
+                                    disabled={isFormDisabled}
+                                >
+                                    {allSessions.map((session) => (
+                                        <option key={session.id} value={session.id}>
+                                            {session.session_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-3 gap-6">
                             {coursesWithLevels
                                 .sort((a, b) => {
@@ -684,7 +710,7 @@ export const AddChapterForm = ({
                                                 // Use the appropriate sessionId based on course source
                                                 const courseSessionId = isDefaultSessionCourse
                                                     ? 'DEFAULT'
-                                                    : sessionId;
+                                                    : selectedVisibilitySessionId;
 
                                                 const levelPackageSessionIds = course.level
                                                     .map((level) =>

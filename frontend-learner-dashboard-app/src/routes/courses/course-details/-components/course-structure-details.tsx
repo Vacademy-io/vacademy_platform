@@ -237,6 +237,9 @@ export const CourseStructureDetails = ({
   }, [courseData, selectedSession, selectedLevel]);
 
   useEffect(() => {
+    // Don't call module-with-chapters API until packageSessionId is available from course-init
+    if (!packageSessionId) return;
+
     const loadModules = async () => {
       try {
         setIsLoading(true);

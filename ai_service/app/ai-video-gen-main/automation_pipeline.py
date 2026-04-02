@@ -2336,7 +2336,7 @@ class VideoGenerationPipeline:
                             "index": idx + 1,
                             "start": round(start_time, 3),
                             "end": round(end_time, 3),
-
+                            "duration": round(end_time - start_time, 1),
                             "text": chunk_text,
                             "words": chunk_words,  # Include raw words for alignment
                         }
@@ -2345,13 +2345,45 @@ class VideoGenerationPipeline:
             start_time += window
         return segments
 
+    @staticmethod
+    def _find_phrase_start(
+        words: List[Dict[str, Any]], phrase_tokens: List[str], after_time: float = 0.0
+    ) -> Optional[float]:
+        """Find the timestamp where a phrase starts in the word stream.
+
+        Uses sliding window matching: if the majority of tokens match consecutively,
+        it's a hit. Tolerates minor mismatches (TTS may slightly alter words).
+        Returns the start time of the first matching word, or None.
+        """
+        if not phrase_tokens or not words:
+            return None
+        # Require majority match: allow up to 2 mismatches, but always need at least 1 match
+        threshold = max(1, len(phrase_tokens) - 2)
+        for i, w in enumerate(words):
+            if float(w["start"]) <= after_time:
+                continue
+            matched = 0
+            for j, token in enumerate(phrase_tokens):
+                if i + j >= len(words):
+                    break
+                word_text = str(words[i + j].get("word", "")).lower().strip(".,!?;:'\"")
+                if token.strip(".,!?;:'\"") == word_text:
+                    matched += 1
+            if matched >= threshold:
+                return float(words[i]["start"])
+        return None
+
     def _segment_words_by_beats(
         self, words: List[Dict[str, Any]], beat_outline: List[Dict[str, Any]],
         max_segments: int = 8, audio_duration: float = 0.0,
     ) -> List[Dict[str, Any]]:
         """
-        Concept-aligned segmentation: uses the beat_outline labels to find natural
-        topic transitions in the narration text, then splits words at those boundaries.
+        Concept-aligned segmentation: uses the beat_outline to find natural
+        topic transitions in the narration, then splits words at those boundaries.
+
+        Matching strategy (in priority order):
+          1. narration field — match first 6 words of each beat's narration text
+          2. key_terms / summary keywords — legacy keyword search fallback
 
         Falls back to fixed-window if beat matching fails.
         max_segments caps total segments to control LLM cost.
@@ -2359,67 +2391,86 @@ class VideoGenerationPipeline:
         if not words or not beat_outline:
             return self._segment_words(words, audio_duration=audio_duration)
 
-        # Use max of all word end-times (array may not be sorted) and
-        # actual audio duration (words may not cover the full audio).
+        # Use max of all word end-times and actual audio duration
         total_duration = max(
             max(float(w["end"]) for w in words),
             audio_duration,
         )
-        full_text = " ".join(str(w.get("word", "")) for w in words).lower()
-        
-        # Try to find approximate word positions for each beat label
-        # by searching for key_terms or summary keywords in the word stream
+
+        # --- Find beat boundaries in the word stream ---
         beat_boundaries: List[float] = [0.0]
-        
-        for beat in beat_outline:
-            key_terms = beat.get("key_terms", [])
-            summary_words = beat.get("summary", "").lower().split()[:3]  # First 3 words of summary
-            search_terms = [t.lower() for t in key_terms] + summary_words
-            
+        # Track which beat index maps to which boundary (for beat_index in segments)
+        boundary_beat_indices: List[int] = [0]
+
+        for beat_idx, beat in enumerate(beat_outline):
             best_time = None
-            for term in search_terms:
-                if not term or len(term) < 3:
-                    continue
-                for w in words:
-                    word_text = str(w.get("word", "")).lower().strip(".,!?;:")
-                    if term in word_text and float(w["start"]) > beat_boundaries[-1] + 5.0:
-                        best_time = float(w["start"])
+
+            # Strategy A: Use per-beat narration text (most reliable)
+            narration = beat.get("narration", "").strip()
+            if narration:
+                first_words = narration.lower().split()[:6]
+                if len(first_words) >= 3:
+                    best_time = self._find_phrase_start(
+                        words, first_words, after_time=beat_boundaries[-1] + 3.0
+                    )
+                    if best_time:
+                        print(f"      📍 Beat '{beat.get('label', beat_idx)}': narration match at {best_time:.1f}s")
+
+            # Strategy B: Fall back to keyword search (backwards compat)
+            if best_time is None:
+                key_terms = beat.get("key_terms", [])
+                summary_words = beat.get("summary", "").lower().split()[:3]
+                search_terms = [t.lower() for t in key_terms] + summary_words
+
+                for term in search_terms:
+                    if not term or len(term) < 3:
+                        continue
+                    for w in words:
+                        word_text = str(w.get("word", "")).lower().strip(".,!?;:")
+                        if term in word_text and float(w["start"]) > beat_boundaries[-1] + 5.0:
+                            best_time = float(w["start"])
+                            break
+                    if best_time:
                         break
-                if best_time:
-                    break
-            
+
             if best_time and best_time > beat_boundaries[-1] + 10.0:  # Min 10s per segment
                 beat_boundaries.append(best_time)
-        
+                boundary_beat_indices.append(beat_idx)
+
         beat_boundaries.append(total_duration)
-        
+        boundary_beat_indices.append(len(beat_outline) - 1)  # Final boundary maps to last beat
+
         # Merge very short segments (< 15s) with neighbors
         merged = [beat_boundaries[0]]
-        for b in beat_boundaries[1:]:
+        merged_beat_indices = [boundary_beat_indices[0]]
+        for i, b in enumerate(beat_boundaries[1:], 1):
             if b - merged[-1] < 15.0 and len(merged) > 1:
-                continue  # Skip, let it merge with next
+                continue  # Skip, merge with next
             merged.append(b)
+            merged_beat_indices.append(boundary_beat_indices[min(i, len(boundary_beat_indices) - 1)])
         if merged[-1] != total_duration:
             merged.append(total_duration)
+            merged_beat_indices.append(boundary_beat_indices[-1])
         beat_boundaries = merged
-        
+        boundary_beat_indices = merged_beat_indices
+
         # Enforce max_segments cap by merging smallest adjacent pairs
         while len(beat_boundaries) - 1 > max_segments:
-            # Find smallest gap
             min_gap = float("inf")
             min_idx = 1
             for i in range(1, len(beat_boundaries) - 1):
-                gap = beat_boundaries[i + 1] - beat_boundaries[i - 1]
-                if beat_boundaries[i] - beat_boundaries[i - 1] < min_gap:
-                    min_gap = beat_boundaries[i] - beat_boundaries[i - 1]
+                gap = beat_boundaries[i] - beat_boundaries[i - 1]
+                if gap < min_gap:
+                    min_gap = gap
                     min_idx = i
             beat_boundaries.pop(min_idx)
-        
+            boundary_beat_indices.pop(min_idx)
+
         # If we only got start+end (no useful beat boundaries), fall back
         if len(beat_boundaries) <= 2:
             print("   ⚠️ Beat matching found no useful boundaries, using fixed-window fallback")
             return self._segment_words(words, audio_duration=audio_duration)
-        
+
         # Build segments from boundaries
         segments: List[Dict[str, Any]] = []
         for idx in range(len(beat_boundaries) - 1):
@@ -2431,26 +2482,23 @@ class VideoGenerationPipeline:
             if chunk_words:
                 chunk_text = " ".join(str(w["word"]) for w in chunk_words).strip()
                 if chunk_text:
-                    # Check if this segment has a recap marker, capture beat label and key terms
-                    beat_idx = min(idx, len(beat_outline) - 1)
-                    needs_recap = beat_outline[beat_idx].get("needs_recap", False) if beat_idx < len(beat_outline) else False
-                    beat_label = beat_outline[beat_idx].get("label", f"Section {idx + 1}") if beat_idx < len(beat_outline) else f"Section {idx + 1}"
-                    key_terms = beat_outline[beat_idx].get("key_terms", []) if beat_idx < len(beat_outline) else []
-
-                    complexity_level = beat_outline[beat_idx].get("complexity_level", "moderate") if beat_idx < len(beat_outline) else "moderate"
+                    beat_idx = boundary_beat_indices[idx] if idx < len(boundary_beat_indices) else min(idx, len(beat_outline) - 1)
+                    beat_idx = min(beat_idx, len(beat_outline) - 1)
 
                     segments.append({
                         "index": idx + 1,
                         "start": round(start_time, 3),
                         "end": round(end_time, 3),
+                        "duration": round(end_time - start_time, 1),
                         "text": chunk_text,
                         "words": chunk_words,
-                        "needs_recap": needs_recap,
-                        "beat_label": beat_label,
-                        "key_terms": key_terms,
-                        "complexity_level": complexity_level,
+                        "needs_recap": beat_outline[beat_idx].get("needs_recap", False),
+                        "beat_label": beat_outline[beat_idx].get("label", f"Section {idx + 1}"),
+                        "key_terms": beat_outline[beat_idx].get("key_terms", []),
+                        "complexity_level": beat_outline[beat_idx].get("complexity_level", "moderate"),
+                        "beat_index": beat_idx,
                     })
-        
+
         return segments
 
     def _process_interactive_content(self, script_plan: Dict[str, Any], content_type: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -2762,14 +2810,36 @@ class VideoGenerationPipeline:
                 f"Import these via Google Fonts if not already loaded in the slide.\n"
             )
 
-            # Extract relevant visual ideas from beat outline if available
+            # Extract relevant visual ideas — filtered to this segment's beat + neighbors
             beat_context = ""
             if script_plan and "beat_outline" in script_plan:
-                beat_context = "\nVISUAL IDEAS FROM SCRIPT:\n"
-                for beat in script_plan["beat_outline"]:
-                    if beat.get("visual_idea"):
-                        beat_context += f"- {beat.get('label')}: {beat.get('visual_idea')}\n"
-                beat_context += "(Use these ideas if they match the current narration text)\n"
+                beats = script_plan["beat_outline"]
+                seg_beat_idx = seg.get("beat_index", 0)
+                # Show this segment's beat + 1 neighbor on each side for transition context
+                relevant_range = range(
+                    max(0, seg_beat_idx - 1),
+                    min(len(beats), seg_beat_idx + 2)
+                )
+                relevant_beats = [beats[i] for i in relevant_range if i < len(beats)]
+
+                if relevant_beats:
+                    beat_context = "\n**VISUAL IDEAS FOR THIS SEGMENT**:\n"
+                    for beat in relevant_beats:
+                        is_primary = beat.get("label") == seg.get("beat_label")
+                        marker = "→ " if is_primary else "  "
+                        if beat.get("visual_idea"):
+                            beat_context += f"{marker}{beat.get('label')}: {beat.get('visual_idea')}"
+                            if beat.get("visual_type"):
+                                beat_context += f" [suggested: {beat['visual_type']}]"
+                            beat_context += "\n"
+                    beat_context += "(The → arrow marks the primary beat for this segment)\n"
+                else:
+                    # Fallback: show all beats (backwards compat for segments without beat_index)
+                    beat_context = "\nVISUAL IDEAS FROM SCRIPT:\n"
+                    for beat in beats:
+                        if beat.get("visual_idea"):
+                            beat_context += f"- {beat.get('label')}: {beat.get('visual_idea')}\n"
+                    beat_context += "(Use these ideas if they match the current narration text)\n"
 
             # Format word timings for the LLM to use for animation sync
             word_timings = ""
@@ -2932,6 +3002,14 @@ class VideoGenerationPipeline:
             # Inject complexity level for this segment (guides shot duration & animation layering)
             _complexity = seg.get("complexity_level", "moderate")
             user_prompt += f"\n\n**COMPLEXITY LEVEL FOR THIS SEGMENT**: {_complexity}\n"
+
+            # Inject segment duration + recommended shot count (duration-proportional)
+            _seg_duration = seg.get("duration", seg["end"] - seg["start"])
+            _recommended_shots = max(2, min(4, round(_seg_duration / 10)))
+            user_prompt += (
+                f"\n**SEGMENT DURATION**: {_seg_duration:.0f} seconds."
+                f" Aim for approximately {_recommended_shots} shots to fill this time.\n"
+            )
 
             # Retry logic: distinguishes server overload (500), rate-limit (429),
             # and JSON parse failures so each gets an appropriate delay.

@@ -48,6 +48,21 @@ public class HtmlBuilderService {
     @Autowired
     FileService fileService;
 
+    // Unicode symbols for report icons
+    private static final String SYM_CORRECT = "\u2713";     // ✓
+    private static final String SYM_INCORRECT = "\u2717";    // ✗
+    private static final String SYM_PARTIAL = "\u25CF";      // ●
+    private static final String SYM_SKIPPED = "\u25CB";      // ○
+    private static final String SYM_TIME = "\u23F1";         // ⏱
+    private static final String SYM_RANK = "\u2605";         // ★
+    private static final String SYM_PERCENTILE = "\u25C8";   // ◈
+    private static final String SYM_SECTION = "\u25B6";      // ▶
+    private static final String SYM_STAT = "\u25A0";         // ■
+    private static final String SYM_TARGET = "\u25CE";       // ◎
+    private static final String SYM_ARROW_UP = "\u25B2";     // ▲
+    private static final String SYM_ARROW_DOWN = "\u25BC";   // ▼
+    private static final String SYM_TROPHY = "\u265B";       // ♛
+
     public static String convertToReadableTime(Long timeInSeconds) {
         if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
             return "N/A";
@@ -93,33 +108,30 @@ public class HtmlBuilderService {
             String instituteId) {
         StringBuilder html = new StringBuilder();
 
-        html.append("<!DOCTYPE html>");
-        html.append("<html lang=\"en\">");
-        html.append("<head>");
-        html.append("<meta charset=\"UTF-8\">");
+        html.append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">");
         html.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-        html.append("<title>Quiz Results</title>");
+        html.append("<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');</style>");
+        html.append("<title>Question Insights</title>");
         html.append("<style>");
-        html.append("body { font-family: Arial, sans-serif; margin: 20px; }");
-        html.append(".question { font-size: 18px; font-weight: bold; }");
-        html.append(
-                ".correct-answer { background-color: #FFF9F4; padding: 10px; border-radius: 5px; margin-top: 10px; }");
-        html.append(".end { background-color: #f8f8f8; padding: 3px; border-radius: 5px; margin-top: 10px; }");
-        html.append(".explanation { margin-top: 10px; }");
-        html.append(".top-respondents { margin-top: 5px; }");
-        html.append(
-                ".top-respondents div { background-color: #ffebea; padding: 5px; border-radius: 5px; margin: 5px 0; }");
-        html.append(".stats { margin-top: 20px; }");
-        html.append(".stats ul { list-style-type: none; padding: 0; }");
-        html.append(".stats li { margin: 5px 0; }");
-        html.append("</style>");
-        html.append("</head>");
-        html.append("<body>");
+        html.append("body { font-family: 'Inter', -apple-system, 'Segoe UI', Arial, Helvetica, sans-serif; margin: 0; padding: 0; background: #fff; color: #333; line-height: 1.6; }");
+        html.append(".container { max-width: 800px; margin: 0 auto; }");
+        html.append(".header { background-color: #FF6B35; color: white; padding: 20px 28px; border-bottom: 3px solid rgba(0,0,0,0.15); }");
+        html.append(".section-header { padding: 14px 28px; background-color: #f8f9fc; border-bottom: 2px solid #eee; font-size: 15px; font-weight: 700; color: #333; }");
+        html.append(".q-card { padding: 18px 28px; border-bottom: 1px solid #eee; page-break-inside: avoid; }");
+        html.append(".q-text { font-size: 14px; font-weight: 700; color: #333; margin-bottom: 10px; }");
+        html.append(".correct-box { background-color: #f0fdf4; border-left: 4px solid #2E7D32; padding: 8px 12px; border-radius: 0 6px 6px 0; margin-top: 8px; font-size: 12px; }");
+        html.append(".respondent-row { padding: 4px 8px; font-size: 12px; }");
+        html.append(".stat-row { margin-top: 10px; }");
+        html.append(".footer { padding: 12px 28px; background-color: #f8f9fc; text-align: center; font-size: 10px; color: #999; border-top: 2px solid #eee; }");
+        html.append("</style></head><body>");
+        html.append("<div class=\"container\">");
+        html.append("<div class=\"header\"><div style=\"font-size: 18px; font-weight: 700;\">").append(SYM_STAT).append(" Question Insights Report</div></div>");
+
         if (!Objects.isNull(sectionIds)) {
             for (String sectionId : sectionIds) {
                 Optional<Section> sectionOptional = sectionRepository.findById(sectionId);
                 sectionOptional.ifPresent(
-                        section -> html.append("<div class=\"title\">").append(section.getName()).append("</div>"));
+                        section -> html.append("<div class=\"section-header\">").append(SYM_SECTION).append(" ").append(section.getName()).append("</div>"));
 
                 QuestionInsightsResponse questionInsightsResponses = adminAssessmentGetManager.createInsights(user,
                         assessmentId, sectionId);
@@ -129,13 +141,15 @@ public class HtmlBuilderService {
                 questionInsightDtos.forEach(questionInsight -> {
                     AssessmentQuestionPreviewDto assessmentQuestionPreviewDto = questionInsight
                             .getAssessmentQuestionPreviewDto();
+
+                    html.append("<div class=\"q-card\">");
+
                     if (!Objects.isNull(assessmentQuestionPreviewDto)) {
-                        html.append("<div class=\"question\">");
-                        html.append(assessmentQuestionPreviewDto.getQuestion().getContent());
+                        html.append("<div class=\"q-text\">");
+                        html.append(stripHtmlTags(assessmentQuestionPreviewDto.getQuestion().getContent()));
                         html.append("</div>");
 
                         List<String> correctOptionIds = new ArrayList<>();
-
                         try {
                             correctOptionIds = QuestionBasedStrategyFactory
                                     .getCorrectOptionIds(assessmentQuestionPreviewDto.getEvaluationJson(),
@@ -147,81 +161,74 @@ public class HtmlBuilderService {
                         List<String> correctOptionText = getTextFromAssessmentPreviewDto(assessmentQuestionPreviewDto,
                                 correctOptionIds);
                         correctOptionText.forEach(correctOption -> {
-                            html.append("<div class=\"correct-answer\"><strong>Correct answer:</strong> ")
-                                    .append(correctOption).append("</div>");
+                            html.append("<div class=\"correct-box\">").append(SYM_CORRECT).append(" <strong>Correct:</strong> ")
+                                    .append(stripHtmlTags(correctOption)).append("</div>");
                         });
 
-                        html.append("<div class=\"top-respondents\"><strong>Top 3 quick correct responses</strong>");
+                        // Top 3 respondents
                         List<Top3CorrectResponseDto> top3CorrectResponseDtos = questionInsight
                                 .getTop3CorrectResponseDto();
-                        if (!Objects.isNull(top3CorrectResponseDtos)) {
-                            for (Top3CorrectResponseDto top3CorrectResponseDto : top3CorrectResponseDtos) {
-                                html.append("<div>");
-                                html.append(top3CorrectResponseDto.getName()).append(" ");
-                                html.append(convertToReadableTime(top3CorrectResponseDto.getTimeTakenInSeconds()));
+                        if (!Objects.isNull(top3CorrectResponseDtos) && !top3CorrectResponseDtos.isEmpty()) {
+                            html.append("<div style=\"margin-top: 8px; font-size: 12px; font-weight: 600; color: #555;\">").append(SYM_TROPHY).append(" Top 3 Quick Correct Responses</div>");
+                            String[] medalColors = {"#FFD700", "#C0C0C0", "#CD7F32"};
+                            int respIdx = 0;
+                            for (Top3CorrectResponseDto top3 : top3CorrectResponseDtos) {
+                                String medalColor = respIdx < 3 ? medalColors[respIdx] : "#ddd";
+                                html.append("<div class=\"respondent-row\">");
+                                html.append("<span style=\"display: inline-block; width: 18px; height: 18px; border-radius: 9px; background-color: ")
+                                        .append(medalColor).append("; color: #333; text-align: center; line-height: 18px; font-size: 10px; font-weight: 700;\">")
+                                        .append(respIdx + 1).append("</span> ");
+                                html.append(escapeHtml(top3.getName())).append(" <span style=\"color: #888;\">").append(SYM_TIME).append(" ")
+                                        .append(convertToReadableTime(top3.getTimeTakenInSeconds())).append("</span>");
                                 html.append("</div>");
+                                respIdx++;
                             }
                         }
                     }
 
-                    html.append("</div>");
-                    html.append("<div class=\"stats\"><strong>Total Attempt: ");
-                    html.append(questionInsight.getTotalAttempts()).append(" students</strong>");
-
-                    double correctAttemptPer = 0.0;
-                    double incorrectAttemptPer = 0.0;
-                    double partialAttemptPer = 0.0;
-                    double skippedAttemptPer = 0.0;
-
+                    // Stats
                     Long totalAttempts = questionInsight.getTotalAttempts();
-                    totalAttempts = (totalAttempts != null && totalAttempts > 0) ? totalAttempts : 1; // Avoid division
-                                                                                                      // by zero
-
+                    totalAttempts = (totalAttempts != null && totalAttempts > 0) ? totalAttempts : 1;
                     QuestionStatusDto status = questionInsight.getQuestionStatus();
 
-                    long correctAttempt = (status != null && status.getCorrectAttempt() != null)
-                            ? status.getCorrectAttempt()
-                            : 0;
-                    long incorrectAttempt = (status != null && status.getIncorrectAttempt() != null)
-                            ? status.getIncorrectAttempt()
-                            : 0;
-                    long partialCorrectAttempt = (status != null && status.getPartialCorrectAttempt() != null)
-                            ? status.getPartialCorrectAttempt()
-                            : 0;
+                    long correctAttempt = (status != null && status.getCorrectAttempt() != null) ? status.getCorrectAttempt() : 0;
+                    long incorrectAttempt = (status != null && status.getIncorrectAttempt() != null) ? status.getIncorrectAttempt() : 0;
+                    long partialCorrectAttempt = (status != null && status.getPartialCorrectAttempt() != null) ? status.getPartialCorrectAttempt() : 0;
                     long skippedAttempt = (questionInsight.getSkipped() != null) ? questionInsight.getSkipped() : 0;
 
-                    correctAttemptPer = (correctAttempt * 100.0) / totalAttempts;
-                    incorrectAttemptPer = (incorrectAttempt * 100.0) / totalAttempts;
-                    partialAttemptPer = (partialCorrectAttempt * 100.0) / totalAttempts;
-                    skippedAttemptPer = (skippedAttempt * 100.0) / totalAttempts;
+                    double correctPct = (correctAttempt * 100.0) / totalAttempts;
+                    double incorrectPct = (incorrectAttempt * 100.0) / totalAttempts;
+                    double partialPct = (partialCorrectAttempt * 100.0) / totalAttempts;
+                    double skippedPct = (skippedAttempt * 100.0) / totalAttempts;
 
-                    html.append("<ul>");
-                    html.append("<li>Correct Respondents: ")
-                            .append(correctAttempt)
-                            .append(" (").append(String.format("%.1f", correctAttemptPer)).append("%)");
+                    html.append("<div class=\"stat-row\">");
+                    html.append("<div style=\"font-size: 11px; color: #888; margin-bottom: 4px;\">").append(SYM_STAT).append(" Total Attempts: <b style=\"color: #333;\">").append(totalAttempts).append("</b></div>");
 
-                    html.append("<li>Partially Correct Respondents: ")
-                            .append(partialCorrectAttempt)
-                            .append(" (").append(String.format("%.1f", partialAttemptPer)).append("%)");
+                    // Stacked percentage bar
+                    html.append("<table style=\"width: 100%; border-collapse: collapse; height: 10px;\"><tr>");
+                    if (correctPct > 0) html.append("<td style=\"width: ").append(String.format("%.1f", correctPct)).append("%; background-color: #2E7D32; height: 10px;\"></td>");
+                    if (partialPct > 0) html.append("<td style=\"width: ").append(String.format("%.1f", partialPct)).append("%; background-color: #F57F17; height: 10px;\"></td>");
+                    if (incorrectPct > 0) html.append("<td style=\"width: ").append(String.format("%.1f", incorrectPct)).append("%; background-color: #C62828; height: 10px;\"></td>");
+                    if (skippedPct > 0) html.append("<td style=\"width: ").append(String.format("%.1f", skippedPct)).append("%; background-color: #BDBDBD; height: 10px;\"></td>");
+                    html.append("</tr></table>");
 
-                    html.append("<li>Wrong Respondents: ")
-                            .append(incorrectAttempt)
-                            .append(" (").append(String.format("%.1f", incorrectAttemptPer)).append("%)");
+                    // Stat labels
+                    html.append("<table style=\"width: 100%; font-size: 10px; color: #555; margin-top: 4px;\"><tr>");
+                    html.append("<td>").append(dot("#2E7D32")).append(SYM_CORRECT).append(" ").append(correctAttempt).append(" (").append(String.format("%.1f", correctPct)).append("%)</td>");
+                    html.append("<td>").append(dot("#F57F17")).append(SYM_PARTIAL).append(" ").append(partialCorrectAttempt).append(" (").append(String.format("%.1f", partialPct)).append("%)</td>");
+                    html.append("<td>").append(dot("#C62828")).append(SYM_INCORRECT).append(" ").append(incorrectAttempt).append(" (").append(String.format("%.1f", incorrectPct)).append("%)</td>");
+                    html.append("<td>").append(dot("#BDBDBD")).append(SYM_SKIPPED).append(" ").append(skippedAttempt).append(" (").append(String.format("%.1f", skippedPct)).append("%)</td>");
+                    html.append("</tr></table>");
+                    html.append("</div>"); // stat-row
 
-                    html.append("<li>Skipped: ")
-                            .append(skippedAttempt)
-                            .append(" (").append(String.format("%.1f", skippedAttemptPer)).append("%)");
-                    html.append("</ul>");
-
-                    html.append("<div class=\"end\"><strong></strong></div>");
+                    html.append("</div>"); // q-card
                 });
-
             }
         }
 
-        html.append("</div>");
-        html.append("</body>");
-        html.append("</html>");
+        // Footer
+        html.append("<div class=\"footer\">Generated: ").append(LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm"))).append("</div>");
+        html.append("</div></body></html>");
 
         return html.toString();
     }
@@ -441,19 +448,20 @@ public class HtmlBuilderService {
         // ===== CSS (iText-compatible: tables instead of grid/flex) =====
         html.append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">");
         html.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
+        html.append("<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');</style>");
         html.append("<title>Student Assessment Report</title>");
         html.append("<style>");
-        html.append("body { font-family: Arial, Helvetica, sans-serif; background: #ffffff; color: #333; line-height: 1.5; margin: 0; padding: 0; }");
+        html.append("body { font-family: 'Inter', -apple-system, 'Segoe UI', Arial, Helvetica, sans-serif; background: #ffffff; color: #333; line-height: 1.6; margin: 0; padding: 0; }");
         html.append(".report-container { max-width: 800px; margin: 0 auto; }");
-        html.append(".report-header { background-color: ").append(primaryColor).append("; color: white; padding: 24px 28px; }");
+        html.append(".report-header { background-color: ").append(primaryColor).append("; color: white; padding: 24px 28px; border-bottom: 3px solid rgba(0,0,0,0.15); }");
         html.append(".report-header h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px 0; }");
-        html.append(".section { padding: 20px 28px; border-bottom: 1px solid #eee; }");
-        html.append(".section-title { font-size: 16px; font-weight: 700; color: #333; margin-bottom: 14px; }");
+        html.append(".section { padding: 24px 28px; border-bottom: 1px solid #eee; page-break-inside: avoid; }");
+        html.append(".section-title { font-size: 15px; font-weight: 700; color: #333; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #f0f0f0; }");
         // Layout table (no borders, used for horizontal cards)
         html.append(".layout-table { width: 100%; border-collapse: separate; border-spacing: 8px; }");
         html.append(".layout-table td { vertical-align: top; }");
         // Score cards
-        html.append(".score-card { background-color: #f8f9fc; border-radius: 8px; padding: 14px; text-align: center; }");
+        html.append(".score-card { background-color: #f8f9fc; border-radius: 8px; padding: 14px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }");
         html.append(".score-value { font-size: 24px; font-weight: 800; }");
         html.append(".score-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }");
         // Comparison bars
@@ -465,7 +473,7 @@ public class HtmlBuilderService {
         html.append(".stat-wrong { background-color: #FFEBEE; color: #C62828; }");
         html.append(".stat-partial { background-color: #FFF8E1; color: #F57F17; }");
         html.append(".stat-skipped { background-color: #F5F5F5; color: #757575; }");
-        html.append(".stat-box { border-radius: 8px; padding: 10px; text-align: center; }");
+        html.append(".stat-box { border-radius: 8px; padding: 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }");
         html.append(".stat-count { font-size: 22px; font-weight: 800; }");
         html.append(".stat-marks-text { font-size: 11px; margin-top: 2px; }");
         html.append(".stat-label-text { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px; }");
@@ -473,25 +481,25 @@ public class HtmlBuilderService {
         html.append(".perf-table { width: 100%; border-collapse: collapse; font-size: 12px; }");
         html.append(".perf-table th { background-color: #f8f9fc; padding: 8px 10px; text-align: left; font-weight: 600; color: #555; border-bottom: 2px solid #eee; }");
         html.append(".perf-table td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }");
-        html.append(".badge-pass { background-color: #E8F5E9; color: #2E7D32; padding: 2px 8px; font-size: 10px; font-weight: 600; }");
-        html.append(".badge-fail { background-color: #FFEBEE; color: #C62828; padding: 2px 8px; font-size: 10px; font-weight: 600; }");
+        html.append(".badge-pass { background-color: #E8F5E9; color: #2E7D32; padding: 2px 10px; font-size: 10px; font-weight: 600; border-radius: 12px; display: inline-block; }");
+        html.append(".badge-fail { background-color: #FFEBEE; color: #C62828; padding: 2px 10px; font-size: 10px; font-weight: 600; border-radius: 12px; display: inline-block; }");
         // Distribution bars
         html.append(".dist-table { width: 100%; border-collapse: collapse; }");
         html.append(".dist-table td { text-align: center; vertical-align: bottom; padding: 2px; font-size: 10px; }");
         // Leaderboard
         html.append(".lb-table { width: 100%; border-collapse: collapse; font-size: 12px; }");
-        html.append(".lb-table th { background-color: #f8f9fc; padding: 8px 10px; text-align: left; font-weight: 600; color: #555; }");
+        html.append(".lb-table th { background-color: #f8f9fc; padding: 8px 10px; text-align: left; font-weight: 600; color: #555; border-bottom: 2px solid #eee; }");
         html.append(".lb-table td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }");
         html.append(".current-student { background-color: #FFF3E0; font-weight: 600; }");
         // Question cards
-        html.append(".question-card { background-color: #fafbfc; border: 1px solid #eee; border-radius: 8px; padding: 14px; margin-bottom: 10px; }");
-        html.append(".q-correct-badge { background-color: #E8F5E9; color: #2E7D32; padding: 2px 8px; font-size: 10px; font-weight: 600; }");
-        html.append(".q-incorrect-badge { background-color: #FFEBEE; color: #C62828; padding: 2px 8px; font-size: 10px; font-weight: 600; }");
-        html.append(".q-partial-badge { background-color: #FFF8E1; color: #F57F17; padding: 2px 8px; font-size: 10px; font-weight: 600; }");
-        html.append(".q-skipped-badge { background-color: #F5F5F5; color: #757575; padding: 2px 8px; font-size: 10px; font-weight: 600; }");
-        html.append(".q-explanation { background-color: #EDE7F6; padding: 8px 12px; margin-top: 8px; font-size: 12px; color: #4A148C; }");
-        html.append(".report-footer { background-color: #f8f9fc; padding: 14px 28px; text-align: center; font-size: 11px; color: #999; }");
-        // Watermark CSS — using @page margin box or fixed positioning
+        html.append(".question-card { background-color: #fafbfc; border: 1px solid #eee; border-radius: 8px; padding: 14px; margin-bottom: 10px; page-break-inside: avoid; }");
+        html.append(".q-correct-badge { background-color: #E8F5E9; color: #2E7D32; padding: 2px 10px; font-size: 10px; font-weight: 600; border-radius: 12px; display: inline-block; }");
+        html.append(".q-incorrect-badge { background-color: #FFEBEE; color: #C62828; padding: 2px 10px; font-size: 10px; font-weight: 600; border-radius: 12px; display: inline-block; }");
+        html.append(".q-partial-badge { background-color: #FFF8E1; color: #F57F17; padding: 2px 10px; font-size: 10px; font-weight: 600; border-radius: 12px; display: inline-block; }");
+        html.append(".q-skipped-badge { background-color: #F5F5F5; color: #757575; padding: 2px 10px; font-size: 10px; font-weight: 600; border-radius: 12px; display: inline-block; }");
+        html.append(".q-explanation { background-color: #EDE7F6; padding: 8px 12px; margin-top: 8px; font-size: 12px; color: #4A148C; border-radius: 6px; }");
+        html.append(".report-footer { background-color: #f8f9fc; padding: 14px 28px; font-size: 11px; color: #999; }");
+        // Watermark CSS
         html.append(".watermark { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }");
         html.append(".watermark-text { position: absolute; top: 360pt; left: 100pt; font-size: 60px; font-weight: bold; white-space: nowrap; transform: rotate(-35deg); }");
         html.append("</style></head><body>");
@@ -548,14 +556,15 @@ public class HtmlBuilderService {
             // Default header
             html.append("<div style=\"text-align: center; font-size: 20px; font-weight: 700; color: white;\">")
                     .append(escapeHtml(title)).append("</div>");
-            html.append("<div style=\"text-align: center; font-size: 13px; color: #E0E0E0; margin-top: 4px;\">Student Performance Analysis</div>");
+            html.append("<div style=\"text-align: center; font-size: 13px; color: #E0E0E0; margin-top: 4px;\">")
+                    .append(SYM_STAT).append(" Student Performance Analysis</div>");
         }
         html.append("</td></tr></table>");
         if (detail != null) {
             html.append("<table style=\"margin-top: 12px;\"><tr>");
-            html.append("<td style=\"color: white; font-size: 12px; padding-right: 20px;\"><span style=\"opacity: 0.8;\">Start Time: </span><b>")
+            html.append("<td style=\"color: white; font-size: 12px; padding-right: 20px;\"><span style=\"opacity: 0.8;\">").append(SYM_TIME).append(" Start Time: </span><b>")
                     .append(detail.getStartTime() != null ? detail.getStartTime().toString() : "-").append("</b></td>");
-            html.append("<td style=\"color: white; font-size: 12px;\"><span style=\"opacity: 0.8;\">Duration: </span><b>")
+            html.append("<td style=\"color: white; font-size: 12px;\"><span style=\"opacity: 0.8;\">").append(SYM_TIME).append(" Duration: </span><b>")
                     .append(convertToReadableTime(detail.getCompletionTimeInSeconds())).append("</b></td>");
             html.append("</tr></table>");
         }
@@ -565,26 +574,93 @@ public class HtmlBuilderService {
         if (detail != null) {
             Double marks = detail.getAchievedMarks();
             Double totalMarks = comparison != null && comparison.getTotalMarks() != null ? comparison.getTotalMarks() : 100.0;
+            String grade = calculateGrade(detail.getPercentile());
+            String gColor = gradeColor(grade);
             html.append("<div class=\"section\">");
-            html.append("<div class=\"section-title\">Score Overview</div>");
+            html.append("<div class=\"section-title\">").append(SYM_STAT).append(" Score Overview</div>");
             html.append("<table class=\"layout-table\"><tr>");
+            // Grade
+            html.append("<td width=\"20%\"><div class=\"score-card\">");
+            html.append("<div style=\"width: 48px; height: 48px; border-radius: 24px; background-color: ").append(gColor)
+                    .append("; color: white; text-align: center; line-height: 48px; font-size: 20px; font-weight: 800; margin: 0 auto;\">")
+                    .append(grade).append("</div>");
+            html.append("<div class=\"score-label\">Grade</div></div></td>");
             // Marks
-            html.append("<td width=\"25%\"><div class=\"score-card\">");
+            html.append("<td width=\"20%\"><div class=\"score-card\">");
             html.append("<div class=\"score-value\" style=\"color: ").append(primaryColor).append(";\">").append(formatNumber(marks)).append("/").append(formatNumber(totalMarks)).append("</div>");
             html.append("<div class=\"score-label\">Marks Obtained</div></div></td>");
             // Rank
-            html.append("<td width=\"25%\"><div class=\"score-card\">");
-            html.append("<div class=\"score-value\" style=\"color: ").append(secondaryColor).append(";\">#").append(detail.getRank() != null ? detail.getRank() : "-").append("</div>");
+            html.append("<td width=\"20%\"><div class=\"score-card\">");
+            html.append("<div class=\"score-value\" style=\"color: ").append(secondaryColor).append(";\">").append(SYM_RANK).append(" #").append(detail.getRank() != null ? detail.getRank() : "-").append("</div>");
             html.append("<div class=\"score-label\">Rank</div></div></td>");
             // Percentile
-            html.append("<td width=\"25%\"><div class=\"score-card\">");
-            html.append("<div class=\"score-value\" style=\"color: #00B894;\">").append(formatNumber(detail.getPercentile())).append("%</div>");
+            html.append("<td width=\"20%\"><div class=\"score-card\">");
+            html.append("<div class=\"score-value\" style=\"color: #00B894;\">").append(SYM_PERCENTILE).append(" ").append(formatNumber(detail.getPercentile())).append("%</div>");
             html.append("<div class=\"score-label\">Percentile</div></div></td>");
             // Time (only show if time data exists)
             if (detail.getCompletionTimeInSeconds() != null && detail.getCompletionTimeInSeconds() > 0) {
-                html.append("<td width=\"25%\"><div class=\"score-card\">");
-                html.append("<div class=\"score-value\" style=\"color: #0984E3; font-size: 18px;\">").append(convertToReadableTime(detail.getCompletionTimeInSeconds())).append("</div>");
+                html.append("<td width=\"20%\"><div class=\"score-card\">");
+                html.append("<div class=\"score-value\" style=\"color: #0984E3; font-size: 18px;\">").append(SYM_TIME).append(" ").append(convertToReadableTime(detail.getCompletionTimeInSeconds())).append("</div>");
                 html.append("<div class=\"score-label\">Time Taken</div></div></td>");
+            }
+            html.append("</tr></table>");
+
+            // Pass/Fail indicator (if any section has cutoff)
+            if (comparison != null && comparison.getSectionWiseComparison() != null) {
+                boolean hasCutoff = comparison.getSectionWiseComparison().stream().anyMatch(s -> s.getCutOffMarks() != null);
+                if (hasCutoff) {
+                    boolean overallPass = comparison.getSectionWiseComparison().stream()
+                            .filter(s -> s.getCutOffMarks() != null)
+                            .allMatch(s -> Boolean.TRUE.equals(s.getPassed()));
+                    String passBg = overallPass ? "#E8F5E9" : "#FFEBEE";
+                    String passColor = overallPass ? "#2E7D32" : "#C62828";
+                    String passSymbol = overallPass ? SYM_CORRECT : SYM_INCORRECT;
+                    String passText = overallPass ? "PASSED" : "FAILED";
+                    html.append("<div style=\"text-align: center; padding: 8px; background-color: ").append(passBg)
+                            .append("; border-radius: 6px; margin-top: 8px;\"><span style=\"font-size: 14px; font-weight: 700; color: ")
+                            .append(passColor).append(";\">").append(passSymbol).append(" ").append(passText).append("</span></div>");
+                }
+            }
+            html.append("</div>");
+        }
+
+        // ===== PERCENTILE BAND VISUAL =====
+        if (detail != null && detail.getPercentile() != null) {
+            double pctl = detail.getPercentile();
+            int quartile; // 0=0-25, 1=25-50, 2=50-75, 3=75-100
+            if (pctl >= 75) quartile = 3;
+            else if (pctl >= 50) quartile = 2;
+            else if (pctl >= 25) quartile = 1;
+            else quartile = 0;
+            String[] bandColors = {"#FFEBEE", "#FFF8E1", "#E3F2FD", "#E8F5E9"};
+            String[] bandBorders = {"#C62828", "#F57F17", "#1565C0", "#2E7D32"};
+            String[] bandLabels = {"Bottom 25%", "Below Avg", "Above Avg", "Top 25%"};
+
+            html.append("<div class=\"section\">");
+            html.append("<div class=\"section-title\">").append(SYM_PERCENTILE).append(" Your Percentile Position</div>");
+            // Band bar
+            html.append("<table style=\"width: 100%; border-collapse: collapse;\">");
+            // Marker row
+            html.append("<tr>");
+            for (int q = 0; q < 4; q++) {
+                html.append("<td style=\"width: 25%; text-align: center; padding: 2px; font-size: 11px; font-weight: 700; color: ").append(bandBorders[q]).append(";\">");
+                if (q == quartile) {
+                    html.append(SYM_ARROW_DOWN).append(" ").append(formatNumber(pctl)).append("%");
+                }
+                html.append("</td>");
+            }
+            html.append("</tr>");
+            // Color band row
+            html.append("<tr>");
+            for (int q = 0; q < 4; q++) {
+                String border = q == quartile ? "border: 2px solid " + bandBorders[q] + ";" : "";
+                html.append("<td style=\"width: 25%; height: 18px; background-color: ").append(bandColors[q]).append("; ").append(border).append("\"></td>");
+            }
+            html.append("</tr>");
+            // Label row
+            html.append("<tr>");
+            for (int q = 0; q < 4; q++) {
+                html.append("<td style=\"text-align: center; font-size: 9px; color: #888; padding-top: 4px;\">").append(bandLabels[q]).append("</td>");
             }
             html.append("</tr></table></div>");
         }
@@ -607,7 +683,7 @@ public class HtmlBuilderService {
             Double classAcc = safeDouble(comparison.getClassAccuracy());
 
             html.append("<div class=\"section\">");
-            html.append("<div class=\"section-title\">Your Performance vs Batch</div>");
+            html.append("<div class=\"section-title\">").append(SYM_TARGET).append(" Your Performance vs Batch</div>");
             html.append("<table class=\"layout-table\"><tr>");
 
             // Marks comparison
@@ -642,9 +718,9 @@ public class HtmlBuilderService {
             html.append("</tr></table>");
             // Summary stats
             html.append("<table style=\"margin-top: 12px; font-size: 12px; color: #555;\"><tr>");
-            html.append("<td style=\"padding-right: 20px;\"><b>Highest:</b> ").append(formatNumber(safeDouble(comparison.getHighestMarks()))).append("/").append(formatNumber(totalMarks)).append("</td>");
-            html.append("<td style=\"padding-right: 20px;\"><b>Lowest:</b> ").append(formatNumber(safeDouble(comparison.getLowestMarks()))).append("/").append(formatNumber(totalMarks)).append("</td>");
-            html.append("<td><b>Total Participants:</b> ").append(comparison.getTotalParticipants() != null ? comparison.getTotalParticipants() : 0).append("</td>");
+            html.append("<td style=\"padding-right: 20px;\">").append(SYM_ARROW_UP).append(" <b>Highest:</b> ").append(formatNumber(safeDouble(comparison.getHighestMarks()))).append("/").append(formatNumber(totalMarks)).append("</td>");
+            html.append("<td style=\"padding-right: 20px;\">").append(SYM_ARROW_DOWN).append(" <b>Lowest:</b> ").append(formatNumber(safeDouble(comparison.getLowestMarks()))).append("/").append(formatNumber(totalMarks)).append("</td>");
+            html.append("<td>").append(SYM_STAT).append(" <b>Total Participants:</b> ").append(comparison.getTotalParticipants() != null ? comparison.getTotalParticipants() : 0).append("</td>");
             html.append("</tr></table></div>");
         }
 
@@ -656,42 +732,98 @@ public class HtmlBuilderService {
             int skipped = detail.getSkippedCount() != null ? detail.getSkippedCount() : 0;
 
             html.append("<div class=\"section\">");
-            html.append("<div class=\"section-title\">Attempt Summary</div>");
+            html.append("<div class=\"section-title\">").append(SYM_STAT).append(" Attempt Summary</div>");
             html.append("<table class=\"layout-table\"><tr>");
 
             html.append("<td width=\"25%\"><div class=\"stat-box stat-correct\">");
-            html.append("<div class=\"stat-count\">").append(correct).append("</div>");
+            html.append("<div class=\"stat-count\">").append(dot("#2E7D32")).append(SYM_CORRECT).append(" ").append(correct).append("</div>");
             html.append("<div class=\"stat-marks-text\">+").append(formatNumber(detail.getTotalCorrectMarks())).append(" marks</div>");
             html.append("<div class=\"stat-label-text\">CORRECT</div></div></td>");
 
             html.append("<td width=\"25%\"><div class=\"stat-box stat-wrong\">");
-            html.append("<div class=\"stat-count\">").append(wrong).append("</div>");
+            html.append("<div class=\"stat-count\">").append(dot("#C62828")).append(SYM_INCORRECT).append(" ").append(wrong).append("</div>");
             html.append("<div class=\"stat-marks-text\">").append(formatNumber(detail.getTotalIncorrectMarks())).append(" marks</div>");
             html.append("<div class=\"stat-label-text\">WRONG</div></div></td>");
 
             html.append("<td width=\"25%\"><div class=\"stat-box stat-partial\">");
-            html.append("<div class=\"stat-count\">").append(partial).append("</div>");
+            html.append("<div class=\"stat-count\">").append(dot("#F57F17")).append(SYM_PARTIAL).append(" ").append(partial).append("</div>");
             html.append("<div class=\"stat-marks-text\">+").append(formatNumber(detail.getTotalPartialMarks())).append(" marks</div>");
             html.append("<div class=\"stat-label-text\">PARTIAL</div></div></td>");
 
             html.append("<td width=\"25%\"><div class=\"stat-box stat-skipped\">");
-            html.append("<div class=\"stat-count\">").append(skipped).append("</div>");
+            html.append("<div class=\"stat-count\">").append(dot("#757575")).append(SYM_SKIPPED).append(" ").append(skipped).append("</div>");
             html.append("<div class=\"stat-marks-text\">0 marks</div>");
             html.append("<div class=\"stat-label-text\">SKIPPED</div></div></td>");
 
             html.append("</tr></table></div>");
         }
 
+        // ===== TIME ANALYSIS PER QUESTION =====
+        if (reportDetail != null && reportDetail.getAllSections() != null) {
+            List<Long> qTimes = new ArrayList<>();
+            List<String> qLabels = new ArrayList<>();
+            List<String> qStatuses = new ArrayList<>();
+            for (Map.Entry<String, List<StudentReportAnswerReviewDto>> entry : reportDetail.getAllSections().entrySet()) {
+                for (StudentReportAnswerReviewDto review : entry.getValue()) {
+                    qLabels.add("Q" + (review.getQuestionOrder() != null ? review.getQuestionOrder() : qTimes.size() + 1));
+                    qTimes.add(review.getTimeTakenInSeconds() != null ? review.getTimeTakenInSeconds() : 0L);
+                    qStatuses.add(review.getAnswerStatus());
+                }
+            }
+            boolean hasAnyTime = qTimes.stream().anyMatch(t -> t > 0);
+            if (hasAnyTime && !qTimes.isEmpty()) {
+                long maxTime = qTimes.stream().mapToLong(Long::longValue).max().orElse(1);
+                if (maxTime == 0) maxTime = 1;
+                long avgTime = (long) qTimes.stream().mapToLong(Long::longValue).average().orElse(0);
+
+                html.append("<div class=\"section\">");
+                html.append("<div class=\"section-title\">").append(SYM_TIME).append(" Time per Question</div>");
+                html.append("<table class=\"dist-table\">");
+                // Time label row
+                html.append("<tr>");
+                for (int qi = 0; qi < qTimes.size(); qi++) {
+                    long t = qTimes.get(qi);
+                    html.append("<td style=\"font-size: 8px; color: #888;\">").append(t > 0 ? t + "s" : "").append("</td>");
+                }
+                html.append("</tr>");
+                // Bar row
+                html.append("<tr>");
+                for (int qi = 0; qi < qTimes.size(); qi++) {
+                    int heightPx = (int) Math.max((qTimes.get(qi) * 70) / maxTime, 2);
+                    String barColor = getStatusColor(qStatuses.get(qi));
+                    html.append("<td style=\"vertical-align: bottom; height: 80px;\">");
+                    html.append("<div style=\"width: 80%; margin: 0 auto; height: ").append(heightPx)
+                            .append("px; background-color: ").append(barColor).append("; border-radius: 3px 3px 0 0;\"></div>");
+                    html.append("</td>");
+                }
+                html.append("</tr>");
+                // Label row
+                html.append("<tr>");
+                for (int qi = 0; qi < qLabels.size(); qi++) {
+                    html.append("<td style=\"font-size: 8px; color: #555; border-top: 1px solid #eee; padding-top: 2px;\">").append(qLabels.get(qi)).append("</td>");
+                }
+                html.append("</tr></table>");
+                // Legend + avg
+                html.append("<p style=\"text-align: center; font-size: 10px; color: #888; margin-top: 6px;\">")
+                        .append(SYM_TARGET).append(" Avg: ").append(convertToReadableTime(avgTime))
+                        .append(" | ").append(dot("#2E7D32")).append("Correct ").append(dot("#C62828")).append("Wrong ")
+                        .append(dot("#F57F17")).append("Partial ").append(dot("#BDBDBD")).append("Skipped</p>");
+                html.append("</div>");
+            }
+        }
+
         // ===== SECTION-WISE PERFORMANCE =====
         if (comparison != null && comparison.getSectionWiseComparison() != null && !comparison.getSectionWiseComparison().isEmpty()) {
             html.append("<div class=\"section\">");
-            html.append("<div class=\"section-title\">Section-Wise Performance</div>");
+            html.append("<div class=\"section-title\">").append(SYM_SECTION).append(" Section-Wise Performance</div>");
             html.append("<table class=\"perf-table\"><thead><tr>");
             html.append("<th>Section</th><th>Your Marks</th><th>Total</th><th>Class Avg</th><th>Accuracy</th><th>Cut-off</th><th>Status</th>");
             html.append("</tr></thead><tbody>");
 
+            int secRowIdx = 0;
             for (SectionComparisonDto sec : comparison.getSectionWiseComparison()) {
-                html.append("<tr>");
+                String rowBg = (secRowIdx % 2 == 1) ? " style=\"background-color: #fafbfc;\"" : "";
+                html.append("<tr").append(rowBg).append(">");
                 html.append("<td><b>").append(escapeHtml(sec.getSectionName())).append("</b></td>");
                 html.append("<td><b>").append(formatNumber(sec.getStudentMarks())).append("</b></td>");
                 html.append("<td>").append(formatNumber(sec.getSectionTotalMarks())).append("</td>");
@@ -701,14 +833,62 @@ public class HtmlBuilderService {
                 html.append("<td>");
                 if (sec.getCutOffMarks() != null) {
                     html.append(Boolean.TRUE.equals(sec.getPassed())
-                            ? "<span class=\"badge-pass\">PASS</span>"
-                            : "<span class=\"badge-fail\">FAIL</span>");
+                            ? "<span class=\"badge-pass\">" + SYM_CORRECT + " PASS</span>"
+                            : "<span class=\"badge-fail\">" + SYM_INCORRECT + " FAIL</span>");
                 } else {
                     html.append("-");
                 }
                 html.append("</td></tr>");
+                secRowIdx++;
             }
             html.append("</tbody></table></div>");
+        }
+
+        // ===== STRENGTH / WEAKNESS SUMMARY =====
+        if (comparison != null && comparison.getSectionWiseComparison() != null && comparison.getSectionWiseComparison().size() >= 2) {
+            List<SectionComparisonDto> strengths = new ArrayList<>();
+            List<SectionComparisonDto> weaknesses = new ArrayList<>();
+            for (SectionComparisonDto sec : comparison.getSectionWiseComparison()) {
+                if (sec.getStudentAccuracy() != null && sec.getClassAccuracy() != null) {
+                    if (sec.getStudentAccuracy() >= sec.getClassAccuracy()) {
+                        strengths.add(sec);
+                    } else {
+                        weaknesses.add(sec);
+                    }
+                }
+            }
+            if (!strengths.isEmpty() || !weaknesses.isEmpty()) {
+                html.append("<div class=\"section\">");
+                html.append("<div class=\"section-title\">").append(SYM_TARGET).append(" Strength &amp; Weakness Analysis</div>");
+                html.append("<table class=\"layout-table\"><tr>");
+                // Strengths column
+                html.append("<td width=\"50%\"><div style=\"border-left: 4px solid #2E7D32; padding: 10px 14px; background-color: #f8fdf9; border-radius: 0 6px 6px 0;\">");
+                html.append("<div style=\"font-size: 13px; font-weight: 700; color: #2E7D32; margin-bottom: 8px;\">").append(SYM_ARROW_UP).append(" Strengths</div>");
+                if (strengths.isEmpty()) {
+                    html.append("<div style=\"font-size: 12px; color: #888;\">-</div>");
+                } else {
+                    for (SectionComparisonDto s : strengths) {
+                        html.append("<div style=\"padding: 3px 0; font-size: 12px;\"><b>").append(escapeHtml(s.getSectionName()))
+                                .append("</b> ").append(dot("#2E7D32")).append(" ").append(formatNumber(s.getStudentAccuracy()))
+                                .append("% <span style=\"color: #888;\">(class avg: ").append(formatNumber(s.getClassAccuracy())).append("%)</span></div>");
+                    }
+                }
+                html.append("</div></td>");
+                // Weaknesses column
+                html.append("<td width=\"50%\"><div style=\"border-left: 4px solid #C62828; padding: 10px 14px; background-color: #fef8f8; border-radius: 0 6px 6px 0;\">");
+                html.append("<div style=\"font-size: 13px; font-weight: 700; color: #C62828; margin-bottom: 8px;\">").append(SYM_ARROW_DOWN).append(" Areas to Improve</div>");
+                if (weaknesses.isEmpty()) {
+                    html.append("<div style=\"font-size: 12px; color: #888;\">-</div>");
+                } else {
+                    for (SectionComparisonDto w : weaknesses) {
+                        html.append("<div style=\"padding: 3px 0; font-size: 12px;\"><b>").append(escapeHtml(w.getSectionName()))
+                                .append("</b> ").append(dot("#C62828")).append(" ").append(formatNumber(w.getStudentAccuracy()))
+                                .append("% <span style=\"color: #888;\">(class avg: ").append(formatNumber(w.getClassAccuracy())).append("%)</span></div>");
+                    }
+                }
+                html.append("</div></td>");
+                html.append("</tr></table></div>");
+            }
         }
 
         // ===== MARKS DISTRIBUTION (table-based bar chart) =====
@@ -734,24 +914,33 @@ public class HtmlBuilderService {
             if (maxCount == 0) maxCount = 1;
 
             html.append("<div class=\"section\">");
-            html.append("<div class=\"section-title\">Marks Distribution (All Students)</div>");
+            html.append("<div class=\"section-title\">").append(SYM_STAT).append(" Marks Distribution</div>");
+            // Calculate average bucket for coloring
+            Double avgMarksForDist = safeDouble(comparison.getAverageMarks());
+            int avgBucketIdx = avgMarksForDist > 0 ? Math.min((int) (avgMarksForDist / bucketSize), numBuckets - 1) : -1;
+
             // Bar chart using a table: row 1 = counts, row 2 = bars, row 3 = labels
             html.append("<table class=\"dist-table\">");
             // Count row
             html.append("<tr>");
             for (int i = 0; i < numBuckets; i++) {
-                html.append("<td style=\"font-size: 10px; color: #555;\">").append(bucketCounts[i]).append("</td>");
+                String annotation = (i == avgBucketIdx) ? SYM_TARGET : "";
+                html.append("<td style=\"font-size: 10px; color: #555;\">").append(bucketCounts[i]).append(annotation).append("</td>");
             }
             html.append("</tr>");
-            // Bar row (using a colored div with pixel height)
+            // Bar row
             html.append("<tr>");
             for (int i = 0; i < numBuckets; i++) {
                 int heightPx = Math.max((bucketCounts[i] * 80) / maxCount, 3);
                 boolean isStudent = (i == studentBucketIdx);
-                String barColor = isStudent ? primaryColor : "#dfe6e9";
+                boolean isAboveAvg = avgBucketIdx >= 0 && i >= avgBucketIdx;
+                String barColor;
+                if (isStudent) barColor = primaryColor;
+                else if (isAboveAvg) barColor = "#E8E0FC"; // lighter secondary (above-average zone)
+                else barColor = "#dfe6e9";
                 html.append("<td style=\"vertical-align: bottom; height: 90px;\">");
                 html.append("<div style=\"width: 80%; margin: 0 auto; height: ").append(heightPx)
-                        .append("px; background-color: ").append(barColor).append(";\"></div>");
+                        .append("px; background-color: ").append(barColor).append("; border-radius: 4px 4px 0 0;\"></div>");
                 html.append("</td>");
             }
             html.append("</tr>");
@@ -759,13 +948,14 @@ public class HtmlBuilderService {
             html.append("<tr>");
             for (int i = 0; i < numBuckets; i++) {
                 boolean isStudent = (i == studentBucketIdx);
-                html.append("<td style=\"font-size: 9px; color: ").append(isStudent ? primaryColor + "; font-weight: bold;" : "#888;").append("\">");
+                html.append("<td style=\"font-size: 9px; color: ").append(isStudent ? primaryColor + "; font-weight: bold;" : "#888;").append("; border-top: 1px solid #eee; padding-top: 2px;\">");
                 html.append(i * bucketSize).append("-").append((i + 1) * bucketSize - 1);
-                if (isStudent) html.append(" *");
+                if (isStudent) html.append(" " + SYM_ARROW_DOWN);
                 html.append("</td>");
             }
             html.append("</tr></table>");
-            html.append("<p style=\"text-align: center; font-size: 10px; color: #888; margin-top: 6px;\">* = Your score range | Total: ")
+            html.append("<p style=\"text-align: center; font-size: 10px; color: #888; margin-top: 6px;\">")
+                    .append(SYM_ARROW_DOWN).append(" = Your score | ").append(SYM_TARGET).append(" = Class average | Total: ")
                     .append(comparison.getTotalParticipants() != null ? comparison.getTotalParticipants() : 0)
                     .append(" students</p></div>");
         }
@@ -784,7 +974,7 @@ public class HtmlBuilderService {
             int colSpan = hasTimeData ? 5 : 4;
 
             html.append("<div class=\"section\">");
-            html.append("<div class=\"section-title\">Leaderboard (Your Position)</div>");
+            html.append("<div class=\"section-title\">").append(SYM_TROPHY).append(" Leaderboard</div>");
             html.append("<table class=\"lb-table\"><thead><tr>");
             html.append("<th>Rank</th><th>Student</th><th>Marks</th>");
             if (hasTimeData) html.append("<th>Time</th>");
@@ -793,7 +983,7 @@ public class HtmlBuilderService {
 
             if (lb.getTopRanks() != null) {
                 for (LeaderBoardDto entry : lb.getTopRanks()) {
-                    appendLeaderboardRow(html, entry, detail != null ? detail.getUserId() : null, comparison.getTotalMarks(), hasTimeData);
+                    appendLeaderboardRow(html, entry, detail != null ? detail.getUserId() : null, comparison.getTotalMarks(), hasTimeData, primaryColor);
                 }
             }
             if (lb.isHasGap()) {
@@ -801,7 +991,7 @@ public class HtmlBuilderService {
             }
             if (lb.getSurroundingRanks() != null) {
                 for (LeaderBoardDto entry : lb.getSurroundingRanks()) {
-                    appendLeaderboardRow(html, entry, detail != null ? detail.getUserId() : null, comparison.getTotalMarks(), hasTimeData);
+                    appendLeaderboardRow(html, entry, detail != null ? detail.getUserId() : null, comparison.getTotalMarks(), hasTimeData, primaryColor);
                 }
             }
             html.append("</tbody></table>");
@@ -813,16 +1003,36 @@ public class HtmlBuilderService {
 
         // ===== ANSWER REVIEW =====
         if (reportDetail != null && reportDetail.getAllSections() != null) {
+            // Question Progress Strip (all questions at a glance)
+            html.append("<div class=\"section\">");
+            html.append("<div class=\"section-title\">").append(SYM_SECTION).append(" Answer Review</div>");
+            html.append("<table style=\"border-collapse: separate; border-spacing: 3px;\"><tr>");
+            for (Map.Entry<String, List<StudentReportAnswerReviewDto>> stripEntry : reportDetail.getAllSections().entrySet()) {
+                for (StudentReportAnswerReviewDto r : stripEntry.getValue()) {
+                    String sColor = getStatusColor(r.getAnswerStatus());
+                    html.append("<td style=\"width: 12px; height: 12px; background-color: ").append(sColor)
+                            .append("; border-radius: 2px;\" title=\"Q").append(r.getQuestionOrder() != null ? r.getQuestionOrder() : "").append("\"></td>");
+                }
+            }
+            html.append("</tr></table>");
+            html.append("<p style=\"font-size: 10px; color: #888; margin-top: 4px;\">")
+                    .append(dot("#2E7D32")).append(SYM_CORRECT).append(" Correct  ")
+                    .append(dot("#C62828")).append(SYM_INCORRECT).append(" Wrong  ")
+                    .append(dot("#F57F17")).append(SYM_PARTIAL).append(" Partial  ")
+                    .append(dot("#BDBDBD")).append(SYM_SKIPPED).append(" Skipped</p>");
+            html.append("</div>");
+
             for (Map.Entry<String, List<StudentReportAnswerReviewDto>> entry : reportDetail.getAllSections().entrySet()) {
                 String sectionId = entry.getKey();
                 Optional<Section> sectionOpt = sectionRepository.findById(sectionId);
                 String sectionName = sectionOpt.map(Section::getName).orElse("Section");
 
                 html.append("<div class=\"section\">");
-                html.append("<div class=\"section-title\">Answer Review - ").append(escapeHtml(sectionName)).append("</div>");
+                html.append("<div class=\"section-title\">").append(SYM_SECTION).append(" ").append(escapeHtml(sectionName)).append("</div>");
 
                 for (StudentReportAnswerReviewDto review : entry.getValue()) {
-                    html.append("<div class=\"question-card\">");
+                    String statusColor = getStatusColor(review.getAnswerStatus());
+                    html.append("<div class=\"question-card\" style=\"border-left: 4px solid ").append(statusColor).append(";\">");
 
                     // Header: question number + status badge
                     String status = review.getAnswerStatus();
@@ -913,7 +1123,7 @@ public class HtmlBuilderService {
                     html.append("<p style=\"font-size: 11px; color: #888; margin-top: 8px;\">")
                             .append(marksPrefix).append(formatNumber(review.getMark())).append(" marks");
                     if (review.getTimeTakenInSeconds() != null && review.getTimeTakenInSeconds() > 0) {
-                        html.append(" | Time: ").append(convertToReadableTime(review.getTimeTakenInSeconds()));
+                        html.append(" | ").append(SYM_TIME).append(" ").append(convertToReadableTime(review.getTimeTakenInSeconds()));
                     }
                     html.append("</p>");
 
@@ -930,12 +1140,22 @@ public class HtmlBuilderService {
         }
 
         // ===== FOOTER =====
+        html.append("<div style=\"border-top: 2px solid #eee; margin: 0 28px;\"></div>");
+        String reportId = generateReportId();
+        String generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm"));
         String footerHtml = branding.getFooterHtml();
+        html.append("<div class=\"report-footer\">");
+        html.append("<table style=\"width: 100%;\"><tr>");
+        html.append("<td style=\"text-align: left;\">");
         if (footerHtml != null && !footerHtml.isEmpty()) {
-            html.append("<div class=\"report-footer\">").append(footerHtml.replace("{{assessment_name}}", escapeHtml(title))).append("</div>");
+            html.append(footerHtml.replace("{{assessment_name}}", escapeHtml(title)));
         } else {
-            html.append("<div class=\"report-footer\">").append(escapeHtml(footerText)).append("</div>");
+            html.append(escapeHtml(footerText));
         }
+        html.append("</td>");
+        html.append("<td style=\"text-align: right; font-size: 9px; color: #bbb;\">Generated: ").append(generatedAt)
+                .append(" | ID: ").append(reportId).append("</td>");
+        html.append("</tr></table></div>");
         html.append("</div></body></html>");
 
         return html.toString();
@@ -957,18 +1177,29 @@ public class HtmlBuilderService {
         html.append("</tr></table>");
     }
 
-    private void appendLeaderboardRow(StringBuilder html, LeaderBoardDto entry, String currentUserId, Double totalMarks, boolean showTime) {
+    private void appendLeaderboardRow(StringBuilder html, LeaderBoardDto entry, String currentUserId, Double totalMarks, boolean showTime, String primaryColor) {
         boolean isCurrent = currentUserId != null && currentUserId.equals(entry.getUserId());
         int rank = entry.getRank() != null ? entry.getRank() : 0;
 
-        html.append("<tr").append(isCurrent ? " class=\"current-student\"" : "").append(">");
-        html.append("<td>").append(rank).append("</td>");
-        html.append("<td>").append(isCurrent ? ">> " : "").append(escapeHtml(entry.getStudentName()))
-                .append(isCurrent ? " (You)" : "").append("</td>");
+        String rowStyle = isCurrent ? " class=\"current-student\" style=\"border-left: 4px solid " + primaryColor + ";\"" : "";
+        html.append("<tr").append(rowStyle).append(">");
+        // Rank with medal for top 3
+        html.append("<td>");
+        if (rank >= 1 && rank <= 3) {
+            String[] medalColors = {"#FFD700", "#C0C0C0", "#CD7F32"};
+            html.append("<span style=\"display: inline-block; width: 22px; height: 22px; border-radius: 11px; background-color: ")
+                    .append(medalColors[rank - 1]).append("; color: #333; text-align: center; line-height: 22px; font-size: 11px; font-weight: 700;\">")
+                    .append(rank).append("</span>");
+        } else {
+            html.append(rank);
+        }
+        html.append("</td>");
+        html.append("<td>").append(isCurrent ? SYM_SECTION + " " : "").append(escapeHtml(entry.getStudentName()))
+                .append(isCurrent ? " <b>(You)</b>" : "").append("</td>");
         html.append("<td><b>").append(formatNumber(entry.getAchievedMarks())).append("</b>")
                 .append(totalMarks != null ? "/" + formatNumber(totalMarks) : "").append("</td>");
         if (showTime) {
-            html.append("<td>").append(convertToReadableTime(entry.getCompletionTimeInSeconds())).append("</td>");
+            html.append("<td>").append(SYM_TIME).append(" ").append(convertToReadableTime(entry.getCompletionTimeInSeconds())).append("</td>");
         }
         html.append("<td>").append(formatNumber(entry.getPercentile())).append("%</td>");
         html.append("</tr>");
@@ -1253,14 +1484,61 @@ public class HtmlBuilderService {
     }
 
     private static String getStatusLabelText(String status) {
-        if (status == null) return "SKIPPED";
+        if (status == null) return SYM_SKIPPED + " SKIPPED";
         switch (status) {
-            case "CORRECT": return "CORRECT";
-            case "INCORRECT": return "INCORRECT";
-            case "PARTIAL_CORRECT": return "PARTIAL";
-            case "PENDING": return "PENDING";
-            default: return "SKIPPED";
+            case "CORRECT": return SYM_CORRECT + " CORRECT";
+            case "INCORRECT": return SYM_INCORRECT + " INCORRECT";
+            case "PARTIAL_CORRECT": return SYM_PARTIAL + " PARTIAL";
+            case "PENDING": return SYM_SKIPPED + " PENDING";
+            default: return SYM_SKIPPED + " SKIPPED";
         }
+    }
+
+    private static String getStatusColor(String status) {
+        if (status == null) return "#BDBDBD";
+        switch (status) {
+            case "CORRECT": return "#2E7D32";
+            case "INCORRECT": return "#C62828";
+            case "PARTIAL_CORRECT": return "#F57F17";
+            default: return "#BDBDBD";
+        }
+    }
+
+    private static String calculateGrade(Double percentile) {
+        if (percentile == null) return "-";
+        if (percentile >= 95) return "A+";
+        if (percentile >= 85) return "A";
+        if (percentile >= 75) return "B+";
+        if (percentile >= 65) return "B";
+        if (percentile >= 55) return "C+";
+        if (percentile >= 45) return "C";
+        if (percentile >= 35) return "D";
+        return "F";
+    }
+
+    private static String gradeColor(String grade) {
+        if (grade == null) return "#333";
+        switch (grade) {
+            case "A+": case "A": return "#2E7D32";
+            case "B+": case "B": return "#1565C0";
+            case "C+": case "C": return "#F57F17";
+            case "D": return "#E65100";
+            default: return "#C62828";
+        }
+    }
+
+    private static String generateReportId() {
+        return "RPT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    /** Renders an icon as a small CSS colored dot + Unicode symbol for PDF compatibility */
+    private static String icon(String symbol, String color) {
+        return "<span style=\"color: " + color + "; font-size: 14px;\">" + symbol + "</span>";
+    }
+
+    /** Renders a small CSS colored dot (fallback when Unicode may not render) */
+    private static String dot(String color) {
+        return "<span style=\"display: inline-block; width: 8px; height: 8px; border-radius: 4px; background-color: " + color + "; margin-right: 4px;\"></span>";
     }
 
     public List<String> extractContent(String jsonString) {

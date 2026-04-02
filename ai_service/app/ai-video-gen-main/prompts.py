@@ -186,6 +186,7 @@ Requirements:
 **RECAP MARKERS**: If the video covers 3+ distinct concepts, add `"needs_recap": true` on the beat AFTER the last concept, so the system can optionally insert a visual summary.
 
 **BEAT ENRICHMENT FIELDS** (include in every beat):
+- `narration`: The EXACT sentences from the `script` field that belong to this beat. CRITICAL: the full `script` must be perfectly split across all beats — no sentences skipped, no sentences duplicated. Concatenating all beat `narration` fields in order must reproduce the full `script` text.
 - `emotion`: The emotional tone for this section — drives animation intensity and visual mood. One of: curiosity, surprise, awe, urgency, calm, excitement.
 - `pacing`: How fast the visuals should move. "slow" for contemplative/complex concepts, "normal" for standard explanation, "fast" for rapid-fire facts or energy bursts.
 - `transition_hint`: Suggested transition INTO this beat from the previous. "cut" for sharp topic changes, "crossfade" for smooth continuation, "zoom" for diving deeper into a concept.
@@ -204,6 +205,7 @@ JSON shape:
   "beat_outline": [
     {{
       "label": "Hook",
+      "narration": "The exact sentences from the script that belong to this beat...",
       "summary": "...",
       "visual_type": "IMAGE_HERO or IMAGE_SPLIT or TEXT_DIAGRAM or LOWER_THIRD or ANIMATED_ASSET",
       "visual_idea": "Describe a key visual metaphor for this section",
@@ -292,6 +294,8 @@ SCRIPT_REVIEW_USER_PROMPT_TEMPLATE = """Review and improve this educational vide
 8. **Common mistake**: Ensure `common_mistake` is a genuine, specific misconception (not a vague "students might find this hard").
 
 9. **Beat enrichment**: Verify all beats have meaningful `emotion`, `pacing`, `transition_hint`, and `complexity_level` values — not just defaults.
+
+10. **Beat narration alignment**: Verify each beat's `narration` field contains the exact sentences from `script` that belong to it. All beats' narrations concatenated in order must reproduce the full `script` text — no gaps, no overlaps. If the script was edited in earlier steps, update the narration fields to match.
 
 Return the improved JSON with the same structure. Only modify content — do not add or remove keys.
 """
@@ -679,11 +683,11 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "- The text/annotation alone is clear enough\n"
     "- Listing steps, comparisons, or definitions (use text layouts)\n\n"
     "**RECOMMENDED MIX**: Max 1-2 image shots per segment. The rest should be text/diagram shots.\n"
-    "A typical ~60s segment with 3-4 shots:\n"
-    "- Shot 1: IMAGE_HERO (set the scene) — 8-12 seconds\n"
-    "- Shot 2: Text/diagram shot (explain the concept) — 10-15 seconds\n"
-    "- Shot 3: Text/diagram or IMAGE_SPLIT (only if a visual reference helps) — 10-15 seconds\n"
-    "- Shot 4: Key takeaway card (text, NOT image) — 8-10 seconds\n"
+    "Example shot distribution (scale proportionally to your segment duration):\n"
+    "- ~20s segment → 2 shots (hook + explanation)\n"
+    "- ~35s segment → 3 shots (hook + explanation + takeaway)\n"
+    "- ~50s segment → 4 shots (hook + explanation + deep dive + takeaway)\n"
+    "Each shot should be 6-15 seconds depending on complexity.\n"
     "If the topic is purely abstract (math, programming, logic), use 0 image shots — diagrams and code are better.\n\n"
     
     "**🛠️ ANIMATION TOOLS AVAILABLE**:\n"
@@ -1065,7 +1069,8 @@ def get_html_generation_safe_area(width: int = 1920, height: int = 1080) -> str:
         "- **moderate** (3-4 elements): 6-10 seconds per shot\n"
         "- **dense** (rich diagram or multi-part layout): 8-15 seconds per shot\n"
         "- If no complexity_level is provided, default to moderate (6-10s)\n"
-        "- Create 2-4 shots per segment, NOT more\n"
+        "- The user prompt specifies the segment duration and recommended shot count — follow it.\n"
+        "- If not specified, default to 1 shot per 8-12 seconds of narration (2-4 shots total).\n"
         "\nReturn JSON ONLY in this form:\n"
         "{\n"
         '  "shots": [\n'

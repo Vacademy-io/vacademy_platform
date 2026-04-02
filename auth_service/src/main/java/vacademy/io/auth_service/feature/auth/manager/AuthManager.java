@@ -133,6 +133,12 @@ public class AuthManager {
                     "Failed to register user institutes due to service unavailability: " + e.getMessage());
         }
 
+        // Set the newly created institute ID back on the request so downstream
+        // methods (e.g. welcome email) use the real ID instead of the empty placeholder
+        if (instituteInfoDTO != null) {
+            instituteInfoDTO.setId(customUserDetails.getInstituteId());
+        }
+
         List<Role> allRoles = getAllUserRoles(registerRequest.getUserRoles());
         Set<UserRole> userRoleSet = new HashSet<>();
 

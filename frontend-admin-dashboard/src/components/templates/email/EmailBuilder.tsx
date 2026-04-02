@@ -116,22 +116,34 @@ const EditorToolbar: React.FC<{
     });
     const [isNameEditing, setIsNameEditing] = useState(false);
     const [showMergeTags, setShowMergeTags] = useState(false);
+    const [hasSaved, setHasSaved] = useState(false);
     const currentSubject = values?.subject || '';
+    // After a successful save, the form is still "dirty" (react-final-form doesn't reset).
+    // Track hasSaved so we don't show the unsaved-changes warning after save.
+    const hasUnsavedChanges = dirty && !hasSaved;
 
     // Warn on tab close/refresh
     React.useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (dirty) {
+            if (hasUnsavedChanges) {
                 e.preventDefault();
-                e.returnValue = ''; // Chrome requires this to be set
+                e.returnValue = '';
             }
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [dirty]);
+    }, [hasUnsavedChanges]);
+
+    // Reset hasSaved when user makes new edits after saving
+    React.useEffect(() => {
+        if (dirty && hasSaved) {
+            setHasSaved(false);
+        }
+    }, [values]);
 
     const handleSave = () => {
         form.submit();
+        setHasSaved(true);
     };
 
     const handleCopyHtml = () => {
@@ -160,7 +172,7 @@ const EditorToolbar: React.FC<{
     };
 
     const handleBack = () => {
-        if (dirty) {
+        if (hasUnsavedChanges) {
             if (window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
                 onBack();
             }
@@ -207,7 +219,7 @@ const EditorToolbar: React.FC<{
                     ) : (
                         <h2 style={styles.templateTitle} onClick={() => setIsNameEditing(true)}>
                             {templateName}
-                            {dirty && (
+                            {hasUnsavedChanges && (
                                 <span style={styles.unsavedIndicator} title="Unsaved changes">
                                     •
                                 </span>

@@ -82,6 +82,7 @@ function EmailCampaigningPage() {
     // Basic state
     const [title, setTitle] = useState('');
     const [htmlContent, setHtmlContent] = useState('');
+    const [previewText, setPreviewText] = useState('');
     const [contentView, setContentView] = useState<'editor' | 'source'>('editor');
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'laptop'>('laptop');
@@ -448,6 +449,7 @@ function EmailCampaigningPage() {
             if (fullTemplate.content) {
                 setHtmlContent(fullTemplate.content);
             }
+            setPreviewText(fullTemplate.previewText || '');
         } catch (error) {
             console.error('Error loading template:', error);
             toast({
@@ -466,6 +468,7 @@ function EmailCampaigningPage() {
                 if (template.content) {
                     setHtmlContent(template.content);
                 }
+                setPreviewText(template.previewText || '');
             }
         }
     };
@@ -968,7 +971,7 @@ function EmailCampaigningPage() {
                             fromEmail: selectedConfig?.email,
                             fromName: selectedConfig?.name,
                             template: selectedTemplateData?.name,
-                            previewText: selectedTemplateData?.previewText,
+                            previewText: previewText || selectedTemplateData?.previewText,
                         },
                     },
                 ],
@@ -1126,59 +1129,72 @@ function EmailCampaigningPage() {
                     </DialogContent>
                 </Dialog>
 
-                {/* Preview Dialog */}
+                {/* Preview Dialog — simulates actual email as recipient sees it */}
                 <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-                    <DialogContent className="max-w-5xl">
+                    <DialogContent className="w-[95vw] max-w-none">
                         <DialogHeader>
                             <DialogTitle>Email Preview</DialogTitle>
+                            <p className="text-xs text-gray-500">This is how the email will appear in the recipient's inbox.</p>
+                            <div className="mt-2 flex items-center gap-2">
+                                <Button
+                                    variant={previewDevice === 'mobile' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setPreviewDevice('mobile')}
+                                >
+                                    <Smartphone className="mr-1 size-4" />
+                                    Mobile
+                                </Button>
+                                <Button
+                                    variant={previewDevice === 'tablet' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setPreviewDevice('tablet')}
+                                >
+                                    <Tablet className="mr-1 size-4" />
+                                    Tablet
+                                </Button>
+                                <Button
+                                    variant={previewDevice === 'laptop' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setPreviewDevice('laptop')}
+                                >
+                                    <Laptop className="mr-1 size-4" />
+                                    Laptop
+                                </Button>
+                            </div>
                         </DialogHeader>
-                        <div className="flex items-center justify-center gap-2">
-                            <Button
-                                variant={previewDevice === 'mobile' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => setPreviewDevice('mobile')}
-                            >
-                                <Smartphone className="mr-1 size-4" />
-                                Mobile
-                            </Button>
-                            <Button
-                                variant={previewDevice === 'tablet' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => setPreviewDevice('tablet')}
-                            >
-                                <Tablet className="mr-1 size-4" />
-                                Tablet
-                            </Button>
-                            <Button
-                                variant={previewDevice === 'laptop' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => setPreviewDevice('laptop')}
-                            >
-                                <Laptop className="mr-1 size-4" />
-                                Laptop
-                            </Button>
-                        </div>
-                        <div className="flex justify-center">
+                        <div className="flex max-h-[80vh] w-full justify-center overflow-auto bg-gray-100 p-4">
                             <div
-                                style={{ width: DEVICE_PRESETS[previewDevice].width }}
-                                className="border bg-white p-4 shadow-sm"
+                                className="mx-auto flex flex-col overflow-hidden rounded-lg border bg-white shadow-lg"
+                                style={{
+                                    width: DEVICE_PRESETS[previewDevice].width,
+                                    maxWidth: '100%',
+                                    height: '75vh',
+                                    transition: 'width 200ms ease',
+                                }}
                             >
-                                <div className="mb-2 border-b pb-2">
-                                    <div className="text-sm font-semibold">
-                                        {title || 'Email Subject'}
+                                {/* Simulated inbox header — subject + preview text */}
+                                <div className="flex-shrink-0 border-b bg-gray-50 px-4 py-3">
+                                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                                        <span>From: Your Institute</span>
+                                        <span>·</span>
+                                        <span>To: recipient@email.com</span>
                                     </div>
+                                    <div className="mt-1 text-sm font-semibold text-gray-900">
+                                        {title || '(No Subject)'}
+                                    </div>
+                                    {previewText && (
+                                        <div className="mt-0.5 text-xs text-gray-500">{previewText}</div>
+                                    )}
                                 </div>
-                                <div
-                                    className="prose prose-sm max-w-none"
-                                    dangerouslySetInnerHTML={{
-                                        __html: htmlContent || '<p>No content</p>',
-                                    }}
+                                {/* Email body — rendered exactly as recipient sees it */}
+                                <iframe
+                                    title="Email Preview"
+                                    srcDoc={htmlContent || '<html><body style="padding:32px;color:#999;font-family:sans-serif;text-align:center"><p>No email content</p></body></html>'}
+                                    style={{ flex: 1, width: '100%', border: 'none' }}
+                                    sandbox="allow-same-origin"
                                 />
                             </div>
                         </div>
-                        <DialogFooter>
-                            <Button onClick={() => setIsPreviewOpen(false)}>Close</Button>
-                        </DialogFooter>
                     </DialogContent>
                 </Dialog>
 
@@ -1192,6 +1208,13 @@ function EmailCampaigningPage() {
                         className={errors.title ? 'border-red-500' : ''}
                     />
                     {errors.title && <p className="text-xs text-red-600">{errors.title}</p>}
+
+                    <Label>Preview Text <span className="text-xs font-normal text-gray-400">(shown in inbox before opening)</span></Label>
+                    <Input
+                        placeholder="Enter preview text..."
+                        value={previewText}
+                        onChange={(e) => setPreviewText(e.target.value)}
+                    />
 
                     <Label>Email Content</Label>
                     <div className="flex items-center gap-2 self-end">

@@ -113,7 +113,7 @@ public class UnifiedSendService implements SendChannelRouter {
                     }
                 }
             } else {
-                resolvedVars = vars;
+                resolvedVars = new HashMap<>(vars); // Copy to avoid mutating original
             }
 
             Map<String, Map<String, String>> userMap = new HashMap<>();
@@ -151,6 +151,10 @@ public class UnifiedSendService implements SendChannelRouter {
             if (btnUrl != null) {
                 buttonUrlParams.put(phone, btnUrl);
                 resolvedVars.put("_buttonUrl", btnUrl);
+                // Preserve _buttonIndex for later extraction
+                if (r.getVariables() != null && r.getVariables().containsKey("_buttonIndex")) {
+                    resolvedVars.put("_buttonIndex", r.getVariables().get("_buttonIndex"));
+                }
             }
         }
 
@@ -165,11 +169,13 @@ public class UnifiedSendService implements SendChannelRouter {
             String headerType = request.getOptions() != null ? request.getOptions().getHeaderType() : null;
             String langCode = request.getLanguageCode() != null ? request.getLanguageCode() : "en";
 
-            // Build buttonIndexParams: default to "0" for each phone that has a buttonUrl
+            // Build buttonIndexParams: read from _buttonIndex variable, default to "0"
             Map<String, String> buttonIndexParams = new HashMap<>();
-            if (!buttonUrlParams.isEmpty()) {
-                for (String phone : buttonUrlParams.keySet()) {
-                    buttonIndexParams.put(phone, "0");
+            for (UnifiedSendRequest.Recipient r2 : request.getRecipients()) {
+                String p = sanitizePhone(r2.getPhone());
+                if (p != null && buttonUrlParams.containsKey(p)) {
+                    String idx = (r2.getVariables() != null) ? r2.getVariables().get("_buttonIndex") : null;
+                    buttonIndexParams.put(p, idx != null ? idx : "0");
                 }
             }
 

@@ -186,9 +186,12 @@ public class NotificationService {
                         vars.put("_headerUrl", request.getHeaderVideoParams().get(phone));
                     }
 
-                    // Inject per-phone button URL param
+                    // Inject per-phone button URL param + index
                     if (request.getButtonUrlParams() != null && request.getButtonUrlParams().containsKey(phone)) {
                         vars.put("_buttonUrl", request.getButtonUrlParams().get(phone));
+                        String btnIdx = (request.getButtonIndexParams() != null)
+                                ? request.getButtonIndexParams().get(phone) : null;
+                        vars.put("_buttonIndex", btnIdx != null ? btnIdx : "0");
                     }
 
                     recipients.add(UnifiedSendRequest.Recipient.builder()

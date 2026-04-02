@@ -204,22 +204,34 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                                         paramsList.get(i) != null ? paramsList.get(i) : "");
                             }
                         } else if (paramsObj instanceof Map) {
-                            // COMBOT format: params is a Map<String, String> (e.g., {parentName: "X", childrenName: "Y"})
-                            // Convert named keys to positional: sort by key name, assign 1,2,3...
+                            // COMBOT format: params is a Map<String, Object> (e.g., {parentName: "X", childrenName: "Y"})
+                            // Convert named keys to positional: sort by key name for deterministic ordering
                             Map<String, Object> paramsMap = (Map<String, Object>) paramsObj;
                             templateVars = new HashMap<>();
-                            int idx = 1;
+                            // Separate numeric and named keys
+                            List<Map.Entry<String, Object>> numericEntries = new ArrayList<>();
+                            List<Map.Entry<String, Object>> namedEntries = new ArrayList<>();
                             for (Map.Entry<String, Object> pEntry : paramsMap.entrySet()) {
-                                String key = pEntry.getKey();
-                                String val = pEntry.getValue() != null ? pEntry.getValue().toString() : "";
-                                // If key is already numeric (e.g., "1", "2"), use as-is
                                 try {
-                                    Integer.parseInt(key);
-                                    templateVars.put(key, val);
+                                    Integer.parseInt(pEntry.getKey());
+                                    numericEntries.add(pEntry);
                                 } catch (NumberFormatException e) {
-                                    // Named key → assign positional
-                                    templateVars.put(String.valueOf(idx++), val);
+                                    namedEntries.add(pEntry);
                                 }
+                            }
+                            // Add numeric keys as-is
+                            for (Map.Entry<String, Object> pEntry : numericEntries) {
+                                templateVars.put(pEntry.getKey(),
+                                        pEntry.getValue() != null ? pEntry.getValue().toString() : "");
+                            }
+                            // Sort named keys alphabetically for deterministic positional assignment
+                            namedEntries.sort(Comparator.comparing(Map.Entry::getKey));
+                            int paramPos = 1;
+                            for (Map.Entry<String, Object> pEntry : namedEntries) {
+                                // Skip positions already taken by numeric keys
+                                while (templateVars.containsKey(String.valueOf(paramPos))) paramPos++;
+                                templateVars.put(String.valueOf(paramPos++),
+                                        pEntry.getValue() != null ? pEntry.getValue().toString() : "");
                             }
                         }
                     }

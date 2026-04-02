@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y \
     libxshmfence1 \
     libglu1-mesa \
     fonts-liberation \
+    fonts-noto \
     libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 

@@ -1178,6 +1178,7 @@ class VideoGenerationPipeline:
         else:
             words = []
 
+        style_guide = None  # Will be set if do_html; used later to store palette in timeline meta
         if do_html:
             print("🎨 Designing Visual Style Guide ...")
             style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type, style_config=self._current_style_config)
@@ -5049,6 +5050,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "content_ends_at": content_max_end,
             "dimensions": {"width": VIDEO_WIDTH, "height": VIDEO_HEIGHT},
         }
+        # Store color palette so client player and render server use matching CSS variables
+        if style_guide and isinstance(style_guide, dict):
+            _palette = style_guide.get("palette")
+            if _palette and isinstance(_palette, dict):
+                meta_dict["palette"] = {
+                    "background": _palette.get("background", "#ffffff"),
+                    "text": _palette.get("text", "#0f172a"),
+                    "text_secondary": _palette.get("text_secondary", "#475569"),
+                    "primary": _palette.get("primary", "#2563eb"),
+                    "accent": _palette.get("accent", "#f59e0b"),
+                }
+
         if chapter_markers:
             meta_dict["chapters"] = chapter_markers
 

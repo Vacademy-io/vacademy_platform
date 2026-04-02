@@ -31,6 +31,13 @@ export interface TimelineMeta {
     content_starts_at?: number;
     content_ends_at?: number;
     content_type?: string;
+    palette?: {
+        background?: string;
+        text?: string;
+        text_secondary?: string;
+        primary?: string;
+        accent?: string;
+    };
 }
 
 /**
@@ -548,7 +555,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 ? processHtmlContent(
                       frame.html,
                       (timelineMeta.content_type as any) || 'VIDEO',
-                      index > 0
+                      index > 0,
+                      timelineMeta.palette
                   )
                 : '',
         }));

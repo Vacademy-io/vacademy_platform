@@ -884,7 +884,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               const htmlDoc = contentType === 'VIDEO' ? processHtmlContent(
                 frame.html,
                 contentType,
-                index > 0
+                index > 0,
+                meta.palette
               ) : frame.html;
 
               const frameStyle = {

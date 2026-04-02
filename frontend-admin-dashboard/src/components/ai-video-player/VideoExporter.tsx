@@ -32,6 +32,13 @@ interface TimelineMeta {
     content_type?: string;
     total_duration?: number;
     audio_start_at?: number;
+    palette?: {
+        background?: string;
+        text?: string;
+        text_secondary?: string;
+        primary?: string;
+        accent?: string;
+    };
 }
 
 interface TimelineData {
@@ -84,7 +91,8 @@ function renderSegmentsToDivs(
     container: HTMLDivElement,
     entries: TimelineEntry[],
     time: number,
-    contentType: string
+    contentType: string,
+    palette?: TimelineMeta['palette']
 ): string[] {
     const active = entries
         .filter((e) => time >= e.inTime && time < e.exitTime)
@@ -110,7 +118,8 @@ function renderSegmentsToDivs(
         const processedHtml = processHtmlContent(
             entry.html,
             contentType as any,
-            i > 0 // overlay flag
+            i > 0, // overlay flag
+            palette
         );
 
         // Strip <html>/<head>/<body> wrappers — extract just the body content
@@ -310,7 +319,7 @@ export async function exportVideo(
 
         if (segmentChanged) {
             // New segment — render and capture
-            renderSegmentsToDivs(offscreenContainer, entries, time, contentType);
+            renderSegmentsToDivs(offscreenContainer, entries, time, contentType, meta.palette);
             lastActiveIds = activeIds;
             await wait(SEGMENT_CHANGE_WAIT_MS);
 

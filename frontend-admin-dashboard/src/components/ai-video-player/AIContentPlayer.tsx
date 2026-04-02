@@ -887,7 +887,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
             // Content entries go through full HTML processing
             const processedContent = contentEntries.map((entry, index) => ({
                 ...entry,
-                processedHtml: processHtmlContent(entry.html, contentType, index > 0),
+                processedHtml: processHtmlContent(entry.html, contentType, index > 0, meta.palette),
             }));
 
             // Branding entries already contain complete HTML — skip processHtmlContent
@@ -952,7 +952,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
             return [
                 {
                     ...entry,
-                    processedHtml: processHtmlContent(htmlContent, contentType),
+                    processedHtml: processHtmlContent(htmlContent, contentType, false, meta.palette),
                 },
             ];
         } else {
@@ -978,11 +978,11 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
             return [
                 {
                     ...entry,
-                    processedHtml: processHtmlContent(htmlContent, contentType),
+                    processedHtml: processHtmlContent(htmlContent, contentType, false, meta.palette),
                 },
             ];
         }
-    }, [entries, currentTime, currentIndex, navigationMode, contentType]);
+    }, [entries, currentTime, currentIndex, navigationMode, contentType, meta.palette]);
 
     // Current chapter index (highest chapter whose start time <= currentTime)
     // MUST be before early returns to satisfy Rules of Hooks

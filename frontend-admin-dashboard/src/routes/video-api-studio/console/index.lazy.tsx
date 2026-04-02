@@ -222,6 +222,7 @@ function VideoConsole() {
                 videoId: pending.videoId,
                 prompt: pending.prompt,
                 contentType: pending.contentType,
+                orientation: (pending.options?.orientation as VideoOrientation) || 'landscape',
                 stage: 'PENDING',
                 percentage: 0,
                 message: 'Reconnecting… checking generation status',
@@ -408,6 +409,7 @@ function VideoConsole() {
                             videoId,
                             prompt: request.prompt,
                             contentType,
+                            orientation: request.orientation || options.orientation as VideoOrientation || 'landscape',
                             stage: event.stage,
                             percentage: event.percentage,
                             message: event.message,
@@ -443,6 +445,7 @@ function VideoConsole() {
                             words_url: wordsUrl,
                             options: {
                                 content_type: contentType,
+                                orientation: request.orientation || options.orientation || 'landscape',
                                 language: request.language,
                                 voice_gender: request.voice_gender,
                                 tts_provider: request.tts_provider,
@@ -503,6 +506,7 @@ function VideoConsole() {
                             created_at: new Date().toISOString(),
                             options: {
                                 content_type: contentType,
+                                orientation: request.orientation || options.orientation || 'landscape',
                                 language: request.language,
                                 captions_enabled: request.captions_enabled,
                                 html_quality: request.html_quality,
@@ -550,6 +554,7 @@ function VideoConsole() {
                             created_at: new Date().toISOString(),
                             options: {
                                 content_type: contentType,
+                                orientation: request.orientation || options.orientation || 'landscape',
                                 language: request.language,
                                 captions_enabled: request.captions_enabled,
                                 html_quality: request.html_quality,
@@ -575,6 +580,7 @@ function VideoConsole() {
             // Persist so polling can resume if the user navigates away
             const pendingOptions = {
                 content_type: contentType,
+                orientation: request.orientation || options.orientation || 'landscape',
                 language: request.language,
                 captions_enabled: request.captions_enabled,
                 html_quality: request.html_quality,
@@ -600,6 +606,7 @@ function VideoConsole() {
                 videoId,
                 prompt: request.prompt,
                 contentType,
+                orientation: request.orientation || options.orientation as VideoOrientation || 'landscape',
                 stage: 'PENDING',
                 percentage: 0,
                 message: 'Starting generation...',
@@ -617,6 +624,7 @@ function VideoConsole() {
                 created_at: new Date().toISOString(),
                 options: {
                     content_type: contentType,
+                    orientation: request.orientation || options.orientation || 'landscape',
                     language: request.language,
                     captions_enabled: request.captions_enabled,
                     html_quality: request.html_quality,
@@ -642,6 +650,7 @@ function VideoConsole() {
                     videoId: item.video_id,
                     prompt: item.prompt,
                     contentType: item.content_type || 'VIDEO',
+                    orientation: (item.options?.orientation as VideoOrientation) || 'landscape',
                     stage: item.stage,
                     percentage: 100,
                     message: '',
@@ -724,6 +733,7 @@ function VideoConsole() {
                         videoId: item.video_id,
                         prompt: item.prompt,
                         contentType: item.content_type || 'VIDEO',
+                        orientation: (item.options?.orientation as VideoOrientation) || 'landscape',
                         stage: urls.current_stage || item.stage,
                         percentage: 100,
                         message: '',
@@ -976,7 +986,8 @@ function VideoConsole() {
 
                     {consoleState === 'complete' &&
                         currentGeneration?.htmlUrl &&
-                        (currentGeneration?.audioUrl || !needsAudio(currentGeneration?.contentType)) && (
+                        (currentGeneration?.audioUrl || !needsAudio(currentGeneration?.contentType)) &&
+                        activeApiKey && (
                             <VideoResult
                                 videoId={currentGeneration.videoId}
                                 htmlUrl={currentGeneration.htmlUrl}
@@ -985,7 +996,7 @@ function VideoConsole() {
                                 contentType={currentGeneration.contentType}
                                 orientation={currentGeneration.orientation || (options.orientation as VideoOrientation) || 'landscape'}
                                 prompt={currentGeneration.prompt}
-                                apiKey={activeApiKey ?? undefined}
+                                apiKey={activeApiKey}
                             />
                         )}
                 </div>

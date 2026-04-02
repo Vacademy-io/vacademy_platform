@@ -149,7 +149,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 <!-- Google Fonts (must match client-side html-processor.ts) -->
                 <link rel="preconnect" href="https://fonts.googleapis.com">
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
                 <!-- GSAP -->
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -196,15 +196,15 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     --background-color: #ffffff;
                   }
                   * { box-sizing: border-box; }
-                  html, body { margin:0; padding:0; width:100%; height:100%; background:REPLACE_BG; overflow:hidden; font-family: 'Inter', sans-serif; color: var(--text-color); }
+                  html, body { margin:0; padding:0; width:100%; height:100%; background:REPLACE_BG; overflow:hidden; font-family: 'Inter', 'Noto Sans', sans-serif; color: var(--text-color); }
                   body { position:relative; }
                   /* Note: body * opacity:1 is NOT set here — it's inside shadow DOM CSS only */
                   pre { white-space: pre-wrap; word-wrap: break-word; }
 
                   /* Typography classes */
-                  .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; }
-                  .text-h2 { font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
-                  .text-body { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; line-height: 1.5; }
+                  .text-display { font-family: 'Montserrat', 'Noto Sans', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; }
+                  .text-h2 { font-family: 'Montserrat', 'Noto Sans', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
+                  .text-body { font-family: 'Inter', 'Noto Sans', sans-serif; font-size: 28px; font-weight: 400; line-height: 1.5; }
                   .text-label { font-family: 'Fira Code', monospace; font-size: 18px; text-transform: uppercase; letter-spacing: 0.1em; }
 
                   .full-screen-center {
@@ -696,7 +696,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     * { opacity: 1 !important; visibility: visible !important; }
 
                     * { box-sizing: border-box; }
-                    html, body { margin:0; padding:0; width:100%; height:100%; font-family: 'Inter', sans-serif; color: var(--text-color); }
+                    html, body { margin:0; padding:0; width:100%; height:100%; font-family: 'Inter', 'Noto Sans', sans-serif; color: var(--text-color); }
 
                     /* Default centering for content-wrapper — centers even if HTML lacks .full-screen-center */
                     #content-wrapper {
@@ -719,9 +719,9 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     .map-svg path { transition: fill 0.3s ease; }
 
                     /* Typography */
-                    .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; }
-                    .text-h2 { font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
-                    .text-body { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; line-height: 1.5; }
+                    .text-display { font-family: 'Montserrat', 'Noto Sans', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; }
+                    .text-h2 { font-family: 'Montserrat', 'Noto Sans', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
+                    .text-body { font-family: 'Inter', 'Noto Sans', sans-serif; font-size: 28px; font-weight: 400; line-height: 1.5; }
                     .text-label { font-family: 'Fira Code', monospace; font-size: 18px; text-transform: uppercase; letter-spacing: 0.1em; }
 
                     /* Layout */
@@ -947,7 +947,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   // Google Fonts must be a <link> (not @import in <style>) for shadow DOM
                   const fontLink = document.createElement('link');
                   fontLink.rel = 'stylesheet';
-                  fontLink.href = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap';
+                  fontLink.href = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&family=Noto+Sans:wght@400;500;600;700&display=swap';
                   root.appendChild(fontLink);
 
                   const shadowStyle = document.createElement('style');

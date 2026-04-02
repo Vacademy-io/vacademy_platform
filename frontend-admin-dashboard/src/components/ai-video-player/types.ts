@@ -117,6 +117,15 @@ export interface TimelineMeta {
 
     // MCQ questions shown at specific timestamps during video playback
     questions?: MCQQuestion[];
+
+    // Color palette from the style guide — ensures CSS variables match the LLM's theme
+    palette?: {
+        background?: string;
+        text?: string;
+        text_secondary?: string;
+        primary?: string;
+        accent?: string;
+    };
 }
 
 /**

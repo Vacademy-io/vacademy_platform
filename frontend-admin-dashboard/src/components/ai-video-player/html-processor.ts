@@ -52,17 +52,17 @@ function getCommonLibraries(): string {
 /**
  * Get base styles for all content types
  */
-function getBaseStyles(): string {
+function getBaseStyles(palette?: { background?: string; text?: string; text_secondary?: string; primary?: string; accent?: string }): string {
     return `
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&family=Noto+Sans:wght@400;600;700&display=swap');
 
             :root {
-                --text-color: #1e293b;
-                --text-secondary: #475569;
-                --primary-color: #2563eb;
-                --accent-color: #f59e0b;
-                --background-color: #ffffff;
+                --text-color: ${palette?.text || '#1e293b'};
+                --text-secondary: ${palette?.text_secondary || '#475569'};
+                --primary-color: ${palette?.primary || '#2563eb'};
+                --accent-color: ${palette?.accent || '#f59e0b'};
+                --background-color: ${palette?.background || '#ffffff'};
             }
 
             * { box-sizing: border-box; }
@@ -72,7 +72,7 @@ function getBaseStyles(): string {
                 height: 100%;
                 margin: 0;
                 padding: 0;
-                font-family: 'Inter', sans-serif;
+                font-family: 'Inter', 'Noto Sans', sans-serif;
                 background: BODY_BACKGROUND_PLACEHOLDER;
                 color: var(--text-color);
             }
@@ -2784,7 +2784,8 @@ export function generateSlidesHtml(entry: Entry, index: number, entries: Entry[]
 export function processHtmlContent(
     html: string,
     contentType: ContentType = 'VIDEO',
-    isOverlay: boolean = false
+    isOverlay: boolean = false,
+    palette?: { background?: string; text?: string; text_secondary?: string; primary?: string; accent?: string }
 ): string {
     let processedHtml = html;
 
@@ -2810,7 +2811,7 @@ export function processHtmlContent(
 
     // Build the complete HTML with appropriate libraries and styles
     const libs = getCommonLibraries();
-    let baseStyles = getBaseStyles();
+    let baseStyles = getBaseStyles(palette);
 
     // For overlay iframes, use transparent background so content below shows through
     const bodyBackground = isOverlay ? 'transparent' : 'var(--background-color)';

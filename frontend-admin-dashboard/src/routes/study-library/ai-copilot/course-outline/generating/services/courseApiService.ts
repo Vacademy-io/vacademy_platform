@@ -86,50 +86,49 @@ export async function generateCourseOutline(
         buffer = lines.pop() || '';
 
         for (const line of lines) {
+            // Handle both "data: " and "data:" formats
+            let data = '';
             if (line.startsWith('data: ')) {
-                const data = line.slice(6);
+                data = line.slice(6);
+            } else if (line.startsWith('data:')) {
+                data = line.slice(5);
+            } else {
+                continue;
+            }
+            data = data.trim();
 
-                // Check for error events from SSE stream
-                if (data.startsWith('{') && data.includes('"type"') && data.includes('"ERROR"')) {
-                    try {
-                        const errorData = JSON.parse(data);
-                        if (errorData.type === 'ERROR') {
-                            throw new Error(errorData.message || `Server error (code: ${errorData.code || 'unknown'})`);
-                        }
-                    } catch (e) {
-                        // Re-throw if this was our intentional error, not a JSON parse failure
-                        if (e instanceof Error && e.name !== 'SyntaxError') throw e;
-                        // JSON parse failed - not a valid error event, continue processing
+            // Check if it's a progress message
+            if (data.startsWith('[Generating...]')) {
+                const progressMsg = data.replace('[Generating...]', '').trim();
+                onProgress(progressMsg);
+            }
+            // Check if it's JSON (final response or error)
+            else if (data.startsWith('{')) {
+                try {
+                    const jsonData = JSON.parse(data);
+
+                    // Check for error events from SSE stream
+                    if (jsonData.type === 'ERROR') {
+                        throw new Error(jsonData.message || `Server error (code: ${jsonData.code || 'unknown'})`);
                     }
-                }
 
-                // Check if it's a progress message
-                if (data.startsWith('[Generating...]')) {
-                    const progressMsg = data.replace('[Generating...]', '').trim();
-                    onProgress(progressMsg);
-                }
-                // Check if it's the final JSON
-                else if (data.startsWith('{')) {
-                    try {
-                        const jsonData = JSON.parse(data);
-                        console.log('=== API Response Received ===');
-                        console.log('Full Response:', jsonData);
-                        console.log('Course Metadata:', jsonData.courseMetadata);
-                        console.log('Tree:', jsonData.tree);
+                    console.log('=== API Response Received ===');
+                    console.log('Full Response:', jsonData);
+                    console.log('Course Metadata:', jsonData.courseMetadata);
+                    console.log('Tree:', jsonData.tree);
 
-                        // Validate response structure
-                        if (!jsonData.tree || !Array.isArray(jsonData.tree)) {
-                            console.error('Invalid API response structure:', jsonData);
-                            throw new Error('Invalid response structure: missing or invalid tree');
-                        }
-
-                        finalResponse = jsonData as CourseOutlineResponse;
-                    } catch (e) {
-                        console.error('=== Error Processing Response ===');
-                        console.error('Error:', e);
-                        console.error('Raw data:', data);
-                        throw new Error(`Failed to process course data: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                    // Validate response structure
+                    if (!jsonData.tree || !Array.isArray(jsonData.tree)) {
+                        console.error('Invalid API response structure:', jsonData);
+                        throw new Error('Invalid response structure: missing or invalid tree');
                     }
+
+                    finalResponse = jsonData as CourseOutlineResponse;
+                } catch (e) {
+                    console.error('=== Error Processing Response ===');
+                    console.error('Error:', e);
+                    console.error('Raw data:', data);
+                    throw new Error(`${e instanceof Error ? e.message : 'Unknown error'}`);
                 }
             }
         }

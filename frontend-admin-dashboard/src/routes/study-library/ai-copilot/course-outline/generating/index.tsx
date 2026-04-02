@@ -782,105 +782,105 @@ export function RouteComponent() {
                     buffer = lines.pop() || '';
 
                     for (const line of lines) {
+                        // Handle both "data: " and "data:" formats
+                        let data = '';
                         if (line.startsWith('data: ')) {
-                            const data = line.slice(6);
+                            data = line.slice(6);
+                        } else if (line.startsWith('data:')) {
+                            data = line.slice(5);
+                        } else {
+                            continue;
+                        }
+                        data = data.trim();
 
-                            // Check for error events from SSE stream
-                            if (data.startsWith('{') && data.includes('"type"') && data.includes('"ERROR"')) {
-                                try {
-                                    const errorData = JSON.parse(data);
-                                    if (errorData.type === 'ERROR') {
-                                        throw new Error(errorData.message || `Server error (code: ${errorData.code || 'unknown'})`);
-                                    }
-                                } catch (e) {
-                                    // Re-throw if this was our intentional error, not a JSON parse failure
-                                    if (e instanceof Error && e.name !== 'SyntaxError') throw e;
-                                    // JSON parse failed - not a valid error event, continue processing
+                        // Check if it's a progress message
+                        if (data.startsWith('[Generating...]')) {
+                            const progressMsg = data.replace('[Generating...]', '').trim();
+                            setGenerationProgress(progressMsg);
+                        }
+                        // Check if it's JSON (final response or error)
+                        else if (data.startsWith('{')) {
+                            try {
+                                const jsonData = JSON.parse(data);
+
+                                // Check for error events from SSE stream
+                                if (jsonData.type === 'ERROR') {
+                                    throw new Error(jsonData.message || `Server error (code: ${jsonData.code || 'unknown'})`);
                                 }
-                            }
 
-                            // Check if it's a progress message
-                            if (data.startsWith('[Generating...]')) {
-                                const progressMsg = data.replace('[Generating...]', '').trim();
-                                setGenerationProgress(progressMsg);
-                            }
-                            // Check if it's the final JSON
-                            else if (data.startsWith('{')) {
-                                try {
-                                    const jsonData = JSON.parse(data);
-                                    console.log('=== API Response Received ===');
-                                    console.log('Full Response:', jsonData);
-                                    console.log('Course Metadata:', jsonData.courseMetadata);
-                                    console.log('Tree:', jsonData.tree);
+                                console.log('=== API Response Received ===');
+                                console.log('Full Response:', jsonData);
+                                console.log('Course Metadata:', jsonData.courseMetadata);
+                                console.log('Tree:', jsonData.tree);
 
-                                    // Validate response structure
-                                    if (!jsonData.tree || !Array.isArray(jsonData.tree)) {
-                                        console.error('Invalid API response structure:', jsonData);
-                                        throw new Error(
-                                            'Invalid response structure: missing or invalid tree'
-                                        );
-                                    }
-
-                                    // Store course metadata (with fallback for missing fields)
-                                    const metadata = {
-                                        ...jsonData.courseMetadata,
-                                        // Fallback for mediaImageUrl if not provided by API
-                                        mediaImageUrl:
-                                            jsonData.courseMetadata?.mediaImageUrl ||
-                                            jsonData.courseMetadata?.bannerImageUrl ||
-                                            jsonData.courseMetadata?.previewImageUrl,
-                                        // Include level from courseConfig (skillLevel is the levelId)
-                                        level: courseConfig.learnerProfile?.skillLevel || '',
-                                    };
-                                    setCourseMetadata(metadata);
-                                    console.log('Course Metadata Set:', metadata);
-
-                                    // Store todos for later use in content generation
-                                    if (jsonData.todos && Array.isArray(jsonData.todos)) {
-                                        setOutlineTodos(jsonData.todos);
-                                        console.log(
-                                            'Stored todos for content generation:',
-                                            jsonData.todos.length
-                                        );
-                                    }
-
-                                    // Transform API response to slides format
-                                    const generatedSlides = transformApiResponseToSlides(
-                                        jsonData,
-                                        courseConfig
-                                    );
-                                    console.log('Generated Slides Count:', generatedSlides.length);
-
-                                    if (generatedSlides.length === 0) {
-                                        console.warn('No slides generated from API response');
-                                    }
-
-                                    setSlides(generatedSlides);
-
-                                    // Pre-expand all sessions
-                                    const allSessionIds = new Set(
-                                        generatedSlides.map(
-                                            (slide: SlideGeneration) => slide.sessionId
-                                        )
-                                    );
-                                    setExpandedSessions(allSessionIds);
-
-                                    // Stop countdown and hide loader immediately when data arrives
-                                    setIsGenerating(false);
-                                    setEstimatedTimeRemaining(0);
-                                    setGenerationProgress('Complete!');
-
-                                    // Only clear sessionStorage after successful load
-                                    sessionStorage.removeItem('courseConfig');
-                                } catch (e) {
-                                    console.error('=== Error Processing Response ===');
-                                    console.error('Error:', e);
-                                    console.error('Raw data:', data);
-                                    setIsGenerating(false);
-                                    toast.error(
-                                        `Failed to process course data: ${e instanceof Error ? e.message : 'Unknown error'}`
+                                // Validate response structure
+                                if (!jsonData.tree || !Array.isArray(jsonData.tree)) {
+                                    console.error('Invalid API response structure:', jsonData);
+                                    throw new Error(
+                                        'Invalid response structure: missing or invalid tree'
                                     );
                                 }
+
+                                // Store course metadata (with fallback for missing fields)
+                                const metadata = {
+                                    ...jsonData.courseMetadata,
+                                    // Fallback for mediaImageUrl if not provided by API
+                                    mediaImageUrl:
+                                        jsonData.courseMetadata?.mediaImageUrl ||
+                                        jsonData.courseMetadata?.bannerImageUrl ||
+                                        jsonData.courseMetadata?.previewImageUrl,
+                                    // Include level from courseConfig (skillLevel is the levelId)
+                                    level: courseConfig.learnerProfile?.skillLevel || '',
+                                };
+                                setCourseMetadata(metadata);
+                                console.log('Course Metadata Set:', metadata);
+
+                                // Store todos for later use in content generation
+                                if (jsonData.todos && Array.isArray(jsonData.todos)) {
+                                    setOutlineTodos(jsonData.todos);
+                                    console.log(
+                                        'Stored todos for content generation:',
+                                        jsonData.todos.length
+                                    );
+                                }
+
+                                // Transform API response to slides format
+                                const generatedSlides = transformApiResponseToSlides(
+                                    jsonData,
+                                    courseConfig
+                                );
+                                console.log('Generated Slides Count:', generatedSlides.length);
+
+                                if (generatedSlides.length === 0) {
+                                    console.warn('No slides generated from API response');
+                                }
+
+                                setSlides(generatedSlides);
+
+                                // Pre-expand all sessions
+                                const allSessionIds = new Set(
+                                    generatedSlides.map(
+                                        (slide: SlideGeneration) => slide.sessionId
+                                    )
+                                );
+                                setExpandedSessions(allSessionIds);
+
+                                // Stop countdown and hide loader immediately when data arrives
+                                setIsGenerating(false);
+                                setEstimatedTimeRemaining(0);
+                                setGenerationProgress('Complete!');
+
+                                // Only clear sessionStorage after successful load
+                                sessionStorage.removeItem('courseConfig');
+                            } catch (e) {
+                                console.error('=== Error Processing Response ===');
+                                console.error('Error:', e);
+                                console.error('Raw data:', data);
+                                setIsGenerating(false);
+                                toast.error(
+                                    `${e instanceof Error ? e.message : 'Unknown error'}`,
+                                    { duration: 8000 }
+                                );
                             }
                         }
                     }

@@ -206,6 +206,14 @@ function getKenBurnsStyles(): string {
               line-height: 1.4; margin: 0; max-width: 800px;
             }
 
+            /* VIDEO_HERO: Full-screen stock video background */
+            .video-hero { position: relative; width: 100%; height: 100%; overflow: hidden; }
+            .video-hero > video, .video-hero > .stock-video {
+                position: absolute; inset: 0; width: 100%; height: 100%;
+                object-fit: cover; z-index: 0;
+            }
+            .stock-video { object-fit: cover; width: 100%; height: 100%; }
+
             /* IMAGE_SPLIT: Image one side, text the other */
             .image-split-layout {
               display: grid;

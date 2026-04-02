@@ -326,6 +326,7 @@ class VideoGenerationService:
         pipeline_args = {
             "openrouter_key": openrouter_key,
             "gemini_image_key": gemini_key or "",  # Pass Gemini key for image generation
+            "pexels_api_keys": settings.pexels_api_keys or "",  # Pexels stock photos/videos
             "runs_dir": work_dir.parent,
             "quality_tier": quality_tier,
         }

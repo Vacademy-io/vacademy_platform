@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>E2E Test — Pexels Stock Photos + Videos in Video Pipeline</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;800;900&family=Inter:wght@300;400;600;700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+    <style>
+        :root { --text-color:#fff; --primary-color:#3b82f6; --accent-color:#f59e0b; }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        html, body { width:100%; height:100%; overflow:hidden; background:#000; font-family:'Inter',sans-serif; }
+        .player { width:100vw; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+        .viewport { width:1920px; height:1080px; position:relative; overflow:hidden; background:#0f172a; }
+        .shot { position:absolute; inset:0; opacity:0; pointer-events:none; }
+        .shot.active { opacity:1; pointer-events:auto; }
+
+        /* IMAGE_HERO (existing) */
+        .image-hero { position:relative; width:100%; height:100%; overflow:hidden; }
+        .image-hero > img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; animation: kbZoomIn 15s linear forwards; }
+        @keyframes kbZoomIn { from { transform:scale(1); } to { transform:scale(1.12); } }
+        @keyframes kbPanLeft { from { transform:scale(1.1) translateX(2%); } to { transform:scale(1.1) translateX(-2%); } }
+
+        /* VIDEO_HERO (NEW — stock video background) */
+        .video-hero { position:relative; width:100%; height:100%; overflow:hidden; }
+        .video-hero > video, .video-hero > .stock-video {
+            position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0;
+        }
+        .stock-video { object-fit:cover; width:100%; height:100%; }
+
+        /* Shared overlay (works for both IMAGE_HERO and VIDEO_HERO) */
+        .image-text-overlay {
+            position:absolute; inset:0; display:flex; flex-direction:column;
+            justify-content:flex-end; padding:80px 100px; z-index:2;
+        }
+        .image-text-overlay > * { position:relative; z-index:1; }
+        .image-text-overlay.gradient-bottom::before,
+        .image-text-overlay:not([class*="gradient-"])::before {
+            content:""; position:absolute; inset:0;
+            background:linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.3) 40%, transparent 65%);
+            pointer-events:none; z-index:0;
+        }
+
+        /* IMAGE_SPLIT */
+        .image-split-layout { display:grid; grid-template-columns:1fr 1fr; width:100%; height:100%; overflow:hidden; }
+        .image-split-layout .split-image { position:relative; overflow:hidden; }
+        .image-split-layout .split-image img { width:100%; height:100%; object-fit:cover; animation: kbPanLeft 15s linear forwards; }
+        .image-split-layout .split-text { display:flex; flex-direction:column; justify-content:center; padding:60px 80px; }
+
+        .full-center { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:60px 100px; }
+
+        .controls { position:fixed; bottom:0; left:0; right:0; z-index:100; background:rgba(0,0,0,0.9); padding:12px 24px; display:flex; align-items:center; gap:16px; }
+        .controls button { background:#3b82f6; color:#fff; border:none; padding:8px 20px; border-radius:6px; font-weight:600; cursor:pointer; }
+        .progress-bar { flex:1; height:4px; background:#334155; border-radius:2px; }
+        .progress-fill { height:100%; background:#3b82f6; border-radius:2px; transition:width 0.3s; }
+        .time-label { color:#94a3b8; font-size:13px; font-family:'Fira Code',monospace; min-width:50px; }
+        .shot-label { color:#f59e0b; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; }
+        .badge { position:absolute; top:12px; right:12px; background:rgba(245,158,11,0.9); color:#000; font-size:10px; font-weight:700; padding:3px 8px; border-radius:4px; z-index:10; font-family:'Fira Code',monospace; }
+    </style>
+</head>
+<body>
+<div class="player">
+    <div class="viewport" id="viewport">
+
+        <!-- ════════════ SHOT 1: VIDEO_HERO (stock video) ════════════ -->
+        <!-- Simulates: LLM outputs <video data-video-query="...">, pipeline searches Pexels, injects src -->
+        <div class="shot" id="shot-1">
+            <div class="badge">VIDEO_HERO (Pexels stock video)</div>
+            <div class="video-hero">
+                <video class="stock-video"
+                       src="https://videos.pexels.com/video-files/3195394/3195394-uhd_2560_1440_25fps.mp4"
+                       poster="https://images.pexels.com/videos/3195394/free-video-3195394.jpg"
+                       autoplay muted loop playsinline></video>
+                <div class="image-text-overlay gradient-bottom">
+                    <div style="font-family:Fira Code;font-size:14px;color:#f59e0b;letter-spacing:0.15em;text-transform:uppercase;opacity:0" id="s1-label">BIOLOGY • MARINE SCIENCE</div>
+                    <h1 style="font-family:Montserrat;font-size:72px;font-weight:900;color:#fff;line-height:1.05;margin:12px 0;opacity:0" id="s1-title">Life Under the Ocean</h1>
+                    <p style="font-size:26px;color:rgba(255,255,255,0.8);max-width:700px;opacity:0" id="s1-sub">How coral reefs support 25% of all marine species</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ SHOT 2: IMAGE_SPLIT (stock photo) ════════════ -->
+        <!-- Simulates: LLM outputs <img data-img-source="stock" data-img-prompt="...">, pipeline uses Pexels URL -->
+        <div class="shot" id="shot-2">
+            <div class="badge">IMAGE_SPLIT (Pexels stock photo)</div>
+            <div class="image-split-layout" style="background:#0f172a">
+                <div class="split-image">
+                    <!-- This src came from Pexels CDN — no base64, no download -->
+                    <img class="generated-image"
+                         data-img-source="stock"
+                         data-img-prompt="colorful coral reef with tropical fish underwater"
+                         src="https://images.pexels.com/photos/3100361/pexels-photo-3100361.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750"
+                         alt="Colorful coral reef" />
+                </div>
+                <div class="split-text">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;opacity:0" id="s2-header">
+                        <iconify-icon icon="mdi:fishbowl-outline" width="36" style="color:#3b82f6"></iconify-icon>
+                        <span style="font-family:Montserrat;font-size:36px;font-weight:800;color:#fff">Coral Reef Ecosystem</span>
+                    </div>
+                    <div style="font-size:22px;color:#cbd5e1;line-height:1.7;opacity:0" id="s2-body">
+                        Coral reefs cover less than <span style="color:#f59e0b;font-weight:700">1%</span> of the ocean floor,
+                        yet they shelter over <span style="color:#3b82f6;font-weight:700">4,000 species</span> of fish
+                        and countless invertebrates.
+                    </div>
+                    <div style="margin-top:24px;padding:16px 24px;border-left:4px solid #10b981;background:rgba(16,185,129,0.08);border-radius:0 8px 8px 0;opacity:0" id="s2-fact">
+                        <div style="font-size:12px;color:#10b981;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px">Key Fact</div>
+                        <div style="font-size:18px;color:#e2e8f0">The Great Barrier Reef is visible from space — it stretches over 2,300 km.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ SHOT 3: TEXT DIAGRAM (no image — pure SVG) ════════════ -->
+        <div class="shot" id="shot-3">
+            <div class="badge">TEXT/DIAGRAM (no stock — SVG diagram)</div>
+            <div class="full-center" style="background:#0f172a">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:40px;opacity:0" id="s3-header">
+                    <iconify-icon icon="mdi:chart-timeline-variant" width="36" style="color:#f59e0b"></iconify-icon>
+                    <span style="font-family:Montserrat;font-size:38px;font-weight:800;color:#fff">Reef Food Chain</span>
+                </div>
+                <svg viewBox="0 0 800 200" width="80%" style="max-width:1200px;opacity:0" id="s3-diagram">
+                    <!-- Simple food chain SVG -->
+                    <rect x="10" y="70" width="150" height="60" rx="12" fill="#3b82f620" stroke="#3b82f6" stroke-width="2"/>
+                    <text x="85" y="105" text-anchor="middle" fill="#fff" font-size="16" font-family="Inter" font-weight="600">Phytoplankton</text>
+                    <line x1="160" y1="100" x2="250" y2="100" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6,4"/>
+                    <polygon points="248,94 260,100 248,106" fill="#f59e0b"/>
+
+                    <rect x="260" y="70" width="120" height="60" rx="12" fill="#10b98120" stroke="#10b981" stroke-width="2"/>
+                    <text x="320" y="105" text-anchor="middle" fill="#fff" font-size="16" font-family="Inter" font-weight="600">Zooplankton</text>
+                    <line x1="380" y1="100" x2="470" y2="100" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6,4"/>
+                    <polygon points="468,94 480,100 468,106" fill="#f59e0b"/>
+
+                    <rect x="480" y="70" width="120" height="60" rx="12" fill="#f59e0b20" stroke="#f59e0b" stroke-width="2"/>
+                    <text x="540" y="105" text-anchor="middle" fill="#fff" font-size="16" font-family="Inter" font-weight="600">Small Fish</text>
+                    <line x1="600" y1="100" x2="640" y2="100" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6,4"/>
+                    <polygon points="638,94 650,100 638,106" fill="#f59e0b"/>
+
+                    <rect x="650" y="70" width="140" height="60" rx="12" fill="#ef444420" stroke="#ef4444" stroke-width="2"/>
+                    <text x="720" y="105" text-anchor="middle" fill="#fff" font-size="16" font-family="Inter" font-weight="600">Predators 🦈</text>
+                </svg>
+                <p style="font-size:20px;color:#94a3b8;margin-top:24px;opacity:0" id="s3-note">Energy flows from producers → primary consumers → secondary consumers → apex predators</p>
+            </div>
+        </div>
+
+        <!-- ════════════ SHOT 4: IMAGE_HERO (stock photo) ════════════ -->
+        <div class="shot" id="shot-4">
+            <div class="badge">IMAGE_HERO (Pexels stock photo + Ken Burns)</div>
+            <div class="image-hero">
+                <img class="generated-image"
+                     data-img-source="stock"
+                     data-img-prompt="scuba diver swimming near coral reef underwater photography"
+                     src="https://images.pexels.com/photos/3608311/pexels-photo-3608311.jpeg?auto=compress&cs=tinysrgb&w=1920"
+                     alt="Scuba diver near coral reef" />
+                <div class="image-text-overlay gradient-bottom">
+                    <div style="font-family:Fira Code;font-size:14px;color:#f59e0b;letter-spacing:0.15em;text-transform:uppercase;opacity:0" id="s4-label">THREATS TO CORAL</div>
+                    <h1 style="font-family:Montserrat;font-size:64px;font-weight:900;color:#fff;line-height:1.1;margin:12px 0;opacity:0" id="s4-title">Coral Bleaching</h1>
+                    <p style="font-size:24px;color:rgba(255,255,255,0.85);max-width:800px;opacity:0" id="s4-sub">Rising ocean temperatures cause corals to expel their symbiotic algae, turning white and vulnerable</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ SHOT 5: KEY TAKEAWAY (no stock) ════════════ -->
+        <div class="shot" id="shot-5">
+            <div class="badge">KEY TAKEAWAY (no stock — text only)</div>
+            <div class="full-center" style="background:#0f172a">
+                <iconify-icon icon="mdi:lightbulb-on" width="64" style="color:#f59e0b;opacity:0" id="s5-icon"></iconify-icon>
+                <div style="font-family:Fira Code;font-size:14px;color:#10b981;letter-spacing:0.15em;text-transform:uppercase;margin:20px 0 12px;opacity:0" id="s5-label">KEY TAKEAWAY</div>
+                <div style="font-family:Montserrat;font-size:40px;font-weight:800;color:#fff;max-width:1000px;line-height:1.3;opacity:0" id="s5-title">
+                    Coral reefs are the <span style="color:#3b82f6">rainforests of the sea</span> — small in area, immense in biodiversity.
+                </div>
+                <div style="margin-top:36px;display:flex;gap:24px;opacity:0" id="s5-actions">
+                    <div style="padding:14px 24px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:8px;color:#93c5fd;font-size:16px;display:flex;align-items:center;gap:8px">
+                        <iconify-icon icon="mdi:recycle" width="20"></iconify-icon> Reduce plastic waste
+                    </div>
+                    <div style="padding:14px 24px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;color:#6ee7b7;font-size:16px;display:flex;align-items:center;gap:8px">
+                        <iconify-icon icon="mdi:leaf" width="20"></iconify-icon> Support marine conservation
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Controls -->
+<div class="controls">
+    <button id="play-btn" onclick="togglePlay()">▶ Play</button>
+    <div class="time-label" id="time-display">0:00</div>
+    <div class="progress-bar" onclick="seekTo(event)"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <div class="time-label">0:42</div>
+    <div class="shot-label" id="shot-label">—</div>
+</div>
+
+<script>
+// Scale viewport to fit window
+function scaleViewport() {
+    var vp = document.getElementById('viewport');
+    var w = window.innerWidth, h = window.innerHeight - 50;
+    vp.style.transform = 'scale(' + Math.min(w/1920, h/1080) + ')';
+    vp.style.transformOrigin = 'center center';
+}
+window.addEventListener('resize', scaleViewport);
+scaleViewport();
+
+// Timeline
+var TOTAL = 42;
+var shots = [
+    { id:'shot-1', start:0, end:9, label:'VIDEO_HERO (Stock Video)', play:playS1 },
+    { id:'shot-2', start:9, end:19, label:'IMAGE_SPLIT (Stock Photo)', play:playS2 },
+    { id:'shot-3', start:19, end:28, label:'TEXT/DIAGRAM (No stock)', play:playS3 },
+    { id:'shot-4', start:28, end:36, label:'IMAGE_HERO (Stock Photo)', play:playS4 },
+    { id:'shot-5', start:36, end:42, label:'TAKEAWAY (No stock)', play:playS5 },
+];
+var currentTime=0, playing=false, lastTs=0, playedShots=new Set();
+
+function tick(ts) {
+    if (!playing) return;
+    if (!lastTs) lastTs = ts;
+    currentTime = Math.min(currentTime + (ts-lastTs)/1000, TOTAL);
+    lastTs = ts;
+    var pct = (currentTime/TOTAL)*100;
+    document.getElementById('progress-fill').style.width = pct+'%';
+    var m=Math.floor(currentTime/60), s=Math.floor(currentTime%60);
+    document.getElementById('time-display').textContent = m+':'+(s<10?'0':'')+s;
+    shots.forEach(function(sh) {
+        var el = document.getElementById(sh.id);
+        if (currentTime >= sh.start && currentTime < sh.end) {
+            el.classList.add('active');
+            document.getElementById('shot-label').textContent = sh.label;
+            if (!playedShots.has(sh.id)) { playedShots.add(sh.id); sh.play(); }
+        } else { el.classList.remove('active'); }
+    });
+    if (currentTime >= TOTAL) { playing=false; document.getElementById('play-btn').textContent='↺ Replay'; return; }
+    requestAnimationFrame(tick);
+}
+function togglePlay() {
+    if (currentTime >= TOTAL) { currentTime=0; playedShots.clear(); }
+    playing = !playing;
+    document.getElementById('play-btn').textContent = playing ? '⏸ Pause' : '▶ Play';
+    if (playing) { lastTs=0; requestAnimationFrame(tick); }
+}
+function seekTo(e) {
+    var rect = e.currentTarget.getBoundingClientRect();
+    currentTime = ((e.clientX-rect.left)/rect.width)*TOTAL;
+    playedShots.clear();
+    document.getElementById('progress-fill').style.width = (currentTime/TOTAL*100)+'%';
+    shots.forEach(function(sh) {
+        var el = document.getElementById(sh.id);
+        if (currentTime >= sh.start && currentTime < sh.end) { el.classList.add('active'); playedShots.add(sh.id); sh.play(); }
+        else { el.classList.remove('active'); }
+    });
+}
+
+// Shot animations
+function playS1() {
+    gsap.to('#s1-label', {opacity:1, duration:0.4, delay:0.8});
+    gsap.fromTo('#s1-title', {opacity:0,y:30}, {opacity:1,y:0, duration:0.7, delay:1.2});
+    gsap.fromTo('#s1-sub', {opacity:0,y:20}, {opacity:1,y:0, duration:0.5, delay:2.2});
+}
+function playS2() {
+    gsap.fromTo('#s2-header', {opacity:0,x:-20}, {opacity:1,x:0, duration:0.5, delay:0.3});
+    gsap.fromTo('#s2-body', {opacity:0,y:15}, {opacity:1,y:0, duration:0.5, delay:0.8});
+    gsap.fromTo('#s2-fact', {opacity:0,x:-20}, {opacity:1,x:0, duration:0.5, delay:1.8});
+}
+function playS3() {
+    gsap.fromTo('#s3-header', {opacity:0}, {opacity:1, duration:0.4, delay:0.2});
+    gsap.fromTo('#s3-diagram', {opacity:0,y:20}, {opacity:1,y:0, duration:0.6, delay:0.6});
+    gsap.fromTo('#s3-note', {opacity:0}, {opacity:1, duration:0.4, delay:2.0});
+}
+function playS4() {
+    gsap.to('#s4-label', {opacity:1, duration:0.4, delay:0.6});
+    gsap.fromTo('#s4-title', {opacity:0,y:20}, {opacity:1,y:0, duration:0.6, delay:1.0});
+    gsap.fromTo('#s4-sub', {opacity:0,y:15}, {opacity:1,y:0, duration:0.5, delay:1.8});
+}
+function playS5() {
+    gsap.fromTo('#s5-icon', {opacity:0,scale:0.5}, {opacity:1,scale:1, duration:0.5, delay:0.3, ease:'back.out(1.7)'});
+    gsap.to('#s5-label', {opacity:1, duration:0.4, delay:0.6});
+    gsap.fromTo('#s5-title', {opacity:0,y:20}, {opacity:1,y:0, duration:0.6, delay:1.0});
+    gsap.fromTo('#s5-actions', {opacity:0,y:15}, {opacity:1,y:0, duration:0.5, delay:2.5});
+}
+</script>
+</body>
+</html>

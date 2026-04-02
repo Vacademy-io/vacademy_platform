@@ -127,6 +127,7 @@ except ImportError:
 
 DEFAULT_OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 DEFAULT_GEMINI_IMAGE_KEY = os.environ.get("GEMINI_API_KEY", "")
+DEFAULT_PEXELS_API_KEYS = os.environ.get("PEXELS_API_KEYS", "")
 
 VOICE_MAPPING = {
     # format: "lowercase language": {"edge": {"male": "...", "female": "..."}, "google": {"male": "...", "female": "..."}}
@@ -925,6 +926,7 @@ class VideoGenerationPipeline:
         voice_id: str = "Qggl4b0xRMiqOwhPtVWT",
         voice_model: str = "eleven_multilingual_v2",
         gemini_image_key: str = DEFAULT_GEMINI_IMAGE_KEY,
+        pexels_api_keys: str = DEFAULT_PEXELS_API_KEYS,
         runs_dir: Path = DEFAULT_RUNS_DIR,
         quality_tier: str = "ultra",
     ) -> None:
@@ -941,6 +943,16 @@ class VideoGenerationPipeline:
         self._quality_tier = quality_tier if quality_tier in QUALITY_TIERS else "ultra"
         self._tier_config = QUALITY_TIERS[self._quality_tier]
         print(f"⚡ Quality tier: {self._quality_tier}")
+
+        # Pexels stock photo/video service (optional — graceful if not configured)
+        self._pexels_service = None
+        if pexels_api_keys:
+            try:
+                from pexels_service import PexelsService
+                self._pexels_service = PexelsService(pexels_api_keys)
+                print(f"📷 Pexels: {len(self._pexels_service._keys)} API key(s) configured")
+            except ImportError:
+                print("⚠️ pexels_service.py not found — stock photos disabled")
 
     @staticmethod
     def _get_default_branding() -> Dict[str, Any]:
@@ -1183,6 +1195,7 @@ class VideoGenerationPipeline:
                 print("🖼️  Checking for visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
+                html_segments = self._process_stock_videos(html_segments)
             else:
                 # STANDARD VIDEO FLOW
                 # Extract subject domain from AI-classified script plan
@@ -1305,11 +1318,16 @@ class VideoGenerationPipeline:
                             if visual_style_e.lower() not in prompt_e.lower():
                                 prompt_e = f"{visual_style_e}, {prompt_e}"
 
+                            img_source_e = "generate"  # default for backwards compat
+                            source_match_e = re.search(r'data-img-source=["\'](\w+)["\']', full_tag)
+                            if source_match_e:
+                                img_source_e = source_match_e.group(1).lower()
                             task_e = {
                                 "entry": entry,
                                 "full_tag": full_tag,
                                 "prompt": prompt_e,
                                 "seg_idx": id(entry),
+                                "img_source": img_source_e,
                                 "timestamp": datetime.now().strftime("%f"),
                             }
                             with _early_image_lock:
@@ -1368,11 +1386,15 @@ class VideoGenerationPipeline:
                     _entry   = _res.get("entry")
                     _old_tag = _res.get("full_tag", "")
                     _ibytes  = _res.get("image_bytes")
-                    if not (_entry and _old_tag and _ibytes):
+                    _stock_url = _res.get("stock_url")
+                    if not (_entry and _old_tag and (_ibytes or _stock_url)):
                         continue
                     _html_e = _entry.get("html", "")
-                    _b64    = base64.b64encode(_ibytes).decode("utf-8")
-                    _nsrc   = f"data:image/png;base64,{_b64}"
+                    if _stock_url:
+                        _nsrc = _stock_url
+                    else:
+                        _b64    = base64.b64encode(_ibytes).decode("utf-8")
+                        _nsrc   = f"data:image/png;base64,{_b64}"
                     if _old_tag in _html_e:
                         _new_tag = re.sub(r'src=["\'][^"\']*["\']',
                                           f'src="{_nsrc}"', _old_tag)
@@ -1386,7 +1408,8 @@ class VideoGenerationPipeline:
                 print("🖼️  Checking for any remaining visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
-            
+                html_segments = self._process_stock_videos(html_segments)
+
             print("🧾 Writing timeline JSON ...")
             timeline_path = self._write_timeline(
                 html_segments, run_dir, self._current_branding, self._current_content_type,
@@ -3988,6 +4011,26 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         entry    = task.get("entry")
         if not prompt:
             return None
+
+        # Stock photo path: use Pexels CDN URL directly (no download/base64)
+        img_source = task.get("img_source", "generate")
+        if img_source == "stock" and self._pexels_service and self._pexels_service.is_available:
+            orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
+            result = self._pexels_service.search_photos(prompt, orientation=orientation)
+            if result:
+                print(f"    📷 [pipeline] Stock photo (Pexels): {prompt[:60]}...")
+                return {
+                    "entry":       entry,
+                    "full_tag":    full_tag,
+                    "stock_url":   result.get("url", ""),
+                    "image_bytes": None,
+                    "filename":    None,
+                    "usage":       {},
+                }
+            else:
+                print(f"    ⚠️  [pipeline] Pexels search failed, falling back to Gemini: {prompt[:50]}...")
+                # Fall through to Gemini generation
+
         is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
         print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {prompt[:60]}...")
         image_bytes, usage_meta = self._call_image_generation_llm(prompt)
@@ -4120,6 +4163,56 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             print(f"    ⚠️ Image prompt enhancement failed: {e}")
         return raw_prompt
 
+    def _process_stock_videos(self, html_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Scan HTML for <video data-video-query='...'> tags, search Pexels, inject URLs."""
+        if not self._pexels_service or not self._pexels_service.is_available:
+            return html_segments
+
+        orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
+        VIDEO_TAG_RE = re.compile(r'(<video[^>]+data-video-query=(["\'])(.*?)\2[^>]*>)', re.DOTALL)
+        replacements_count = 0
+
+        for entry in html_segments:
+            html = entry.get("html", "")
+            if "data-video-query" not in html:
+                continue
+
+            for match in VIDEO_TAG_RE.finditer(html):
+                full_tag = match.group(1)
+                query = match.group(3)
+
+                result = self._pexels_service.search_videos(query, orientation=orientation)
+                if not result:
+                    print(f"    ⚠️ No Pexels video for: {query[:50]}")
+                    continue
+
+                video_url = result.get("url", "")
+                if not video_url:
+                    continue
+                poster_url = result.get("image", "")
+
+                # Build enriched tag with src, poster, and playback attributes
+                new_tag = full_tag
+                if 'src=' not in new_tag:
+                    new_tag = new_tag.replace('>', f' src="{video_url}">', 1)
+                else:
+                    new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{video_url}"', new_tag)
+                if poster_url and 'poster=' not in new_tag:
+                    new_tag = new_tag.replace('>', f' poster="{poster_url}">', 1)
+                for attr in ['autoplay', 'muted', 'loop', 'playsinline']:
+                    if attr not in new_tag:
+                        new_tag = new_tag.replace('>', f' {attr}>', 1)
+
+                html = html.replace(full_tag, new_tag)
+                replacements_count += 1
+                print(f"    🎬 Stock video: {query[:40]}... → {video_url[:60]}...")
+
+            entry["html"] = html
+
+        if replacements_count > 0:
+            print(f"    📝 Applied {replacements_count} stock video replacement(s)")
+        return html_segments
+
     def _process_generated_images(self, html_segments: List[Dict[str, Any]], run_dir: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Scan generated HTML for <img data-img-prompt="..."> tags, generate images via Gemini,
@@ -4163,12 +4256,17 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     print(f"    ⚠️  Skipping image gen (SVG candidate): {prompt[:70]}...")
                     continue
                 is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
+                img_source = "generate"  # default for backwards compat
+                source_match = re.search(r'data-img-source=["\'](\w+)["\']', full_tag)
+                if source_match:
+                    img_source = source_match.group(1).lower()
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
                     "prompt": prompt,
                     "seg_idx": seg_idx,
                     "is_cutout": is_cutout,
+                    "img_source": img_source,
                     "timestamp": datetime.now().strftime("%f")  # basic uniqueness
                 })
 
@@ -4191,6 +4289,26 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             Raises _GeminiRateLimitError on 429 so the executor thread is freed
             immediately — the caller handles sleep + requeue in the main thread.
             """
+            img_source = task.get("img_source", "generate")
+            # Stock photo path: use Pexels CDN URL directly (no download/base64)
+            if img_source == "stock" and self._pexels_service and self._pexels_service.is_available:
+                orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
+                result = self._pexels_service.search_photos(task["prompt"], orientation=orientation)
+                if result:
+                    print(f"    📷 Stock photo (Pexels) for seg={task.get('seg_idx', '?')}: {task['prompt'][:60]}...")
+                    return {
+                        "entry": task.get("entry"),
+                        "entry_id": id(task.get("entry")),
+                        "full_tag": task.get("full_tag", ""),
+                        "stock_url": result.get("url", ""),
+                        "image_bytes": None,
+                        "filename": None,
+                        "usage": {},
+                    }
+                else:
+                    print(f"    ⚠️  Pexels search failed, falling back to Gemini: {task['prompt'][:50]}...")
+                    # Fall through to Gemini generation
+
             prompt     = task["prompt"]
             idx        = task["seg_idx"]
             is_cutout  = task.get("is_cutout", False)
@@ -4311,9 +4429,13 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
             for rep in replacements[entry_id]:
                 old_tag     = rep["full_tag"]
-                # Encode directly from the bytes already in memory
-                b64     = base64.b64encode(rep["image_bytes"]).decode("utf-8")
-                new_src = f"data:image/png;base64,{b64}"
+                # Stock photos use CDN URL directly; generated images use base64
+                if rep.get("stock_url"):
+                    new_src = rep["stock_url"]
+                else:
+                    # Encode directly from the bytes already in memory
+                    b64     = base64.b64encode(rep["image_bytes"]).decode("utf-8")
+                    new_src = f"data:image/png;base64,{b64}"
 
                 # Strategy 1: direct tag replacement
                 if old_tag in html:

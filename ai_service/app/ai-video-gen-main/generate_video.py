@@ -287,6 +287,14 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     color: rgba(255,255,255,0.9); line-height: 1.4; margin: 0; max-width: 800px;
                   }
 
+                  /* VIDEO_HERO: Full-screen stock video background */
+                  .video-hero { position: relative; width: 100%; height: 100%; overflow: hidden; }
+                  .video-hero > video, .video-hero > .stock-video {
+                      position: absolute; inset: 0; width: 100%; height: 100%;
+                      object-fit: cover; z-index: 0;
+                  }
+                  .stock-video { object-fit: cover; width: 100%; height: 100%; }
+
                   /* IMAGE_SPLIT */
                   .image-split-layout { display: grid; grid-template-columns: 1fr 1fr; width: 100%; height: 100%; overflow: hidden; }
                   .image-split-layout .split-image { position: relative; overflow: hidden; }
@@ -777,6 +785,14 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       font-family: 'Inter', sans-serif; font-size: 28px; color: rgba(255,255,255,0.9);
                       line-height: 1.4; margin: 0; max-width: 800px;
                     }
+                    /* VIDEO_HERO: Full-screen stock video background */
+                    .video-hero { position: relative; width: 100%; height: 100%; overflow: hidden; }
+                    .video-hero > video, .video-hero > .stock-video {
+                        position: absolute; inset: 0; width: 100%; height: 100%;
+                        object-fit: cover; z-index: 0;
+                    }
+                    .stock-video { object-fit: cover; width: 100%; height: 100%; }
+
                     .image-split-layout {
                       display: grid; grid-template-columns: 1fr 1fr;
                       width: 100%; height: 100%; overflow: hidden;

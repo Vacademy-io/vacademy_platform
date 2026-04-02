@@ -113,7 +113,10 @@ class Settings(BaseSettings):
 
     # Sarvam AI Configuration (for Indian-language STT/TTS)
     sarvam_api_key: str = ""
-    
+
+    # Pexels API Configuration (comma-separated keys for round-robin rotation)
+    pexels_api_keys: str = ""
+
     # Render Worker (dedicated Hetzner server for video rendering)
     render_server_url: str = os.getenv("RENDER_SERVER_URL", "")
     render_server_key: str = os.getenv("RENDER_SERVER_KEY", "")

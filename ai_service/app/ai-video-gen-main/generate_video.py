@@ -832,7 +832,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   // Fill the host container — let CSS classes like .full-screen-center handle centering
                   wrapper.style.width = '100%';
                   wrapper.style.height = '100%';
-                  wrapper.style.overflow = 'hidden';
+                  wrapper.style.overflow = 'visible'; // Allow Rough Notation SVGs to extend outside elements
 
                   // Inject ALL CSS into Shadow DOM (shadow DOM is style-isolated)
                   // Google Fonts must be a <link> (not @import in <style>) for shadow DOM
@@ -856,7 +856,30 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   root.appendChild(katexCss);
                   root.appendChild(prismCss);
 
-                  wrapper.innerHTML = e.html;
+                  // Pre-process HTML before injection (match client's processHtmlContent)
+                  let processedHtml = e.html;
+
+                  // 1. Ken Burns: inject kb-{motion} CSS class from data-ken-burns attribute
+                  processedHtml = processedHtml.replace(
+                    /(<img[^>]*)\\bdata-ken-burns=["']([\\w-]+)["']([^>]*>)/gi,
+                    (match, before, motion, after) => {
+                      const className = 'kb-' + motion;
+                      if (/class=["']/.test(before)) {
+                        return before.replace(/class=["']([^"']*)["']/, 'class="$1 ' + className + '"')
+                          + 'data-ken-burns="' + motion + '"' + after;
+                      }
+                      return before + ' class="' + className + '" data-ken-burns="' + motion + '"' + after;
+                    }
+                  );
+
+                  // 2. placeholder.png: replace with transparent 1x1 GIF
+                  if (processedHtml.includes('placeholder.png')) {
+                    const TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+                    processedHtml = processedHtml.replace(/src=['"]placeholder\\.png['"]/g, 'src="' + TRANSPARENT + '"');
+                    processedHtml = '<style>.generated-image{opacity:0!important}.image-hero{background:linear-gradient(160deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%)!important}</style>' + processedHtml;
+                  }
+
+                  wrapper.innerHTML = processedHtml;
                   root.appendChild(wrapper);
                   window.__activeSnippets.set(e.id, host);
 
@@ -957,18 +980,31 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       oldScript.parentNode.replaceChild(newScript, oldScript);
                   });
 
-                  // Force-show all registered Rough Notation annotations
-                  if (window.__registeredAnnotations && window.__registeredAnnotations.length > 0) {
-                    window.__registeredAnnotations.forEach(a => {
-                      try { if (a && !a.isShowing) a.show(); } catch(e) {}
+                  // Force-show all registered Rough Notation annotations after layout settles
+                  // Use double-rAF to ensure layout is computed before annotations measure positions
+                  requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                      if (window.__registeredAnnotations && window.__registeredAnnotations.length > 0) {
+                        window.__registeredAnnotations.forEach(a => {
+                          try {
+                            if (a && a.isShowing) {
+                              // Already showing but may have wrong position — hide and re-show
+                              a.hide();
+                              a.show();
+                            } else if (a && !a.isShowing) {
+                              a.show();
+                            }
+                          } catch(e) {}
+                        });
+                      }
                     });
-                  }
+                  });
 
                   // Trigger Mermaid (Robust)
                   const promises = [];
                   if (window.mermaid) {
                       if (!window.mermaidInitialized) {
-                          window.mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+                          window.mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
                           window.mermaidInitialized = true;
                       }
                       const nodes = wrapper.querySelectorAll('.mermaid, pre > code.language-mermaid, div.mermaid');
@@ -1889,13 +1925,15 @@ def render_video_from_json(
             # Update DOM for overlays
             page.evaluate("async (entries) => await window.__updateSnippets(entries)", active)
 
-            # Wait for images/fonts to load when active segments change
+            # Wait for images/fonts/annotations to load when active segments change
             _cur_active_ids = {e["id"] for e in active}
             if _cur_active_ids != _prev_active_ids:
                 try:
                     page.wait_for_load_state("networkidle", timeout=5000)
                 except Exception:
                     pass  # timeout is fine — best effort
+                # Wait for Rough Notation annotations to position after layout
+                page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
                 _prev_active_ids = _cur_active_ids
 
             # --- Calculate Camera Drift ---

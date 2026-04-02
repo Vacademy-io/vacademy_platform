@@ -68,6 +68,8 @@ interface CurrentGeneration {
 
 /** Persisted across page navigations so polling can resume after SSE disconnect */
 const PENDING_GENERATION_KEY = 'video-console-pending-gen';
+/** Persisted so VideoResult can restore render progress after reload */
+const COMPLETE_GENERATION_KEY = 'video-console-complete-gen';
 
 /** Content types that produce no audio — html_url alone is sufficient for "complete" */
 const NO_AUDIO_TYPES = new Set<ContentType>(['SLIDES']);
@@ -324,16 +326,40 @@ function VideoConsole() {
         if (consoleState === 'generating') return;
 
         const raw = localStorage.getItem(PENDING_GENERATION_KEY);
-        if (!raw) return;
+        if (raw) {
+            try {
+                const pending: PendingGeneration = JSON.parse(raw);
+                startPollingForVideo(pending, activeApiKey);
+            } catch {
+                localStorage.removeItem(PENDING_GENERATION_KEY);
+            }
+            return;
+        }
 
-        try {
-            const pending: PendingGeneration = JSON.parse(raw);
-            startPollingForVideo(pending, activeApiKey);
-        } catch {
-            localStorage.removeItem(PENDING_GENERATION_KEY);
+        // Restore completed generation (so VideoResult mounts and can resume render progress)
+        const completeRaw = localStorage.getItem(COMPLETE_GENERATION_KEY);
+        if (completeRaw && consoleState === 'idle' && !currentGeneration) {
+            try {
+                const saved = JSON.parse(completeRaw) as CurrentGeneration;
+                if (saved.videoId && saved.htmlUrl) {
+                    setCurrentGeneration(saved);
+                    setConsoleState('complete');
+                }
+            } catch {
+                localStorage.removeItem(COMPLETE_GENERATION_KEY);
+            }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeApiKey]); // intentionally run only when key first becomes available
+
+    // Persist complete state so VideoResult can restore render progress after reload
+    useEffect(() => {
+        if (consoleState === 'complete' && currentGeneration?.htmlUrl) {
+            localStorage.setItem(COMPLETE_GENERATION_KEY, JSON.stringify(currentGeneration));
+        } else if (consoleState === 'idle') {
+            localStorage.removeItem(COMPLETE_GENERATION_KEY);
+        }
+    }, [consoleState, currentGeneration]);
 
     const handleGenerate = useCallback(
         async (request: GenerateVideoRequest) => {

@@ -147,8 +147,8 @@ class VideoStatusResponse(BaseModel):
     current_stage: str
     status: str
     content_type: str = Field(default="VIDEO", description="Content type: VIDEO, QUIZ, STORYBOOK, etc.")
-    file_ids: Dict[str, str]
-    s3_urls: Dict[str, str]
+    file_ids: Dict[str, Optional[str]]
+    s3_urls: Dict[str, Optional[str]]
     prompt: Optional[str]
     language: str
     error_message: Optional[str]

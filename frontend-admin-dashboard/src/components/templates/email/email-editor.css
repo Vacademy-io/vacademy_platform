@@ -180,7 +180,7 @@
     background-color: #fff;
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling — Webkit (Chrome, Edge, Safari) */
 .app-container ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -199,6 +199,19 @@
 .app-container ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
 }
+
+/* Scrollbar styling — Firefox */
+.app-container * {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+/*
+ * Note: The email preview whitespace (left/right of content) is the actual
+ * email background-color area. It renders inside a Shadow DOM so external
+ * CSS cannot change it. The width is controlled by Page attributes → Width
+ * in the editor's Configuration panel (default 600px).
+ */
 
 /*
  * ==========================================================================

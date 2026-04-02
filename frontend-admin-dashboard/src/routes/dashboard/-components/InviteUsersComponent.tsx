@@ -14,7 +14,12 @@ import { useState, useEffect, lazy, Suspense } from 'react'; // Added useEffect
 import { Loader2 } from 'lucide-react';
 import { mapRoleToCustomName } from '@/utils/roleUtils';
 
-const LazyBatchSubjectForm = lazy(() => import('./BatchAndSubjectSelection'));
+const LazyBatchSubjectForm = lazy(() =>
+    import('./BatchAndSubjectSelection').catch(() => {
+        window.location.reload();
+        return import('./BatchAndSubjectSelection');
+    })
+);
 
 export const inviteUsersSchema = z.object({
     name: z.string().min(1, 'Full name is required'),
@@ -83,7 +88,8 @@ const InviteUsersComponent = ({ refetchData }: { refetchData: () => void }) => {
             if (!batch || batch.length === 0) {
                 return false;
             }
-            return true;
+            // Require at least one subject selected per batch
+            return batch.every((b) => b.subjectIds && b.subjectIds.length > 0);
         }
         return true;
     };

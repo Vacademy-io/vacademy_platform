@@ -900,8 +900,8 @@ async function createHtmlVideoSlideWithCode(params: CreateSlideParams): Promise<
         ? (slide.aiVideoData as any).videoLengthInMillis || 0
         : 0;
 
-    // Extract code content and language from slide content
-    let codeContent = '# Start writing your code here';
+    // Code editor starts blank — learner writes code themselves
+    let codeContent = '';
     let codeLanguage = 'python';
     let codeTheme = 'dark';
     let layout = 'split-right';
@@ -928,40 +928,24 @@ async function createHtmlVideoSlideWithCode(params: CreateSlideParams): Promise<
                 }
 
                 if (parsed.code) {
-                    codeContent = parsed.code.content || codeContent;
                     codeLanguage = parsed.code.language || 'python';
                     codeTheme = parsed.code.theme || 'dark';
                     layout = parsed.code.layout || 'split-right';
                 }
             } catch (e) {
-                // If content is not JSON, try to extract from text/HTML
+                // If content is not JSON, try to extract language hint from text/HTML
                 const textContent = slide.content.toString();
 
-                // Try to extract code block
                 const codeMatch = textContent.match(
-                    /```(?:python|javascript|typescript|java|html|css)?\s*\n?([\s\S]*?)\n?```/
+                    /```(python|javascript|typescript|java|html|css)/
                 );
-                if (codeMatch) {
-                    codeContent = codeMatch[1] || codeContent;
-                    if (codeMatch[0].includes('```python')) codeLanguage = 'python';
-                    else if (codeMatch[0].includes('```javascript')) codeLanguage = 'javascript';
-                } else {
-                    // Fallback: try to extract code from HTML pre/code tags
-                    const htmlCodeMatch = textContent.match(
-                        /<pre><code[^>]*>([\s\S]*?)<\/code><\/pre>/i
-                    );
-                    if (htmlCodeMatch && htmlCodeMatch[1]) {
-                        codeContent = htmlCodeMatch[1];
-                        const langMatch = textContent.match(/<code class="language-([a-z]+)"/i);
-                        if (langMatch && langMatch[1]) {
-                            codeLanguage = langMatch[1];
-                        }
-                    }
+                if (codeMatch && codeMatch[1]) {
+                    codeLanguage = codeMatch[1];
                 }
             }
         }
     } catch (error) {
-        console.warn('[Course Creation] Error extracting code content:', error);
+        console.warn('[Course Creation] Error extracting code metadata:', error);
     }
 
     // Final fallback: if videoId is still not found, use 'pending'
@@ -1325,12 +1309,13 @@ async function createVideoCodeSlide(params: CreateSlideParams): Promise<void> {
         params;
 
     let videoUrl = '';
-    let codeContent = '# Start writing your code here';
+    // Code editor starts blank — learner writes code themselves
+    let codeContent = '';
     let codeLanguage = 'python';
     let aiVideoData: any = null;
 
     try {
-        // Parse content if it is JSON
+        // Parse content to extract video URL and language (but not code content)
         if (slide.content) {
             try {
                 const parsed = JSON.parse(slide.content);
@@ -1354,7 +1339,6 @@ async function createVideoCodeSlide(params: CreateSlideParams): Promise<void> {
                     }
                 }
                 if (parsed.code) {
-                    codeContent = parsed.code.content || codeContent;
                     codeLanguage = parsed.code.language || 'python';
                 }
             } catch (e) {
@@ -1425,27 +1409,12 @@ async function createVideoCodeSlide(params: CreateSlideParams): Promise<void> {
                     }
                 }
 
-                // Try to extract code block
+                // Extract language hint only
                 const codeMatch = textContent.match(
-                    /```(?:python|javascript|typescript|java|html|css)?\s*\n?([\s\S]*?)\n?```/
+                    /```(python|javascript|typescript|java|html|css)/
                 );
-                if (codeMatch) {
-                    codeContent = codeMatch[1] || '';
-                    if (codeMatch[0].includes('```python')) codeLanguage = 'python';
-                    else if (codeMatch[0].includes('```javascript')) codeLanguage = 'javascript';
-                } else {
-                    // Fallback: try to extract code from HTML pre/code tags (created by SortableSlideItem)
-                    const htmlCodeMatch = textContent.match(
-                        /<pre><code[^>]*>([\s\S]*?)<\/code><\/pre>/i
-                    );
-                    if (htmlCodeMatch && htmlCodeMatch[1]) {
-                        codeContent = htmlCodeMatch[1];
-                        // Try to extract language class
-                        const langMatch = textContent.match(/<code class="language-([a-z]+)"/i);
-                        if (langMatch && langMatch[1]) {
-                            codeLanguage = langMatch[1];
-                        }
-                    }
+                if (codeMatch && codeMatch[1]) {
+                    codeLanguage = codeMatch[1];
                 }
             }
         }

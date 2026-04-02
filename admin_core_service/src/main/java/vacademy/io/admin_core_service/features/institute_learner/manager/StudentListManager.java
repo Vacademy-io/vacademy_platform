@@ -88,7 +88,8 @@ public class StudentListManager {
         // Handle user-selected invite filter (works for ALL users, not just faculty)
         applyUserInviteFilter(filter);
 
-        if (user == null || !hasFacultyAssignedPermission(user)) {
+        // Skip faculty filtering for root users and ADMIN role — they should see all students
+        if (user == null || user.isRootUser() || hasRole(user, "ADMIN") || !hasFacultyAssignedPermission(user)) {
             return;
         }
 
@@ -178,6 +179,17 @@ public class StudentListManager {
             filter.setServerEnrollInviteIds(userInviteIds);
             filter.setEnrollInvitePackageSessionIds(invitePsIds);
         }
+    }
+
+    private boolean hasRole(CustomUserDetails user, String... roles) {
+        return user.getAuthorities().stream()
+                .map(auth -> auth.getAuthority())
+                .anyMatch(authority -> {
+                    for (String role : roles) {
+                        if (role.equalsIgnoreCase(authority)) return true;
+                    }
+                    return false;
+                });
     }
 
     private boolean hasFacultyAssignedPermission(CustomUserDetails user) {

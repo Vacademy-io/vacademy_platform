@@ -135,6 +135,9 @@ public class UnifiedSendService implements SendChannelRouter {
                 } else {
                     headerParams.put(phone, Map.of("link", headerUrl));
                 }
+                // Inject into resolvedVars so WATI bulk path can read them
+                resolvedVars.put("_headerUrl", headerUrl);
+                if (hType != null) resolvedVars.put("_headerType", hType);
             }
 
             // Fix #2: Per-recipient button URL params from variables
@@ -147,6 +150,7 @@ public class UnifiedSendService implements SendChannelRouter {
             }
             if (btnUrl != null) {
                 buttonUrlParams.put(phone, btnUrl);
+                resolvedVars.put("_buttonUrl", btnUrl);
             }
         }
 
@@ -161,13 +165,21 @@ public class UnifiedSendService implements SendChannelRouter {
             String headerType = request.getOptions() != null ? request.getOptions().getHeaderType() : null;
             String langCode = request.getLanguageCode() != null ? request.getLanguageCode() : "en";
 
+            // Build buttonIndexParams: default to "0" for each phone that has a buttonUrl
+            Map<String, String> buttonIndexParams = new HashMap<>();
+            if (!buttonUrlParams.isEmpty()) {
+                for (String phone : buttonUrlParams.keySet()) {
+                    buttonIndexParams.put(phone, "0");
+                }
+            }
+
             List<Map<String, Boolean>> waResults = whatsAppService.sendWhatsappMessagesExtended(
                     request.getTemplateName(),
                     bodyParams,
                     headerParams.isEmpty() ? null : headerParams,
                     headerVideoParams.isEmpty() ? null : headerVideoParams,
                     buttonUrlParams.isEmpty() ? null : buttonUrlParams,
-                    null,
+                    buttonIndexParams.isEmpty() ? null : buttonIndexParams,
                     langCode,
                     headerType,
                     request.getInstituteId());

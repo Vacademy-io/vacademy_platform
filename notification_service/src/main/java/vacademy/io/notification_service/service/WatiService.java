@@ -79,7 +79,34 @@ public class WatiService {
             WatiReceiver receiver = new WatiReceiver();
             receiver.setWhatsappNumber(formattedPhone);
 
-            List<WatiCustomParam> customParams = params.entrySet().stream()
+            List<WatiCustomParam> customParams = new ArrayList<>();
+
+            // Convert special _prefixed variables to WATI media params
+            String headerUrl = params.get("_headerUrl");
+            String headerType = params.get("_headerType");
+            if (headerUrl != null) {
+                String watiParamName = switch (headerType != null ? headerType : "image") {
+                    case "video" -> "header_video_url";
+                    case "document" -> "header_document_url";
+                    default -> "header_image_url";
+                };
+                WatiCustomParam mediaParam = new WatiCustomParam();
+                mediaParam.setName(watiParamName);
+                mediaParam.setValue(headerUrl);
+                customParams.add(mediaParam);
+            }
+
+            String buttonUrl = params.get("_buttonUrl");
+            if (buttonUrl != null) {
+                WatiCustomParam btnParam = new WatiCustomParam();
+                btnParam.setName("button_url_suffix");
+                btnParam.setValue(buttonUrl);
+                customParams.add(btnParam);
+            }
+
+            // Add body params: filter out _ prefixed keys, sort numerically
+            List<WatiCustomParam> bodyCustomParams = params.entrySet().stream()
+                    .filter(e -> !e.getKey().startsWith("_"))
                     .sorted((e1, e2) -> {
                         try {
                             int k1 = Integer.parseInt(e1.getKey());
@@ -87,12 +114,12 @@ public class WatiService {
                                 int k2 = Integer.parseInt(e2.getKey());
                                 return Integer.compare(k1, k2);
                             } catch (NumberFormatException ex2) {
-                                return 1; // numeric after non-numeric
+                                return 1;
                             }
                         } catch (NumberFormatException ex1) {
                             try {
                                 Integer.parseInt(e2.getKey());
-                                return -1; // non-numeric before numeric
+                                return -1;
                             } catch (NumberFormatException ex2) {
                                 return e1.getKey().compareTo(e2.getKey());
                             }
@@ -105,6 +132,8 @@ public class WatiService {
                         return param;
                     })
                     .collect(Collectors.toList());
+            customParams.addAll(bodyCustomParams);
+
             receiver.setCustomParams(customParams);
             receivers.add(receiver);
         }

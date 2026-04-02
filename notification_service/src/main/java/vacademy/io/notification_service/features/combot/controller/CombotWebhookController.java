@@ -166,6 +166,16 @@ public class CombotWebhookController {
                     Map<?,?> msg0 = (Map<?,?>) ((List<?>) msgsObj).get(0);
                     messageId = (String) msg0.get(CombotWebhookKeys.MESSAGE_ID);
                 }
+                // Fallback: try "id" at response root (some Com.bot formats)
+                if (messageId == null && response.containsKey("id")) {
+                    messageId = String.valueOf(response.get("id"));
+                }
+            }
+
+            if (messageId == null && phone == null) {
+                log.warn("Com.bot simple status webhook has no messageId or phone. status={}, keys={}",
+                        status, payload.keySet());
+                return; // nothing to match — skip silently
             }
 
             webhookService.processCombotStatusWebhook(messageId, phone, status, payload);

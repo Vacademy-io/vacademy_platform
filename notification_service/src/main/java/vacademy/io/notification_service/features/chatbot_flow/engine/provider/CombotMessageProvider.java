@@ -250,6 +250,14 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("Authorization", "Bearer " + config.apiKey);
 
+        // Log the payload at INFO level for debugging delivery failures
+        try {
+            String payloadJson = objectMapper.writeValueAsString(payload);
+            log.info("Sending to Meta API: to={}, type={}, payload_size={}",
+                    payload.get("to"), payload.get("type"), payloadJson.length());
+            log.debug("Full Meta payload: {}", payloadJson);
+        } catch (Exception ignored) {}
+
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);

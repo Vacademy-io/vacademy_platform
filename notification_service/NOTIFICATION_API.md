@@ -227,12 +227,44 @@ For per-recipient dynamic button URLs (e.g., unique payment links):
 ```
 
 Special variable keys starting with `_` are used for per-recipient overrides:
-- `_buttonUrl` — dynamic URL button parameter (overrides `options.buttonUrlParams`)
-- `_headerUrl` — per-recipient header media URL (overrides `options.headerUrl`)
+
+| Key | Description | Works with |
+|---|---|---|
+| `_headerUrl` | Per-recipient header media URL (overrides `options.headerUrl`) | META, COMBOT, WATI |
+| `_headerType` | Header media type: `image`, `video`, `document` (auto-set from `options.headerType`) | META, COMBOT, WATI |
+| `_buttonUrl` | Dynamic URL button parameter (overrides `options.buttonUrlParams`) | META, COMBOT, WATI |
+
+These special keys are **not sent as body parameters** — they are extracted and routed to the correct provider-specific field:
+- **META/COMBOT**: `_headerUrl` → header component, `_buttonUrl` → button component
+- **WATI**: `_headerUrl` → `header_image_url`/`header_video_url`/`header_document_url` customParam, `_buttonUrl` → `button_url_suffix` customParam
 
 ---
 
-## 3. Batch Status Polling
+## 3. Provider-Specific Notes
+
+### Media Support by Provider
+
+| Feature | META (Direct) | COMBOT | WATI |
+|---|---|---|---|
+| Template with image header | Yes | Yes | Yes |
+| Template with video header | Yes | Yes | Yes |
+| Template with document header | Yes (with filename) | Yes (with filename) | Yes |
+| Dynamic URL buttons | Yes | Yes | Yes (via `button_url_suffix`) |
+| Per-recipient media URLs | Yes (`_headerUrl`) | Yes (`_headerUrl`) | Yes (`_headerUrl`) |
+| Named variable resolution | Yes (needs `body_variable_names`) | Yes (needs `body_variable_names`) | Yes (needs `body_variable_names`) |
+
+### WATI-Specific
+- WATI bulk API passes media as `customParams` (e.g., `header_image_url`). The unified send handles this automatically.
+- WATI template creation must be done in the WATI Dashboard (no API). Use "Sync Templates" to import.
+
+### Workflow (SEND_WHATSAPP node) Compatibility
+- Workflows can send `params` as `List<String>` (positional) OR `Map<String, Object>` (named keys auto-converted to positional)
+- Both formats are backward compatible
+- Media: use `headerImage`, `headerVideo`, `buttonUrlParam` fields in the workflow TRANSFORM node
+
+---
+
+## 4. Batch Status Polling
 
 ### `GET /v1/send/{batchId}/status`
 
@@ -256,7 +288,7 @@ List recent batches for an institute.
 
 ---
 
-## 4. Event-Driven Triggers
+## 5. Event-Driven Triggers
 
 ### `POST /internal/v1/events`
 
@@ -301,7 +333,7 @@ Fire a notification event. The caller pre-resolves which channels and templates 
 
 ---
 
-## 5. Template Management
+## 6. Template Management
 
 ### `GET /v1/templates/list?instituteId=X&channelType=WHATSAPP`
 
@@ -338,7 +370,7 @@ Get just the variable names for a template (used by other services for validatio
 
 ---
 
-## 6. Provider Config & Cache
+## 7. Provider Config & Cache
 
 ### `POST /v1/channel-mapping/evict-cache?instituteId=X`
 
@@ -346,7 +378,7 @@ Evict provider config cache after switching WhatsApp provider or updating creden
 
 ---
 
-## 7. Channel-Specific Examples
+## 8. Channel-Specific Examples
 
 ### WhatsApp Template with Image Header
 ```json
@@ -458,7 +490,7 @@ Response (async): `{"batchId": "uuid", "status": "PROCESSING", "total": 5000}`
 
 ---
 
-## 8. Frontend Integration
+## 9. Frontend Integration
 
 ### TypeScript Service
 
@@ -499,7 +531,7 @@ import { BatchProgress } from '@/components/unified-send/batch-progress';
 
 ---
 
-## 9. Migration Notes for Backend Services
+## 10. Migration Notes for Backend Services
 
 ### Adding Unified Send to a New Service
 

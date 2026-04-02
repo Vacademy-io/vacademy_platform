@@ -191,16 +191,35 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                     String languageCode = (String) messageData.get("languageCode");
                     String userId = (String) messageData.get("userId");
                     
-                    // BACKWARD COMPATIBLE: Accept both "templateVars" (Map) and "params" (List - COMBOT format)
+                    // BACKWARD COMPATIBLE: Accept both "templateVars" (Map) and "params" (List or Map - COMBOT format)
                     Map<String, String> templateVars = (Map<String, String>) messageData.get("templateVars");
                     if (templateVars == null) {
-                        // COMBOT format: params is a List<String> - convert to Map
                         Object paramsObj = messageData.get("params");
                         if (paramsObj instanceof List) {
+                            // COMBOT format: params is a List<String> - convert to positional Map
                             List<String> paramsList = (List<String>) paramsObj;
                             templateVars = new HashMap<>();
                             for (int i = 0; i < paramsList.size(); i++) {
-                                templateVars.put(String.valueOf(i + 1), paramsList.get(i));
+                                templateVars.put(String.valueOf(i + 1),
+                                        paramsList.get(i) != null ? paramsList.get(i) : "");
+                            }
+                        } else if (paramsObj instanceof Map) {
+                            // COMBOT format: params is a Map<String, String> (e.g., {parentName: "X", childrenName: "Y"})
+                            // Convert named keys to positional: sort by key name, assign 1,2,3...
+                            Map<String, Object> paramsMap = (Map<String, Object>) paramsObj;
+                            templateVars = new HashMap<>();
+                            int idx = 1;
+                            for (Map.Entry<String, Object> pEntry : paramsMap.entrySet()) {
+                                String key = pEntry.getKey();
+                                String val = pEntry.getValue() != null ? pEntry.getValue().toString() : "";
+                                // If key is already numeric (e.g., "1", "2"), use as-is
+                                try {
+                                    Integer.parseInt(key);
+                                    templateVars.put(key, val);
+                                } catch (NumberFormatException e) {
+                                    // Named key → assign positional
+                                    templateVars.put(String.valueOf(idx++), val);
+                                }
                             }
                         }
                     }
@@ -273,9 +292,9 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                             continue;
                         }
 
-                        // DETECT COMBOT FORMAT: If params was originally a List (converted to Map above),
+                        // DETECT COMBOT FORMAT: If params was originally a List or Map (converted above),
                         // skip DB template lookup - COMBOT workflows define template directly in config
-                        boolean isCombotFormat = messageData.get("params") instanceof List;
+                        boolean isCombotFormat = messageData.get("params") != null;
                         
                         Map<String, String> finalParamMap;
                         if (isCombotFormat) {

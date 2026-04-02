@@ -170,16 +170,19 @@ public class WhatsAppService {
                 templatePayload.put("templateName", templateName);
                 templatePayload.put("languageCode", languageCode != null ? languageCode : "en");
 
-                // Body params: sorted by numeric key → List<String>
+                // Body params: filter out special _prefixed keys, sort by numeric key → List<String>
                 if (params != null && !params.isEmpty()) {
                     List<String> bodyParamList = params.entrySet().stream()
+                            .filter(e -> !e.getKey().startsWith("_")) // skip _headerUrl, _buttonUrl etc.
                             .sorted(Comparator.comparingInt(e -> {
                                 try { return Integer.parseInt(e.getKey()); }
                                 catch (NumberFormatException ex) { return 999; }
                             }))
                             .map(Map.Entry::getValue)
                             .collect(Collectors.toList());
-                    templatePayload.put("bodyParams", bodyParamList);
+                    if (!bodyParamList.isEmpty()) {
+                        templatePayload.put("bodyParams", bodyParamList);
+                    }
                 }
 
                 // Header config

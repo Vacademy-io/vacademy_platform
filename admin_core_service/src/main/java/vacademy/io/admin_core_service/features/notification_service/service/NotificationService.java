@@ -168,9 +168,32 @@ public class NotificationService {
             for (Map<String, Map<String, String>> userDetail : request.getUserDetails()) {
                 for (Map.Entry<String, Map<String, String>> entry : userDetail.entrySet()) {
                     String phone = entry.getKey().replaceAll("[^0-9]", "");
+                    Map<String, String> vars = new java.util.HashMap<>(
+                            entry.getValue() != null ? entry.getValue() : Map.of());
+
+                    // Inject per-phone header URL (image)
+                    if (request.getHeaderParams() != null && request.getHeaderParams().containsKey(phone)) {
+                        Map<String, String> headerMap = request.getHeaderParams().get(phone);
+                        if (headerMap != null) {
+                            // headerParams format: phone -> {"1": "imageUrl"} — extract the URL
+                            String headerUrl = headerMap.values().stream().findFirst().orElse(null);
+                            if (headerUrl != null) vars.put("_headerUrl", headerUrl);
+                        }
+                    }
+
+                    // Inject per-phone header video URL
+                    if (request.getHeaderVideoParams() != null && request.getHeaderVideoParams().containsKey(phone)) {
+                        vars.put("_headerUrl", request.getHeaderVideoParams().get(phone));
+                    }
+
+                    // Inject per-phone button URL param
+                    if (request.getButtonUrlParams() != null && request.getButtonUrlParams().containsKey(phone)) {
+                        vars.put("_buttonUrl", request.getButtonUrlParams().get(phone));
+                    }
+
                     recipients.add(UnifiedSendRequest.Recipient.builder()
                             .phone(phone)
-                            .variables(entry.getValue())
+                            .variables(vars)
                             .build());
                 }
             }

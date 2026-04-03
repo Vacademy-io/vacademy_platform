@@ -129,6 +129,15 @@ class RenderWorker:
             frames_dir = work_dir / ".render_frames"
             frames_dir.mkdir(parents=True, exist_ok=True)
 
+            # Always render at native resolution (1920x1080 or 1080x1920).
+            # The HTML/CSS/SVG content was generated for this canvas size.
+            # User's requested resolution (720p/1080p) is applied as FFmpeg downscale.
+            output_width = width    # final video resolution (e.g. 1280x720 for 720p)
+            output_height = height
+            is_portrait = height > width
+            render_width = 1080 if is_portrait else 1920
+            render_height = 1920 if is_portrait else 1080
+
             # Build caption settings override if custom options provided
             _captions_settings_path = CAPTIONS_SETTINGS  # default baked-in file
             if any(v is not None for v in [caption_position, caption_text_color, caption_bg_color, caption_bg_opacity, caption_font_size]):
@@ -137,8 +146,8 @@ class RenderWorker:
                 except Exception:
                     base_settings = {}
                 if caption_font_size is not None:
-                    # Scale font size proportionally to render width
-                    scale = width / 1920.0
+                    # Scale font size proportionally to native render width (always 1920 or 1080)
+                    scale = render_width / 1920.0
                     base_settings["font_size"] = int(caption_font_size * scale)
                 if caption_text_color is not None:
                     base_settings["font_color"] = caption_text_color
@@ -157,9 +166,9 @@ class RenderWorker:
                     # Update box.y for position
                     box = base_settings.get("box", {})
                     if caption_position == "top":
-                        box["y"] = int(height * 0.03)
+                        box["y"] = int(render_height * 0.03)
                     else:
-                        box["y"] = int(height * 0.85)
+                        box["y"] = int(render_height * 0.85)
                     base_settings["box"] = box
                 override_path = work_dir / "captions_settings_override.json"
                 override_path.write_text(json.dumps(base_settings, indent=2))
@@ -178,7 +187,10 @@ class RenderWorker:
             tl_max_end = max((e.get("exitTime", 0) for e in tl_entries), default=0)
             total_duration = max(_audio_dur + audio_delay, tl_max_end)
             total_frames = int(total_duration * FPS) + 1
-            logger.info(f"Total frames: {total_frames}, splitting across {NUM_WORKERS} workers")
+            logger.info(
+                f"Render: {render_width}x{render_height} @ {FPS}fps → output {output_width}x{output_height}. "
+                f"Total frames: {total_frames}, splitting across {NUM_WORKERS} workers"
+            )
 
             # Build base command (shared across all workers)
             base_cmd = [
@@ -190,8 +202,8 @@ class RenderWorker:
                 "--frames-dir", str(frames_dir),
                 "--background", "#000000",
                 "--fps", str(FPS),
-                "--width", str(width),
-                "--height", str(height),
+                "--width", str(render_width),
+                "--height", str(render_height),
                 "--frames-only",
             ]
             if VIDEO_OPTIONS.exists():
@@ -291,13 +303,16 @@ class RenderWorker:
 
             # ── Assemble with FFmpeg ──
             logger.info("Assembling video with FFmpeg...")
+            # Frames are rendered at 2x device_scale_factor for quality.
+            # Downscale to target resolution in FFmpeg for correct output size.
             ffmpeg_cmd = [
                 "ffmpeg", "-y",
                 "-framerate", str(FPS),
                 "-i", str(frames_dir / "frame_%06d.png"),
                 "-i", str(audio_path),
-                "-filter_complex", f"[1:a]adelay={int(audio_delay * 1000)}|{int(audio_delay * 1000)}[delayed_audio]",
-                "-map", "0:v",
+                "-filter_complex",
+                f"[0:v]scale={output_width}:{output_height}:flags=lanczos[scaled];[1:a]adelay={int(audio_delay * 1000)}|{int(audio_delay * 1000)}[delayed_audio]",
+                "-map", "[scaled]",
                 "-map", "[delayed_audio]",
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",

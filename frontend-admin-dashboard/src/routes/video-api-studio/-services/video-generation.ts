@@ -385,6 +385,18 @@ export function generateVideo(
                     err.name = 'InsufficientCreditsError';
                     throw err;
                 }
+                if (response.status === 429) {
+                    let detail = 'Too many requests. Please wait a moment and try again.';
+                    try {
+                        const parsed = JSON.parse(errorText);
+                        detail = parsed.detail || detail;
+                    } catch {
+                        detail = errorText || detail;
+                    }
+                    const err = new Error(detail);
+                    err.name = 'RateLimitError';
+                    throw err;
+                }
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 

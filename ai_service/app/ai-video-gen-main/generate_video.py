@@ -1,4 +1,5 @@
 import base64
+import bisect
 import json
 import math
 import os
@@ -154,11 +155,9 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 <!-- GSAP -->
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>
-                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MorphSVGPlugin.min.js"></script>
+                <!-- MorphSVGPlugin is a GSAP premium plugin — not on public CDN. Provide stub. -->
                 <script>
-                    if (typeof window.MorphSVGPlugin === 'undefined') {
-                        window.MorphSVGPlugin = { version: '3.12.5', name: 'MorphSVGPlugin', default: {} };
-                    }
+                    window.MorphSVGPlugin = { version: '3.12.5', name: 'MorphSVGPlugin', default: {} };
                 </script>
 
                 <!-- Mermaid -->
@@ -373,7 +372,9 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
               </head>
               <body>
                 <!-- World Layer: Camera moves this. Contains Snippets & Character -->
-                <div id="world-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; transform-origin: center center; will-change: transform;"></div>
+                <div id="camera-wrapper" style="position:absolute; top:0; left:0; width:100%; height:100%; overflow:hidden;">
+                  <div id="world-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; transform-origin: center center; will-change: transform;"></div>
+                </div>
                 
                 <!-- UI Layer: Fixed HUD. Contains Captions & Branding -->
                 <div id="ui-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9999;"></div>
@@ -687,7 +688,10 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       if (window.RoughNotation && window.RoughNotation.annotate) {
                           const _origAnnotate = window.RoughNotation.annotate;
                           window.RoughNotation.annotate = function(el, opts) {
-                              const a = _origAnnotate(el, opts);
+                              // Force animation duration to 0 so show() completes instantly
+                              // (we render frame-by-frame, async animations won't finish before screenshot)
+                              const patchedOpts = Object.assign({}, opts, { animationDuration: 0 });
+                              const a = _origAnnotate(el, patchedOpts);
                               const _origShow = a.show.bind(a);
                               a.show = function() {
                                   // Record the GSAP time when show() is triggered
@@ -1067,7 +1071,8 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                             // Helper to resolve selectors in this shadow root
                             const resolve = (s) => {
                                 const el = (typeof s === 'string' ? scope.querySelector(s) : s);
-                                if (!el && typeof s === 'string') console.warn('Scoped resolve failed for:', s);
+                                // Don't warn — LLM-generated selectors may reference elements
+                                // that don't exist yet or are in a different shadow root
                                 return el;
                             };
                             const resolveAll = (s) => (typeof s === 'string' ? scope.querySelectorAll(s) : s);
@@ -1223,6 +1228,8 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 host.style.width = clampedW + 'px';
                 host.style.height = clampedH + 'px';
                 if (typeof e.z !== 'undefined') host.style.zIndex = String(e.z);
+                // Store timing for video sync
+                if (typeof e.inTime !== 'undefined') host.dataset.inTime = String(e.inTime);
               }
             };
 
@@ -1471,10 +1478,21 @@ def _load_alignment(path: Path) -> List[Dict[str, Any]]:
     return phonemes
 
 
-def _get_active_phoneme(phonemes: List[Dict[str, Any]], t: float) -> str:
-    for p in phonemes:
-        if p["start"] <= t < p["end"]:
-            return p["phone"]
+def _build_phoneme_index(phonemes: List[Dict[str, Any]]) -> List[float]:
+    """Pre-compute a sorted list of phoneme start times for binary search."""
+    return [p["start"] for p in phonemes]
+
+
+def _get_active_phoneme(phonemes: List[Dict[str, Any]], t: float,
+                        _start_times: Optional[List[float]] = None) -> str:
+    """O(log n) phoneme lookup using bisect on pre-sorted start times."""
+    if not phonemes:
+        return "closed"
+    starts = _start_times if _start_times is not None else [p["start"] for p in phonemes]
+    # Find the rightmost phoneme whose start <= t
+    idx = bisect.bisect_right(starts, t) - 1
+    if idx >= 0 and phonemes[idx]["start"] <= t < phonemes[idx]["end"]:
+        return phonemes[idx]["phone"]
     return "closed"
 
 
@@ -1618,7 +1636,7 @@ def _load_caption_settings(settings_path: Path) -> Dict[str, Any]:
     # Defaults now match client-side CaptionDisplay.tsx styling
     return {
         "font_family": data.get("font_family", "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"),
-        "font_size": data.get("font_size", 20),  # Client default: medium=20px (at 1920w)
+        "font_size": data.get("font_size", 48),  # Render default: 48px at 1920w (matches YouTube caption size)
         "font_color": data.get("font_color", "#FFFFFF"),
         "font_weight": data.get("font_weight", 400),  # Client uses normal weight
         "background_color": data.get("background_color", "rgba(0,0,0,0.75)"),  # Client default opacity 0.75
@@ -1789,6 +1807,7 @@ def render_video_from_json(
     frames_only: bool = False,
     start_frame: Optional[int] = None,
     end_frame: Optional[int] = None,
+    device_scale_factor: Optional[int] = None,
 ) -> Path:
     """
     Render a portrait video by placing timed HTML overlays (from JSON) on a 1080x1920 canvas
@@ -2050,6 +2069,8 @@ def render_video_from_json(
         alignment_phonemes = _load_alignment(alignment_p)
         if not alignment_phonemes:
             raise ValueError(f"Alignment JSON '{alignment_p}' did not provide any phonemes")
+        # Pre-build sorted start-time index for O(log n) phoneme lookups
+        _phoneme_start_times = _build_phoneme_index(alignment_phonemes)
 
     # Frames directory
     if frames_dir.exists():
@@ -2065,10 +2086,11 @@ def render_video_from_json(
                 "--disable-web-security",
             ],
         )
-        print("🎥 High DPI Rendering Enabled (Scale Factor: 2)")
+        _dpi_scale = device_scale_factor if device_scale_factor is not None else 2
+        print(f"🎥 Rendering with DPI Scale Factor: {_dpi_scale}")
         context = browser.new_context(
             viewport={"width": width, "height": height},
-            device_scale_factor=2,
+            device_scale_factor=_dpi_scale,
         )
         page = context.new_page()
         
@@ -2118,6 +2140,29 @@ def render_video_from_json(
                     page.wait_for_load_state("networkidle", timeout=5000)
                 except Exception:
                     pass  # timeout is fine — best effort
+                # Wait for stock videos to load metadata so we can seek them
+                page.evaluate("""() => {
+                    const videos = [];
+                    document.querySelectorAll('[id^="snippet-"], [id^="segment-"]').forEach(host => {
+                        const root = host.shadowRoot;
+                        if (!root) return;
+                        root.querySelectorAll('video').forEach(v => {
+                            if (v.readyState < 1) {
+                                videos.push(new Promise(resolve => {
+                                    v.addEventListener('loadedmetadata', resolve, { once: true });
+                                    v.addEventListener('error', resolve, { once: true });
+                                    // Force load
+                                    v.load();
+                                    // Timeout fallback
+                                    setTimeout(resolve, 5000);
+                                }));
+                            }
+                            // Pause all videos — we control time via currentTime
+                            v.pause();
+                        });
+                    });
+                    return Promise.all(videos);
+                }""")
                 # Wait for Rough Notation annotations to position after layout
                 page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
                 _prev_active_ids = _cur_active_ids
@@ -2197,7 +2242,7 @@ def render_video_from_json(
             # ------------------------------
 
             if show_character:
-                phone_code = _normalize_phone_code(_get_active_phoneme(alignment_phonemes, t))
+                phone_code = _normalize_phone_code(_get_active_phoneme(alignment_phonemes, t, _phoneme_start_times))
                 mouth_file = (
                     phoneme_map_lookup.get(phone_code)
                     or phoneme_map_lookup.get("sil")
@@ -2279,6 +2324,40 @@ def render_video_from_json(
             # Sync GSAP animation to exact time t
             page.evaluate(f"gsap.globalTimeline.totalTime({t}); void 0;")
 
+            # Sync stock <video> elements to correct time within their shot.
+            # Videos are inside shadow DOMs with autoplay+muted+loop.
+            # We pause them and seek to (t - snippet_inTime), then wait for
+            # the seeked event so the correct frame is rendered before screenshot.
+            page.evaluate(f"""async () => {{
+                const seekPromises = [];
+                document.querySelectorAll('[id^="snippet-"], [id^="segment-"]').forEach(host => {{
+                    const root = host.shadowRoot;
+                    if (!root) return;
+                    root.querySelectorAll('video').forEach(v => {{
+                        try {{
+                            v.pause();
+                            const inTime = parseFloat(host.dataset.inTime || '0');
+                            const relTime = {t} - inTime;
+                            let targetTime = 0;
+                            if (v.duration && v.duration > 0 && relTime >= 0) {{
+                                targetTime = relTime % v.duration;
+                            }} else if (relTime >= 0) {{
+                                targetTime = relTime;
+                            }}
+                            if (Math.abs(v.currentTime - targetTime) > 0.05) {{
+                                const p = new Promise(resolve => {{
+                                    v.addEventListener('seeked', resolve, {{ once: true }});
+                                    setTimeout(resolve, 500);
+                                }});
+                                v.currentTime = targetTime;
+                                seekPromises.push(p);
+                            }}
+                        }} catch(e) {{}}
+                    }});
+                }});
+                if (seekPromises.length > 0) await Promise.all(seekPromises);
+            }}""")
+
             # Time-aware Rough Notation: only show annotations whose show()
             # was triggered at or before current time t. This prevents annotations
             # from appearing before their intended GSAP timeline position.
@@ -2333,10 +2412,18 @@ def render_video_from_json(
                 }});
             }}""")
 
-            # Capture frame
+            # Wait for annotation SVGs + video frames to paint before capturing
+            page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+
+            # Capture frame — clip to exact viewport to prevent camera/overflow bleeding
             frame_path = frames_dir / f"frame_{frame_index:06d}.png"
             try:
-                page.screenshot(path=str(frame_path), type="png", timeout=5000)
+                page.screenshot(
+                    path=str(frame_path),
+                    type="png",
+                    timeout=5000,
+                    clip={"x": 0, "y": 0, "width": width, "height": height},
+                )
             except Exception as e:
                 print(f"❌ Screenshot failed at frame {frame_index}: {e}")
                 # Try to proceed or abort? Aborting is safer to avoid long hangs.
@@ -2451,6 +2538,7 @@ def _parse_args(argv: List[str]):
     parser.add_argument("--frames-only", action="store_true", help="Only render frames (skip video assembly). Used for parallel rendering.")
     parser.add_argument("--start-frame", type=int, default=None, help="First frame index to render (inclusive). Used with --frames-only for parallel.")
     parser.add_argument("--end-frame", type=int, default=None, help="Last frame index to render (exclusive). Used with --frames-only for parallel.")
+    parser.add_argument("--dpi-scale", type=int, default=None, help="Device scale factor for rendering (default: 2 for retina). Use 1 for faster renders at lower quality.")
     return parser.parse_args(argv[1:])
 
 
@@ -2481,6 +2569,7 @@ if __name__ == "__main__":
         frames_only=args.frames_only,
         start_frame=args.start_frame,
         end_frame=args.end_frame,
+        device_scale_factor=args.dpi_scale,
     )
     print(f"Video written to: {result_path}")
 

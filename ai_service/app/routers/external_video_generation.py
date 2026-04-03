@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List
 from uuid import uuid4
@@ -53,7 +54,9 @@ _RESOLUTION_MAP = {
     ("1080p", "portrait"): (1080, 1920),
 }
 
-_CAPTION_SIZE_PX = {"S": 16, "M": 20, "L": 28}
+# Caption sizes for 1920px render canvas (NOT browser display sizes).
+# These are ~2.5x the client-side values to look correct in rendered video.
+_CAPTION_SIZE_PX = {"S": 36, "M": 48, "L": 64}
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +69,55 @@ router = APIRouter(prefix="/external/video/v1", tags=["external-ai-video"])
 _generation_tasks: Dict[str, asyncio.Task] = {}
 # Maps video_id -> asyncio.Queue (SSE event stream for the active connection)
 _generation_queues: Dict[str, asyncio.Queue] = {}
+
+# ---------------------------------------------------------------------------
+# Per-institute concurrency & rate limiting
+# ---------------------------------------------------------------------------
+MAX_CONCURRENT_PER_INSTITUTE = 3  # Max simultaneous generation tasks per institute
+RATE_LIMIT_WINDOW_SECONDS = 60   # Rolling window for rate limiting
+MAX_REQUESTS_PER_WINDOW = 10     # Max /generate requests per institute per window
+
+# Maps institute_id -> set of active video_ids (for concurrency tracking)
+_institute_active_tasks: Dict[str, set] = defaultdict(set)
+# Maps institute_id -> list of request timestamps (for rate limiting)
+_institute_request_times: Dict[str, List[float]] = defaultdict(list)
+
+
+def _check_concurrency_limit(institute_id: str) -> None:
+    """Raise 429 if the institute has too many concurrent generation tasks."""
+    # Clean up completed tasks
+    active = _institute_active_tasks.get(institute_id, set())
+    still_running = {vid for vid in active if vid in _generation_tasks and not _generation_tasks[vid].done()}
+    _institute_active_tasks[institute_id] = still_running
+
+    if len(still_running) >= MAX_CONCURRENT_PER_INSTITUTE:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Concurrency limit reached: {MAX_CONCURRENT_PER_INSTITUTE} "
+                   f"video generations already running for this institute. "
+                   f"Wait for a current generation to finish before starting a new one.",
+        )
+
+
+def _check_rate_limit(institute_id: str) -> None:
+    """Raise 429 if the institute exceeds the request rate limit."""
+    import time
+    now = time.monotonic()
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+
+    # Prune old timestamps
+    times = _institute_request_times[institute_id]
+    _institute_request_times[institute_id] = [t for t in times if t > cutoff]
+    times = _institute_request_times[institute_id]
+
+    if len(times) >= MAX_REQUESTS_PER_WINDOW:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded: max {MAX_REQUESTS_PER_WINDOW} requests "
+                   f"per {RATE_LIMIT_WINDOW_SECONDS}s. Try again shortly.",
+        )
+
+    times.append(now)
 
 
 def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationService:
@@ -96,6 +148,10 @@ async def generate_video_external(
     connection is closed (browser tab closed / page refresh). The frontend can
     re-connect by polling ``/status/{video_id}`` or ``/urls/{video_id}``.
     """
+    # Enforce per-institute rate limit and concurrency cap
+    _check_rate_limit(institute_id)
+    _check_concurrency_limit(institute_id)
+
     video_id = payload.video_id or str(uuid4())
 
     # Build a per-request event queue that the SSE generator will drain.
@@ -140,11 +196,11 @@ async def generate_video_external(
                         content_type=p.content_type,
                         db_session=bg_session,
                         model=p.model or "",  # Empty = let service pick based on quality_tier
-                        quality_tier=getattr(p, "quality_tier", "ultra"),
+                        quality_tier=p.quality_tier,
                         institute_id=inst_id,
                         user_id=None,
                         reference_files=[rf.model_dump() for rf in p.reference_files] if p.reference_files else None,
-                        orientation=getattr(p, "orientation", "landscape"),
+                        orientation=p.orientation,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -166,12 +222,15 @@ async def generate_video_external(
                 await q.put(None)
                 _generation_tasks.pop(vid, None)
                 _generation_queues.pop(vid, None)
+                # Remove from institute concurrency tracker
+                _institute_active_tasks.get(inst_id, set()).discard(vid)
                 logger.info(f"[BG-Gen] Background task finished for {vid}")
 
         task = asyncio.create_task(
             _run_generation(queue, video_id, payload, target_stage, institute_id)
         )
         _generation_tasks[video_id] = task
+        _institute_active_tasks[institute_id].add(video_id)
         logger.info(f"[BG-Gen] Started background task for {video_id}")
 
     # ------------------------------------------------------------------
@@ -453,10 +512,10 @@ async def request_video_render(
         _render_width = 1080 if _orientation == "portrait" else 1920
         _render_height = 1920 if _orientation == "portrait" else 1080
 
-    # Build optional render params
-    _fps = (body.fps if body and body.fps and body.fps in (15, 20, 25) else None)
-    _show_captions = body.show_captions if body and body.show_captions is not None else True
-    _caption_position = (body.caption_position if body and body.caption_position in ("top", "bottom") else None)
+    # Build optional render params — explicit None checks so `False` / `0` values are respected
+    _fps = (body.fps if body is not None and body.fps is not None and body.fps in (15, 20, 25) else None)
+    _show_captions = body.show_captions if (body is not None and body.show_captions is not None) else True
+    _caption_position = (body.caption_position if body is not None and body.caption_position in ("top", "bottom") else None)
     _caption_text_color = (body.caption_text_color if body and body.caption_text_color else None)
     _caption_bg_color = (body.caption_bg_color if body and body.caption_bg_color else None)
     _caption_bg_opacity = (body.caption_bg_opacity if body and body.caption_bg_opacity is not None else None)

@@ -603,10 +603,16 @@ class VideoGenerationService:
             # Calculate percentage for start of this stage
             percentage = 5 + int((stage_idx - start_stage_idx) * percentage_per_stage)
             
+            # Descriptive message: for HTML stage with Director enabled, show "Planning shots..."
+            if stage_pipeline_name == "html" and quality_tier in ("premium", "ultra"):
+                _stage_message = "Planning shots & creating visuals..."
+            else:
+                _stage_message = f"Processing stage: {stage_pipeline_name.upper()}"
+
             yield {
                 "type": "progress",
                 "stage": stage_name,
-                "message": f"Processing stage: {stage_pipeline_name.upper()}",
+                "message": _stage_message,
                 "percentage": percentage,
                 "video_id": video_id
             }

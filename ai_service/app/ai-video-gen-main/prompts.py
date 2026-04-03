@@ -113,6 +113,112 @@ TOPIC_SHOT_PROFILES = {
             "- Comparison layouts for grammar rules (correct vs incorrect)"
         ),
     },
+    "biology": {
+        "description": "Biology / Life Sciences / Anatomy / Ecology",
+        "preferred_shots": ["IMAGE_SPLIT", "ANIMATED_ASSET", "ANNOTATION_MAP", "PROCESS_STEPS"],
+        "image_ratio": 0.45,
+        "guidance": (
+            "This is a BIOLOGY topic. Prioritize:\n"
+            "- ANNOTATION_MAP for labeled anatomy (organs, cells, organisms)\n"
+            "- ANIMATED_ASSET for floating cells, molecules, organisms with GSAP animation\n"
+            "- IMAGE_SPLIT for microscope imagery, specimens, lab photos alongside explanation\n"
+            "- PROCESS_STEPS for biological processes (cell division, digestion, photosynthesis)\n"
+            "- Vivus.js to progressively draw biological diagrams\n"
+            "- Mermaid for classification trees and food chains"
+        ),
+    },
+    "chemistry": {
+        "description": "Chemistry / Chemical Reactions / Molecular Science",
+        "preferred_shots": ["ANIMATED_ASSET", "TEXT_DIAGRAM", "EQUATION_BUILD", "PROCESS_STEPS"],
+        "image_ratio": 0.25,
+        "guidance": (
+            "This is a CHEMISTRY topic. Prioritize:\n"
+            "- ANIMATED_ASSET for floating molecules, atoms, bonds with GSAP\n"
+            "- EQUATION_BUILD for chemical equations and formulas (KaTeX)\n"
+            "- PROCESS_STEPS for reaction mechanisms step-by-step\n"
+            "- TEXT_DIAGRAM for periodic table excerpts, electron configurations\n"
+            "- SVG animations for orbital diagrams and bonding visualizations\n"
+            "- Use Vivus.js to 'draw' molecular structures progressively"
+        ),
+    },
+    "geography": {
+        "description": "Geography / Maps / Earth Science / Climate",
+        "preferred_shots": ["VIDEO_HERO", "IMAGE_HERO", "ANNOTATION_MAP", "IMAGE_SPLIT"],
+        "image_ratio": 0.55,
+        "guidance": (
+            "This is a GEOGRAPHY topic. Prioritize:\n"
+            "- VIDEO_HERO for aerial landscapes, natural formations, weather systems\n"
+            "- ANNOTATION_MAP with SVG maps — highlight regions, draw borders, label features\n"
+            "- IMAGE_HERO for dramatic landscapes, satellite imagery, natural wonders\n"
+            "- IMAGE_SPLIT for comparing regions, showing map + explanation side-by-side\n"
+            "- Use pre-built SVG maps (world, us, in, cn, etc.) with GSAP region highlighting\n"
+            "- DATA_STORY for population, climate, or economic data charts"
+        ),
+    },
+    "saas_marketing": {
+        "description": "SaaS Marketing Reel / Product Promotion / Feature Highlight",
+        "preferred_shots": ["VIDEO_HERO", "IMAGE_HERO", "TEXT_DIAGRAM", "IMAGE_SPLIT"],
+        "image_ratio": 0.5,
+        "guidance": (
+            "This is a SaaS MARKETING REEL. Prioritize:\n"
+            "- VIDEO_HERO for attention-grabbing hooks (tech office, team, abstract motion)\n"
+            "- IMAGE_HERO for product screenshots, dashboard mockups, hero visuals\n"
+            "- TEXT_DIAGRAM for feature highlights with clean icons (Iconify mdi: set)\n"
+            "- Bold, punchy text — short sentences, large fonts, high contrast\n"
+            "- DATA_STORY for metrics (growth charts, user counts, performance gains)\n"
+            "- Keep pacing FAST — 3-5 second shots, snappy transitions\n"
+            "- Use splitReveal for impactful headlines\n"
+            "- CTA at the end with clear call-to-action text"
+        ),
+    },
+    "business_marketing": {
+        "description": "Business Marketing Reel / Brand Video / Corporate Promo",
+        "preferred_shots": ["VIDEO_HERO", "IMAGE_HERO", "TEXT_DIAGRAM", "DATA_STORY"],
+        "image_ratio": 0.55,
+        "guidance": (
+            "This is a BUSINESS MARKETING REEL. Prioritize:\n"
+            "- VIDEO_HERO for cinematic hooks (city skylines, offices, teams collaborating)\n"
+            "- IMAGE_HERO for brand visuals, team photos, product/service imagery\n"
+            "- TEXT_DIAGRAM for value propositions with icons and bullet points\n"
+            "- DATA_STORY for impressive stats, growth metrics, ROI numbers\n"
+            "- Keep text minimal and impactful — think billboard, not paragraph\n"
+            "- Use splitReveal for brand slogans and key messages\n"
+            "- Professional tone — avoid playful animations, use smooth transitions\n"
+            "- End with strong CTA and brand identity"
+        ),
+    },
+    "saas_demo": {
+        "description": "SaaS Product Demo / Walkthrough / Tutorial",
+        "preferred_shots": ["IMAGE_SPLIT", "TEXT_DIAGRAM", "PROCESS_STEPS", "IMAGE_HERO"],
+        "image_ratio": 0.4,
+        "guidance": (
+            "This is a SaaS PRODUCT DEMO. Prioritize:\n"
+            "- IMAGE_SPLIT for UI screenshots with explanation text alongside\n"
+            "- PROCESS_STEPS for workflow walkthroughs (Step 1: Sign up, Step 2: Configure...)\n"
+            "- TEXT_DIAGRAM for feature explanations with clean icons\n"
+            "- IMAGE_HERO for overview/hero shots of the product dashboard\n"
+            "- ANNOTATION_MAP for annotated UI screenshots (label buttons, menus, features)\n"
+            "- Pacing should be moderate — give users time to absorb each step\n"
+            "- Use numbered sequences and clear visual hierarchy\n"
+            "- Highlight key UI elements with Rough Notation annotations"
+        ),
+    },
+    "visual_storytelling": {
+        "description": "Visual Storytelling / Narrative / Documentary Style",
+        "preferred_shots": ["VIDEO_HERO", "IMAGE_HERO", "IMAGE_SPLIT", "ANIMATED_ASSET"],
+        "image_ratio": 0.65,
+        "guidance": (
+            "This is VISUAL STORYTELLING. Prioritize:\n"
+            "- VIDEO_HERO for immersive, atmospheric scene-setting (the primary shot type)\n"
+            "- IMAGE_HERO with Ken Burns for dramatic stills and emotional moments\n"
+            "- IMAGE_SPLIT for showing details alongside narrative text\n"
+            "- ANIMATED_ASSET for symbolic floating objects that reinforce the story\n"
+            "- Minimal text on screen — let visuals and narration carry the story\n"
+            "- Use slow Ken Burns (zoom-in, pan-left) for contemplative moments\n"
+            "- Use gradient-center overlays for emotional emphasis\n"
+            "- Pacing: slow and cinematic, 8-12 second shots, crossfade transitions"
+        ),
+    },
     "general": {
         "description": "General / Mixed / Default",
         "preferred_shots": ["IMAGE_HERO", "TEXT_DIAGRAM", "IMAGE_SPLIT", "ANIMATED_ASSET"],
@@ -201,7 +307,7 @@ JSON shape:
   "title": "...",
   "audience": "...",
   "target_grade": "...",
-  "subject_domain": "coding | history | science | math | language | general",
+  "subject_domain": "coding | history | science | biology | chemistry | geography | math | language | saas_marketing | business_marketing | saas_demo | visual_storytelling | general",
   "visual_style": "realistic cinematic photograph | flat vector illustration | watercolor painting | scientific diagram illustration | documentary photography",
   "script": "Full narration text...",
   "key_takeaway": "One sentence summary of the main concept",
@@ -236,18 +342,27 @@ JSON shape:
 
 **subject_domain classification**:
 - "coding": Programming, algorithms, data structures, web dev, databases
-- "history": Historical events, civilizations, geography, social studies
-- "science": Biology, chemistry, physics, earth science, astronomy
+- "history": Historical events, civilizations, social studies
+- "science": Physics, earth science, astronomy, general science
+- "biology": Biology, anatomy, ecology, life sciences, microbiology
+- "chemistry": Chemistry, chemical reactions, molecular science, periodic table
+- "geography": Geography, maps, climate, earth features, countries, regions
 - "math": Arithmetic, algebra, geometry, calculus, statistics
 - "language": Grammar, literature, vocabulary, writing, foreign languages
-- "general": Business, life skills, art, music, mixed topics
+- "saas_marketing": SaaS product promotion, feature highlights, marketing reels
+- "business_marketing": Business branding, corporate promos, marketing videos
+- "saas_demo": SaaS product demos, UI walkthroughs, tutorials
+- "visual_storytelling": Narrative videos, documentary style, emotional storytelling
+- "general": Life skills, art, music, mixed topics, anything that doesn't fit above
 
 **visual_style classification** (choose ONE for the entire video — all AI images will use this style):
-- "realistic cinematic photograph": For history, social studies, real-world science (cinematic, DSLR-quality look)
+- "realistic cinematic photograph": For history, geography, real-world science, visual storytelling (cinematic, DSLR-quality)
 - "documentary photography": For history/geography (journalistic, authentic feel)
 - "scientific diagram illustration": For biology, chemistry, anatomy (clean white-bg technical illustrations)
 - "watercolor painting": For language arts, literature, young learners (soft, artistic feel)
 - "flat vector illustration": For coding, math, general/business (clean, minimal, icon-like)
+- "modern tech product": For SaaS marketing/demos (sleek, gradient backgrounds, product mockups)
+- "corporate professional": For business marketing (polished, brand-safe, confident)
 
 **visual_type guide for beat_outline**:
 - Use IMAGE_HERO for hooks, real-world scene-setters, topic introductions
@@ -257,9 +372,14 @@ JSON shape:
 - Use ANIMATED_ASSET for floating illustrative objects (molecules, tools, animals) with GSAP animation
 - For **coding** topics: prefer TEXT_DIAGRAM and code blocks over images
 - For **history** topics: prefer IMAGE_HERO, IMAGE_SPLIT, and ANIMATED_ASSET over diagrams
-- For **science** topics: use ANIMATED_ASSET for molecules, cells, planets alongside SVG diagrams
+- For **biology** topics: prefer ANNOTATION_MAP for anatomy, ANIMATED_ASSET for cells/organisms
+- For **chemistry** topics: prefer ANIMATED_ASSET for molecules, EQUATION_BUILD for chemical formulas
+- For **geography** topics: prefer VIDEO_HERO for landscapes, ANNOTATION_MAP with SVG maps
+- For **science** topics: balanced mix of IMAGE_SPLIT, ANIMATED_ASSET, and SVG diagrams
 - For **math** topics: prefer TEXT_DIAGRAM with KaTeX equations, almost no images
-- For **science** topics: balanced mix of IMAGE_SPLIT and SVG diagrams
+- For **saas_marketing/business_marketing**: prefer VIDEO_HERO hooks, bold TEXT_DIAGRAM, DATA_STORY for metrics
+- For **saas_demo**: prefer IMAGE_SPLIT for UI screenshots, PROCESS_STEPS for workflows
+- For **visual_storytelling**: prefer VIDEO_HERO and IMAGE_HERO — minimal text, let visuals carry the narrative
 """
 
 # ---------------------------------------------------------------------------
@@ -1331,5 +1451,62 @@ Speed hierarchy (different layers at different speeds creates cinematic depth):
 **Language**: {language}
 
 {safe_area}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Per-Shot HTML Generation (used with Director stage in Phase 2+3)
+# ---------------------------------------------------------------------------
+
+PER_SHOT_USER_PROMPT_TEMPLATE = """SHOT #{shot_index} of {total_shots} | {shot_type} | {duration:.1f}s ({start_time:.2f}s → {end_time:.2f}s)
+
+**DIRECTOR'S INSTRUCTIONS**:
+- Shot type: {shot_type}
+- Visual: {visual_description}
+- Text elements: {text_elements}
+- Animation: {animation_strategy}
+- Complexity: {complexity_level}
+{image_prompt_line}
+{video_query_line}
+{director_notes}
+
+**NARRATION FOR THIS SHOT**:
+"{narration_excerpt}"
+
+**WORD TIMINGS (this shot only)**:
+{word_timings}
+
+**SYNC POINTS (from Director)**:
+{sync_points}
+
+**STYLE**:
+{style_context}
+
+**COLOR RULES**:
+Background: {background_type}
+Text: `color: {text_color}` | SVG stroke: `{svg_stroke}` | SVG fill: `{svg_fill}` | Annotation: `{annotation_color}`
+
+**CONTINUITY**:
+{continuity_context}
+
+**CRITICAL**:
+- EVERY element with `style="opacity:0"` MUST have a `<script>` block that animates it visible
+- Use the WORD TIMINGS above to sync animation delays: `delay_ms = (word_time - {start_time:.2f}) * 1000`
+- Show elements BEFORE they're mentioned (early by 0.3s) rather than after
+
+{safe_area}
+
+Return a SINGLE shot as JSON (no array, no wrapper):
+{{
+  "offsetSeconds": 0,
+  "durationSeconds": {duration:.1f},
+  "start_word": "{start_word}",
+  "htmlStartX": 0, "htmlStartY": 0,
+  "width": {width}, "height": {height},
+  "z": 10,
+  "html": "<style>@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');</style>..."
+}}
+
+The first character of your response must be `{{` and the last must be `}}`. No markdown, no commentary.
 """
 

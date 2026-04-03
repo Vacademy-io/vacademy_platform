@@ -262,6 +262,9 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "image_prompt_enhancement": True,
         "shot_diversity_enforcement": True,
         "segment_context": True,
+        "use_director": True,
+        "director_max_tokens": 8000,
+        "per_shot_max_tokens": 16000,
     },
     "ultra": {
         "script_temperature": 0.6,
@@ -273,6 +276,9 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "image_prompt_enhancement": True,
         "shot_diversity_enforcement": True,
         "segment_context": True,
+        "use_director": True,
+        "director_max_tokens": 12000,
+        "per_shot_max_tokens": 24000,
     },
 }
 
@@ -1123,6 +1129,11 @@ class VideoGenerationPipeline:
                     reviewed_text = str(reviewed_plan.get("script") or reviewed_plan.get("script_text") or "").strip()
                     if reviewed_text:
                         script_plan["script_text"] = reviewed_text
+                    # Repair narrations after review (reviewer may have edited the script)
+                    script_plan["plan"] = self._repair_beat_narrations(
+                        script_plan["plan"],
+                        script_plan.get("script_text", ""),
+                    )
         else:
             self._require_file(script_path, "script.txt (narration text)")
             # Try to load the plan if it exists, otherwise provide a dummy one
@@ -1345,11 +1356,36 @@ class VideoGenerationPipeline:
                                 self._process_image_task_simple, task_e, _images_dir_early)
                             _early_futures.append(fut)
 
-                html_results, html_usage = self._generate_html_segments(
-                    segments, style_guide, plan_data, run_dir,
-                    language=language,
-                    on_segment_done=_on_html_segment_done,
-                )
+                # ── Director Stage (premium/ultra) ─────────────────────────
+                # If enabled, run a Director LLM call to plan shots, then
+                # generate HTML per-shot with focused prompts. Falls back to
+                # segment-based flow on failure.
+                _director_plan = None
+                if self._tier_config.get("use_director") and content_type == "VIDEO":
+                    if _seg_audio_dur > 0:
+                        _director_plan = self._run_director(
+                            script_plan, words, style_guide, run_dir,
+                            language=language,
+                            audio_duration=_seg_audio_dur,
+                        )
+                    else:
+                        print("⚠️ Audio duration unknown — skipping Director stage")
+
+                if _director_plan and _director_plan.get("shots"):
+                    # Per-shot HTML generation using Director plan
+                    print(f"🎬 Using Director plan: {len(_director_plan['shots'])} shots")
+                    html_results, html_usage = self._generate_html_per_shot(
+                        _director_plan, style_guide, words, run_dir,
+                        language=language,
+                        on_segment_done=_on_html_segment_done,
+                    )
+                else:
+                    # Fallback: segment-based flow (free/standard, or Director failed)
+                    html_results, html_usage = self._generate_html_segments(
+                        segments, style_guide, plan_data, run_dir,
+                        language=language,
+                        on_segment_done=_on_html_segment_done,
+                    )
                 html_segments = html_results
                 accumulate_usage(html_usage)
 
@@ -1737,12 +1773,94 @@ class VideoGenerationPipeline:
 
         # Store the content type in the plan for later stages
         data["_content_type"] = content_type
-        
+
+        # Repair beat narration splits — LLMs frequently skip/duplicate sentences
+        if content_type == "VIDEO":
+            data = self._repair_beat_narrations(data, script_text)
+
         plan_path = run_dir / "script_plan.json"
         plan_path.write_text(json.dumps(data, indent=2))
         script_path = run_dir / "script.txt"
         script_path.write_text(script_text + "\n")
         return {"result": {"plan": data, "script_path": script_path, "script_text": script_text}, "usage": usage}
+
+    @staticmethod
+    def _repair_beat_narrations(data: Dict[str, Any], script_text: str) -> Dict[str, Any]:
+        """Programmatically repair beat narration fields so they exactly cover the full script.
+
+        LLMs frequently skip sentences, duplicate content, or mis-split narration across beats.
+        This method checks whether concatenating all beat narrations reproduces the script text.
+        If not, it re-splits the script across beats using sentence-boundary matching so that
+        downstream beat-based segmentation stays accurate.
+
+        The repair is lossless — every word of the original script is preserved.
+        """
+        beats = data.get("beat_outline", [])
+        if not beats or not script_text:
+            return data
+
+        # Normalize whitespace for comparison
+        def _norm(s: str) -> str:
+            return " ".join(s.split())
+
+        full_script_norm = _norm(script_text)
+        concat_narrations = _norm(" ".join(b.get("narration", "") for b in beats))
+
+        # If they already match (within whitespace), no repair needed
+        if concat_narrations == full_script_norm:
+            return data
+
+        print(f"   🔧 Beat narrations don't match script ({len(concat_narrations)} vs {len(full_script_norm)} chars) — repairing...")
+
+        # Split script into sentences (preserving punctuation)
+        import re as _re
+        sentences = _re.split(r'(?<=[.!?])\s+', script_text.strip())
+        sentences = [s.strip() for s in sentences if s.strip()]
+
+        if not sentences:
+            return data
+
+        num_beats = len(beats)
+
+        # Strategy: distribute sentences across beats proportionally.
+        # Each beat's existing narration length (or equal share) determines its share of sentences.
+        # This preserves the LLM's intended pacing as much as possible.
+        existing_lengths = []
+        for b in beats:
+            narr = b.get("narration", "").strip()
+            existing_lengths.append(len(narr) if narr else 1)  # minimum 1 to avoid division by zero
+
+        total_len = sum(existing_lengths)
+        # Calculate target sentence count per beat (at least 1 each)
+        target_counts = []
+        remaining_sentences = len(sentences)
+        for i, length in enumerate(existing_lengths):
+            if i == num_beats - 1:
+                # Last beat gets all remaining
+                target_counts.append(remaining_sentences)
+            else:
+                share = max(1, round(len(sentences) * length / total_len))
+                share = min(share, remaining_sentences - (num_beats - i - 1))  # leave at least 1 per remaining beat
+                target_counts.append(share)
+                remaining_sentences -= share
+
+        # Assign sentences to beats
+        idx = 0
+        for beat_idx, beat in enumerate(beats):
+            count = target_counts[beat_idx]
+            beat_sentences = sentences[idx:idx + count]
+            beat["narration"] = " ".join(beat_sentences)
+            idx += count
+
+        # Verify repair
+        repaired_concat = _norm(" ".join(b.get("narration", "") for b in beats))
+        if repaired_concat == full_script_norm:
+            print(f"   ✅ Beat narrations repaired successfully ({num_beats} beats, {len(sentences)} sentences)")
+        else:
+            print(f"   ⚠️ Beat narration repair approximate — sentence splitting may not perfectly match script whitespace")
+
+        data["beat_outline"] = beats
+        return data
 
     def _review_script(
         self,
@@ -2724,6 +2842,327 @@ class VideoGenerationPipeline:
         print(f"✅ Extracted {len(segments)} segments for {content_type}")
         return segments, usage
 
+    # ------------------------------------------------------------------
+    # Director Stage — produces shot-by-shot plan (premium/ultra tiers)
+    # ------------------------------------------------------------------
+
+    def _run_director(
+        self,
+        script_plan: Dict[str, Any],
+        words: List[Dict[str, Any]],
+        style_guide: Dict[str, Any],
+        run_dir: Path,
+        language: str = "English",
+        audio_duration: float = 0.0,
+    ) -> Optional[Dict[str, Any]]:
+        """Run the Director LLM call to produce a shot-by-shot plan.
+
+        Returns the parsed director plan dict, or None if the call fails
+        (the pipeline will fall back to the segment-based flow).
+        """
+        from director_prompts import DIRECTOR_SYSTEM_PROMPT, build_director_user_prompt
+
+        plan_data = script_plan.get("plan", script_plan)
+        script_text = str(plan_data.get("script") or script_plan.get("script_text", "")).strip()
+        beat_outline = plan_data.get("beat_outline", [])
+        subject_domain = getattr(self, '_current_subject_domain', 'general')
+        _w = getattr(self, 'video_width', 1920)
+        _h = getattr(self, 'video_height', 1080)
+
+        if not script_text or not beat_outline:
+            print("⚠️ Director: missing script or beat outline — skipping")
+            return None
+
+        user_prompt = build_director_user_prompt(
+            script_text=script_text,
+            beat_outline=beat_outline,
+            words=words,
+            subject_domain=subject_domain,
+            style_guide=style_guide,
+            width=_w,
+            height=_h,
+            language=language,
+            audio_duration=audio_duration,
+        )
+
+        print("🎬 Running Director stage (shot planning)...")
+        max_attempts = 3
+        last_error = None
+        for attempt in range(max_attempts):
+            try:
+                raw, usage = self.html_client.chat(
+                    messages=[
+                        {"role": "system", "content": DIRECTOR_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.5,
+                    max_tokens=self._tier_config.get("director_max_tokens", 8000),
+                )
+                director_plan = _extract_json_blob(raw)
+                break
+            except (ValueError, Exception) as e:
+                last_error = e
+                print(f"   ⚠️ Director attempt {attempt + 1}/{max_attempts} failed: {e}")
+                time.sleep(2)
+        else:
+            print(f"   ❌ Director failed after {max_attempts} attempts — falling back to segment flow")
+            return None
+
+        # Validate the director plan
+        shots = director_plan.get("shots", [])
+        if not shots:
+            print("   ⚠️ Director returned empty shots list — falling back")
+            return None
+
+        # Validate shot types
+        valid_types = {
+            "IMAGE_HERO", "VIDEO_HERO", "IMAGE_SPLIT", "TEXT_DIAGRAM",
+            "LOWER_THIRD", "ANNOTATION_MAP", "DATA_STORY", "PROCESS_STEPS",
+            "EQUATION_BUILD", "ANIMATED_ASSET",
+        }
+        for i, shot in enumerate(shots):
+            if shot.get("shot_type") not in valid_types:
+                print(f"   ⚠️ Director shot {i} has invalid type '{shot.get('shot_type')}' — defaulting to TEXT_DIAGRAM")
+                shot["shot_type"] = "TEXT_DIAGRAM"
+            # Ensure required fields have defaults
+            shot.setdefault("start_time", 0.0)
+            shot.setdefault("end_time", audio_duration)
+            shot.setdefault("narration_excerpt", "")
+            shot.setdefault("visual_description", "")
+            shot.setdefault("text_elements", [])
+            shot.setdefault("animation_strategy", "")
+            shot.setdefault("sync_points", [])
+            shot.setdefault("complexity_level", "moderate")
+            shot.setdefault("overlay", False)
+            shot.setdefault("start_word", "")
+
+        # Validate timeline coverage: shots should be sequential and cover full duration
+        non_overlay = [s for s in shots if not s.get("overlay")]
+        if non_overlay:
+            non_overlay.sort(key=lambda s: float(s.get("start_time", 0)))
+            # Fill gaps: if shot N end != shot N+1 start, extend shot N
+            for i in range(len(non_overlay) - 1):
+                gap = float(non_overlay[i + 1]["start_time"]) - float(non_overlay[i]["end_time"])
+                if gap > 0.5:
+                    non_overlay[i]["end_time"] = non_overlay[i + 1]["start_time"]
+
+        # Save for debugging
+        director_path = run_dir / "director_plan.json"
+        director_path.write_text(json.dumps(director_plan, indent=2, ensure_ascii=False))
+        print(f"   ✅ Director planned {len(shots)} shots ({len(non_overlay)} primary + {len(shots) - len(non_overlay)} overlays)")
+
+        return director_plan
+
+    # ------------------------------------------------------------------
+    # Per-Shot HTML generation — uses Director plan + focused prompts
+    # ------------------------------------------------------------------
+
+    def _generate_html_per_shot(
+        self,
+        director_plan: Dict[str, Any],
+        style_guide: Dict[str, Any],
+        words: List[Dict[str, Any]],
+        run_dir: Path,
+        language: str = "English",
+        on_segment_done: Optional[Any] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Generate HTML for each shot independently using the Director's plan.
+
+        Each shot gets a focused system prompt containing only the relevant
+        shot type card, plus the Director's visual instructions.
+
+        Returns (entries, usage) in the same format as _generate_html_segments.
+        """
+        from shot_type_cards import build_per_shot_system_prompt
+        from prompts import PER_SHOT_USER_PROMPT_TEMPLATE, get_html_generation_safe_area
+
+        _w = getattr(self, 'video_width', 1920)
+        _h = getattr(self, 'video_height', 1080)
+        _safe_area = get_html_generation_safe_area(_w, _h)
+
+        palette = style_guide.get("palette", {})
+        background_type = style_guide.get("background_type", "black")
+
+        shots = director_plan.get("shots", [])
+        total_shots = len(shots)
+        continuity_notes = director_plan.get("continuity_notes", "")
+
+        total_usage = {
+            "prompt_tokens": 0, "completion_tokens": 0,
+            "total_tokens": 0, "image_count": 0,
+        }
+
+        # Build a condensed style context string (reused across all shots)
+        style_context = (
+            f"Background: {background_type}\n"
+            f"Text: {palette.get('text', '#ffffff')}\n"
+            f"Primary: {palette.get('primary', '#3b82f6')}\n"
+            f"Accent: {palette.get('accent', '#38bdf8')}\n"
+            f"Fonts: Montserrat (headings), Inter (body), Fira Code (code)\n"
+        )
+
+        def _shot_task(shot_idx: int, shot: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+            """Generate HTML for a single shot."""
+            shot_type = shot.get("shot_type", "TEXT_DIAGRAM")
+            start_time = float(shot.get("start_time", 0))
+            end_time = float(shot.get("end_time", start_time + 8))
+            duration = max(1.0, end_time - start_time)
+
+            # Build per-shot system prompt (only the relevant shot type card)
+            system_prompt = build_per_shot_system_prompt(shot_type, _w, _h)
+
+            # Filter word timings to this shot's time range
+            shot_words = [w for w in words if start_time <= float(w.get("start", 0)) < end_time]
+            word_lines = ["Time(s)  | Word", "---------|--------"]
+            for w in shot_words[:30]:  # Limit to 30 words
+                word_lines.append(f"{float(w['start']):>7.2f}  | {w.get('word', '')}")
+            word_timings = "\n".join(word_lines)
+
+            # Sync points from Director
+            sync_lines = []
+            for sp in shot.get("sync_points", []):
+                sync_lines.append(f"- At {sp.get('time', 0):.2f}s: {sp.get('action', '')}")
+            sync_points_str = "\n".join(sync_lines) if sync_lines else "(none specified)"
+
+            # Continuity context
+            prev_desc = ""
+            next_desc = ""
+            if shot_idx > 0:
+                prev = shots[shot_idx - 1]
+                prev_desc = f"Previous: {prev.get('shot_type', '?')} — {prev.get('visual_description', '')[:80]}"
+            if shot_idx < total_shots - 1:
+                nxt = shots[shot_idx + 1]
+                next_desc = f"Next: {nxt.get('shot_type', '?')} — {nxt.get('visual_description', '')[:80]}"
+            continuity_context = f"{prev_desc}\n{next_desc}\n{continuity_notes}".strip()
+
+            # Optional fields
+            image_prompt_line = f"- Image prompt: {shot['image_prompt']}" if shot.get("image_prompt") else ""
+            video_query_line = f"- Video query: {shot['video_query']}" if shot.get("video_query") else ""
+            director_notes = f"- Notes: {shot['notes']}" if shot.get("notes") else ""
+
+            text_elements_str = ", ".join(shot.get("text_elements", [])) or "(Director will specify)"
+
+            user_prompt = PER_SHOT_USER_PROMPT_TEMPLATE.format(
+                shot_index=shot_idx + 1,
+                total_shots=total_shots,
+                shot_type=shot_type,
+                start_time=start_time,
+                end_time=end_time,
+                duration=duration,
+                visual_description=shot.get("visual_description", ""),
+                text_elements=text_elements_str,
+                animation_strategy=shot.get("animation_strategy", ""),
+                complexity_level=shot.get("complexity_level", "moderate"),
+                image_prompt_line=image_prompt_line,
+                video_query_line=video_query_line,
+                director_notes=director_notes,
+                narration_excerpt=shot.get("narration_excerpt", ""),
+                word_timings=word_timings,
+                sync_points=sync_points_str,
+                style_context=style_context,
+                background_type=background_type,
+                text_color=palette.get("text", "#ffffff"),
+                svg_stroke=palette.get("svg_stroke", "#ffffff"),
+                svg_fill=palette.get("svg_fill", "#3b82f6"),
+                annotation_color=palette.get("annotation_color", "#dc2626"),
+                continuity_context=continuity_context,
+                safe_area=_safe_area,
+                start_word=shot.get("start_word", ""),
+                width=_w,
+                height=_h,
+            )
+
+            # LLM call with retry
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    raw, usage = self.html_client.chat(
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        temperature=self._tier_config.get("html_temperature", 0.7),
+                        max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+                    )
+                    data = _extract_json_blob(raw)
+                    break
+                except (ValueError, Exception) as e:
+                    if attempt == max_attempts - 1:
+                        print(f"   ❌ Shot {shot_idx + 1} failed after {max_attempts} attempts: {e}")
+                        return [], {}
+                    time.sleep(1.5 * (1.6 ** attempt))
+
+            # Build the entry in the same format as _expand_shots
+            html = data.get("html", "")
+            if not html:
+                print(f"   ⚠️ Shot {shot_idx + 1} returned empty HTML")
+                return [], usage
+
+            html = self._sanitize_html_content(html)
+            html = self._ensure_fonts(html)
+
+            entry = {
+                "start": start_time,
+                "end": end_time,
+                "htmlStartX": 0,
+                "htmlStartY": 0,
+                "htmlEndX": _w,
+                "htmlEndY": _h,
+                "html": html,
+                "id": f"shot-{shot_idx}",
+                "index": shot_idx,
+            }
+            if "z" in data:
+                try:
+                    entry["z"] = int(data["z"])
+                except (TypeError, ValueError):
+                    pass
+
+            entries = [entry]
+
+            # Notify image pipeline if callback provided
+            if on_segment_done:
+                try:
+                    on_segment_done(entries)
+                except Exception:
+                    pass
+
+            return entries, usage
+
+        # Run all shots in parallel using ThreadPoolExecutor
+        all_entries: List[Dict[str, Any]] = []
+        max_workers = min(8, max(1, total_shots))
+
+        print(f"   🎬 Generating HTML for {total_shots} shots (parallel, max {max_workers} workers)...")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {
+                executor.submit(_shot_task, i, shot): i
+                for i, shot in enumerate(shots)
+            }
+            for future in concurrent.futures.as_completed(future_map):
+                shot_idx = future_map[future]
+                try:
+                    entries, usage = future.result()
+                    all_entries.extend(entries)
+                    if usage:
+                        total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                        total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                        total_usage["total_tokens"] += usage.get("total_tokens", 0)
+                except Exception as e:
+                    print(f"   ❌ Shot {shot_idx + 1} exception: {e}")
+
+        # Sort by start time
+        all_entries.sort(key=lambda x: float(x.get("start", 0)))
+
+        # Enforce no-overlap for non-overlay shots
+        for i in range(len(all_entries) - 1):
+            if all_entries[i]["end"] > all_entries[i + 1]["start"]:
+                all_entries[i]["end"] = all_entries[i + 1]["start"]
+
+        print(f"   ✅ Per-shot generation complete: {len(all_entries)} entries")
+        return all_entries, total_usage
+
     def _generate_html_segments(
         self,
         segments: List[Dict[str, Any]],
@@ -2904,17 +3343,27 @@ class VideoGenerationPipeline:
                 word_timings += "**Formula**: `delay_ms = (word_time - shot_start) * 1000`\n"
 
             # Select system prompt based on HTML quality
-            try:
-                _w = getattr(self, 'video_width', 1920)
-                _h = getattr(self, 'video_height', 1080)
-                _fewshot = _get_fewshot_examples(_w, _h)
-                if hasattr(self, '_current_html_quality') and self._current_html_quality == "classic":
+            _w = getattr(self, 'video_width', 1920)
+            _h = getattr(self, 'video_height', 1080)
+            if hasattr(self, '_current_html_quality') and self._current_html_quality == "classic":
+                try:
                     from prompts import HTML_GENERATION_SYSTEM_PROMPT_CLASSIC
                     system_prompt = HTML_GENERATION_SYSTEM_PROMPT_CLASSIC
-                else:
+                except ImportError:
+                    system_prompt = HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE
+            else:
+                # Use domain-filtered shot type cards instead of the monolithic prompt.
+                # This sends only the shot types relevant to the subject domain,
+                # reducing system prompt size by 38-67% depending on topic.
+                try:
+                    from shot_type_cards import build_filtered_system_prompt
+                    _subject = getattr(self, '_current_subject_domain', 'general')
+                    system_prompt = build_filtered_system_prompt(_subject, _w, _h)
+                except ImportError:
+                    # Fallback to monolithic prompt if shot_type_cards not available
                     from prompts import HTML_GENERATION_SYSTEM_PROMPT_ADVANCED
+                    _fewshot = _get_fewshot_examples(_w, _h)
                     _aspect = getattr(self, 'aspect_label', '16:9 landscape')
-                    # Inject dimension-aware few-shot examples and resolve dimension placeholders
                     system_prompt = (
                         HTML_GENERATION_SYSTEM_PROMPT_ADVANCED
                         .replace("{fewshot_examples}", _fewshot)
@@ -2922,9 +3371,6 @@ class VideoGenerationPipeline:
                         .replace("{canvas_height}", str(_h))
                         .replace("{aspect_label}", _aspect)
                     )
-            except ImportError:
-                # Fallback to default if import fails
-                system_prompt = HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE
             
             # Build topic-aware guidance based on subject domain
             subject_domain = getattr(self, '_current_subject_domain', 'general')

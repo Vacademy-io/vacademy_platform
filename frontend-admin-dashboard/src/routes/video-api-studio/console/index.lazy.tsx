@@ -575,6 +575,11 @@ function VideoConsole() {
                             description: 'Please add more credits to continue generating content.',
                             duration: 8000,
                         });
+                    } else if (error.name === 'RateLimitError') {
+                        toast.error(error.message || 'Rate limit exceeded', {
+                            description: 'Please wait a moment before starting another generation.',
+                            duration: 8000,
+                        });
                     } else {
                         toast.error(`Generation failed: ${error.message}`);
                     }

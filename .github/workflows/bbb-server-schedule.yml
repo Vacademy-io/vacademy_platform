@@ -2,8 +2,8 @@ name: BBB Server Schedule
 
 on:
   schedule:
-    - cron: '0 10 * * 1-6'   # Start — 3:30 PM IST, Mon-Sat
-    - cron: '30 17 * * 1-6'  # Stop  — 9:00 PM IST, Mon-Sat
+    - cron: '0 10 * * 1-6'   # Start — 3:30 PM IST (UTC+5:30), Mon-Sat
+    - cron: '30 15 * * 1-6'  # Stop  — 9:00 PM IST (UTC+5:30), Mon-Sat
   workflow_dispatch:
     inputs:
       action:
@@ -161,35 +161,14 @@ jobs:
           echo "server_ip=$SERVER_IP" >> "$GITHUB_OUTPUT"
           echo "Server created: ID=$SERVER_ID, IP=$SERVER_IP"
 
-      - name: Wait for server to boot
-        if: steps.check.outputs.skip != 'true' && steps.check.outputs.needs_poweron != 'true'
-        id: wait
-        run: |
-          SERVER_ID="${{ steps.create.outputs.server_id }}"
-          for i in $(seq 1 60); do
-            sleep 10
-            STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
-              "${{ env.HETZNER_API }}/servers/$SERVER_ID" | jq -r '.server.status')
-            echo "  ${i}0s — status: $STATUS"
-            if [ "$STATUS" = "running" ]; then
-              FINAL_IP=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
-                "${{ env.HETZNER_API }}/servers/$SERVER_ID" | jq -r '.server.public_net.ipv4.ip')
-              echo "server_ip=$FINAL_IP" >> "$GITHUB_OUTPUT"
-              echo "Server is running at $FINAL_IP"
-              exit 0
-            fi
-          done
-          echo "::error::Timeout waiting for server to boot (10 min)"
-          exit 1
-
       - name: Update Cloudflare DNS
         if: steps.check.outputs.skip != 'true'
         run: |
-          # Get IP from whichever path was taken
+          # Get IP from whichever path was taken (create IP is available before boot completes)
           if [ -n "${{ steps.poweron.outputs.server_ip }}" ]; then
             IP="${{ steps.poweron.outputs.server_ip }}"
           else
-            IP="${{ steps.wait.outputs.server_ip }}"
+            IP="${{ steps.create.outputs.server_ip }}"
           fi
 
           ZONE_ID="${{ secrets.BBB_CLOUDFLARE_ZONE_ID }}"
@@ -228,6 +207,24 @@ jobs:
             echo "$RESULT" | jq .
           fi
 
+      - name: Wait for server to boot
+        if: steps.check.outputs.skip != 'true' && steps.check.outputs.needs_poweron != 'true'
+        id: wait
+        run: |
+          SERVER_ID="${{ steps.create.outputs.server_id }}"
+          for i in $(seq 1 60); do
+            sleep 10
+            STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+              "${{ env.HETZNER_API }}/servers/$SERVER_ID" | jq -r '.server.status')
+            echo "  ${i}0s — status: $STATUS"
+            if [ "$STATUS" = "running" ]; then
+              echo "Server is running at ${{ steps.create.outputs.server_ip }}"
+              exit 0
+            fi
+          done
+          # Non-fatal: DNS is already updated, server will come up shortly
+          echo "::warning::Server boot timed out after 10 min — DNS is already updated, server will come up shortly."
+
       - name: Summary
         if: steps.check.outputs.skip != 'true'
         run: |
@@ -238,7 +235,7 @@ jobs:
           else
             echo "## BBB Server Started" >> "$GITHUB_STEP_SUMMARY"
             echo "- **Server ID:** ${{ steps.create.outputs.server_id }}" >> "$GITHUB_STEP_SUMMARY"
-            echo "- **IP:** ${{ steps.wait.outputs.server_ip }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **IP:** ${{ steps.create.outputs.server_ip }}" >> "$GITHUB_STEP_SUMMARY"
             echo "- **Snapshot used:** ${{ steps.snapshot.outputs.snapshot_id }}" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "- **DNS:** ${{ secrets.BBB_HOSTNAME }}" >> "$GITHUB_STEP_SUMMARY"
@@ -247,7 +244,7 @@ jobs:
     name: Stop BBB Server
     runs-on: ubuntu-latest
     if: >-
-      github.event.schedule == '30 17 * * 1-6' ||
+      github.event.schedule == '30 15 * * 1-6' ||
       (github.event_name == 'workflow_dispatch' && inputs.action == 'stop')
     steps:
       - name: Find server
@@ -372,9 +369,9 @@ jobs:
 
           echo "Snapshot ID: $IMAGE_ID, waiting for completion..."
 
-          # Wait for snapshot (max 10 min)
+          # Wait for snapshot via action polling (max 15 min)
           COMPLETED=false
-          for i in $(seq 1 60); do
+          for i in $(seq 1 90); do
             sleep 10
             STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
               "${{ env.HETZNER_API }}/actions/$ACTION_ID" | jq -r '.action.status')
@@ -389,8 +386,20 @@ jobs:
             fi
           done
 
+          # If action polling timed out, check image status directly
+          # (Hetzner action tracking can lag behind actual image availability)
           if [ "$COMPLETED" != "true" ]; then
-            echo "::error::Snapshot timed out after 10 minutes! Server NOT deleted."
+            echo "Action polling timed out — checking image status directly..."
+            SNAP_STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+              "${{ env.HETZNER_API }}/images/$IMAGE_ID" | jq -r '.image.status')
+            if [ "$SNAP_STATUS" = "available" ]; then
+              echo "Snapshot is available despite action timeout. Proceeding."
+              COMPLETED=true
+            fi
+          fi
+
+          if [ "$COMPLETED" != "true" ]; then
+            echo "::error::Snapshot not available after 15 minutes! Server NOT deleted."
             exit 1
           fi
 

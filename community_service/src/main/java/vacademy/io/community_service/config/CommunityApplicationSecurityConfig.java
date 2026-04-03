@@ -33,7 +33,9 @@ public class CommunityApplicationSecurityConfig {
             "/community-service/v3/api-docs/**", "/community-service/swagger-ui/**",
             "/community-service/webjars/swagger-ui/**", "/community-service/api-docs/**",
             // Diagnostics endpoints - open for health dashboard
-            "/community-service/diagnostics/**" };
+            "/community-service/diagnostics/**",
+            // BBB server health check & management
+            "/community-service/bbb/**" };
 
     @Autowired
     JwtAuthFilter jwtAuthFilter;

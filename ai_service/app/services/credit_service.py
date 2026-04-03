@@ -49,12 +49,13 @@ logger = logging.getLogger(__name__)
 # Constants
 # ============================================================================
 
-INITIAL_CREDITS = Decimal("1000")
-DEFAULT_LOW_BALANCE_THRESHOLD = Decimal("100")
+INITIAL_CREDITS = Decimal("100")
+DEFAULT_LOW_BALANCE_THRESHOLD = Decimal("10")
 
-# 50% markup: actual USD cost × 1500 = credits charged
-# e.g. $0.028 API cost → 42 credits → we charge $0.042 equivalent
-USD_TO_CREDIT_RATIO = Decimal("1500")
+# $1 = 100 credits with 50% markup over AI cost
+# actual USD cost × 150 = credits charged
+# e.g. $0.028 API cost → 4.2 credits → customer pays $0.042 equivalent
+USD_TO_CREDIT_RATIO = Decimal("150")
 
 # Default model tier multipliers (used as fallback)
 MODEL_TIER_MULTIPLIERS = {
@@ -77,18 +78,18 @@ MODEL_TIER_MAPPING = {
     "claude-3-opus": ModelTier.ULTRA,
 }
 
-# Default pricing (fallback if DB not configured)
+# Default pricing (fallback if DB not configured) — $1 = 100 credits scale
 DEFAULT_PRICING = {
-    "content": {"base_cost": Decimal("0.5"), "token_rate": Decimal("0.0001"), "min_charge": Decimal("0.5"), "unit": "tokens"},
-    "agent": {"base_cost": Decimal("0.5"), "token_rate": Decimal("0.0001"), "min_charge": Decimal("0.5"), "unit": "tokens"},
-    "copilot": {"base_cost": Decimal("0.5"), "token_rate": Decimal("0.0001"), "min_charge": Decimal("0.5"), "unit": "tokens"},
-    "analytics": {"base_cost": Decimal("0.5"), "token_rate": Decimal("0.0001"), "min_charge": Decimal("0.5"), "unit": "tokens"},
-    "outline": {"base_cost": Decimal("0.5"), "token_rate": Decimal("0.0001"), "min_charge": Decimal("0.5"), "unit": "tokens"},
-    "evaluation": {"base_cost": Decimal("1.0"), "token_rate": Decimal("0.00015"), "min_charge": Decimal("1.0"), "unit": "tokens"},
-    "embedding": {"base_cost": Decimal("0.1"), "token_rate": Decimal("0.00002"), "min_charge": Decimal("0.1"), "unit": "tokens"},
-    "image": {"base_cost": Decimal("3.0"), "token_rate": Decimal("0"), "min_charge": Decimal("3.0"), "unit": "none"},
-    "video": {"base_cost": Decimal("0.5"), "token_rate": Decimal("0.0001"), "min_charge": Decimal("0.5"), "unit": "tokens"},
-    "tts": {"base_cost": Decimal("0.2"), "token_rate": Decimal("0.0001"), "min_charge": Decimal("0.2"), "unit": "characters"},
+    "content": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    "agent": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    "copilot": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    "analytics": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    "outline": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    "evaluation": {"base_cost": Decimal("0.10"), "token_rate": Decimal("0.000015"), "min_charge": Decimal("0.10"), "unit": "tokens"},
+    "embedding": {"base_cost": Decimal("0.01"), "token_rate": Decimal("0.000002"), "min_charge": Decimal("0.01"), "unit": "tokens"},
+    "image": {"base_cost": Decimal("0.30"), "token_rate": Decimal("0"), "min_charge": Decimal("0.30"), "unit": "none"},
+    "video": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    "tts": {"base_cost": Decimal("0.02"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.02"), "unit": "characters"},
 }
 
 

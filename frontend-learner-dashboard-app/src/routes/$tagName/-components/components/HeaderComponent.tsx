@@ -4,7 +4,7 @@ import { HeaderProps } from "../../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { RouteMatcher } from "../../-services/route-matcher";
-import { CourseCatalogueData, Component as PageComponent } from "../../-types/course-catalogue-types";
+import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useState, useEffect } from "react";
 import { Search, ShoppingCart } from "lucide-react";
 import { useCartStore } from "../../-stores/cart-store";
@@ -315,31 +315,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
         }
       }
 
-      // Check if current page has buyRentSection component
-      if (catalogueData?.pages) {
-        const currentPathSegments = location.pathname.split('/').filter(Boolean);
-        const pageRoute = currentPathSegments.slice(1).join('/') || '';
-
-        // Check all pages to see if any have buyRentSection
-        for (const page of catalogueData.pages) {
-          const pageRouteLower = (page.route || '').toLowerCase();
-          const pageIdLower = (page.id || '').toLowerCase();
-
-          // Match by route or id
-          const isCurrentPage = pageRouteLower === pageRoute.toLowerCase() ||
-            pageIdLower === pageRoute.toLowerCase() ||
-            (pageRoute === '' && pageRouteLower === '');
-
-          if (isCurrentPage && page.components) {
-            const hasBuyRentSection = page.components.some(
-              (component: PageComponent) => component.type === 'buyRentSection' && (component.enabled === true || String(component.enabled) === "true")
-            );
-            if (hasBuyRentSection) {
-              return true;
-            }
-          }
-        }
-      }
+      // Remove the logic that hid search & cart on buyRentSection pages so that Cart is visible.
 
       return false;
     };
@@ -514,7 +490,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
               {isCourseCatalogeTypeEnabled && !isAuthenticated && (
                 <button
                   onClick={() => navigate({ to: '/login' })}
-                  className="md:hidden px-3 py-1.5 rounded-md text-xs font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
+                  className="md:hidden px-3 py-1.5 rounded-md text-xs font-medium text-white hover:opacity-90 transition-opacity duration-200"
+                  style={{ backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' }}
                 >
                   Login
                 </button>
@@ -548,10 +525,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           navigate({ to: link.route });
                         }
                       }}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
-                        ? 'text-white bg-primary-500 hover:bg-primary-400'
-                        : 'text-primary-500 border border-primary-500 hover:bg-primary-50'
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${index === 0
+                        ? 'text-white hover:opacity-90'
+                        : 'border hover:bg-opacity-10 opacity-90 hover:opacity-100'
                         }`}
+                      style={index === 0 ? {
+                        backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                      } : {
+                        color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6',
+                        borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                      }}
                     >
                       {link.label}
                     </button>
@@ -606,7 +589,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       setIsMobileMenuOpen(false);
                       navigate({ to: '/login' });
                     }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white hover:opacity-90 transition-opacity duration-200"
+                    style={{ backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' }}
                   >
                     <span>Login</span>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -788,10 +772,15 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               }
                               setIsMobileMenuOpen(false);
                             }}
-                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
-                              ? 'text-white bg-primary-500 hover:bg-primary-400'
-                              : 'text-primary-500 hover:bg-primary-50'
+                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-all duration-200 ${index === 0
+                              ? 'text-white hover:opacity-90'
+                              : 'hover:opacity-80'
                               }`}
+                            style={index === 0 ? {
+                                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                            } : {
+                                color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                            }}
                           >
                             {link.label}
                           </button>

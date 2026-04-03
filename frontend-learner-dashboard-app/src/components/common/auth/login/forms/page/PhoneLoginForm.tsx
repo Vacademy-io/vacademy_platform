@@ -627,9 +627,9 @@ export function PhoneLoginForm({
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.8 }}
-                className="text-center pt-3 flex flex-col space-y-2 mb-3"
+                className="text-center pt-3 flex flex-col space-y-2"
             >
-                <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm font-medium">
+                <div className="flex items-center justify-center gap-4 text-sm font-medium">
                     {(allowEmailOtpAuth ?? true) && onSwitchToEmail && (
                         <motion.button
                             type="button"

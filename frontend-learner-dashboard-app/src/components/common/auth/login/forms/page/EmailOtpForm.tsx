@@ -748,33 +748,31 @@ export function EmailLogin({
         initial={{ y: 10, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.8 }}
-        className="text-center pt-3"
+        className="text-center pt-3 space-y-2"
       >
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mb-3">
-          {(allowUsernamePasswordAuth ?? true) && (
-            <motion.button
-              type="button"
-              whileHover={{ scale: 1.02 }}
-              className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
-              onClick={onSwitchToUsername}
-            >
-              Use username & password instead?
-              <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
-            </motion.button>
-          )}
+        {(allowUsernamePasswordAuth ?? true) && (
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.02 }}
+            className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
+            onClick={onSwitchToUsername}
+          >
+            Use username & password instead?
+            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+          </motion.button>
+        )}
 
-          {(allowPhoneAuth ?? true) && onSwitchToPhone && (
-            <motion.button
-              type="button"
-              whileHover={{ scale: 1.02 }}
-              className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
-              onClick={onSwitchToPhone}
-            >
-              Use Phone OTP Instead?
-              <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
-            </motion.button>
-          )}
-        </div>
+        {(allowPhoneAuth ?? true) && onSwitchToPhone && (
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.02 }}
+            className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium pt-2"
+            onClick={onSwitchToPhone}
+          >
+            Use Phone OTP Instead?
+            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+          </motion.button>
+        )}
 
         <div className="text-sm text-gray-600">
           {(() => {

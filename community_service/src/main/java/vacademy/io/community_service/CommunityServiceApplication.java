@@ -15,5 +15,6 @@ import vacademy.io.community_service.config.CommunityApplicationSecurityConfig;
 public class CommunityServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(CommunityServiceApplication.class, args);
+        
     }
 }

@@ -637,7 +637,7 @@ export function PhoneLoginForm({
                             className="text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group"
                             onClick={onSwitchToEmail}
                         >
-                            Email OTP
+                            Use Email OTP
                             <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
                         </motion.button>
                     )}
@@ -649,7 +649,7 @@ export function PhoneLoginForm({
                             className="text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group"
                             onClick={onSwitchToUsername}
                         >
-                            Password
+                            Use Username & Password
                             <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
                         </motion.button>
                     )}

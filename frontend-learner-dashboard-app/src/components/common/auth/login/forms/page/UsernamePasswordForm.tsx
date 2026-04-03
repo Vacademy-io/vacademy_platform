@@ -458,7 +458,7 @@ export function UsernameLogin({
               className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
               onClick={onSwitchToEmail}
             >
-              Email OTP
+              Use email OTP instead?
               <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
             </motion.button>
           )}
@@ -470,7 +470,7 @@ export function UsernameLogin({
               className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
               onClick={onSwitchToPhone}
             >
-              Phone OTP
+              Use Phone OTP Instead?
               <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
             </motion.button>
           )}

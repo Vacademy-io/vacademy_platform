@@ -221,7 +221,7 @@ export function RenderSettingsDialog({
                                     max={100}
                                     step={5}
                                     value={[settings.captionBgOpacity]}
-                                    onValueChange={([v]) => update('captionBgOpacity', v)}
+                                    onValueChange={([v]) => v !== undefined && update('captionBgOpacity', v)}
                                     className="w-full"
                                 />
                             </div>

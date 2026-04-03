@@ -194,9 +194,11 @@ public class BulkDeassignmentService {
             }
 
             // Actually perform the cancellation
+            boolean slotFreed = false;
             if (StringUtils.hasText(userPlanId)) {
                 boolean force = MODE_HARD.equals(mode);
                 userPlanService.cancelUserPlan(userPlanId, force);
+                slotFreed = force; // Only hard terminate actually frees the slot
                 log.info("De-assigned: userId={}, packageSession={}, userPlan={}, mode={}",
                         userId, packageSessionId, userPlanId, mode);
             } else {
@@ -207,12 +209,15 @@ public class BulkDeassignmentService {
                     mapping.setStatus(LearnerSessionStatusEnum.INACTIVE.name());
                 }
                 studentSessionRepository.save(mapping);
+                slotFreed = true; // Both modes free the slot when there's no UserPlan
                 log.info("De-assigned (no userPlan): userId={}, packageSession={}, mode={}",
                         userId, packageSessionId, mode);
             }
 
-            // Increment inventory back since learner is being de-assigned
-            packageSessionService.incrementAvailability(packageSessionId, 1);
+            // Only increment inventory when the slot is actually freed
+            if (slotFreed) {
+                packageSessionService.incrementAvailability(packageSessionId, 1);
+            }
 
             String actionTaken = MODE_HARD.equals(mode)
                     ? "HARD_TERMINATED"

@@ -362,7 +362,8 @@ public class OpenPackageService {
                                         projection.getPaymentPlanId(),
                                         projection.getMinPlanActualPrice(),
                                         projection.getCurrency(),
-                                        projection.getAvailableSlots());
+                                        projection.getAvailableSlots(),
+                                        projection.getMaxSeats());
                 }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());

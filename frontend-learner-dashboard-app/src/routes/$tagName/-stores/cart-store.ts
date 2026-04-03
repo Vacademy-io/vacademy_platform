@@ -20,6 +20,7 @@ export interface MembershipPlan {
   title: string;
   price: number;
   numberOfBooks?: number;
+  maxSeats?: number;
   packageSessionId?: string;
   enrollInviteId?: string;
 }

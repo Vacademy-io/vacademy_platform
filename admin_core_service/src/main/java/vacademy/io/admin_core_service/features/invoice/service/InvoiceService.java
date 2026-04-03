@@ -871,11 +871,16 @@ public class InvoiceService {
     private String loadInvoiceTemplate(String instituteId) {
         try {
             var templates = templateService.getTemplatesByInstituteAndType(instituteId, INVOICE_TEMPLATE_TYPE);
+            log.info("Found {} INVOICE templates for institute: {}", templates.size(), instituteId);
             if (!templates.isEmpty()) {
                 String content = templates.get(0).getContent();
                 if (StringUtils.hasText(content)) {
-                    log.debug("Loaded institute invoice PDF template (last created) for institute: {}", instituteId);
+                    log.info("Using custom INVOICE template '{}' (id={}) for institute: {}, content length: {}",
+                            templates.get(0).getName(), templates.get(0).getId(), instituteId,
+                            content.length());
                     return content;
+                } else {
+                    log.warn("INVOICE template found but content is empty for institute: {}", instituteId);
                 }
             }
         } catch (Exception e) {
@@ -925,6 +930,12 @@ public class InvoiceService {
      */
     private String replaceTemplatePlaceholders(String template, InvoiceData invoiceData) {
         String filled = template;
+
+        // Log whether template contains any placeholders
+        boolean hasPlaceholders = filled.contains("{{");
+        log.info("Invoice template has placeholders: {}, template length: {}, first 200 chars: {}",
+                hasPlaceholders, filled.length(),
+                filled.substring(0, Math.min(200, filled.length())));
 
         // Basic invoice info
         filled = filled.replace("{{invoice_number}}",
@@ -1927,7 +1938,7 @@ public class InvoiceService {
                 .currency(invoice.getCurrency())
                 .status(invoice.getStatus())
                 .pdfFileId(invoice.getPdfFileId())
-                .pdfUrl(invoice.getPdfFileId() != null ? mediaService.getFileUrlById(invoice.getPdfFileId()) : null) // Computed
+                .pdfUrl(invoice.getPdfFileId() != null ? mediaService.getFilePublicUrlById(invoice.getPdfFileId()) : null) // Pre-signed URL (1-day expiry)
                                                                                                                      // URL
                                                                                                                      // from
                                                                                                                      // file

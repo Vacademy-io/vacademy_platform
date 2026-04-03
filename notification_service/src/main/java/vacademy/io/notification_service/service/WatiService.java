@@ -55,8 +55,8 @@ public class WatiService {
             String apiUrl,
             String broadcastName) {
 
-        log.info("Sending WATI template messages (bulk): template={}, recipients={}",
-                templateName, userDetails.size());
+        log.info("Sending WATI template messages (bulk): template={}, recipients={}, apiUrl={}",
+                templateName, userDetails.size(), apiUrl);
 
         // Deduplicate based on phone number
         Map<String, Map<String, String>> uniqueUsers = userDetails.stream()
@@ -146,14 +146,31 @@ public class WatiService {
 
         try {
             String jsonRequest = objectMapper.writeValueAsString(request);
-            log.debug("WATI Bulk Request: {}", jsonRequest);
+            log.info("WATI Bulk Request: template={}, receivers={}, apiUrl={}", templateName, uniqueUsers.size(), apiUrl);
+            if (log.isDebugEnabled()) {
+                log.debug("WATI Bulk Request body: {}", jsonRequest);
+            }
             String logId = externalCommunicationLogService.start(ExternalCommunicationSource.WHATSAPP, null, request);
             HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
 
             String endpoint = apiUrl + "/api/v1/sendTemplateMessages";
             ResponseEntity<String> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
             boolean success = response.getStatusCode().is2xxSuccessful();
+            log.info("WATI Bulk Response: status={}, body={}", response.getStatusCode(), response.getBody());
             externalCommunicationLogService.markSuccess(logId, response.getBody());
+
+            // Check WATI response body for actual delivery status
+            if (success && response.getBody() != null) {
+                try {
+                    JsonNode respJson = objectMapper.readTree(response.getBody());
+                    boolean result = respJson.path("result").asBoolean(true);
+                    if (!result) {
+                        String info = respJson.path("info").asText("unknown error");
+                        log.error("WATI API returned success=false: {}", info);
+                        success = false;
+                    }
+                } catch (Exception ignored) {}
+            }
 
             return uniqueUsers.keySet().stream()
                     .map(phone -> Map.of(phone, success))

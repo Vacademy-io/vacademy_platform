@@ -164,6 +164,15 @@ public class NotificationService {
     public UnifiedSendResponse sendWhatsappViaUnified(WhatsappRequest request, String instituteId) {
         List<UnifiedSendRequest.Recipient> recipients = new java.util.ArrayList<>();
 
+        log.info("sendWhatsappViaUnified: template={}, userDetails={}, headerParams={}, headerVideoParams={}, buttonUrlParams={}, buttonIndexParams={}, headerType={}",
+                request.getTemplateName(),
+                request.getUserDetails() != null ? request.getUserDetails().size() : 0,
+                request.getHeaderParams() != null ? request.getHeaderParams().keySet() : "null",
+                request.getHeaderVideoParams() != null ? request.getHeaderVideoParams().keySet() : "null",
+                request.getButtonUrlParams() != null ? request.getButtonUrlParams().keySet() : "null",
+                request.getButtonIndexParams() != null ? request.getButtonIndexParams().keySet() : "null",
+                request.getHeaderType());
+
         if (request.getUserDetails() != null) {
             for (Map<String, Map<String, String>> userDetail : request.getUserDetails()) {
                 for (Map.Entry<String, Map<String, String>> entry : userDetail.entrySet()) {
@@ -177,13 +186,17 @@ public class NotificationService {
                         if (headerMap != null) {
                             // headerParams format: phone -> {"1": "imageUrl"} — extract the URL
                             String headerUrl = headerMap.values().stream().findFirst().orElse(null);
-                            if (headerUrl != null) vars.put("_headerUrl", headerUrl);
+                            if (headerUrl != null) {
+                                vars.put("_headerUrl", headerUrl);
+                                vars.put("_headerType", "image");
+                            }
                         }
                     }
 
                     // Inject per-phone header video URL
                     if (request.getHeaderVideoParams() != null && request.getHeaderVideoParams().containsKey(phone)) {
                         vars.put("_headerUrl", request.getHeaderVideoParams().get(phone));
+                        vars.put("_headerType", "video");
                     }
 
                     // Inject per-phone button URL param + index

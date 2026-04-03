@@ -158,16 +158,20 @@ Target Audience: {target_audience}
 
 Target Duration: {target_duration}
 
-**DURATION GUIDELINES** (based on speaking rate of ~155 words/minute):
-- 2-3 minutes = 300-465 words
+**DURATION GUIDELINES — STRICT** (based on speaking rate of ~155 words/minute):
+- 30 seconds = ~75 words
+- 1 minute = ~155 words
+- 2 minutes = ~310 words
+- 3 minutes = ~465 words
 - 5 minutes = ~775 words
 - 7 minutes = ~1085 words
 - 10 minutes = ~1550 words
+⚠️ CRITICAL: Count your words carefully. The final script MUST match the target duration above. Do NOT write more content than needed — a 1-minute video needs ~155 words, NOT 300. Going over means the video will exceed the requested length.
 
 Requirements:
 - **MATCH vocabulary and examples to the target audience's age/grade level.**
 - Tone: upbeat, authoritative, and human. More playful for younger, more professional for older.
-- **MATCH the narration length to the target duration above.** Write enough content to fill the requested time.
+- **MATCH the narration length PRECISELY to the target duration above.** If user asked for 1 minute, write ~155 words. No more, no less.
 - For longer videos (5+ minutes), break into clear sections with transitions like "Now let's look at..." or "Next, we'll explore..."
 - Include a short CTA at the end encouraging viewers to apply what they learned.
 - Provide a concise beat outline to help designers understand key turns.
@@ -696,46 +700,30 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "- AVOID: text in images, logos, watermarks, human faces (privacy)\n"
     "Example: 'Realistic wide-shot photograph of a coral reef ecosystem, vivid colors, fish swimming through coral formations, clear blue water, underwater cinematic lighting, {aspect_label}'\n\n"
     
-    "**🎯 WHEN TO USE IMAGE SHOTS vs TEXT/DIAGRAM SHOTS**:\n"
-    "Images are EXPENSIVE to generate. Only use IMAGE_HERO or IMAGE_SPLIT when the image genuinely adds understanding.\n\n"
-    "✅ **USE an image shot when**:\n"
-    "- Showing something real-world that text/SVG cannot convey (a coral reef, a historical scene, a lab setup)\n"
-    "- Opening a new topic/section (1 hero image to set the scene)\n"
-    "- The narration describes a physical object, place, or phenomenon\n\n"
-    "❌ **DO NOT use an image shot when**:\n"
-    "- Explaining an abstract concept (use SVG diagrams, Mermaid, or text instead)\n"
-    "- Showing a process/flow (use animated SVG or Mermaid)\n"
-    "- Presenting math, code, or formulas (use KaTeX, Prism)\n"
-    "- The text/annotation alone is clear enough\n"
-    "- Listing steps, comparisons, or definitions (use text layouts)\n\n"
-    "**RECOMMENDED MIX**: Max 1-2 image shots per segment. The rest should be text/diagram shots.\n"
-    "\n**🔀 STOCK vs GENERATE — PREFER STOCK**:\n"
-    "Stock photos and videos are real, high-quality, and increase student engagement.\n"
-    "AI generation is slower and should only be used when stock photography cannot deliver.\n\n"
-    "DEFAULT TO STOCK (`data-img-source='stock'`) for:\n"
-    "✅ Any real-world scene (nature, classroom, city, lab, office, playground)\n"
-    "✅ Establishing shots and hooks — use VIDEO_HERO with `data-video-query` for motion\n"
-    "✅ Common objects (books, computers, scientific equipment, musical instruments)\n"
-    "✅ People, activities, sports, professions\n"
-    "✅ Historical sites, landmarks, architecture, animals, plants, food, weather, space\n\n"
-    "USE GENERATE (`data-img-source='generate'`) ONLY for:\n"
-    "❌ Cutout objects on transparent background (`data-cutout='true'`)\n"
-    "❌ Fictional/fantasy scenes that don't exist in reality\n"
-    "❌ Very specific custom illustrations (e.g., 'cross-section of mitochondrion with labeled parts')\n"
-    "❌ Stylized art (watercolor, flat vector, etc.)\n"
-    "❌ Abstract concept visualizations\n\n"
-    "USE VIDEO (`data-video-query`) for:\n"
-    "🎬 Hook/opening shots — a 5-10s video clip is MORE ENGAGING than a static image\n"
-    "🎬 Nature/science establishing shots (flowing water, chemical reactions, space footage)\n"
-    "🎬 City/building time-lapses for geography/history topics\n"
-    "🎬 Lab/classroom ambient footage as background\n\n"
-    "Example shot distribution (scale proportionally to your segment duration):\n"
-    "- ~20s segment → 2 shots (VIDEO_HERO hook + text explanation)\n"
-    "- ~35s segment → 3 shots (VIDEO_HERO hook + stock IMAGE_SPLIT + text takeaway)\n"
-    "- ~50s segment → 4 shots (VIDEO_HERO + stock split + diagram + takeaway)\n"
-    "Each shot should be 6-15 seconds depending on complexity.\n"
-    "Prefer VIDEO_HERO over IMAGE_HERO when a real-world scene fits the topic.\n"
-    "If the topic is purely abstract (math, programming, logic), use 0 image shots — diagrams and code are better.\n\n"
+    "**🎯 WHEN TO USE EACH SHOT TYPE — BE PRACTICAL**:\n\n"
+    "**VIDEO_HERO** (stock video background + text overlay) — use when it ADDS value:\n"
+    "🎬 Hook/opening shots — start with a video to grab attention\n"
+    "🎬 Real-world topics (nature, science experiments, history, people, places, geography)\n"
+    "🎬 Conclusions/takeaways — a relevant video makes them memorable\n"
+    "🎬 Any shot where the narration describes something visual and real\n\n"
+    "**IMAGE_HERO / IMAGE_SPLIT** (stock photo) — use for:\n"
+    "📸 Specific objects, scenes, or comparisons that benefit from a still image\n"
+    "📸 When you need the viewer to study the visual (a diagram overlaid on a photo, labeled parts)\n\n"
+    "**Plain text/diagram** (no background media) — use when backgrounds would DISTRACT:\n"
+    "📝 Math equations, code blocks, step-by-step logic\n"
+    "📝 Complex diagrams (Mermaid, SVG) that need the viewer's full attention\n"
+    "📝 Lists, definitions, and dense comparisons\n\n"
+    "**KEY PRINCIPLE**: Stock videos are free and make content feel professional — prefer VIDEO_HERO over "
+    "plain backgrounds whenever the topic has a real-world visual component. But DON'T force a video background "
+    "behind content that needs focus (math, code, dense text). Use your judgment.\n\n"
+    "DEFAULT TO STOCK (`data-img-source='stock'`) for all images.\n"
+    "USE GENERATE (`data-img-source='generate'`) ONLY for: cutouts, fictional scenes, custom illustrations, stylized art.\n\n"
+    "**SHOT DISTRIBUTION** (scale to your segment duration):\n"
+    "- ~15s segment → 2 shots (VIDEO_HERO hook + text/diagram)\n"
+    "- ~25s segment → 3 shots (VIDEO_HERO + IMAGE_SPLIT or text + text/diagram)\n"
+    "- ~40s segment → 4-5 shots (mix of VIDEO_HERO, IMAGE_SPLIT, text, diagrams)\n"
+    "- For real-world topics: aim for ~50% of shots with stock video/image backgrounds.\n"
+    "- For abstract topics (math, code, logic): use video only for hooks/conclusions if it fits naturally.\n\n"
     
     "**🛠️ ANIMATION TOOLS AVAILABLE**:\n"
     "1. **Text Appearance** - fadeIn, typewriter, popIn, slideUp, showThenAnnotate\n"
@@ -1112,12 +1100,14 @@ def get_html_generation_safe_area(width: int = 1920, height: int = 1080) -> str:
             if is_portrait else ""
         )
         + "\n**SHOT DURATION RULES (by complexity)**:\n"
-        "- **simple** (1-2 elements on screen): 4-7 seconds per shot\n"
-        "- **moderate** (3-4 elements): 6-10 seconds per shot\n"
-        "- **dense** (rich diagram or multi-part layout): 8-15 seconds per shot\n"
-        "- If no complexity_level is provided, default to moderate (6-10s)\n"
+        "- **simple** (1-2 elements on screen): 4-6 seconds per shot\n"
+        "- **moderate** (3-4 elements): 5-8 seconds per shot\n"
+        "- **dense** (rich diagram or multi-part layout): 7-12 seconds per shot\n"
+        "- If no complexity_level is provided, default to moderate (5-8s)\n"
+        "- Keep pacing brisk — don't let shots linger beyond what the narration needs.\n"
         "- The user prompt specifies the segment duration and recommended shot count — follow it.\n"
-        "- If not specified, default to 1 shot per 8-12 seconds of narration (2-4 shots total).\n"
+        "- If not specified, default to 1 shot per 6-8 seconds of narration.\n"
+        "- Avoid shots longer than 12 seconds — split into two if needed.\n"
         "\nReturn JSON ONLY in this form:\n"
         "{\n"
         '  "shots": [\n'

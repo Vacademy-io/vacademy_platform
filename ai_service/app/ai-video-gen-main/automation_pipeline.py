@@ -3034,7 +3034,7 @@ class VideoGenerationPipeline:
 
             # Inject segment duration + recommended shot count (duration-proportional)
             _seg_duration = seg.get("duration", seg["end"] - seg["start"])
-            _recommended_shots = max(2, min(4, round(_seg_duration / 10)))
+            _recommended_shots = max(2, min(7, round(_seg_duration / 8)))
             user_prompt += (
                 f"\n**SEGMENT DURATION**: {_seg_duration:.0f} seconds."
                 f" Aim for approximately {_recommended_shots} shots to fill this time.\n"

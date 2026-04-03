@@ -246,6 +246,39 @@ function getKenBurnsStyles(): string {
               justify-content: center; padding: 60px 80px;
             }
 
+            /* ── Portrait (9:16) responsive overrides ── */
+            @media (max-width: 1100px) {
+              .full-screen-center { padding: 40px; }
+              .text-display { font-size: 48px; }
+              .text-h2 { font-size: 36px; }
+              .text-body { font-size: 24px; }
+              .layout-split { grid-template-columns: 1fr; gap: 30px; }
+              .image-split-layout { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+              .image-split-layout .split-text { padding: 30px 40px; }
+              .image-text-overlay {
+                justify-content: center;
+                align-items: center;
+                text-align: center;
+                padding: 40px;
+              }
+              .image-text-overlay::before {
+                background: rgba(0,0,0,0.5) !important;
+              }
+              .image-text-overlay > * {
+                background: rgba(0, 0, 0, 0.65);
+                padding: 20px 32px;
+                border-radius: 12px;
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+              }
+              .image-text-overlay > *::before { display: none; }
+              .image-text-overlay h1,
+              .image-text-overlay .hero-title { font-size: 48px; text-align: center; }
+              .image-text-overlay p,
+              .image-text-overlay .hero-subtitle { font-size: 24px; max-width: 100%; text-align: center; }
+              .lower-third { bottom: 80px; left: 40px; }
+            }
+
             /* LOWER_THIRD: Key term banner */
             .lower-third {
               position: absolute;

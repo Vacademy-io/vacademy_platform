@@ -49,11 +49,12 @@ logger = logging.getLogger(__name__)
 # Constants
 # ============================================================================
 
-INITIAL_CREDITS = Decimal("200")
-DEFAULT_LOW_BALANCE_THRESHOLD = Decimal("50")
+INITIAL_CREDITS = Decimal("1000")
+DEFAULT_LOW_BALANCE_THRESHOLD = Decimal("100")
 
-# 1 credit = $0.001 USD → multiply actual USD cost by 1000 to get credits
-USD_TO_CREDIT_RATIO = Decimal("1000")
+# 50% markup: actual USD cost × 1500 = credits charged
+# e.g. $0.028 API cost → 42 credits → we charge $0.042 equivalent
+USD_TO_CREDIT_RATIO = Decimal("1500")
 
 # Default model tier multipliers (used as fallback)
 MODEL_TIER_MULTIPLIERS = {

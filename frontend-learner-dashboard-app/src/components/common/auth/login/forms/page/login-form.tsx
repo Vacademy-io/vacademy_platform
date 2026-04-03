@@ -944,28 +944,28 @@ export function LoginForm({
                   initial={{ y: 10, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.7 }}
-                  className="grid grid-cols-1 gap-3"
+                  className="grid grid-cols-2 gap-3"
                 >
                   {authProviders?.google && (
                     <Button
                       variant="outline"
-                      className="w-full relative h-11"
+                      className="w-full relative h-11 px-2"
                       onClick={() => handleOAuthLogin("google")}
                       type="button"
                     >
-                      <FcGoogle className="mr-2 h-4 w-4" />
-                      Continue with Google
+                      <FcGoogle className="mr-2 h-4 w-4 shrink-0" />
+                      <span className="truncate">Google</span>
                     </Button>
                   )}
                   {authProviders?.github && (
                     <Button
                       variant="outline"
-                      className="w-full relative h-11"
+                      className="w-full relative h-11 px-2"
                       onClick={() => handleOAuthLogin("github")}
                       type="button"
                     >
-                      <GitHubLogoIcon className="mr-2 h-4 w-4" />
-                      Continue with GitHub
+                      <GitHubLogoIcon className="mr-2 h-4 w-4 shrink-0" />
+                      <span className="truncate">GitHub</span>
                     </Button>
                   )}
                 </motion.div>

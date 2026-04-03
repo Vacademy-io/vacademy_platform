@@ -156,25 +156,27 @@ public class WatiService {
 
             String endpoint = apiUrl + "/api/v1/sendTemplateMessages";
             ResponseEntity<String> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
-            boolean success = response.getStatusCode().is2xxSuccessful();
+            boolean httpSuccess = response.getStatusCode().is2xxSuccessful();
             log.info("WATI Bulk Response: status={}, body={}", response.getStatusCode(), response.getBody());
             externalCommunicationLogService.markSuccess(logId, response.getBody());
 
             // Check WATI response body for actual delivery status
-            if (success && response.getBody() != null) {
+            boolean deliverySuccess = httpSuccess;
+            if (httpSuccess && response.getBody() != null) {
                 try {
                     JsonNode respJson = objectMapper.readTree(response.getBody());
                     boolean result = respJson.path("result").asBoolean(true);
                     if (!result) {
                         String info = respJson.path("info").asText("unknown error");
                         log.error("WATI API returned success=false: {}", info);
-                        success = false;
+                        deliverySuccess = false;
                     }
                 } catch (Exception ignored) {}
             }
 
+            final boolean finalSuccess = deliverySuccess;
             return uniqueUsers.keySet().stream()
-                    .map(phone -> Map.of(phone, success))
+                    .map(phone -> Map.of(phone, finalSuccess))
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("Failed to send WATI bulk message: {}", e.getMessage(), e);

@@ -81,8 +81,8 @@ public interface WorkflowExecutionRepository extends JpaRepository<WorkflowExecu
                         "FROM workflow_execution we " +
                         "JOIN workflow w ON we.workflow_id = w.id " +
                         "WHERE w.id = :workflowId " +
-                        "AND (:startDate IS NULL OR we.created_at >= :startDate) " +
-                        "AND (:endDate IS NULL OR we.created_at <= :endDate)",
+                        "AND (CAST(:startDate AS TIMESTAMP) IS NULL OR we.created_at >= :startDate) " +
+                        "AND (CAST(:endDate AS TIMESTAMP) IS NULL OR we.created_at <= :endDate)",
                         nativeQuery = true)
         Object[] getExecutionSummary(@Param("workflowId") String workflowId,
                         @Param("startDate") Instant startDate,

@@ -8,10 +8,11 @@ import {
     PlaceholderMapping
 } from '@/types/message-template-types';
 
-import { MESSAGE_TEMPLATE_BASE } from '@/constants/urls';
+import { MESSAGE_TEMPLATE_BASE, NOTIFICATION_SERVICE_BASE } from '@/constants/urls';
 import { validateTemplateVariables, ValidationResult } from '@/utils/template-validation';
 
 const API_BASE_URL = MESSAGE_TEMPLATE_BASE;
+const NOTIFICATION_API_BASE = `${NOTIFICATION_SERVICE_BASE}/whatsapp-templates`;
 
 // Get access token from localStorage or cookies
 const getAccessToken = (): string | null => {
@@ -53,15 +54,14 @@ export class WhatsAppTemplateService {
             }
 
             const instituteId = getInstituteId();
-            const url = `${API_BASE_URL}/whatsapp/templates/sync`;
+            const url = `${NOTIFICATION_API_BASE}/sync`;
 
-            const response = await fetch(url, {
+            const response = await fetch(`${url}?instituteId=${instituteId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${accessToken}`,
                 },
-                body: JSON.stringify({ instituteId }),
             });
 
             if (!response.ok) {

@@ -246,13 +246,13 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 
                 FROM slide s
                 JOIN activity_log al ON al.slide_id = s.id
-                JOIN chapter_to_slides cts ON s.id = cts.slide_id AND cts.status IN :chapterSlideStatus
-                JOIN chapter ch ON cts.chapter_id = ch.id AND ch.status IN :chapterStatus
-                JOIN package_session ps ON ps.id IN :packageSessionIds AND ps.status IN :packageSessionStatus
+                JOIN chapter_to_slides cts ON s.id = cts.slide_id AND cts.status IN (:chapterSlideStatus)
+                JOIN chapter ch ON cts.chapter_id = ch.id AND ch.status IN (:chapterStatus)
+                JOIN package_session ps ON ps.id IN (:packageSessionIds) AND ps.status IN (:packageSessionStatus)
                 JOIN module_chapter_mapping mtc ON mtc.chapter_id = ch.id
-                JOIN modules m ON mtc.module_id = m.id AND m.status IN :moduleStatus
+                JOIN modules m ON mtc.module_id = m.id AND m.status IN (:moduleStatus)
                 JOIN subject_module_mapping smm ON smm.module_id = m.id
-                JOIN subject sub ON smm.subject_id = sub.id AND sub.status IN :subjectStatus
+                JOIN subject sub ON smm.subject_id = sub.id AND sub.status IN (:subjectStatus)
 
                 LEFT JOIN document_slide ds ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
                 LEFT JOIN video vs ON vs.id = s.source_id AND s.source_type = 'VIDEO'
@@ -261,7 +261,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                                   AND lo.source_id = s.id
 
                 WHERE al.user_id = :userId
-                AND s.status IN :slideStatus
+                AND s.status IN (:slideStatus)
                 AND (al.percentage_watched IS NULL OR al.percentage_watched != 100)
                 LIMIT 5
             """, nativeQuery = true)

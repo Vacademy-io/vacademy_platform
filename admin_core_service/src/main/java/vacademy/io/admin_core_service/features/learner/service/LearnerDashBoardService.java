@@ -48,12 +48,12 @@ public class LearnerDashBoardService {
     @Value("${assessment.server.baseurl}")
     private String assessmentServerBaseUrl;
 
-    @Cacheable(value = "learnerDashboard", key = "#user.userId + '_' + #instituteId + '_' + #packageSessionId.hashCode()")
+    @Cacheable(value = "learnerDashboard", key = "#user.userId + '_' + #instituteId + '_' + (#packageSessionId != null ? #packageSessionId.hashCode() : 'null')")
     public LeanerDashBoardDetailDTO getLearnerDashBoardDetail(String instituteId, List<String> packageSessionId, CustomUserDetails user) {
         return new LeanerDashBoardDetailDTO(
                 packageRepository.countDistinctPackagesByUserIdAndInstituteId(user.getUserId(), instituteId),
                 0,
-                slideRepository.findRecentIncompleteSlides(
+                (packageSessionId == null || packageSessionId.isEmpty()) ? List.of() : slideRepository.findRecentIncompleteSlides(
                         user.getUserId(),
                         packageSessionId,
                         VALID_SLIDE_STATUSES,

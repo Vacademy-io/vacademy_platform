@@ -74,14 +74,14 @@ export const InstituteBrandingComponent: React.FC<InstituteBrandingProps> = ({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className={`flex flex-col items-center gap-3 ${className}`}
+      className={`flex flex-col items-center gap-1 sm:gap-2 ${className}`}
     >
       {/* Logo */}
       <motion.div
         initial={{ scale: 0.8 }}
         animate={{ scale: 1 }}
         transition={{ duration: 0.3, delay: 0.1 }}
-        className={`relative ${sizeClasses[size]} flex-shrink-0 my-2${isClickable ? " cursor-pointer" : ""}`}
+        className={`relative ${sizeClasses[size]} flex-shrink-0 my-0${isClickable ? " cursor-pointer" : ""}`}
         onClick={isClickable ? handleLogoClick : undefined}
       >
         {isLoading ? (
@@ -124,13 +124,13 @@ export const AuthPageBranding: React.FC<{ branding: InstituteBranding }> = ({ br
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="text-center mb-8"
+      className="text-center mb-2 sm:mb-4"
     >
       <InstituteBrandingComponent
         branding={branding}
-        size="large"
+        size="medium"
         showName={true}
-        className="justify-center mb-4"
+        className="justify-center mb-2"
       />
       
     </motion.div>

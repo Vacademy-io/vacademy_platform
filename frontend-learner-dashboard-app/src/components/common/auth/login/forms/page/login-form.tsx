@@ -894,7 +894,7 @@ export function LoginForm({
     <div
       className={`${
         type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"
-      } bg-background relative mt-10`}
+      } bg-background relative mt-2 sm:mt-6`}
     >
       {/* Subtle Background Pattern (gradients removed) */}
       <div className="absolute inset-0 -z-10" />
@@ -930,7 +930,7 @@ export function LoginForm({
                   : "w-full shadow-lg border-gray-100"
               }
             >
-              <CardHeader className="space-y-1 pb-6 text-center">
+              <CardHeader className="space-y-1 pb-3 sm:pb-4 text-center">
                 <CardTitle className="text-2xl font-bold tracking-tight text-primary-700">
                   Welcome Back
                 </CardTitle>
@@ -938,7 +938,7 @@ export function LoginForm({
                   Sign in to continue your journey
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-6">
+              <CardContent className="grid gap-4">
                 {/* OAuth Buttons */}
                 <motion.div
                   initial={{ y: 10, opacity: 0 }}
@@ -1107,7 +1107,7 @@ export function LoginForm({
             initial={{ y: 10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 1.5 }}
-            className="mt-6 text-center text-xs text-gray-600"
+            className="mt-3 sm:mt-4 text-center text-xs text-gray-600"
           >
             <p>
               I agree to{" "}

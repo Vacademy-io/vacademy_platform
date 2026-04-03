@@ -47,4 +47,5 @@ public class PackageDetailV2DTO {
     private Double minPlanActualPrice;
     private String currency;
     private Integer availableSlots;
+    private Integer maxSeats;
 }

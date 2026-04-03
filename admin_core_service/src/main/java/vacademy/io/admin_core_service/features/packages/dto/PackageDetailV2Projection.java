@@ -73,4 +73,6 @@ public interface PackageDetailV2Projection {
     String getCurrency();
 
     Integer getAvailableSlots();
+    
+    Integer getMaxSeats();
 }

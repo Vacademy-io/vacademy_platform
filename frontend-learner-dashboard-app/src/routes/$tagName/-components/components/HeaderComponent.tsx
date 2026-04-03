@@ -343,7 +343,15 @@ export const HeaderComponent: React.FC<HeaderProps & {
             {isCourseCatalogeTypeEnabled && (
               <button
                 ref={setHamburgerButtonRef}
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                onClick={() => {
+                  const newState = !isMobileMenuOpen;
+                  setIsMobileMenuOpen(newState);
+                  if (newState && togle) {
+                    settogle(false);
+                    window.dispatchEvent(new CustomEvent('toggleSearchBar', { detail: { isOpen: false } }));
+                    sessionStorage.setItem('searchBarOpen', 'false');
+                  }
+                }}
                 className="md:hidden p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] flex-shrink-0 transition-colors duration-200"
                 aria-label="Toggle menu"
               >
@@ -436,7 +444,15 @@ export const HeaderComponent: React.FC<HeaderProps & {
               {!isCourseCatalogeTypeEnabled && navigation.length > 0 && (
                 <button
                   ref={setHamburgerButtonRef}
-                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  onClick={() => {
+                    const newState = !isMobileMenuOpen;
+                    setIsMobileMenuOpen(newState);
+                    if (newState && togle) {
+                      settogle(false);
+                      window.dispatchEvent(new CustomEvent('toggleSearchBar', { detail: { isOpen: false } }));
+                      sessionStorage.setItem('searchBarOpen', 'false');
+                    }
+                  }}
                   className="md:hidden p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors duration-200"
                   aria-label="Toggle menu"
                 >
@@ -458,6 +474,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         detail: { isOpen: newToggleState }
                       }));
                       sessionStorage.setItem('searchBarOpen', String(newToggleState));
+                      if (newToggleState && isMobileMenuOpen) {
+                        setIsMobileMenuOpen(false);
+                      }
                     }}
                     className="p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors duration-200"
                     aria-label="Search"

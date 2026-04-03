@@ -97,6 +97,9 @@ jobs:
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
+            WHATSAPP_ACCESS_TOKEN_VIDYAYATAN=${{ secrets.WHATSAPP_ACCESS_TOKEN_VIDYAYATAN }} \
+            WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN=${{ secrets.WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN }} \
+            BBB_HEALTHCHECK_NOTIFY_PHONES=${{ secrets.BBB_HEALTHCHECK_NOTIFY_PHONES }} \
             ASSESSMENT_SERVICE_DB_URL=jdbc:postgresql://pgbouncer:6432/assessment_service \
             COMMUNITY_SERVICE_READ_DB_URL=jdbc:postgresql://pgbouncer:6432/assessment_service_read \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \

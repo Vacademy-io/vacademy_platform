@@ -293,34 +293,57 @@ export const HeaderComponent: React.FC<HeaderProps & {
     }, [jsonLogoRaw]);
 
     // Check if we should hide search and cart icons
-    const shouldHideSearchAndCart = () => {
+    const getIconVisibility = () => {
+      let hideSearch = false;
+      let hideCart = false;
+
       const currentPath = location.pathname.toLowerCase();
+      const pathSegments = location.pathname.split('/').filter(Boolean);
 
       // Hide on cart page
       if (currentPath.includes('/cart')) {
-        return true;
+        hideSearch = true;
+        hideCart = true;
       }
 
       // Hide on book/course details page (pattern: /$tagName/$courseId)
-      // Check if path has format: /tagName/courseId where courseId looks like an ID (numeric or UUID)
-      const pathSegments = location.pathname.split('/').filter(Boolean);
       if (pathSegments.length >= 2) {
         const potentialCourseId = pathSegments[1];
-        // Check if it looks like a course ID (numeric or UUID)
         const isNumeric = /^\d+$/.test(potentialCourseId);
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(potentialCourseId);
         if (isNumeric || isUUID) {
-          // This is likely a course/book details page
-          return true;
+          hideSearch = true;
+          hideCart = true;
         }
       }
 
-      // Remove the logic that hid search & cart on buyRentSection pages so that Cart is visible.
+      // Check if current page has buyRentSection component
+      // Hide search but KEEP cart visible on plan page
+      if (catalogueData?.pages) {
+        const pageRoute = pathSegments.slice(1).join('/') || '';
+        for (const page of catalogueData.pages) {
+          const pageRouteLower = (page.route || '').toLowerCase();
+          const pageIdLower = (page.id || '').toLowerCase();
 
-      return false;
+          const isCurrentPage = pageRouteLower === pageRoute.toLowerCase() ||
+            pageIdLower === pageRoute.toLowerCase() ||
+            (pageRoute === '' && pageRouteLower === '');
+
+          if (isCurrentPage && page.components) {
+            const hasBuyRentSection = page.components.some(
+              (component: any) => component.type === 'buyRentSection' && (component.enabled === true || String(component.enabled) === "true")
+            );
+            if (hasBuyRentSection) {
+              hideSearch = true;
+            }
+          }
+        }
+      }
+
+      return { hideSearch, hideCart };
     };
 
-    const hideSearchAndCart = shouldHideSearchAndCart();
+    const { hideSearch, hideCart } = getIconVisibility();
 
     // Consistent header height using design tokens
     const headerHeight = 'h-16 md:h-20';
@@ -463,9 +486,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
               )}
 
               {/* Search and Cart Icons */}
-              {isCourseCatalogeTypeEnabled && !hideSearchAndCart && (
+              {isCourseCatalogeTypeEnabled && (
                 <div className="flex items-center gap-1">
                   {/* Search Icon */}
+                  {!hideSearch && (
                   <button
                     onClick={() => {
                       const newToggleState = !togle;
@@ -483,8 +507,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   >
                     <Search className="w-5 h-5" />
                   </button>
+                  )}
 
                   {/* Cart Icon */}
+                  {!hideCart && (
                   <button
                     onClick={() => {
                       const currentPath = location.pathname;
@@ -502,6 +528,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       </span>
                     )}
                   </button>
+                  )}
                 </div>
               )}
 

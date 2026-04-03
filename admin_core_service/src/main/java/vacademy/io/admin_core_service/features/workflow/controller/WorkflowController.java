@@ -77,7 +77,7 @@ public class WorkflowController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/")
+    @PostMapping
     public ResponseEntity<WorkflowBuilderDTO> createWorkflow(
             @RequestBody WorkflowBuilderDTO dto,
             @RequestParam(value = "userId") String userId) {

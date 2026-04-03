@@ -129,7 +129,7 @@ export const FooterComponent: React.FC<FooterProps & {
 
   return (
     <footer className="border-t border-gray-200 bg-gray-50">
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
         <div className={`grid ${getGridCols()} gap-6 lg:gap-8`}>
           {/* Left Section - Company Info */}
           <div>
@@ -333,7 +333,7 @@ export const FooterComponent: React.FC<FooterProps & {
         </div>
 
         {/* Bottom Note - NEUTRAL with subtle primary accent */}
-        <div className="border-t border-gray-200 mt-6 pt-6 text-center">
+        <div className="border-t border-gray-200 mt-4 sm:mt-6 pt-4 sm:pt-6 text-center">
           <p className="text-gray-500 text-xs">
             {bottomNote}
           </p>

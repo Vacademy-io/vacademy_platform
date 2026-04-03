@@ -387,7 +387,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               return page.id === "home" || page.route === "homepage" || page.route === "/" || page.route === "";
             })
             .map((page) => (
-              <div key={page.id} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
+              <div key={page.id} className="pt-16 md:pt-20" style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
                 <JsonRenderer
                   page={page}
                   globalSettings={catalogueData.globalSettings}

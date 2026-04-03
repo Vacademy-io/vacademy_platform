@@ -247,7 +247,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   };
 
   // Check if page has a header component to add appropriate top padding
-  const hasHeader = page.components.some(
+  // But don't add padding when the page IS the header itself (id="header")
+  const hasHeader = page.id !== 'header' && page.components.some(
     (component) => component.type === 'header' && component.enabled !== false
   );
 

@@ -510,6 +510,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 </div>
               )}
 
+              {/* Login Button - Mobile only (when courseCatalogeType enabled) */}
+              {isCourseCatalogeTypeEnabled && !isAuthenticated && (
+                <button
+                  onClick={() => navigate({ to: '/login' })}
+                  className="md:hidden px-3 py-1.5 rounded-md text-xs font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
+                >
+                  Login
+                </button>
+              )}
+
               {/* Auth Links - Desktop only */}
               <div className="hidden md:flex items-center gap-2">
                 {isAuthenticated ? (
@@ -564,7 +574,33 @@ export const HeaderComponent: React.FC<HeaderProps & {
               <div className={`transform transition-transform duration-300 ease-out ${isMobileMenuOpen ? 'translate-y-0' : '-translate-y-4'
                 }`}>
                 <div className="px-4 py-4 space-y-3">
+                  {/* Navigation Links */}
+                  {navigation.length > 0 && (
+                    <div className="space-y-1 pb-3 border-b border-[hsl(var(--catalogue-border-subtle))]">
+                      {navigation.map((item, index) => {
+                        const isActive = isActiveRoute(item.route, item.label);
+                        const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
+                        return (
+                          <button
+                            key={index}
+                            onClick={() => {
+                              setIsMobileMenuOpen(false);
+                              handleNavigation(item.route, item.label, openInSameTab);
+                            }}
+                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
+                              ? 'text-primary-500 bg-primary-50'
+                              : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
+                              }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Login Button */}
+                  {!isAuthenticated && (
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
@@ -577,6 +613,23 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
                   </button>
+                  )}
+
+                  {/* Dashboard Button - when authenticated */}
+                  {isAuthenticated && (
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        navigate({ to: '/dashboard' });
+                      }}
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
+                    >
+                      <span>Dashboard</span>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                    </button>
+                  )}
 
                   {/* Customer Services Button */}
                   <button

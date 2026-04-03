@@ -1103,6 +1103,10 @@ class VideoGenerationPipeline:
         tts_outputs = {"response_json": None, "audio_path": None}
         word_outputs = {"words_json": None, "words_csv": None, "alignment_json": None}
 
+        # Store user's original prompt so it can be forwarded to HTML generation
+        if base_prompt and base_prompt.strip():
+            self._base_prompt = base_prompt.strip()
+
         if do_script:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
@@ -3007,6 +3011,15 @@ class VideoGenerationPipeline:
                     diversity_context=diversity_ctx,
                 )
 
+            # ── Inject user's original prompt so HTML LLM sees their preferences ──
+            if getattr(self, '_base_prompt', ''):
+                user_prompt += (
+                    f"\n\n**📌 ORIGINAL USER REQUEST:**\n"
+                    f"\"{self._base_prompt}\"\n"
+                    f"Respect any visual preferences or instructions the user specified above "
+                    f"(e.g., branding, style preferences, specific images to include).\n"
+                )
+
             # ── Inject reference images into HTML generation prompt ──
             if getattr(self, '_reference_context', None):
                 ref_images = self._reference_context.get("embeddable_images", [])
@@ -3020,12 +3033,13 @@ class VideoGenerationPipeline:
                             img_lines.append(f"  - {desc} (from: {source}) → URL: {s3_url}")
                     if img_lines:
                         user_prompt += (
-                            "\n\n**📎 REFERENCE IMAGES AVAILABLE (embed directly via <img> tags):**\n"
+                            "\n\n**📎 REFERENCE IMAGES PROVIDED BY THE USER:**\n"
                             + "\n".join(img_lines)
-                            + "\n\nYou MAY embed these reference images directly in your HTML using "
-                            "<img src=\"{url}\"> when they are relevant to this segment's narration. "
-                            "Choose the most relevant image(s) for this specific segment, or skip if none fit. "
-                            "These are real URLs — do NOT use data-img-prompt for these images."
+                            + "\n\nEmbed these images directly via <img src=\"{url}\"> when relevant. "
+                            "If an image looks like a logo or branding asset, use it as a small overlay "
+                            "(e.g., corner watermark or header logo — not full-screen). "
+                            "If it looks like content (diagram, photo, illustration), use it as a hero image or inline visual. "
+                            "These are real S3 URLs — do NOT use data-img-prompt for these images."
                         )
 
             # Inject complexity level for this segment (guides shot duration & animation layering)

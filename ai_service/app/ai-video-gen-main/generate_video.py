@@ -1487,7 +1487,6 @@ def _build_caption_segments(words: List[Dict[str, Any]], gap_threshold: float = 
     MIN_PHRASE_DURATION = 2.0
     MAX_PHRASE_DURATION = 5.0
 
-    import re
     phrases: List[Dict[str, Any]] = []
     current_words: List[Dict[str, Any]] = []
     phrase_start_time = 0.0
@@ -2230,7 +2229,7 @@ def render_video_from_json(
                 page.evaluate("(state) => window.__updateCharacter(state)", char_state)
 
             # Update caption if enabled — matching client-side CaptionDisplay.tsx styling
-            if show_captions and caption_segments:
+            if show_captions and caption_segments and caption_styles:
                 seg = _active_caption_at(caption_segments, t)
                 if seg:
                     style = caption_styles

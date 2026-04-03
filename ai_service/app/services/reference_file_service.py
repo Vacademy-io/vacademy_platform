@@ -252,9 +252,10 @@ class ReferenceFileService:
                             {
                                 "type": "text",
                                 "text": (
-                                    "Describe this image in detail for use as reference material "
-                                    "in educational video generation. Focus on: what the image shows, "
-                                    "key data/labels/text visible, and how it could be used in a lesson."
+                                    "Describe this image for use in educational video generation. "
+                                    "First, classify the image type in brackets: [LOGO], [SCREENSHOT], [PHOTO], [DIAGRAM], [ILLUSTRATION], or [OTHER]. "
+                                    "Then describe: what it shows, key text/labels visible, colors, and suggested usage "
+                                    "(e.g., 'use as corner watermark' for logos, 'use as hero background' for photos)."
                                 ),
                             },
                             {

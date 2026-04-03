@@ -124,7 +124,7 @@ class RenderWorker:
             # Split frames across N parallel Playwright processes for speed.
             # Each process renders a subset of frames, then we assemble with FFmpeg.
             NUM_WORKERS = int(os.environ.get("RENDER_PARALLEL_WORKERS", "2"))
-            FPS = fps if fps and fps in (15, 20, 25) else 22
+            FPS = fps if fps and fps in (15, 20, 25) else 20
             output_path = work_dir / "output.mp4"
             frames_dir = work_dir / ".render_frames"
             frames_dir.mkdir(parents=True, exist_ok=True)
@@ -145,7 +145,9 @@ class RenderWorker:
                 if caption_bg_color is not None or caption_bg_opacity is not None:
                     # Convert hex + opacity to rgba
                     hex_color = (caption_bg_color or "#000000").lstrip("#")
-                    if len(hex_color) < 6:
+                    if len(hex_color) == 3:
+                        hex_color = ''.join(c * 2 for c in hex_color)  # "FFF" → "FFFFFF"
+                    elif len(hex_color) < 6:
                         hex_color = hex_color.ljust(6, "0")
                     r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
                     alpha = round((caption_bg_opacity if caption_bg_opacity is not None else 75) / 100.0, 2)

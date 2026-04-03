@@ -1938,7 +1938,7 @@ public class InvoiceService {
                 .currency(invoice.getCurrency())
                 .status(invoice.getStatus())
                 .pdfFileId(invoice.getPdfFileId())
-                .pdfUrl(invoice.getPdfFileId() != null ? mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId()) : null) // Public
+                .pdfUrl(invoice.getPdfFileId() != null ? mediaService.getFilePublicUrlById(invoice.getPdfFileId()) : null) // Pre-signed URL (1-day expiry)
                                                                                                                      // URL
                                                                                                                      // from
                                                                                                                      // file

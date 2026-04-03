@@ -89,6 +89,7 @@ class ApiProvider(str, enum.Enum):
     """Enum for API provider types."""
     OPENAI = "openai"
     GEMINI = "gemini"
+    GOOGLE_TTS = "google_tts"
 
 
 class RequestType(str, enum.Enum):

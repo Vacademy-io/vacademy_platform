@@ -169,7 +169,39 @@ def get_embedding_service(db: Session = Depends(db_dependency)) -> EmbeddingServ
     return EmbeddingService(api_key_resolver)
 
 
-__all__ = ["get_course_outline_service", "get_image_service", "get_ai_chat_service", "get_chat_agent_service", "get_institute_from_api_key", "get_embedding_service"]
+def require_credits(request_type: str, estimated_tokens: int = 1000):
+    """
+    Factory that returns a FastAPI dependency to check if institute has
+    sufficient credits before an AI operation proceeds.
+    Raises HTTP 402 if balance is insufficient.
+    """
+    async def _check(
+        institute_id: str = Depends(get_institute_from_api_key),
+        db: Session = Depends(db_dependency),
+    ):
+        from .services.credit_service import CreditService
+        from .schemas.credits import CreditCheckRequest
+
+        service = CreditService(db)
+        result = service.check_credits(CreditCheckRequest(
+            institute_id=institute_id,
+            request_type=request_type,
+            estimated_tokens=estimated_tokens,
+        ))
+        if not result.has_sufficient_credits:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=result.message,
+            )
+        return result
+    return _check
+
+
+__all__ = [
+    "get_course_outline_service", "get_image_service", "get_ai_chat_service",
+    "get_chat_agent_service", "get_institute_from_api_key", "get_embedding_service",
+    "require_credits",
+]
 
 
 

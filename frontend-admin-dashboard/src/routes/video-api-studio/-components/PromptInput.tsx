@@ -65,6 +65,7 @@ import {
     QualityTier,
 } from '../-services/video-generation';
 import { useAIModelsList } from '@/hooks/useAiModels';
+import { useAiCreditsQuery, useCreditEstimateQuery } from '@/services/ai-credits/get-ai-credits';
 import { LatexRenderer } from './LatexRenderer';
 
 interface PromptInputProps {
@@ -141,6 +142,15 @@ export function PromptInput({
     const attachmentInputRef = useRef<HTMLInputElement>(null);
     const { data: modelsList } = useAIModelsList();
     const { uploadFile, getPublicUrl: getFilePublicUrl } = useFileUpload();
+    const { data: credits } = useAiCreditsQuery();
+    const { data: costEstimate } = useCreditEstimateQuery(
+        'video',
+        options.model,
+        5000,
+        !!options.model
+    );
+    const currentBalance = credits ? parseFloat(credits.current_balance) : null;
+    const isLowBalance = credits?.is_low_balance ?? false;
 
     useEffect(() => {
         if (textareaRef.current) {
@@ -847,6 +857,30 @@ export function PromptInput({
                             </div>
                         </PopoverContent>
                     </Popover>
+
+                    {/* Credit Balance */}
+                    {currentBalance !== null && (
+                        <div
+                            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                isLowBalance
+                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            }`}
+                            title={
+                                costEstimate?.estimated_cost
+                                    ? `Estimated cost: ~${costEstimate.estimated_cost.toFixed(1)} credits`
+                                    : 'AI Credits balance'
+                            }
+                        >
+                            <Sparkles className="size-3" />
+                            <span>{currentBalance.toFixed(1)}</span>
+                            {costEstimate?.estimated_cost ? (
+                                <span className="text-[10px] opacity-70">
+                                    (~{costEstimate.estimated_cost.toFixed(1)}/gen)
+                                </span>
+                            ) : null}
+                        </div>
+                    )}
 
                     {/* Preview Toggle */}
                     <Button

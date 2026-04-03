@@ -138,6 +138,7 @@ class TokenUsageService:
         total_price: Optional[float] = None,
         tts_provider: Optional[str] = None,
         character_count: Optional[int] = None,
+        batch_id: Optional[str] = None,
     ) -> AiTokenUsage:
         """
         Record token usage AND deduct credits from institute balance.
@@ -189,7 +190,8 @@ class TokenUsageService:
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     character_count=character_count or 0,
-                    usage_log_id=str(usage_record.id) if usage_record and hasattr(usage_record, 'id') else None
+                    usage_log_id=str(usage_record.id) if usage_record and hasattr(usage_record, 'id') else None,
+                    batch_id=batch_id,
                 )
                 logger.info(f"[TokenUsageService] CreditDeductRequest created: {deduct_request}")
                 
@@ -203,7 +205,54 @@ class TokenUsageService:
                 # Don't fail the usage recording if credit deduction fails
         
         return usage_record
-    
+
+    def refund_video_credits(self, video_id: str, institute_id: str) -> None:
+        """
+        Refund ALL credits charged for a video generation that failed.
+        Uses batch_id (= video_id) to find all USAGE_DEDUCTION transactions,
+        sums them up, and issues a single REFUND transaction.
+        """
+        import logging
+        from decimal import Decimal
+        from sqlalchemy import text
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Sum all deductions for this video using batch_id (set during deduction)
+            query = text("""
+                SELECT COALESCE(SUM(ABS(ct.amount)), 0) as total_deducted
+                FROM credit_transactions ct
+                WHERE ct.batch_id = :video_id
+                  AND ct.transaction_type = 'USAGE_DEDUCTION'
+                  AND ct.institute_id = :institute_id
+            """)
+            result = self._session.execute(query, {
+                "video_id": video_id,
+                "institute_id": institute_id,
+            })
+            row = result.fetchone()
+            total_deducted = Decimal(str(row.total_deducted)) if row else Decimal("0")
+
+            if total_deducted <= Decimal("0"):
+                logger.info(f"[RefundVideo] No credits to refund for video {video_id}")
+                return
+
+            from .credit_service import CreditService
+            credit_service = CreditService(self._session)
+            credit_service.refund_credits(
+                institute_id=institute_id,
+                amount=total_deducted,
+                description=f"Full refund for failed video generation {video_id}",
+                batch_id=video_id,
+            )
+            logger.info(f"[RefundVideo] Refunded {total_deducted} credits for failed video {video_id}")
+
+        except Exception as e:
+            import traceback
+            logger.error(f"[RefundVideo] Failed to refund credits for video {video_id}: {e}")
+            logger.error(f"[RefundVideo] Traceback: {traceback.format_exc()}")
+
     def get_institute_usage(
         self,
         institute_id: str,

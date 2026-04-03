@@ -371,6 +371,20 @@ export function generateVideo(
         .then(async (response) => {
             if (!response.ok) {
                 const errorText = await response.text().catch(() => response.statusText);
+                if (response.status === 402) {
+                    // Parse detail from FastAPI error response
+                    let detail = 'Insufficient credits';
+                    try {
+                        const parsed = JSON.parse(errorText);
+                        detail = parsed.detail || detail;
+                    } catch {
+                        // use raw text
+                        detail = errorText || detail;
+                    }
+                    const err = new Error(detail);
+                    err.name = 'InsufficientCreditsError';
+                    throw err;
+                }
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 
@@ -450,15 +464,65 @@ export async function getVideoUrls(videoId: string, apiKey: string): Promise<Vid
     return response.json();
 }
 
+// ---------------------------------------------------------------------------
+// Render settings
+// ---------------------------------------------------------------------------
+
+export type RenderResolution = '720p' | '1080p';
+export type RenderFps = 15 | 20 | 25;
+export type CaptionSize = 'S' | 'M' | 'L';
+export type CaptionPosition = 'top' | 'bottom';
+
+export interface RenderSettings {
+    resolution: RenderResolution;
+    fps: RenderFps;
+    captions: boolean;
+    captionPosition: CaptionPosition;
+    captionTextColor: string;
+    captionBgColor: string;
+    captionBgOpacity: number; // 0-100
+    captionSize: CaptionSize;
+}
+
+export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
+    resolution: '720p',
+    fps: 20,
+    captions: true,
+    captionPosition: 'bottom',
+    captionTextColor: '#ffffff',
+    captionBgColor: '#000000',
+    captionBgOpacity: 60,
+    captionSize: 'M',
+};
+
 export async function requestVideoRender(
     videoId: string,
-    apiKey: string
+    apiKey: string,
+    settings?: RenderSettings
 ): Promise<{ job_id: string; status: string }> {
+    const headers: Record<string, string> = {
+        'X-Institute-Key': apiKey,
+    };
+    let body: string | undefined;
+
+    if (settings) {
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify({
+            resolution: settings.resolution,
+            fps: settings.fps,
+            show_captions: settings.captions,
+            caption_position: settings.captionPosition,
+            caption_text_color: settings.captionTextColor,
+            caption_bg_color: settings.captionBgColor,
+            caption_bg_opacity: settings.captionBgOpacity,
+            caption_size: settings.captionSize,
+        });
+    }
+
     const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/render/${videoId}`, {
         method: 'POST',
-        headers: {
-            'X-Institute-Key': apiKey,
-        },
+        headers,
+        body,
     });
 
     if (!response.ok) {

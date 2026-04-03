@@ -109,6 +109,7 @@ class CreditDeductRequest(BaseModel):
     completion_tokens: int = 0
     character_count: int = 0  # For TTS
     usage_log_id: Optional[str] = None  # Link to ai_token_usage record
+    batch_id: Optional[str] = Field(None, max_length=255, description="Group related transactions (e.g., all charges for one video)")
 
 
 class CreditDeductResponse(BaseModel):

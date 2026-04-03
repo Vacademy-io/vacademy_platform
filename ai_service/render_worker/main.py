@@ -65,6 +65,12 @@ class RenderJobRequest(BaseModel):
     audio_delay: float = Field(default=0.0)
     width: int = Field(default=1920, description="Video width (1920 for landscape, 1080 for portrait)")
     height: int = Field(default=1080, description="Video height (1080 for landscape, 1920 for portrait)")
+    fps: Optional[int] = Field(default=None, description="Frames per second (15, 20, 25). Defaults to 22 if not set.")
+    caption_position: Optional[str] = Field(default=None, description="top or bottom")
+    caption_text_color: Optional[str] = Field(default=None, description="CSS color for caption text")
+    caption_bg_color: Optional[str] = Field(default=None, description="CSS hex color for caption background")
+    caption_bg_opacity: Optional[int] = Field(default=None, description="Caption background opacity 0-100")
+    caption_font_size: Optional[int] = Field(default=None, description="Caption font size in px")
 
 
 class RenderJobResponse(BaseModel):
@@ -106,6 +112,12 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
             on_progress=lambda p: _update_progress(job_id, p),
             width=request.width,
             height=request.height,
+            fps=request.fps,
+            caption_position=request.caption_position,
+            caption_text_color=request.caption_text_color,
+            caption_bg_color=request.caption_bg_color,
+            caption_bg_opacity=request.caption_bg_opacity,
+            caption_font_size=request.caption_font_size,
         )
 
         jobs[job_id]["status"] = "completed"

@@ -323,5 +323,50 @@ def initialize_credits(
     balance = service.get_balance(institute_id)
     if balance:
         return balance
-    
+
     return service.create_initial_credits(institute_id)
+
+
+# ============================================================================
+# Cost Estimation
+# ============================================================================
+
+@router.get(
+    "/estimate",
+    summary="Estimate credit cost before an operation",
+)
+def estimate_cost(
+    request_type: str = Query(..., description="Type: content, video, outline, image, tts, evaluation, etc."),
+    model: Optional[str] = Query(default=None, description="Model ID (e.g. google/gemini-2.5-flash)"),
+    estimated_tokens: int = Query(default=1000, description="Estimated total tokens (prompt + completion)"),
+    character_count: int = Query(default=0, description="Character count (for TTS)"),
+    institute_id: Optional[str] = Query(default=None, description="Institute ID (to include current balance)"),
+    service: CreditService = Depends(get_credit_service),
+):
+    """
+    Estimate the credit cost of an AI operation before executing it.
+    Returns a cost breakdown so the frontend can show "This will cost ~X credits".
+    """
+    estimated_cost = service.calculate_credits(
+        request_type=request_type,
+        model=model,
+        prompt_tokens=estimated_tokens,
+        completion_tokens=0,
+        character_count=character_count,
+    )
+
+    result = {
+        "request_type": request_type,
+        "model": model,
+        "estimated_tokens": estimated_tokens,
+        "estimated_cost": float(estimated_cost),
+    }
+
+    if institute_id:
+        balance = service.get_balance(institute_id)
+        if balance:
+            result["current_balance"] = float(balance.current_balance)
+            result["balance_after"] = float(balance.current_balance - estimated_cost)
+            result["has_sufficient_credits"] = balance.current_balance >= estimated_cost
+
+    return result

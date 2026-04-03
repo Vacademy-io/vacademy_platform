@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from ..db import db_dependency, db_session as make_db_session
-from ..dependencies import get_institute_from_api_key
+from ..dependencies import get_institute_from_api_key, require_credits
 from ..schemas.video_generation import (
     VideoGenerationRequest,
     VideoStatusResponse,
@@ -25,9 +25,35 @@ from ..schemas.video_generation import (
     RegenerateFrameResponse,
     UpdateFrameRequest
 )
+from pydantic import BaseModel, Field
 from ..services.video_generation_service import VideoGenerationService
 from ..repositories.ai_video_repository import AiVideoRepository
 from ..services.s3_service import S3Service
+
+
+# ---------------------------------------------------------------------------
+# Render settings (optional body for POST /render/{video_id})
+# ---------------------------------------------------------------------------
+
+class RenderOptionsBody(BaseModel):
+    resolution: Optional[str] = Field(None, description="720p or 1080p")
+    fps: Optional[int] = Field(None, description="15, 20, or 25")
+    show_captions: Optional[bool] = Field(None)
+    caption_position: Optional[str] = Field(None, description="top or bottom")
+    caption_text_color: Optional[str] = Field(None, description="Hex color e.g. #ffffff")
+    caption_bg_color: Optional[str] = Field(None, description="Hex color e.g. #000000")
+    caption_bg_opacity: Optional[int] = Field(None, description="0-100")
+    caption_size: Optional[str] = Field(None, description="S, M, or L")
+
+
+_RESOLUTION_MAP = {
+    ("720p", "landscape"): (1280, 720),
+    ("720p", "portrait"): (720, 1280),
+    ("1080p", "landscape"): (1920, 1080),
+    ("1080p", "portrait"): (1080, 1920),
+}
+
+_CAPTION_SIZE_PX = {"S": 16, "M": 20, "L": 28}
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +84,8 @@ def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationSe
 async def generate_video_external(
     payload: VideoGenerationRequest,
     target_stage: str = "HTML",
-    institute_id: str = Depends(get_institute_from_api_key)
+    institute_id: str = Depends(get_institute_from_api_key),
+    _credits_check=Depends(require_credits("video", estimated_tokens=5000)),
 ) -> StreamingResponse:
     """
     Generate AI video.
@@ -122,6 +149,13 @@ async def generate_video_external(
                         await q.put(json.dumps(event))
             except Exception as exc:
                 logger.error(f"[BG-Gen] Background task error for {vid}: {exc}")
+                # Refund all credits charged for this failed video
+                try:
+                    with make_db_session() as refund_session:
+                        from ..services.token_usage_service import TokenUsageService
+                        TokenUsageService(refund_session).refund_video_credits(vid, inst_id)
+                except Exception as refund_err:
+                    logger.error(f"[BG-Gen] Failed to refund credits for {vid}: {refund_err}")
                 await q.put(json.dumps({
                     "type": "error",
                     "message": str(exc),
@@ -360,6 +394,7 @@ async def update_frame_external(
 @router.post("/render/{video_id}")
 async def request_video_render(
     video_id: str,
+    body: Optional[RenderOptionsBody] = None,
     service: VideoGenerationService = Depends(get_video_service),
     institute_id: str = Depends(get_institute_from_api_key),
     db: Session = Depends(db_dependency),
@@ -369,6 +404,9 @@ async def request_video_render(
 
     Submits a render job to the dedicated render server. The frontend can
     poll /urls/{video_id} to check when `video_url` becomes available.
+
+    Accepts an optional JSON body with render settings (resolution, fps,
+    caption options). If omitted, uses defaults (1080p, 22fps, captions on).
     """
     from ..config import get_settings
     from ..services.render_service import RenderService
@@ -405,8 +443,24 @@ async def request_video_render(
     # Derive dimensions from orientation stored in metadata
     _meta = status.get("metadata", {}) or {}
     _orientation = _meta.get("orientation", "landscape")
-    _render_width = 1080 if _orientation == "portrait" else 1920
-    _render_height = 1920 if _orientation == "portrait" else 1080
+
+    # Apply resolution from request body if provided
+    if body and body.resolution and body.resolution in ("720p", "1080p"):
+        _render_width, _render_height = _RESOLUTION_MAP.get(
+            (body.resolution, _orientation), (1920, 1080)
+        )
+    else:
+        _render_width = 1080 if _orientation == "portrait" else 1920
+        _render_height = 1920 if _orientation == "portrait" else 1080
+
+    # Build optional render params
+    _fps = (body.fps if body and body.fps and body.fps in (15, 20, 25) else None)
+    _show_captions = body.show_captions if body and body.show_captions is not None else True
+    _caption_position = (body.caption_position if body and body.caption_position in ("top", "bottom") else None)
+    _caption_text_color = (body.caption_text_color if body and body.caption_text_color else None)
+    _caption_bg_color = (body.caption_bg_color if body and body.caption_bg_color else None)
+    _caption_bg_opacity = (body.caption_bg_opacity if body and body.caption_bg_opacity is not None else None)
+    _caption_font_size = (_CAPTION_SIZE_PX.get(body.caption_size) if body and body.caption_size else None)
 
     try:
         job_id = render_svc.submit(
@@ -416,9 +470,15 @@ async def request_video_render(
             words_url=s3_urls.get("words"),
             branding_meta_url=s3_urls.get("branding_meta"),
             avatar_video_url=s3_urls.get("avatar"),
-            show_captions=True,
+            show_captions=_show_captions,
             width=_render_width,
             height=_render_height,
+            fps=_fps,
+            caption_position=_caption_position,
+            caption_text_color=_caption_text_color,
+            caption_bg_color=_caption_bg_color,
+            caption_bg_opacity=_caption_bg_opacity,
+            caption_font_size=_caption_font_size,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))

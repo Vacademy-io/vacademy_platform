@@ -662,12 +662,22 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       }
 
                       // Monkey-patch RoughNotation to register all annotations
-                      // so we can force-show them during frame rendering
+                      // and record the GSAP time when show() is called,
+                      // so we can do time-aware show/hide during frame rendering.
                       window.__registeredAnnotations = [];
+                      window.__annotationShowTimes = new Map();
                       if (window.RoughNotation && window.RoughNotation.annotate) {
                           const _origAnnotate = window.RoughNotation.annotate;
                           window.RoughNotation.annotate = function(el, opts) {
                               const a = _origAnnotate(el, opts);
+                              const _origShow = a.show.bind(a);
+                              a.show = function() {
+                                  // Record the GSAP time when show() is triggered
+                                  const gsapTime = (window.gsap && gsap.globalTimeline)
+                                      ? gsap.globalTimeline.totalTime() : 0;
+                                  window.__annotationShowTimes.set(a, gsapTime);
+                                  return _origShow();
+                              };
                               window.__registeredAnnotations.push(a);
                               return a;
                           };
@@ -1426,31 +1436,60 @@ def _get_active_phoneme(phonemes: List[Dict[str, Any]], t: float) -> str:
 
 
 def _build_caption_segments(words: List[Dict[str, Any]], gap_threshold: float = 0.6) -> List[Dict[str, Any]]:
+    """Build caption phrases matching the client-side buildPhrases algorithm from useCaptions.ts."""
     if not words:
         return []
-    segments: List[Dict[str, Any]] = []
-    current: List[Dict[str, Any]] = [words[0]]
-    for prev, cur in zip(words, words[1:]):
-        gap = max(0.0, cur["start"] - prev["end"])
-        if gap > gap_threshold:
-            start = current[0]["start"]
-            end = current[-1]["end"]
-            text = " ".join(w["word"] for w in current)
-            segments.append({"start": start, "end": end, "text": text})
-            current = [cur]
-        else:
-            current.append(cur)
-    if current:
-        start = current[0]["start"]
-        end = current[-1]["end"]
-        text = " ".join(w["word"] for w in current)
-        segments.append({"start": start, "end": end, "text": text})
-    return segments
+
+    WORDS_PER_PHRASE = 10
+    MIN_PHRASE_DURATION = 2.0
+    MAX_PHRASE_DURATION = 5.0
+
+    import re
+    phrases: List[Dict[str, Any]] = []
+    current_words: List[Dict[str, Any]] = []
+    phrase_start_time = 0.0
+
+    for i, word in enumerate(words):
+        if not current_words:
+            phrase_start_time = float(word["start"])
+        current_words.append(word)
+
+        phrase_duration = float(word["end"]) - phrase_start_time
+        word_count = len(current_words)
+        word_text = str(word.get("word", "")).strip()
+
+        # Determine if we should end this phrase (matches client logic exactly)
+        should_break = (
+            # Natural sentence break (ends with punctuation)
+            bool(re.search(r'[.!?]$', word_text)) or
+            # Maximum words reached
+            word_count >= WORDS_PER_PHRASE or
+            # Maximum duration exceeded
+            phrase_duration >= MAX_PHRASE_DURATION or
+            # Comma/semicolon with enough words and time
+            (bool(re.search(r'[,;:]$', word_text)) and
+                word_count >= 5 and
+                phrase_duration >= MIN_PHRASE_DURATION) or
+            # Long pause between this word and next (natural break)
+            (i < len(words) - 1 and float(words[i + 1]["start"]) - float(word["end"]) > 0.5)
+        )
+
+        if should_break or i == len(words) - 1:
+            phrases.append({
+                "start": phrase_start_time,
+                "end": float(word["end"]),
+                "text": " ".join(str(w["word"]) for w in current_words),
+                "words": current_words[:],
+            })
+            current_words = []
+
+    return phrases
 
 
 def _active_caption_at(segments: List[Dict[str, Any]], t: float) -> Dict[str, Any]:
+    # Add small tail (0.3s) after phrase ends and early start (0.1s) before phrase begins
     for seg in segments:
-        if seg["start"] <= t <= seg["end"]:
+        if (seg["start"] - 0.1) <= t <= (seg["end"] + 0.3):
             return seg
     return {}
 
@@ -1534,30 +1573,26 @@ def _load_video_options(options_path: Path) -> Dict[str, Any]:
 
 def _load_caption_settings(settings_path: Path) -> Dict[str, Any]:
     data = json.loads(settings_path.read_text())
-    # defaults
+    # Defaults now match client-side CaptionDisplay.tsx styling
     return {
-        "font_family": data.get("font_family", "Inter, sans-serif"),
-        "font_size": data.get("font_size", 48),
+        "font_family": data.get("font_family", "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"),
+        "font_size": data.get("font_size", 20),  # Client default: medium=20px (at 1920w)
         "font_color": data.get("font_color", "#FFFFFF"),
-        "font_weight": data.get("font_weight", 700),
-        "background_color": data.get("background_color", "rgba(0,0,0,0.55)"),
-        "padding_px": data.get("padding_px", 16),
-        "border_radius_px": data.get("border_radius_px", 12),
-        "gap_threshold_seconds": data.get("gap_threshold_seconds", 0.6),
-        "box": data.get("box", {"x": 120, "y": 840, "w": 1680, "h": 200}),
+        "font_weight": data.get("font_weight", 400),  # Client uses normal weight
+        "background_color": data.get("background_color", "rgba(0,0,0,0.75)"),  # Client default opacity 0.75
+        "padding_px": data.get("padding_px", 10),
+        "border_radius_px": data.get("border_radius_px", 8),
+        "gap_threshold_seconds": data.get("gap_threshold_seconds", 0.5),  # Matches client pause threshold
+        "position": data.get("position", "bottom"),  # top or bottom — matches client
+        "box": data.get("box", {"x": 0, "y": 0, "w": 1920, "h": 1080}),
         "text_align": data.get("text_align", "center"),
-        "line_height": data.get("line_height", 1.2),
+        "line_height": data.get("line_height", 1.5),
         "max_lines": data.get("max_lines", 2),
-        # When true, do not escape caption text; allow inline HTML annotations
         "allow_html": data.get("allow_html", False),
-        # When true, render per-word spans and highlight the active word
         "annotate_active_word": data.get("annotate_active_word", False),
-        # Style for the active word span (applied when annotate_active_word=true)
         "active_word_css": data.get("active_word_css", "font-weight:700; text-decoration:underline;"),
-        # Style for non-active word spans
         "inactive_word_css": data.get("inactive_word_css", "opacity:0.9;"),
-        # Limit for single-line sliding window (number of words)
-        "max_words_per_line": int(data.get("max_words_per_line", 8)),
+        "max_words_per_line": int(data.get("max_words_per_line", 10)),
     }
 
 
@@ -1856,17 +1891,19 @@ def render_video_from_json(
         caption_settings = _load_caption_settings(settings_p)
         caption_segments = _build_caption_segments(words, caption_settings["gap_threshold_seconds"])
         caption_styles = caption_settings
-        # Always compute caption box proportionally from video dimensions
-        # (ignores hardcoded box in captions_settings.json which assumes landscape)
+        # Caption is now rendered as a full-viewport overlay with CSS positioning
+        # (matching client-side CaptionDisplay.tsx approach)
         caption_box = {
-            "x": int(width * 0.05),     # 5% from left
-            "y": int(height * 0.88),    # 88% from top — below content padding-bottom zone
-            "w": int(width * 0.9),      # 90% of width
-            "h": int(height * 0.10),    # 10% of height
+            "x": 0,
+            "y": 0,
+            "w": width,
+            "h": height,
         }
-        # Scale caption font size proportionally to width (48px at 1920 = 2.5%)
+        # Scale caption font size proportionally to width
+        # Client defaults: S=16, M=20, L=28 at 1920w
         caption_font_scale = width / 1920.0
-        caption_settings["font_size"] = max(24, int(caption_settings.get("font_size", 48) * caption_font_scale))
+        base_font_size = caption_settings.get("font_size", 20)
+        caption_settings["font_size"] = max(12, int(base_font_size * caption_font_scale))
 
     branding_entry: Dict[str, Any] = {}
     if show_branding:
@@ -1994,8 +2031,19 @@ def render_video_from_json(
         page = context.new_page()
         
         # Hook up console logging to Python stdout for debugging
-        page.on("console", lambda msg: print(f"[BROWSER {msg.type.upper()}] {msg.text}") if msg.type in ("error", "warning") else None)
-        page.on("pageerror", lambda err: print(f"[BROWSER EXCEPTION] {err}"))
+        # Log errors, warnings, and info for full visibility
+        _browser_error_count = [0]
+        def _on_console(msg):
+            if msg.type in ("error", "warning"):
+                _browser_error_count[0] += 1
+                print(f"[BROWSER {msg.type.upper()}] {msg.text}")
+            elif msg.type == "info":
+                print(f"[BROWSER INFO] {msg.text}")
+        page.on("console", _on_console)
+        def _on_pageerror(err):
+            _browser_error_count[0] += 1
+            print(f"[BROWSER EXCEPTION] {err}")
+        page.on("pageerror", _on_pageerror)
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
         # Wait for fonts and libraries to load before rendering frames
@@ -2138,86 +2186,43 @@ def render_video_from_json(
                 }
                 page.evaluate("(state) => window.__updateCharacter(state)", char_state)
 
-            # Update caption if enabled
+            # Update caption if enabled — matching client-side CaptionDisplay.tsx styling
             if show_captions and caption_segments:
                 seg = _active_caption_at(caption_segments, t)
                 if seg:
                     style = caption_styles
                     allow_html = bool(style.get("allow_html", False))
-                    annotate_active_word = bool(style.get("annotate_active_word", False))
 
-                    # Build caption inner HTML (either plain text or per-word spans)
-                    content_html = ""
-                    if caption_words:
-                        # Gather words within the current segment
-                        seg_start = float(seg.get("start", t)) if "start" in seg else None
-                        seg_end = float(seg.get("end", t)) if "end" in seg else None
-                        if seg_start is None or seg_end is None:
-                            raw_text = seg.get("text", "")
-                            content_html = raw_text if allow_html else _html_escape(raw_text)
-                        else:
-                            active_css = str(style.get("active_word_css", "font-weight:700; text-decoration:underline;"))
-                            inactive_css = str(style.get("inactive_word_css", "opacity:0.9;"))
-                            words_in_seg: List[Dict[str, Any]] = [
-                                w for w in caption_words
-                                if (w["start"] >= seg_start - 1e-6 and w["end"] <= seg_end + 1e-6)
-                            ]
-                            if not words_in_seg:
-                                raw_text = seg.get("text", "")
-                                content_html = raw_text if allow_html else _html_escape(raw_text)
-                            else:
-                                # Determine active word index
-                                active_index = 0
-                                for i, w in enumerate(words_in_seg):
-                                    if w["start"] <= t <= w["end"]:
-                                        active_index = i
-                                        break
-                                    if w["start"] > t:
-                                        active_index = max(0, i - 1)
-                                        break
+                    # Show entire phrase text (matching client buildPhrases approach)
+                    raw_text = seg.get("text", "")
+                    content_html = raw_text if allow_html else _html_escape(raw_text)
 
-                                # YouTube-style: show 2-line chunks, no word highlighting
-                                WORDS_PER_LINE = 7
-                                total_words = len(words_in_seg)
-                                chunk_size = WORDS_PER_LINE * 2  # 2 lines per chunk
-
-                                # Find which chunk the active word belongs to
-                                chunk_idx = active_index // chunk_size
-                                chunk_start = chunk_idx * chunk_size
-                                chunk_end = min(total_words, chunk_start + chunk_size)
-                                chunk = words_in_seg[chunk_start:chunk_end]
-
-                                pieces: List[str] = []
-                                for w in chunk:
-                                    word_text = w["word"] if allow_html else _html_escape(str(w["word"]))
-                                    pieces.append(word_text)
-                                content_html = " ".join(pieces) if pieces else (seg.get("text", "") if allow_html else _html_escape(seg.get("text", "")))
+                    # Determine caption position (matches client CaptionDisplay.tsx)
+                    cap_position = str(style.get("position", "bottom"))
+                    if cap_position == "top":
+                        position_css = f"top:{int(height * 0.037)}px; bottom:auto;"
                     else:
-                        raw_text = seg.get("text", "") if seg else ""
-                        content_html = raw_text if allow_html else _html_escape(raw_text)
+                        position_css = f"bottom:{int(height * 0.074)}px; top:auto;"
 
-                    # Build line handling CSS
-                    try:
-                        max_lines_val = int(style.get("max_lines", 0))
-                    except Exception:
-                        max_lines_val = 0
-                    if max_lines_val == 1:
-                        clamp_css = "display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
-                    elif max_lines_val and max_lines_val > 1:
-                        clamp_css = f"display:-webkit-box; -webkit-line-clamp:{max_lines_val}; -webkit-box-orient: vertical; overflow:hidden; white-space:normal;"
-                    else:
-                        clamp_css = "display:block; overflow:hidden; white-space:normal;"
+                    # Font size (scaled proportionally)
+                    font_size = int(style.get("font_size", 20))
 
+                    # Build caption HTML matching client CaptionDisplay.tsx exactly
                     html = (
-                        f"<div style=\"width:{caption_box['w']}px; height:{caption_box['h']}px; display:flex; align-items:center; justify-content:center;\">"
-                        f"<div style=\"max-width:100%; width:100%; box-sizing:border-box; color:{style['font_color']}; "
-                        f"font-family:{style['font_family']}; font-size:{style['font_size']}px; "
-                        f"font-weight:{style['font_weight']}; line-height:{style['line_height']}; "
-                        f"text-align:{style['text_align']}; background:{style['background_color']}; "
-                        f"padding:{style['padding_px']}px; border-radius:{style['border_radius_px']}px; {clamp_css} word-break:break-word;\">{content_html}</div>"
-                        f"</div>"
+                        f'<div style="width:100%; height:100%; position:relative;">'
+                        f'<div style="position:absolute; left:50%; transform:translateX(-50%); '
+                        f'max-width:85%; padding:10px 20px; border-radius:8px; '
+                        f'background:{style["background_color"]}; text-align:center; '
+                        f"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif; "
+                        f'font-size:{font_size}px; font-weight:400; color:{style["font_color"]}; '
+                        f'text-shadow:0 1px 3px rgba(0,0,0,0.4); line-height:1.5; letter-spacing:0.02em; '
+                        f'min-height:44px; display:flex; align-items:center; justify-content:center; '
+                        f'{position_css}">'
+                        f'<div style="display:inline-block; text-shadow:0 1px 3px rgba(0,0,0,0.4);">'
+                        f'{content_html}</div></div></div>'
                     )
-                    entry = {"x": caption_box["x"], "y": caption_box["y"], "w": caption_box["w"], "h": caption_box["h"], "html": html}
+                    # Use full-viewport overlay so position CSS works correctly
+                    entry = {"x": 0, "y": 0, "w": width, "h": height, "html": html}
                     page.evaluate("(entry) => window.__updateCaption(entry)", entry)
                 else:
                     page.evaluate("() => window.__updateCaption(null)")
@@ -2232,25 +2237,59 @@ def render_video_from_json(
             # Sync GSAP animation to exact time t
             page.evaluate(f"gsap.globalTimeline.totalTime({t}); void 0;")
 
-            # Force any pending Rough Notation annotations to render.
-            # RoughNotation uses its own animation system (not GSAP), so seeking
-            # GSAP doesn't trigger them. We force-show all registered annotations.
-            page.evaluate("""() => {
-                if (window.__registeredAnnotations) {
-                    window.__registeredAnnotations.forEach(a => {
-                        try { if (!a.isShowing) a.show(); } catch(e) {}
-                    });
-                }
-                // Also force-show any annotation elements in shadow DOMs
-                document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="branding-"]').forEach(host => {
+            # Time-aware Rough Notation: only show annotations whose show()
+            # was triggered at or before current time t. This prevents annotations
+            # from appearing before their intended GSAP timeline position.
+            page.evaluate(f"""() => {{
+                const currentTime = {t};
+                if (window.__registeredAnnotations && window.__annotationShowTimes) {{
+                    window.__registeredAnnotations.forEach(a => {{
+                        const showTime = window.__annotationShowTimes.get(a);
+                        if (showTime !== undefined && showTime <= currentTime) {{
+                            // Show this annotation — it should be visible at this time
+                            try {{ if (!a.isShowing) a.show(); }} catch(e) {{}}
+                        }} else {{
+                            // Hide this annotation — it shouldn't be visible yet
+                            try {{ if (a.isShowing) a.hide(); }} catch(e) {{}}
+                            // Also force-hide the SVG element since the blanket
+                            // * {{ opacity: 1 !important }} rule would otherwise show it
+                            try {{
+                                if (a._e && a._e.nextElementSibling && a._e.nextElementSibling.tagName === 'svg') {{
+                                    a._e.nextElementSibling.style.setProperty('opacity', '0', 'important');
+                                    a._e.nextElementSibling.style.setProperty('visibility', 'hidden', 'important');
+                                }}
+                            }} catch(e) {{}}
+                        }}
+                    }});
+                }}
+                // Also force-hide/show annotation SVGs in shadow DOMs
+                document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="branding-"]').forEach(host => {{
                     const root = host.shadowRoot;
                     if (!root) return;
-                    root.querySelectorAll('.rough-notation-inline, svg.rough-annotation').forEach(el => {
-                        el.style.opacity = '1';
-                        el.style.visibility = 'visible';
-                    });
-                });
-            }""")
+                    root.querySelectorAll('svg.rough-annotation').forEach(svg => {{
+                        // Check if parent annotation is registered and has a show-time
+                        // If we can't determine, default to visible (matches old behavior)
+                        const parentEl = svg.previousElementSibling;
+                        let shouldShow = true;
+                        if (window.__registeredAnnotations && parentEl) {{
+                            for (const a of window.__registeredAnnotations) {{
+                                if (a._e === parentEl) {{
+                                    const st = window.__annotationShowTimes.get(a);
+                                    shouldShow = (st !== undefined && st <= currentTime);
+                                    break;
+                                }}
+                            }}
+                        }}
+                        if (shouldShow) {{
+                            svg.style.setProperty('opacity', '1', 'important');
+                            svg.style.setProperty('visibility', 'visible', 'important');
+                        }} else {{
+                            svg.style.setProperty('opacity', '0', 'important');
+                            svg.style.setProperty('visibility', 'hidden', 'important');
+                        }}
+                    }});
+                }});
+            }}""")
 
             # Capture frame
             frame_path = frames_dir / f"frame_{frame_index:06d}.png"
@@ -2261,6 +2300,8 @@ def render_video_from_json(
                 # Try to proceed or abort? Aborting is safer to avoid long hangs.
                 raise e
 
+        if _browser_error_count[0] > 0:
+            print(f"[BROWSER SUMMARY] Total browser errors/exceptions during render: {_browser_error_count[0]}")
         print("DEBUG: Finished rendering loop. Closing context...")
         context.close()
         print("DEBUG: Context closed. Closing browser...")

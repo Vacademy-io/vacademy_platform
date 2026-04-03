@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from fastapi.responses import StreamingResponse
 import uuid
 import json
 from typing import Optional
+from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..db import db_dependency
 from ..dependencies import get_course_outline_service
 from ..schemas.course_outline import (
     CourseOutlineRequest, 
@@ -28,12 +30,24 @@ router = APIRouter(prefix="/course", tags=["course-outline"])
 async def generate_course_outline(
     payload: CourseOutlineRequest,
     service: CourseOutlineGenerationService = Depends(get_course_outline_service),
+    db: Session = Depends(db_dependency),
 ) -> CourseOutlineResponse:
     """
     Generate an abstract course outline (headings, subjects, chapters, slides)
     based on user prompt, optional existing course tree, and optional course
     metadata from admin-core-service.
     """
+    # Pre-flight credit check
+    if payload.institute_id:
+        from ..services.credit_service import CreditService
+        from ..schemas.credits import CreditCheckRequest
+        check = CreditService(db).check_credits(CreditCheckRequest(
+            institute_id=payload.institute_id,
+            request_type="outline",
+            estimated_tokens=1000,
+        ))
+        if not check.has_sufficient_credits:
+            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=check.message)
     try:
         return await service.generate_outline(payload)
     except PaymentRequiredError as exc:
@@ -54,6 +68,7 @@ async def stream_course_outline(
     model: Optional[str] = Query(default=None, description="Optional LLM model to use"),
     user_id: Optional[str] = Query(default=None, description="Optional user identifier for user-level API key lookup"),
     service: CourseOutlineGenerationService = Depends(get_course_outline_service),
+    db: Session = Depends(db_dependency),
 ) -> StreamingResponse:
     """
     Generate course outline using streaming SSE events (matches media-service endpoint pattern).
@@ -65,6 +80,18 @@ async def stream_course_outline(
         model: Optional LLM model to use. Defaults to database default or LLM_DEFAULT_MODEL from environment.
         payload: Request containing user prompt, course tree, and course depth.
     """
+    # Pre-flight credit check
+    if institute_id:
+        from ..services.credit_service import CreditService
+        from ..schemas.credits import CreditCheckRequest
+        check = CreditService(db).check_credits(CreditCheckRequest(
+            institute_id=institute_id,
+            request_type="outline",
+            estimated_tokens=1000,
+        ))
+        if not check.has_sufficient_credits:
+            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=check.message)
+
     # Convert CourseUserPromptRequest to internal CourseOutlineRequest
     # Use provided model or fall back to settings default
     final_model = model or payload.model or get_settings().llm_default_model

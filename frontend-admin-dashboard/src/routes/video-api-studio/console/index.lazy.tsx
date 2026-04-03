@@ -570,7 +570,14 @@ function VideoConsole() {
                 },
                 (error) => {
                     localStorage.removeItem(PENDING_GENERATION_KEY);
-                    toast.error(`Generation failed: ${error.message}`);
+                    if (error.name === 'InsufficientCreditsError') {
+                        toast.error(error.message || 'Insufficient credits', {
+                            description: 'Please add more credits to continue generating content.',
+                            duration: 8000,
+                        });
+                    } else {
+                        toast.error(`Generation failed: ${error.message}`);
+                    }
                     setConsoleState('idle');
                 }
             );

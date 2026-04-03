@@ -225,11 +225,17 @@ class VideoGenerationService:
                     reference_files=reference_files,
                     orientation=orientation,
                 ):
-                    # If we get an error event, log it and check if we should stop
+                    # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
                         logger.error(f"[VideoGenService] Error event received: {event.get('message', 'Unknown error')}")
+                        # Refund all credits charged for this failed video
+                        if institute_id and db_session:
+                            try:
+                                from .token_usage_service import TokenUsageService
+                                TokenUsageService(db_session).refund_video_credits(video_id, institute_id)
+                            except Exception as refund_err:
+                                logger.error(f"[VideoGenService] Failed to refund credits for video {video_id}: {refund_err}")
                         yield event
-                        # Don't continue after error
                         return
                     yield event
                 
@@ -258,6 +264,13 @@ class VideoGenerationService:
                     video_id=video_id,
                     error_message=error_msg
                 )
+                # Refund all credits charged for this failed video
+                if institute_id and db_session:
+                    try:
+                        from .token_usage_service import TokenUsageService
+                        TokenUsageService(db_session).refund_video_credits(video_id, institute_id)
+                    except Exception as refund_err:
+                        logger.error(f"[VideoGenService] Failed to refund credits for video {video_id}: {refund_err}")
                 yield {
                     "type": "error",
                     "message": f"Generation failed: {error_msg}",
@@ -657,6 +670,7 @@ class VideoGenerationService:
                             provider = ApiProvider.OPENAI
                             if resolved_model and "gemini" in resolved_model.lower():
                                 provider = ApiProvider.GEMINI
+                            # Deduct for LLM tokens (video request type)
                             token_service.record_usage_and_deduct_credits(
                                 api_provider=provider,
                                 prompt_tokens=usage.get("prompt_tokens", 0),
@@ -670,9 +684,46 @@ class VideoGenerationService:
                                     "video_id": video_id,
                                     "image_count": usage.get("image_count", 0),
                                     "stage": stage_pipeline_name
-                                }
+                                },
+                                batch_id=video_id,
                             )
-                            logger.info(f"[VideoGenService] Recorded usage and deducted credits for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
+                            logger.info(f"[VideoGenService] Recorded token usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
+
+                            # Deduct separately for images generated in this stage
+                            _image_count = usage.get("image_count", 0)
+                            if _image_count > 0:
+                                for _ in range(_image_count):
+                                    token_service.record_usage_and_deduct_credits(
+                                        api_provider=ApiProvider.GEMINI,
+                                        prompt_tokens=0,
+                                        completion_tokens=0,
+                                        total_tokens=0,
+                                        request_type=RequestType.IMAGE,
+                                        institute_id=institute_id,
+                                        user_id=user_id,
+                                        model=resolved_model or "gemini-image-gen",
+                                        metadata={"video_id": video_id, "stage": stage_pipeline_name},
+                                        batch_id=video_id,
+                                    )
+                                logger.info(f"[VideoGenService] Deducted credits for {_image_count} images in stage {stage_pipeline_name}")
+
+                            # Deduct separately for TTS characters
+                            _tts_chars = usage.get("tts_character_count", 0)
+                            if _tts_chars > 0:
+                                token_service.record_usage_and_deduct_credits(
+                                    api_provider=ApiProvider.GOOGLE_TTS,
+                                    prompt_tokens=0,
+                                    completion_tokens=0,
+                                    total_tokens=0,
+                                    request_type=RequestType.TTS,
+                                    institute_id=institute_id,
+                                    user_id=user_id,
+                                    model="google-cloud-tts",
+                                    character_count=_tts_chars,
+                                    metadata={"video_id": video_id, "stage": stage_pipeline_name},
+                                    batch_id=video_id,
+                                )
+                                logger.info(f"[VideoGenService] Deducted TTS credits for {_tts_chars} chars in stage {stage_pipeline_name}")
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
                 

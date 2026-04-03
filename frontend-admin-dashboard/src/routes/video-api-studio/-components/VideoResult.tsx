@@ -13,9 +13,46 @@ import {
     requestVideoRender,
     getVideoUrls,
     getRenderStatus,
+    type RenderSettings,
 } from '../-services/video-generation';
 import { LatexRenderer } from './LatexRenderer';
+import { RenderSettingsDialog } from './RenderSettingsDialog';
 import { toast } from 'sonner';
+
+// ---------------------------------------------------------------------------
+// localStorage helpers for render job persistence
+// ---------------------------------------------------------------------------
+
+const RENDER_JOB_KEY_PREFIX = 'render-job-';
+const MAX_RENDER_AGE_MS = 90 * 60 * 1000; // 90 minutes
+
+function saveRenderJob(videoId: string, jobId: string) {
+    const key = `${RENDER_JOB_KEY_PREFIX}${videoId}`;
+    localStorage.setItem(key, JSON.stringify({ jobId, startedAt: Date.now() }));
+    console.log(`[VideoResult] Saved render job to localStorage: videoId=${videoId}, jobId=${jobId}`);
+}
+
+function loadRenderJob(videoId: string): { jobId: string; startedAt: number } | null {
+    try {
+        const raw = localStorage.getItem(`${RENDER_JOB_KEY_PREFIX}${videoId}`);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (Date.now() - data.startedAt > MAX_RENDER_AGE_MS) {
+            clearRenderJob(videoId);
+            console.log(`[VideoResult] Stale render job cleared for videoId=${videoId}`);
+            return null;
+        }
+        return data;
+    } catch {
+        return null;
+    }
+}
+
+function clearRenderJob(videoId: string) {
+    localStorage.removeItem(`${RENDER_JOB_KEY_PREFIX}${videoId}`);
+}
+
+// ---------------------------------------------------------------------------
 
 interface VideoResultProps {
     videoId: string;
@@ -50,27 +87,134 @@ export function VideoResult({
     const [renderError, setRenderError] = useState<string | null>(null);
     const [renderProgress, setRenderProgress] = useState<number>(0);
     const [renderJobId, setRenderJobId] = useState<string | null>(null);
+    const [settingsOpen, setSettingsOpen] = useState(false);
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const showDownload = (contentType === 'VIDEO' || requiresAudio(contentType)) && !!apiKey;
 
-    // Check video_url + active render on mount (survives page reload)
+    // ------------------------------------------------------------------
+    // Polling logic
+    // ------------------------------------------------------------------
+
+    const startRenderPolling = useCallback(
+        (jobId: string) => {
+            if (!apiKey) return;
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            let attempts = 0;
+            const MAX_ATTEMPTS = 180; // 30 min at 10s
+            const key = apiKey;
+            console.log(`[VideoResult] Starting render polling for jobId=${jobId}`);
+            pollingRef.current = setInterval(async () => {
+                attempts++;
+                if (attempts > MAX_ATTEMPTS) {
+                    if (pollingRef.current) clearInterval(pollingRef.current);
+                    setRenderState('error');
+                    setRenderError('Render timed out. Please try again.');
+                    clearRenderJob(videoId);
+                    console.warn(`[VideoResult] Render polling timed out for jobId=${jobId}`);
+                    return;
+                }
+                try {
+                    const status = await getRenderStatus(jobId, key);
+                    console.log(`[VideoResult] Poll #${attempts} jobId=${jobId}:`, status.status, `progress=${status.progress}`);
+                    setRenderProgress(status.progress ?? 0);
+                    if (status.status === 'completed' && status.video_url) {
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        setVideoDownloadUrl(status.video_url);
+                        setRenderState('done');
+                        setRenderProgress(100);
+                        clearRenderJob(videoId);
+                        toast.success('Video ready for download!');
+                    } else if (status.status === 'failed') {
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        setRenderState('error');
+                        setRenderError(status.error || 'Render failed');
+                        clearRenderJob(videoId);
+                        toast.error('Video render failed');
+                    }
+                } catch (err) {
+                    console.warn(`[VideoResult] Poll error for jobId=${jobId}:`, err);
+                    // ignore — will retry next interval
+                }
+            }, 10_000);
+        },
+        [apiKey, videoId]
+    );
+
+    // ------------------------------------------------------------------
+    // Mount: check API for existing video / active render, fallback to localStorage
+    // ------------------------------------------------------------------
+
     useEffect(() => {
         if (!apiKey) return;
+
+        console.log(`[VideoResult] Mount: checking video state for videoId=${videoId}`);
+
         getVideoUrls(videoId, apiKey)
             .then((urls) => {
+                console.log('[VideoResult] getVideoUrls response:', JSON.stringify(urls));
+
                 if (urls.video_url) {
+                    console.log('[VideoResult] Video already rendered, showing download');
                     setVideoDownloadUrl(urls.video_url);
                     setRenderState('done');
                     setRenderProgress(100);
+                    clearRenderJob(videoId);
                 } else if (urls.render_job_id) {
-                    // Render is in progress — resume polling
+                    console.log(`[VideoResult] Active render_job_id from API: ${urls.render_job_id}`);
                     setRenderJobId(urls.render_job_id);
                     setRenderState('rendering');
+                    saveRenderJob(videoId, urls.render_job_id);
                     startRenderPolling(urls.render_job_id);
+                } else {
+                    // API returned no video_url and no render_job_id — check localStorage
+                    const saved = loadRenderJob(videoId);
+                    if (saved) {
+                        console.log(`[VideoResult] Found saved render job in localStorage: jobId=${saved.jobId}`);
+                        // Verify the job is still alive
+                        getRenderStatus(saved.jobId, apiKey)
+                            .then((status) => {
+                                console.log(`[VideoResult] Saved job status:`, status.status, `progress=${status.progress}`);
+                                if (status.status === 'completed' && status.video_url) {
+                                    setVideoDownloadUrl(status.video_url);
+                                    setRenderState('done');
+                                    setRenderProgress(100);
+                                    clearRenderJob(videoId);
+                                } else if (status.status === 'failed') {
+                                    setRenderState('error');
+                                    setRenderError(status.error || 'Render failed');
+                                    clearRenderJob(videoId);
+                                } else if (status.status === 'queued' || status.status === 'running') {
+                                    setRenderJobId(saved.jobId);
+                                    setRenderState('rendering');
+                                    setRenderProgress(status.progress ?? 0);
+                                    startRenderPolling(saved.jobId);
+                                } else {
+                                    // unknown status — clear stale entry
+                                    console.log(`[VideoResult] Unknown status for saved job, clearing`);
+                                    clearRenderJob(videoId);
+                                }
+                            })
+                            .catch((err) => {
+                                console.warn('[VideoResult] Failed to check saved render job:', err);
+                                clearRenderJob(videoId);
+                            });
+                    } else {
+                        console.log('[VideoResult] No active render found (API or localStorage)');
+                    }
                 }
             })
-            .catch(() => {});
+            .catch((err) => {
+                console.error('[VideoResult] getVideoUrls failed:', err);
+                // Still try localStorage fallback
+                const saved = loadRenderJob(videoId);
+                if (saved) {
+                    console.log(`[VideoResult] API failed but found localStorage job: ${saved.jobId}`);
+                    setRenderJobId(saved.jobId);
+                    setRenderState('rendering');
+                    startRenderPolling(saved.jobId);
+                }
+            });
     }, [videoId, apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Cleanup polling on unmount
@@ -79,6 +223,38 @@ export function VideoResult({
             if (pollingRef.current) clearInterval(pollingRef.current);
         };
     }, []);
+
+    // ------------------------------------------------------------------
+    // Render request (triggered from settings dialog)
+    // ------------------------------------------------------------------
+
+    const handleRequestRender = useCallback(
+        async (settings?: RenderSettings) => {
+            if (!apiKey || renderState === 'submitting' || renderState === 'rendering') return;
+
+            console.log('[VideoResult] Requesting render with settings:', settings);
+            setRenderState('submitting');
+            setRenderError(null);
+            setRenderProgress(0);
+
+            try {
+                const result = await requestVideoRender(videoId, apiKey, settings);
+                const jobId = result.job_id;
+                console.log(`[VideoResult] Render submitted, jobId=${jobId}`);
+                setRenderJobId(jobId);
+                setRenderState('rendering');
+                saveRenderJob(videoId, jobId);
+                toast.info('Video rendering started. This may take a few minutes.');
+                startRenderPolling(jobId);
+            } catch (error) {
+                console.error('[VideoResult] Render request failed:', error);
+                setRenderState('error');
+                setRenderError(error instanceof Error ? error.message : 'Failed to start render');
+                toast.error('Failed to start video render');
+            }
+        },
+        [videoId, apiKey, renderState, startRenderPolling]
+    );
 
     // Build the shareable URL
     const baseUrl = window.location.origin;
@@ -114,66 +290,6 @@ export function VideoResult({
         }
     };
 
-    const startRenderPolling = useCallback(
-        (jobId: string) => {
-            if (!apiKey) return;
-            // Clear any existing polling to prevent double-polling
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            let attempts = 0;
-            const MAX_ATTEMPTS = 180; // 30 min at 10s
-            const key = apiKey; // capture in closure to avoid stale ref
-            pollingRef.current = setInterval(async () => {
-                attempts++;
-                if (attempts > MAX_ATTEMPTS) {
-                    if (pollingRef.current) clearInterval(pollingRef.current);
-                    setRenderState('error');
-                    setRenderError('Render timed out. Please try again.');
-                    return;
-                }
-                try {
-                    const status = await getRenderStatus(jobId, key);
-                    setRenderProgress(status.progress ?? 0);
-                    if (status.status === 'completed' && status.video_url) {
-                        if (pollingRef.current) clearInterval(pollingRef.current);
-                        setVideoDownloadUrl(status.video_url);
-                        setRenderState('done');
-                        setRenderProgress(100);
-                        toast.success('Video ready for download!');
-                    } else if (status.status === 'failed') {
-                        if (pollingRef.current) clearInterval(pollingRef.current);
-                        setRenderState('error');
-                        setRenderError(status.error || 'Render failed');
-                        toast.error('Video render failed');
-                    }
-                } catch {
-                    // ignore polling errors — will retry next interval
-                }
-            }, 10_000);
-        },
-        [apiKey]
-    );
-
-    const handleRequestRender = useCallback(async () => {
-        if (!apiKey || renderState === 'submitting' || renderState === 'rendering') return;
-
-        setRenderState('submitting');
-        setRenderError(null);
-        setRenderProgress(0);
-
-        try {
-            const result = await requestVideoRender(videoId, apiKey);
-            const jobId = result.job_id;
-            setRenderJobId(jobId);
-            setRenderState('rendering');
-            toast.info('Video rendering started. This may take a few minutes.');
-            startRenderPolling(jobId);
-        } catch (error) {
-            setRenderState('error');
-            setRenderError(error instanceof Error ? error.message : 'Failed to start render');
-            toast.error('Failed to start video render');
-        }
-    }, [videoId, apiKey, renderState, startRenderPolling]);
-
     const contentLabel = getContentTypeLabel(contentType);
 
     return (
@@ -195,7 +311,7 @@ export function VideoResult({
                         height={playerHeight}
                         onDownloadClick={
                             showDownload && renderState === 'idle'
-                                ? handleRequestRender
+                                ? () => setSettingsOpen(true)
                                 : videoDownloadUrl
                                   ? () => window.open(videoDownloadUrl, '_blank')
                                   : undefined
@@ -351,7 +467,7 @@ export function VideoResult({
                                         variant="outline"
                                         size="sm"
                                         className="w-full h-9 gap-2 shadow-sm justify-start"
-                                        onClick={handleRequestRender}
+                                        onClick={() => setSettingsOpen(true)}
                                     >
                                         <Download className="size-4" />
                                         Render & Download MP4
@@ -365,7 +481,7 @@ export function VideoResult({
                                             variant="outline"
                                             size="sm"
                                             className="h-7 text-xs"
-                                            onClick={handleRequestRender}
+                                            onClick={() => setSettingsOpen(true)}
                                         >
                                             Retry
                                         </Button>
@@ -376,6 +492,14 @@ export function VideoResult({
                     </div>
                 </div>
             </div>
+
+            {/* Render settings dialog */}
+            <RenderSettingsDialog
+                open={settingsOpen}
+                onOpenChange={setSettingsOpen}
+                onConfirm={handleRequestRender}
+                isPortrait={isPortrait}
+            />
         </div>
     );
 }

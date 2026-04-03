@@ -1079,15 +1079,17 @@ class VideoGenerationPipeline:
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0,
-            "image_count": 0
+            "image_count": 0,
+            "tts_character_count": 0,
         }
-        
+
         def accumulate_usage(u: Dict[str, Any]):
             if not u: return
             total_usage["prompt_tokens"] += u.get("prompt_tokens", 0)
             total_usage["completion_tokens"] += u.get("completion_tokens", 0)
             total_usage["total_tokens"] += u.get("total_tokens", 0)
             total_usage["image_count"] += u.get("image_count", 0)
+            total_usage["tts_character_count"] += u.get("tts_character_count", 0)
 
         script_path = run_dir / "script.txt"
         response_json = run_dir / "narration_raw.json"
@@ -1146,6 +1148,8 @@ class VideoGenerationPipeline:
                     voice_gender=voice_gender,
                     tts_provider=tts_provider
                 )
+                # Track TTS character count for credit deduction
+                accumulate_usage({"tts_character_count": tts_outputs.get("tts_character_count", 0)})
             elif content_type not in NO_AUDIO_TYPES:
                 # Resuming from a checkpoint after TTS — files must already exist
                 self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
@@ -1932,14 +1936,14 @@ class VideoGenerationPipeline:
                 lang_code = f"{lang_code_parts[0]}-{lang_code_parts[1]}"
                 
                 gc_client.synthesize(
-                    text=script_text, 
-                    output_path=audio_path, 
+                    text=script_text,
+                    output_path=audio_path,
                     raw_json_path=response_json,
                     voice_name=selected_voice,
-                    language_code=lang_code 
+                    language_code=lang_code
                 )
                 print(f"    ✅ Google TTS generation successful.")
-                return {"response_json": response_json, "audio_path": audio_path}
+                return {"response_json": response_json, "audio_path": audio_path, "tts_character_count": len(script_text)}
             except Exception as e:
                 print(f"    ❌ Google TTS failed: {e}")
                 raise e
@@ -2197,7 +2201,7 @@ class VideoGenerationPipeline:
                 print("    ❌ No google_credentials.json found or env var set for fallback.")
                 raise e
         
-        return {"response_json": response_json, "audio_path": audio_path}
+        return {"response_json": response_json, "audio_path": audio_path, "tts_character_count": len(script_text)}
 
     # --- Alignment + words -------------------------------------------------
     def _parse_timestamps(self, response_json: Path, run_dir: Path) -> Dict[str, Path]:

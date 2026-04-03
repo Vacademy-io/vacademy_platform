@@ -52,6 +52,9 @@ logger = logging.getLogger(__name__)
 INITIAL_CREDITS = Decimal("200")
 DEFAULT_LOW_BALANCE_THRESHOLD = Decimal("50")
 
+# 1 credit = $0.001 USD → multiply actual USD cost by 1000 to get credits
+USD_TO_CREDIT_RATIO = Decimal("1000")
+
 # Default model tier multipliers (used as fallback)
 MODEL_TIER_MULTIPLIERS = {
     ModelTier.STANDARD: Decimal("1.0"),
@@ -83,7 +86,7 @@ DEFAULT_PRICING = {
     "evaluation": {"base_cost": Decimal("1.0"), "token_rate": Decimal("0.00015"), "min_charge": Decimal("1.0"), "unit": "tokens"},
     "embedding": {"base_cost": Decimal("0.1"), "token_rate": Decimal("0.00002"), "min_charge": Decimal("0.1"), "unit": "tokens"},
     "image": {"base_cost": Decimal("3.0"), "token_rate": Decimal("0"), "min_charge": Decimal("3.0"), "unit": "none"},
-    "video": {"base_cost": Decimal("5.0"), "token_rate": Decimal("0"), "min_charge": Decimal("5.0"), "unit": "none"},
+    "video": {"base_cost": Decimal("0.5"), "token_rate": Decimal("0.0001"), "min_charge": Decimal("0.5"), "unit": "tokens"},
     "tts": {"base_cost": Decimal("0.2"), "token_rate": Decimal("0.0001"), "min_charge": Decimal("0.2"), "unit": "characters"},
 }
 
@@ -374,13 +377,13 @@ class CreditService:
         # Ensure credits exist
         self.ensure_credits_exist(request.institute_id)
         
-        # Update balance
+        # Update balance atomically — guard against negative balance
         update_query = text("""
             UPDATE institute_credits
             SET used_credits = used_credits + :amount,
                 current_balance = current_balance - :amount,
                 updated_at = :now
-            WHERE institute_id = :institute_id
+            WHERE institute_id = :institute_id AND current_balance >= :amount
             RETURNING current_balance, low_balance_threshold
         """)
         result = self.db.execute(update_query, {
@@ -389,16 +392,29 @@ class CreditService:
             "institute_id": request.institute_id,
         })
         row = result.fetchone()
-        new_balance = row.current_balance if row else Decimal("0")
+        if not row:
+            # Insufficient balance — log warning but don't block (deduction already happened upstream)
+            logger.warning(
+                f"Insufficient credits for institute {request.institute_id}: "
+                f"tried to deduct {credits_to_deduct} credits"
+            )
+            return CreditDeductResponse(
+                success=False,
+                credits_deducted=Decimal("0"),
+                new_balance=Decimal("0"),
+                transaction_id="",
+                message=f"Insufficient credits. Need {credits_to_deduct} credits.",
+            )
+        new_balance = row.current_balance
         threshold = row.low_balance_threshold if row else DEFAULT_LOW_BALANCE_THRESHOLD
         
         # Record transaction
         insert_txn = text("""
             INSERT INTO credit_transactions (id, institute_id, transaction_type, amount, balance_after,
-                                             description, reference_id, request_type, model_name, created_at)
-            VALUES (:id, :institute_id, :type, :amount, :balance, :desc, :ref_id, :req_type, :model, :now)
+                                             description, reference_id, request_type, model_name, batch_id, created_at)
+            VALUES (:id, :institute_id, :type, :amount, :balance, :desc, :ref_id, :req_type, :model, :batch_id, :now)
         """)
-        
+
         # Handle reference_id conversion
         ref_id = None
         if request.usage_log_id:
@@ -406,7 +422,7 @@ class CreditService:
                 ref_id = request.usage_log_id
             except Exception:
                 pass
-        
+
         self.db.execute(insert_txn, {
             "id": transaction_id,
             "institute_id": request.institute_id,
@@ -417,6 +433,7 @@ class CreditService:
             "ref_id": ref_id,
             "req_type": request.request_type,
             "model": request.model,
+            "batch_id": request.batch_id,
             "now": now,
         })
         
@@ -449,6 +466,79 @@ class CreditService:
         )
 
     # ========================================================================
+    # Credit Refund
+    # ========================================================================
+
+    def refund_credits(
+        self,
+        institute_id: str,
+        amount: Decimal,
+        description: str,
+        batch_id: Optional[str] = None,
+    ) -> CreditDeductResponse:
+        """
+        Refund credits back to an institute's balance.
+        Used when an operation fails after partial credit deduction (e.g., video pipeline failure).
+        """
+        if amount <= Decimal("0"):
+            return CreditDeductResponse(
+                success=False,
+                credits_deducted=Decimal("0"),
+                new_balance=Decimal("0"),
+                transaction_id="",
+                message="Nothing to refund",
+            )
+
+        now = datetime.utcnow()
+        transaction_id = str(uuid4())
+
+        self.ensure_credits_exist(institute_id)
+
+        update_query = text("""
+            UPDATE institute_credits
+            SET used_credits = used_credits - :amount,
+                current_balance = current_balance + :amount,
+                updated_at = :now
+            WHERE institute_id = :institute_id
+            RETURNING current_balance
+        """)
+        result = self.db.execute(update_query, {
+            "amount": amount,
+            "now": now,
+            "institute_id": institute_id,
+        })
+        row = result.fetchone()
+        new_balance = row.current_balance if row else Decimal("0")
+
+        insert_txn = text("""
+            INSERT INTO credit_transactions
+                (id, institute_id, transaction_type, amount, balance_after, description, batch_id, created_at)
+            VALUES
+                (:id, :institute_id, :type, :amount, :balance, :desc, :batch_id, :now)
+        """)
+        self.db.execute(insert_txn, {
+            "id": transaction_id,
+            "institute_id": institute_id,
+            "type": TransactionType.REFUND.value,
+            "amount": amount,  # Positive for refunds
+            "balance": new_balance,
+            "desc": description,
+            "batch_id": batch_id,
+            "now": now,
+        })
+
+        self.db.commit()
+        logger.info(f"Refunded {amount} credits to institute {institute_id}: {description}")
+
+        return CreditDeductResponse(
+            success=True,
+            credits_deducted=amount,
+            new_balance=new_balance,
+            transaction_id=transaction_id,
+            message=f"Refunded {amount} credits",
+        )
+
+    # ========================================================================
     # Credit Calculation
     # ========================================================================
 
@@ -462,30 +552,41 @@ class CreditService:
     ) -> Decimal:
         """
         Calculate credits for an AI operation.
-        
-        Formula: max(minimum_charge, base_cost + (units × token_rate × model_multiplier))
+
+        Primary formula (when model USD pricing available):
+            max(min_charge, base_cost + actual_usd_cost × USD_TO_CREDIT_RATIO)
+
+        Fallback formula (unknown models / flat-rate types):
+            max(min_charge, base_cost + units × token_rate × model_multiplier)
         """
-        # Get pricing from DB or use defaults
+        # Get pricing config from DB or defaults
         pricing = self._get_pricing(request_type)
-        
-        # Get model multiplier
+
+        # --- Real-cost path: use actual model USD pricing from ai_models table ---
+        if model and pricing["unit"] == "tokens" and (prompt_tokens > 0 or completion_tokens > 0):
+            model_usd_pricing = self._get_model_usd_pricing(model)
+            if model_usd_pricing:
+                input_price_per_1m, output_price_per_1m = model_usd_pricing
+                actual_usd = (
+                    (Decimal(str(prompt_tokens)) * input_price_per_1m / Decimal("1000000"))
+                    + (Decimal(str(completion_tokens)) * output_price_per_1m / Decimal("1000000"))
+                )
+                calculated = pricing["base_cost"] + (actual_usd * USD_TO_CREDIT_RATIO)
+                result = max(pricing["min_charge"], calculated)
+                return result.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+        # --- Fallback path: existing formula for unknown models / flat-rate / characters ---
         multiplier = self._get_model_multiplier(model)
-        
-        # Calculate units based on unit type
+
         if pricing["unit"] == "tokens":
             units = (prompt_tokens + completion_tokens) / 1000
         elif pricing["unit"] == "characters":
             units = character_count / 1000
         else:  # "none" - flat rate
             units = 0
-        
-        # Apply formula
+
         calculated = pricing["base_cost"] + (Decimal(str(units)) * pricing["token_rate"] * multiplier)
-        
-        # Enforce minimum
         result = max(pricing["min_charge"], calculated)
-        
-        # Round to 4 decimal places
         return result.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
     def _get_pricing(self, request_type: str) -> dict:
@@ -511,6 +612,29 @@ class CreditService:
         
         # Fallback to defaults
         return DEFAULT_PRICING.get(request_type, DEFAULT_PRICING["content"])
+
+    def _get_model_usd_pricing(self, model: str) -> Optional[tuple]:
+        """
+        Get actual USD pricing (input_price_per_1m, output_price_per_1m) from ai_models table.
+        Returns None if model not found — caller should fall back to token_rate formula.
+        """
+        try:
+            query = text("""
+                SELECT input_price_per_1m, output_price_per_1m, is_free
+                FROM ai_models
+                WHERE model_id = :model_id AND is_active = TRUE
+                LIMIT 1
+            """)
+            result = self.db.execute(query, {"model_id": model})
+            row = result.fetchone()
+            if row and row.input_price_per_1m is not None and row.output_price_per_1m is not None:
+                if row.is_free:
+                    # Free model → zero token cost (base_cost still applies via caller)
+                    return (Decimal("0"), Decimal("0"))
+                return (Decimal(str(row.input_price_per_1m)), Decimal(str(row.output_price_per_1m)))
+        except Exception as e:
+            logger.warning(f"Failed to get model USD pricing from ai_models: {e}")
+        return None
 
     def _get_model_multiplier(self, model: Optional[str]) -> Decimal:
         """Get pricing multiplier for a model."""

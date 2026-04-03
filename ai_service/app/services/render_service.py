@@ -44,6 +44,12 @@ class RenderService:
         audio_delay: float = 0.0,
         width: int = 1920,
         height: int = 1080,
+        fps: Optional[int] = None,
+        caption_position: Optional[str] = None,
+        caption_text_color: Optional[str] = None,
+        caption_bg_color: Optional[str] = None,
+        caption_bg_opacity: Optional[int] = None,
+        caption_font_size: Optional[int] = None,
     ) -> str:
         """
         Submit a render job to the worker. Returns the job_id.
@@ -51,7 +57,7 @@ class RenderService:
         Raises:
             RuntimeError: If submission fails
         """
-        payload = {
+        payload: dict = {
             "video_id": video_id,
             "timeline_url": timeline_url,
             "audio_url": audio_url,
@@ -64,6 +70,19 @@ class RenderService:
             "width": width,
             "height": height,
         }
+        # Pass optional render settings — only include when provided
+        if fps is not None:
+            payload["fps"] = fps
+        if caption_position is not None:
+            payload["caption_position"] = caption_position
+        if caption_text_color is not None:
+            payload["caption_text_color"] = caption_text_color
+        if caption_bg_color is not None:
+            payload["caption_bg_color"] = caption_bg_color
+        if caption_bg_opacity is not None:
+            payload["caption_bg_opacity"] = caption_bg_opacity
+        if caption_font_size is not None:
+            payload["caption_font_size"] = caption_font_size
 
         try:
             with httpx.Client(timeout=self._timeout) as client:

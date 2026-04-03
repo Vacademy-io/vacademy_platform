@@ -68,6 +68,12 @@ class RenderWorker:
         on_progress: Optional[Callable[[float], None]] = None,
         width: int = 1920,
         height: int = 1080,
+        fps: Optional[int] = None,
+        caption_position: Optional[str] = None,
+        caption_text_color: Optional[str] = None,
+        caption_bg_color: Optional[str] = None,
+        caption_bg_opacity: Optional[int] = None,
+        caption_font_size: Optional[int] = None,
     ) -> str:
         """
         Run the full render pipeline and return the S3 URL of the output MP4.
@@ -118,10 +124,45 @@ class RenderWorker:
             # Split frames across N parallel Playwright processes for speed.
             # Each process renders a subset of frames, then we assemble with FFmpeg.
             NUM_WORKERS = int(os.environ.get("RENDER_PARALLEL_WORKERS", "2"))
-            FPS = 22
+            FPS = fps if fps and fps in (15, 20, 25) else 22
             output_path = work_dir / "output.mp4"
             frames_dir = work_dir / ".render_frames"
             frames_dir.mkdir(parents=True, exist_ok=True)
+
+            # Build caption settings override if custom options provided
+            _captions_settings_path = CAPTIONS_SETTINGS  # default baked-in file
+            if any(v is not None for v in [caption_position, caption_text_color, caption_bg_color, caption_bg_opacity, caption_font_size]):
+                try:
+                    base_settings = json.loads(CAPTIONS_SETTINGS.read_text()) if CAPTIONS_SETTINGS.exists() else {}
+                except Exception:
+                    base_settings = {}
+                if caption_font_size is not None:
+                    # Scale font size proportionally to render width
+                    scale = width / 1920.0
+                    base_settings["font_size"] = int(caption_font_size * scale)
+                if caption_text_color is not None:
+                    base_settings["font_color"] = caption_text_color
+                if caption_bg_color is not None or caption_bg_opacity is not None:
+                    # Convert hex + opacity to rgba
+                    hex_color = (caption_bg_color or "#000000").lstrip("#")
+                    if len(hex_color) < 6:
+                        hex_color = hex_color.ljust(6, "0")
+                    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+                    alpha = round((caption_bg_opacity if caption_bg_opacity is not None else 75) / 100.0, 2)
+                    base_settings["background_color"] = f"rgba({r},{g},{b},{alpha})"
+                if caption_position is not None:
+                    base_settings["position"] = caption_position
+                    # Update box.y for position
+                    box = base_settings.get("box", {})
+                    if caption_position == "top":
+                        box["y"] = int(height * 0.03)
+                    else:
+                        box["y"] = int(height * 0.85)
+                    base_settings["box"] = box
+                override_path = work_dir / "captions_settings_override.json"
+                override_path.write_text(json.dumps(base_settings, indent=2))
+                _captions_settings_path = override_path
+                logger.info(f"Caption settings override written: {base_settings}")
 
             # First, compute total frames by doing a dry-run parse of timeline + audio
             import json as _json
@@ -155,8 +196,8 @@ class RenderWorker:
                 base_cmd.extend(["--video-options", str(VIDEO_OPTIONS)])
             if words_url and words_path.exists():
                 base_cmd.extend(["--captions-words", str(words_path)])
-            if CAPTIONS_SETTINGS.exists():
-                base_cmd.extend(["--captions-settings", str(CAPTIONS_SETTINGS)])
+            if _captions_settings_path.exists():
+                base_cmd.extend(["--captions-settings", str(_captions_settings_path)])
             if audio_delay > 0:
                 base_cmd.extend(["--audio-delay", str(audio_delay)])
             if show_captions:
@@ -202,8 +243,18 @@ class RenderWorker:
                 ]
                 results = await asyncio.gather(*futures)
 
-            # Check all workers succeeded
+            # Check all workers succeeded and collect browser logs
+            all_browser_errors: list[str] = []
             for i, result in enumerate(results):
+                # Always save full stdout/stderr to log files for debugging
+                worker_log_path = work_dir / f"worker_{i}_stdout.log"
+                worker_err_path = work_dir / f"worker_{i}_stderr.log"
+                try:
+                    worker_log_path.write_text(result.stdout or "")
+                    worker_err_path.write_text(result.stderr or "")
+                except Exception:
+                    pass
+
                 if result.returncode != 0:
                     logger.error(f"Worker {i} STDERR:\n{result.stderr[-2000:]}")
                     logger.error(f"Worker {i} STDOUT:\n{result.stdout[-1000:]}")
@@ -211,11 +262,24 @@ class RenderWorker:
                         f"Render worker {i} (frames {frame_ranges[i]}) failed: "
                         f"{result.stderr[-500:]}"
                     )
-                # Log browser errors/warnings from successful workers (print() goes to stdout)
+                # Collect ALL browser errors/warnings from successful workers
                 if "[BROWSER ERROR]" in result.stdout or "[BROWSER EXCEPTION]" in result.stdout:
                     browser_lines = [l for l in result.stdout.split('\n') if '[BROWSER' in l]
-                    logger.warning(f"Worker {i} browser errors ({len(browser_lines)} lines):\n" + '\n'.join(browser_lines[-20:]))
+                    all_browser_errors.extend(browser_lines)
+                    logger.warning(
+                        f"Worker {i} browser errors ({len(browser_lines)} lines):\n"
+                        + '\n'.join(browser_lines[:50])  # Log up to 50 lines per worker
+                    )
                 logger.info(f"Worker {i} done: {result.stdout[-200:]}")
+
+            # Write consolidated browser error log
+            if all_browser_errors:
+                browser_log_path = work_dir / "browser_errors.log"
+                try:
+                    browser_log_path.write_text('\n'.join(all_browser_errors))
+                    logger.info(f"Browser errors log: {browser_log_path} ({len(all_browser_errors)} total lines)")
+                except Exception:
+                    pass
 
             rendered_frames = sorted(frames_dir.glob("frame_*.png"))
             logger.info(f"Total rendered frames: {len(rendered_frames)}")

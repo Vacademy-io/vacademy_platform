@@ -74,6 +74,16 @@ export interface UsageForecast {
     recommendation: string;
 }
 
+export interface CreditEstimate {
+    request_type: string;
+    model: string | null;
+    estimated_tokens: number;
+    estimated_cost: number;
+    current_balance?: number;
+    balance_after?: number;
+    has_sufficient_credits?: boolean;
+}
+
 // ---- Fetcher functions ----
 
 export const fetchAiCredits = async (): Promise<AiCreditsType> => {
@@ -123,6 +133,25 @@ export const fetchAiUsageForecast = async (): Promise<UsageForecast> => {
     return response.data;
 };
 
+export const fetchCreditEstimate = async (
+    requestType: string,
+    model?: string,
+    estimatedTokens = 1000
+): Promise<CreditEstimate> => {
+    const INSTITUTE_ID = getCurrentInstituteId();
+    const params = new URLSearchParams({
+        request_type: requestType,
+        estimated_tokens: estimatedTokens.toString(),
+    });
+    if (model) params.set('model', model);
+    if (INSTITUTE_ID) params.set('institute_id', INSTITUTE_ID);
+
+    const response = await authenticatedAxiosInstance.get<CreditEstimate>(
+        `${AI_SERVICE_BASE_URL}/credits/v1/estimate?${params}`
+    );
+    return response.data;
+};
+
 // ---- React Query hooks ----
 
 export const useAiCreditsQuery = (enabled: boolean = true) => {
@@ -166,6 +195,21 @@ export const useAiUsageForecastQuery = (enabled = true) => {
         queryFn: fetchAiUsageForecast,
         enabled,
         staleTime: 60000,
+        retry: false,
+    });
+};
+
+export const useCreditEstimateQuery = (
+    requestType: string,
+    model?: string,
+    estimatedTokens = 1000,
+    enabled = true
+) => {
+    return useQuery({
+        queryKey: ['GET_CREDIT_ESTIMATE', requestType, model, estimatedTokens],
+        queryFn: () => fetchCreditEstimate(requestType, model, estimatedTokens),
+        enabled,
+        staleTime: 120000, // 2 minutes
         retry: false,
     });
 };

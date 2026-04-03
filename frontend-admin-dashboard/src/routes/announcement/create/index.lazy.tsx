@@ -103,6 +103,7 @@ function CreateAnnouncementPage() {
     // Minimal starter state; real UI will dynamically build this
     const [title, setTitle] = useState('');
     const [htmlContent, setHtmlContent] = useState('');
+    const [previewText, setPreviewText] = useState('');
     const [contentView, setContentView] = useState<'editor' | 'source'>('editor');
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'laptop'>('laptop');
@@ -696,6 +697,7 @@ function CreateAnnouncementPage() {
             if (fullTemplate.content) {
                 setHtmlContent(fullTemplate.content);
             }
+            setPreviewText(fullTemplate.previewText || '');
         } catch (error) {
             console.error('Error loading template:', error);
             toast({
@@ -714,6 +716,7 @@ function CreateAnnouncementPage() {
                 if (template.content) {
                     setHtmlContent(template.content);
                 }
+                setPreviewText(template.previewText || '');
             }
         }
     };
@@ -987,6 +990,14 @@ function CreateAnnouncementPage() {
                         className={errors.title ? 'border-red-500' : ''}
                     />
                     {errors.title && <p className="text-xs text-red-600">{errors.title}</p>}
+
+                    <Label>Preview Text <span className="text-xs font-normal text-gray-400">(shown in inbox before opening)</span></Label>
+                    <Input
+                        placeholder="Enter preview text..."
+                        value={previewText}
+                        onChange={(e) => setPreviewText(e.target.value)}
+                    />
+
                     <Label>Content</Label>
                     <div className="flex items-center gap-2 self-end">
                         <Button
@@ -1043,11 +1054,12 @@ function CreateAnnouncementPage() {
                             placeholder="Paste or edit raw HTML for the announcement..."
                         />
                     )}
-                    {/* Preview Modal */}
+                    {/* Preview Modal — simulates actual email as recipient sees it */}
                     <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
                         <DialogContent className="w-[95vw] max-w-none">
                             <DialogHeader>
-                                <DialogTitle>Preview</DialogTitle>
+                                <DialogTitle>Email Preview</DialogTitle>
+                                <p className="text-xs text-gray-500">This is how the email will appear in the recipient's inbox.</p>
                                 <div className="mt-2 flex items-center gap-2">
                                     <Button
                                         variant={previewDevice === 'mobile' ? 'default' : 'outline'}
@@ -1075,19 +1087,38 @@ function CreateAnnouncementPage() {
                                     </Button>
                                 </div>
                             </DialogHeader>
-                            <div className="flex max-h-[80vh] w-full items-center justify-center overflow-auto p-2">
+                            <div className="flex max-h-[80vh] w-full justify-center overflow-auto bg-gray-100 p-4">
                                 <div
-                                    className="mx-auto overflow-hidden rounded border bg-white shadow"
+                                    className="mx-auto flex flex-col overflow-hidden rounded-lg border bg-white shadow-lg"
                                     style={{
                                         width: DEVICE_PRESETS[previewDevice].width,
+                                        maxWidth: '100%',
                                         height: '75vh',
                                         transition: 'width 200ms ease',
                                     }}
                                 >
+                                    {/* Simulated inbox header — subject + preview text */}
+                                    <div className="flex-shrink-0 border-b bg-gray-50 px-4 py-3">
+                                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                                            <span>From: Your Institute</span>
+                                            <span>·</span>
+                                            <span>To: recipient@email.com</span>
+                                        </div>
+                                        <div className="mt-1 text-sm font-semibold text-gray-900">
+                                            {title || '(No Subject)'}
+                                        </div>
+                                        {previewText && (
+                                            <div className="mt-0.5 text-xs text-gray-500">{previewText}</div>
+                                        )}
+                                    </div>
+                                    {/* Email body — rendered exactly as recipient sees it.
+                                        The iframe renders the full HTML document at 100% width of the
+                                        device viewport. The email's own width (600px/800px from MJML)
+                                        centers itself naturally — same as Gmail/Outlook. */}
                                     <iframe
                                         title="Announcement Preview"
                                         sandbox="allow-same-origin"
-                                        className="size-full"
+                                        style={{ flex: 1, width: '100%', border: 'none' }}
                                         srcDoc={
                                             isFullHtmlDoc
                                                 ? htmlContent
@@ -3271,7 +3302,7 @@ function CreateAnnouncementPage() {
                                                     fromEmail: selectedConfig?.email,
                                                     fromName: selectedConfig?.name,
                                                     template: selectedTemplateData?.name,
-                                                    previewText: selectedTemplateData?.previewText,
+                                                    previewText: previewText || selectedTemplateData?.previewText,
                                                 },
                                             };
                                         }

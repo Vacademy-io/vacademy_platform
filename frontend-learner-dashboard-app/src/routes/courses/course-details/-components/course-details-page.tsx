@@ -496,9 +496,16 @@ export const CourseDetailsPage = () => {
             if (firstLevel?.id) {
                 setSelectedLevel(firstLevel.id);
 
-                // Set the package_session_id from the level
-                if (firstLevel.package_session_id) {
-                    setPackageSessionIdForCurrentLevel(firstLevel.package_session_id);
+                // Look up package_session_id from package_sessions array
+                const packageSessions = courseDetailsData.package_sessions;
+                if (Array.isArray(packageSessions)) {
+                    const match = packageSessions.find(
+                        (ps: { level?: { id?: string }; session?: { id?: string } }) =>
+                            ps.level?.id === firstLevel.id && ps.session?.id === sessionId
+                    );
+                    if (match?.id) {
+                        setPackageSessionIdForCurrentLevel(match.id);
+                    }
                 }
 
                 // Set the read_time_in_minutes from the level
@@ -508,6 +515,36 @@ export const CourseDetailsPage = () => {
             }
         }
     }, [courseDetailsData, selectedSession]);
+
+    // Sync packageSessionIdForCurrentLevel from course-init data whenever session/level changes
+    useEffect(() => {
+        if (!selectedSession || !selectedLevel || !courseDetailsData) return;
+
+        // Look up package_session_id from package_sessions array by matching level + session
+        const packageSessions = courseDetailsData.package_sessions;
+        if (Array.isArray(packageSessions)) {
+            const match = packageSessions.find(
+                (ps: { level?: { id?: string }; session?: { id?: string } }) =>
+                    ps.level?.id === selectedLevel && ps.session?.id === selectedSession
+            );
+            if (match?.id) {
+                setPackageSessionIdForCurrentLevel(match.id);
+            }
+        }
+
+        // Update read_time_in_minutes from level_with_details
+        const session = courseDetailsData.sessions?.find(
+            (s: { session_dto: { id: string } }) => s.session_dto.id === selectedSession
+        );
+        const level = session?.level_with_details?.find(
+            (l: { id: string }) => l.id === selectedLevel
+        );
+        if (level?.read_time_in_minutes) {
+            setBackendReadTimeMinutes(level.read_time_in_minutes);
+        } else {
+            setBackendReadTimeMinutes(null);
+        }
+    }, [selectedSession, selectedLevel, courseDetailsData]);
 
     useEffect(() => {
         const loadCourseData = async () => {

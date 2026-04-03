@@ -96,7 +96,8 @@ jobs:
             "COMMUNITY_SERVICE_READ_DB_URL=${{ secrets.COMMUNITY_SERVICE_READ_DB_URL }}" \
             "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" \
             "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" \
-            "SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}"
+            "SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}" \
+            "GH_ACTION_TOKEN=${{ secrets.GH_ACTION_TOKEN }}"
 
       - name: Restart deployment
         env:

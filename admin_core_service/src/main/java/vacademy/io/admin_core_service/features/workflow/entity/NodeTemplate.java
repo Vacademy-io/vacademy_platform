@@ -5,6 +5,8 @@ import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.util.Date;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "node_template")
@@ -38,7 +40,8 @@ public class NodeTemplate {
     @Column(name = "config_json", columnDefinition = "TEXT", nullable = false)
     private String configJson; // store JSON string; parsing handled in service
 
-    @Column(name = "retry_config", columnDefinition = "TEXT")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "retry_config", columnDefinition = "jsonb")
     private String retryConfig; // JSON: {"maxRetries": 3, "backoffMs": 1000, "backoffMultiplier": 2}
 
     @Column(name = "created_at", insertable = false, updatable = false)

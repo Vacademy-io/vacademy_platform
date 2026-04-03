@@ -237,10 +237,15 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                     }
                     
                     // NEW: Extract COMBOT-specific fields
+                    log.debug("messageData keys for template {}: {}", templateName, messageData.keySet());
                     String headerImage = (String) messageData.get("headerImage");
                     String headerVideo = (String) messageData.get("headerVideo");
                     String buttonUrlParam = (String) messageData.get("buttonUrlParam");
                     String buttonIndex = (String) messageData.getOrDefault("buttonIndex", "0");
+
+                    if (headerVideo == null && headerImage == null) {
+                        log.info("No header media found in messageData for template {}. Keys: {}", templateName, messageData.keySet());
+                    }
 
                     try {
                         // 1. Validate Mobile Number

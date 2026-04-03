@@ -141,7 +141,8 @@ public class BbbHealthCheckService {
         result.put("action", action);
 
         if (githubToken == null || githubToken.isBlank()) {
-            result.put("error", "GITHUB_TOKEN not configured");
+            log.error("[BBB] GH_ACTION_TOKEN not configured — cannot trigger workflow");
+            result.put("error", "GH_ACTION_TOKEN not configured");
             return result;
         }
 

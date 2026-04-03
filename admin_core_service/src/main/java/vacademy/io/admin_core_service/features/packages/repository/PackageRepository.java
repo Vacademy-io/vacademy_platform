@@ -2962,6 +2962,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     ARRAY_REMOVE(
                         ARRAY_AGG(DISTINCT fspm.user_id), NULL
                     ) AS facultyUserIds,
+                    ps.available_slots AS availableSlots,
+                    ps.max_seats AS maxSeats,
                     p.created_by_user_id AS createdByUserId
 
                 FROM package p
@@ -3057,7 +3059,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     payment_info.payment_option_status,
                     payment_info.payment_plan_id,
                     payment_info.actual_price,
-                    payment_info.currency
+                    payment_info.currency,
+                    ps.available_slots,
+                    ps.max_seats
             """, countQuery = """
             SELECT COUNT(DISTINCT ps.id)
             FROM package p
@@ -3194,6 +3198,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     payment_info.actual_price AS minPlanActualPrice,
                     payment_info.currency AS currency,
                     ps.available_slots AS availableSlots,
+                    ps.max_seats AS maxSeats,
                     p.created_by_user_id AS createdByUserId
 
                 FROM package p
@@ -3293,7 +3298,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     payment_info.payment_option_status,
                     payment_info.payment_plan_id,
                     payment_info.actual_price,
-                    payment_info.currency
+                    payment_info.currency,
+                    ps.available_slots,
+                    ps.max_seats
             """, countQuery = """
                 SELECT COUNT(DISTINCT ps.id)
                 FROM package p

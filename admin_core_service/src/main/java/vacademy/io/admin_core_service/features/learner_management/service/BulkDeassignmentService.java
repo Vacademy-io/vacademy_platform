@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.institute_learner.entity.StudentS
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
+import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
@@ -34,6 +35,7 @@ public class BulkDeassignmentService {
     private final StudentSessionRepository studentSessionRepository;
     private final UserPlanService userPlanService;
     private final AuthService authService;
+    private final PackageSessionService packageSessionService;
 
     private static final String MODE_SOFT = "SOFT";
     private static final String MODE_HARD = "HARD";
@@ -192,9 +194,11 @@ public class BulkDeassignmentService {
             }
 
             // Actually perform the cancellation
+            boolean slotFreed = false;
             if (StringUtils.hasText(userPlanId)) {
                 boolean force = MODE_HARD.equals(mode);
                 userPlanService.cancelUserPlan(userPlanId, force);
+                slotFreed = force; // Only hard terminate actually frees the slot
                 log.info("De-assigned: userId={}, packageSession={}, userPlan={}, mode={}",
                         userId, packageSessionId, userPlanId, mode);
             } else {
@@ -205,8 +209,14 @@ public class BulkDeassignmentService {
                     mapping.setStatus(LearnerSessionStatusEnum.INACTIVE.name());
                 }
                 studentSessionRepository.save(mapping);
+                slotFreed = true; // Both modes free the slot when there's no UserPlan
                 log.info("De-assigned (no userPlan): userId={}, packageSession={}, mode={}",
                         userId, packageSessionId, mode);
+            }
+
+            // Only increment inventory when the slot is actually freed
+            if (slotFreed) {
+                packageSessionService.incrementAvailability(packageSessionId, 1);
             }
 
             String actionTaken = MODE_HARD.equals(mode)

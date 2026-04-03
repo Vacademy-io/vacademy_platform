@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.institute_learner.entity.StudentS
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
+import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
@@ -34,6 +35,7 @@ public class BulkDeassignmentService {
     private final StudentSessionRepository studentSessionRepository;
     private final UserPlanService userPlanService;
     private final AuthService authService;
+    private final PackageSessionService packageSessionService;
 
     private static final String MODE_SOFT = "SOFT";
     private static final String MODE_HARD = "HARD";
@@ -208,6 +210,9 @@ public class BulkDeassignmentService {
                 log.info("De-assigned (no userPlan): userId={}, packageSession={}, mode={}",
                         userId, packageSessionId, mode);
             }
+
+            // Increment inventory back since learner is being de-assigned
+            packageSessionService.incrementAvailability(packageSessionId, 1);
 
             String actionTaken = MODE_HARD.equals(mode)
                     ? "HARD_TERMINATED"

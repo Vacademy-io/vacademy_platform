@@ -88,7 +88,7 @@ export function LoginForm({
     allowGithubAuth: true,
     allowEmailOtpAuth: true,
     allowUsernamePasswordAuth: true,
-    allowPhoneAuth: true,
+    allowPhoneAuth: false,
   });
   const { setInstituteId } = useInstituteFeatureStore();
   const domainRouting = useDomainRouting();
@@ -113,7 +113,7 @@ export function LoginForm({
           allowEmailOtpAuth: parsed?.allowEmailOtpAuth !== false,
           allowUsernamePasswordAuth:
             parsed?.allowUsernamePasswordAuth !== false,
-          allowPhoneAuth: parsed?.allowPhoneAuth !== false,
+          allowPhoneAuth: parsed?.allowPhoneAuth === true,
         });
         if (
           parsed?.allowUsernamePasswordAuth === false &&
@@ -123,7 +123,7 @@ export function LoginForm({
         } else if (
           parsed?.allowUsernamePasswordAuth === false &&
           parsed?.allowEmailOtpAuth === false &&
-          parsed?.allowPhoneAuth !== false
+          parsed?.allowPhoneAuth === true
         ) {
           setAuthMethod("PHONE");
         }

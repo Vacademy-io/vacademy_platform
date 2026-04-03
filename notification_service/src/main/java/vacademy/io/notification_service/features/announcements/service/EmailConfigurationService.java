@@ -80,16 +80,31 @@ public class EmailConfigurationService {
                     JsonNode configNode = entry.getValue();
                     
                     // Extract fields from each email configuration
-                    String fromEmail = configNode.path(NotificationConstants.FROM).asText("");
-                    String username = configNode.path(NotificationConstants.USERNAME).asText("");
-                    
+                    // The "from" field may contain a display name: "Vet Education <info@vet.com>"
+                    String fromRaw = configNode.path(NotificationConstants.FROM).asText("");
+                    String fromEmail = fromRaw;
+                    String fromName = null;
+
+                    // Parse "Display Name <email@domain.com>" format
+                    if (fromRaw.contains("<") && fromRaw.contains(">")) {
+                        int ltIdx = fromRaw.indexOf('<');
+                        int gtIdx = fromRaw.indexOf('>');
+                        fromName = fromRaw.substring(0, ltIdx).trim();
+                        fromEmail = fromRaw.substring(ltIdx + 1, gtIdx).trim();
+                    }
+
+                    // Fallback display name to formatted email type if not set
+                    String displayName = (fromName != null && !fromName.isEmpty())
+                            ? fromName
+                            : formatEmailTypeName(emailType);
+
                     // Build EmailConfigDTO
                     EmailConfigDTO dto = EmailConfigDTO.builder()
                             .email(fromEmail)
-                            .name(formatEmailTypeName(emailType))
+                            .name(displayName)
                             .type(emailType)
                             .description("Email configuration for " + formatEmailTypeName(emailType))
-                            .displayText(formatEmailTypeName(emailType))
+                            .displayText(displayName + " (" + fromEmail + ")")
                             .build();
                     
                     configs.add(dto);

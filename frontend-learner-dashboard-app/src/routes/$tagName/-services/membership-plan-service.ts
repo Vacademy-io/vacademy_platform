@@ -11,6 +11,8 @@ export interface MembershipPlan {
     package_session_id: string;
     level_id: string;
     level_name: string;
+    available_slots?: number | null;
+    max_seats?: number | null;
     thumbnail_file_id?: string;
     course_banner_media_id?: string;
     course_preview_image_media_id?: string;

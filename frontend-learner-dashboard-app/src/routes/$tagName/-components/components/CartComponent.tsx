@@ -184,13 +184,12 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
 
   const handleSelectPlan = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Fixed number of books: 3
-    const fixedNumberOfBooks = 3;
     setMembershipPlan({
       id: plan.enroll_invite_id || plan.id,
       title: plan.package_name,
       price: plan.min_plan_actual_price,
-      numberOfBooks: fixedNumberOfBooks,
+      numberOfBooks: plan.available_slots ?? undefined,
+      maxSeats: plan.max_seats ?? undefined,
       packageSessionId: plan.package_session_id,
       enrollInviteId: plan.enroll_invite_id,
     });
@@ -198,9 +197,11 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
 
   // Extract fields - handle various possible field names
   const planName = plan.package_name || "Plan";
-  // Fixed number of books: 3
-  const numberOfBooks = 3;
-  const description = plan.description || plan.package_description || "Premium subscription plan";
+  const numberOfBooks = plan.available_slots;
+  const maxSeats = plan.max_seats;
+  const description = maxSeats
+    ? `Maximum ${maxSeats} books can be rented in this period`
+    : "No limit on total number of books in this period";
   const price = plan.min_plan_actual_price || 0;
   const currencySymbol = '₹';
 
@@ -237,7 +238,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
           <div className="flex items-center gap-1 flex-shrink-0">
             <span className="text-xs text-gray-500">Books:</span>
             <span className="text-xs font-semibold text-gray-700">
-              {numberOfBooks}
+              {numberOfBooks ?? 'No limit'}
             </span>
           </div>
         </div>
@@ -676,11 +677,11 @@ export const CartComponent: React.FC<CartComponentProps> = ({
                   }
 
                   const totalBooksInCart = getItemCount();
-                  const fixedBooksAllowed = 3;
+                  const maxBooksAllowed = membershipPlan.maxSeats;
 
-                  if (totalBooksInCart > fixedBooksAllowed) {
+                  if (maxBooksAllowed && totalBooksInCart > maxBooksAllowed) {
                     toast.error(
-                      "You had more then the desired number of books",
+                      `You can rent a maximum of ${maxBooksAllowed} books in this period`,
                       {
                         duration: 4000,
                       }

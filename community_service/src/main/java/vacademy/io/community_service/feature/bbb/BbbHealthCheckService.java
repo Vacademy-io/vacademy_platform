@@ -50,13 +50,33 @@ public class BbbHealthCheckService {
     }
 
     /**
+     * Scheduled start — Mon-Sat at 3:20 PM IST.
+     * Triggers GitHub Actions workflow to create BBB server from snapshot.
+     */
+    @Scheduled(cron = "0 20 15 * * MON-SAT", zone = "Asia/Kolkata")
+    public void scheduledStart() {
+        log.info("[BBB] Scheduled START triggered");
+        triggerGitHubAction("start");
+    }
+
+    /**
      * Scheduled health check — Mon-Sat at 3:45 PM IST.
-     * Note: may run on multiple pods; duplicate WhatsApp is harmless.
+     * Runs 25 min after start to give server time to boot.
      */
     @Scheduled(cron = "0 45 15 * * MON-SAT", zone = "Asia/Kolkata")
     public void scheduledHealthCheck() {
         log.info("[BBB HealthCheck] Scheduled check triggered");
         runHealthCheck();
+    }
+
+    /**
+     * Scheduled stop — Mon-Sat at 10:15 PM IST.
+     * Triggers GitHub Actions workflow to snapshot + delete BBB server.
+     */
+    @Scheduled(cron = "0 15 22 * * MON-SAT", zone = "Asia/Kolkata")
+    public void scheduledStop() {
+        log.info("[BBB] Scheduled STOP triggered");
+        triggerGitHubAction("stop");
     }
 
     public Map<String, Object> runHealthCheck() {

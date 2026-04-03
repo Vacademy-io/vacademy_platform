@@ -1,9 +1,8 @@
 name: BBB Server Schedule
 
 on:
-  schedule:
-    - cron: '0 10 * * 1-6'   # Start — 3:30 PM IST (UTC+5:30), Mon-Sat
-    - cron: '30 15 * * 1-6'  # Stop  — 9:00 PM IST (UTC+5:30), Mon-Sat
+  # Scheduling is handled by community-service @Scheduled (reliable, no GitHub cron delays)
+  # Community service triggers this workflow via workflow_dispatch at 3:20 PM and 10:15 PM IST
   workflow_dispatch:
     inputs:
       action:
@@ -33,8 +32,7 @@ jobs:
     name: Start BBB Server
     runs-on: ubuntu-latest
     if: >-
-      github.event.schedule == '0 10 * * 1-6' ||
-      (github.event_name == 'workflow_dispatch' && inputs.action == 'start')
+      github.event_name == 'workflow_dispatch' && inputs.action == 'start'
     steps:
       - name: Check if server already exists
         id: check
@@ -244,8 +242,7 @@ jobs:
     name: Stop BBB Server
     runs-on: ubuntu-latest
     if: >-
-      github.event.schedule == '30 15 * * 1-6' ||
-      (github.event_name == 'workflow_dispatch' && inputs.action == 'stop')
+      github.event_name == 'workflow_dispatch' && inputs.action == 'stop'
     steps:
       - name: Find server
         id: find
@@ -470,7 +467,7 @@ jobs:
           echo "## BBB Server Stopped" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Snapshot ID:** ${{ steps.snapshot.outputs.snapshot_id }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Billing:** STOPPED" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Next auto-start:** 3:30 PM IST tomorrow (if Mon-Sat)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Next auto-start:** 3:20 PM IST tomorrow (if Mon-Sat)" >> "$GITHUB_STEP_SUMMARY"
 
   status:
     name: BBB Server Status

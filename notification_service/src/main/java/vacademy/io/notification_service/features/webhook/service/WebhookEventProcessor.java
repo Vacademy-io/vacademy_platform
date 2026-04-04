@@ -253,20 +253,27 @@ public class WebhookEventProcessor {
                 return;
             }
 
-            // 2. Fall back to legacy: Get flow config for this channel
+            // 2. Fall back to legacy: find config with action_template_config for this channel
             Optional<ChannelFlowConfig> configOpt = flowConfigRepository
-                    .findByInstituteIdAndChannelTypeAndIsActiveTrue(instituteId, channelType);
+                    .findAllByInstituteIdAndChannelTypeAndIsActiveTrue(instituteId, channelType)
+                    .stream()
+                    .filter(c -> c.getActionTemplateConfig() != null && !c.getActionTemplateConfig().isBlank())
+                    .findFirst();
 
             // Fallback for sharing Jumpstart Flow configurations across Whatsapp providers
             if (configOpt.isEmpty() && (channelType.equals("WHATSAPP_WATI") || channelType.equals("WHATSAPP_META"))) {
                 log.debug("No active flow config for {}, falling back to WHATSAPP_COMBOT for {} rules sharing",
                         channelType, instituteId);
                 configOpt = flowConfigRepository
-                        .findByInstituteIdAndChannelTypeAndIsActiveTrue(instituteId, "WHATSAPP_COMBOT");
+                        .findAllByInstituteIdAndChannelTypeAndIsActiveTrue(instituteId, "WHATSAPP_COMBOT")
+                        .stream()
+                        .filter(c -> c.getActionTemplateConfig() != null && !c.getActionTemplateConfig().isBlank())
+                        .findFirst();
             }
 
             if (configOpt.isEmpty()) {
-                log.debug("No active flow config for instituteId={}, channelType={}", instituteId, channelType);
+                log.debug("No active flow config with action_template_config for instituteId={}, channelType={}",
+                        instituteId, channelType);
                 return;
             }
 

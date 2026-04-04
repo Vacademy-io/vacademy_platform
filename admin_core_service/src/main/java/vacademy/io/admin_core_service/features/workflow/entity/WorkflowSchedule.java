@@ -5,6 +5,8 @@ import lombok.Setter;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.Map;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
 @Table(name = "workflow_schedule")
@@ -48,9 +50,11 @@ public class WorkflowSchedule {
     @Column(name = "next_run_at")
     private Instant nextRunAt;
 
-    @Column(name = "created_at", updatable = false)
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false, nullable = false)
     private Instant createdAt;
 
+    @UpdateTimestamp
     @Column(name = "updated_at")
     private Instant updatedAt;
 

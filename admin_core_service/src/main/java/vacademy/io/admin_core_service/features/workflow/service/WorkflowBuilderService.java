@@ -193,6 +193,8 @@ public class WorkflowBuilderService {
                 schedule.setEndDate(Instant.parse(sch.getEndDate()));
             }
             schedule.setStatus("ACTIVE");
+            schedule.setCreatedAt(Instant.now());
+            schedule.setUpdatedAt(Instant.now());
             scheduleRepository.save(schedule);
         }
 

@@ -4,7 +4,7 @@ import { HeaderProps } from "../../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { RouteMatcher } from "../../-services/route-matcher";
-import { CourseCatalogueData, Component as PageComponent } from "../../-types/course-catalogue-types";
+import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useState, useEffect } from "react";
 import { Search, ShoppingCart } from "lucide-react";
 import { useCartStore } from "../../-stores/cart-store";
@@ -293,58 +293,57 @@ export const HeaderComponent: React.FC<HeaderProps & {
     }, [jsonLogoRaw]);
 
     // Check if we should hide search and cart icons
-    const shouldHideSearchAndCart = () => {
+    const getIconVisibility = () => {
+      let hideSearch = false;
+      let hideCart = false;
+
       const currentPath = location.pathname.toLowerCase();
+      const pathSegments = location.pathname.split('/').filter(Boolean);
 
       // Hide on cart page
       if (currentPath.includes('/cart')) {
-        return true;
+        hideSearch = true;
+        hideCart = true;
       }
 
       // Hide on book/course details page (pattern: /$tagName/$courseId)
-      // Check if path has format: /tagName/courseId where courseId looks like an ID (numeric or UUID)
-      const pathSegments = location.pathname.split('/').filter(Boolean);
       if (pathSegments.length >= 2) {
         const potentialCourseId = pathSegments[1];
-        // Check if it looks like a course ID (numeric or UUID)
         const isNumeric = /^\d+$/.test(potentialCourseId);
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(potentialCourseId);
         if (isNumeric || isUUID) {
-          // This is likely a course/book details page
-          return true;
+          hideSearch = true;
+          hideCart = true;
         }
       }
 
       // Check if current page has buyRentSection component
+      // Hide search but KEEP cart visible on plan page
       if (catalogueData?.pages) {
-        const currentPathSegments = location.pathname.split('/').filter(Boolean);
-        const pageRoute = currentPathSegments.slice(1).join('/') || '';
-
-        // Check all pages to see if any have buyRentSection
+        const pageRoute = pathSegments.slice(1).join('/') || '';
         for (const page of catalogueData.pages) {
           const pageRouteLower = (page.route || '').toLowerCase();
           const pageIdLower = (page.id || '').toLowerCase();
 
-          // Match by route or id
           const isCurrentPage = pageRouteLower === pageRoute.toLowerCase() ||
             pageIdLower === pageRoute.toLowerCase() ||
             (pageRoute === '' && pageRouteLower === '');
 
           if (isCurrentPage && page.components) {
             const hasBuyRentSection = page.components.some(
-              (component: PageComponent) => component.type === 'buyRentSection' && (component.enabled === true || String(component.enabled) === "true")
+              (component: any) => component.type === 'buyRentSection' && (component.enabled === true || String(component.enabled) === "true")
             );
             if (hasBuyRentSection) {
-              return true;
+              hideSearch = true;
             }
           }
         }
       }
 
-      return false;
+      return { hideSearch, hideCart };
     };
 
-    const hideSearchAndCart = shouldHideSearchAndCart();
+    const { hideSearch, hideCart } = getIconVisibility();
 
     // Consistent header height using design tokens
     const headerHeight = 'h-16 md:h-20';
@@ -367,7 +366,15 @@ export const HeaderComponent: React.FC<HeaderProps & {
             {isCourseCatalogeTypeEnabled && (
               <button
                 ref={setHamburgerButtonRef}
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                onClick={() => {
+                  const newState = !isMobileMenuOpen;
+                  setIsMobileMenuOpen(newState);
+                  if (newState && togle) {
+                    settogle(false);
+                    window.dispatchEvent(new CustomEvent('toggleSearchBar', { detail: { isOpen: false } }));
+                    sessionStorage.setItem('searchBarOpen', 'false');
+                  }
+                }}
                 className="md:hidden p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] flex-shrink-0 transition-colors duration-200"
                 aria-label="Toggle menu"
               >
@@ -460,7 +467,15 @@ export const HeaderComponent: React.FC<HeaderProps & {
               {!isCourseCatalogeTypeEnabled && navigation.length > 0 && (
                 <button
                   ref={setHamburgerButtonRef}
-                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  onClick={() => {
+                    const newState = !isMobileMenuOpen;
+                    setIsMobileMenuOpen(newState);
+                    if (newState && togle) {
+                      settogle(false);
+                      window.dispatchEvent(new CustomEvent('toggleSearchBar', { detail: { isOpen: false } }));
+                      sessionStorage.setItem('searchBarOpen', 'false');
+                    }
+                  }}
                   className="md:hidden p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors duration-200"
                   aria-label="Toggle menu"
                 >
@@ -471,9 +486,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
               )}
 
               {/* Search and Cart Icons */}
-              {isCourseCatalogeTypeEnabled && !hideSearchAndCart && (
+              {isCourseCatalogeTypeEnabled && (
                 <div className="flex items-center gap-1">
                   {/* Search Icon */}
+                  {!hideSearch && (
                   <button
                     onClick={() => {
                       const newToggleState = !togle;
@@ -482,14 +498,19 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         detail: { isOpen: newToggleState }
                       }));
                       sessionStorage.setItem('searchBarOpen', String(newToggleState));
+                      if (newToggleState && isMobileMenuOpen) {
+                        setIsMobileMenuOpen(false);
+                      }
                     }}
                     className="p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors duration-200"
                     aria-label="Search"
                   >
                     <Search className="w-5 h-5" />
                   </button>
+                  )}
 
                   {/* Cart Icon */}
+                  {!hideCart && (
                   <button
                     onClick={() => {
                       const currentPath = location.pathname;
@@ -507,7 +528,19 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       </span>
                     )}
                   </button>
+                  )}
                 </div>
+              )}
+
+              {/* Login Button - Mobile only (when courseCatalogeType enabled) */}
+              {isCourseCatalogeTypeEnabled && !isAuthenticated && (
+                <button
+                  onClick={() => navigate({ to: '/login' })}
+                  className="md:hidden px-3 py-1.5 rounded-md text-xs font-medium text-white hover:opacity-90 transition-opacity duration-200"
+                  style={{ backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' }}
+                >
+                  Login
+                </button>
               )}
 
               {/* Auth Links - Desktop only */}
@@ -538,10 +571,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           navigate({ to: link.route });
                         }
                       }}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
-                        ? 'text-white bg-primary-500 hover:bg-primary-400'
-                        : 'text-primary-500 border border-primary-500 hover:bg-primary-50'
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${index === 0
+                        ? 'text-white hover:opacity-90'
+                        : 'border hover:bg-opacity-10 opacity-90 hover:opacity-100'
                         }`}
+                      style={index === 0 ? {
+                        backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                      } : {
+                        color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6',
+                        borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                      }}
                     >
                       {link.label}
                     </button>
@@ -564,19 +603,63 @@ export const HeaderComponent: React.FC<HeaderProps & {
               <div className={`transform transition-transform duration-300 ease-out ${isMobileMenuOpen ? 'translate-y-0' : '-translate-y-4'
                 }`}>
                 <div className="px-4 py-4 space-y-3">
+                  {/* Navigation Links */}
+                  {navigation.length > 0 && (
+                    <div className="space-y-1 pb-3 border-b border-[hsl(var(--catalogue-border-subtle))]">
+                      {navigation.map((item, index) => {
+                        const isActive = isActiveRoute(item.route, item.label);
+                        const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
+                        return (
+                          <button
+                            key={index}
+                            onClick={() => {
+                              setIsMobileMenuOpen(false);
+                              handleNavigation(item.route, item.label, openInSameTab);
+                            }}
+                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
+                              ? 'text-primary-500 bg-primary-50'
+                              : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
+                              }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Login Button */}
+                  {!isAuthenticated && (
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
                       navigate({ to: '/login' });
                     }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white hover:opacity-90 transition-opacity duration-200"
+                    style={{ backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' }}
                   >
                     <span>Login</span>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
                   </button>
+                  )}
+
+                  {/* Dashboard Button - when authenticated */}
+                  {isAuthenticated && (
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        navigate({ to: '/dashboard' });
+                      }}
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
+                    >
+                      <span>Dashboard</span>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                    </button>
+                  )}
 
                   {/* Customer Services Button */}
                   <button
@@ -735,10 +818,15 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               }
                               setIsMobileMenuOpen(false);
                             }}
-                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
-                              ? 'text-white bg-primary-500 hover:bg-primary-400'
-                              : 'text-primary-500 hover:bg-primary-50'
+                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-all duration-200 ${index === 0
+                              ? 'text-white hover:opacity-90'
+                              : 'hover:opacity-80'
                               }`}
+                            style={index === 0 ? {
+                                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                            } : {
+                                color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                            }}
                           >
                             {link.label}
                           </button>

@@ -533,13 +533,12 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
     return (
       <section className="w-full relative" style={{ width: '100%', overflow: 'hidden' }}>
         <div 
-          className="relative overflow-hidden" 
-          style={{ 
-            height: "500px", 
+          className="relative overflow-hidden h-[300px] sm:h-[500px]"
+          style={{
             width: "100%",
             position: 'relative',
-            willChange: 'contents', // Optimize for animations
-            transform: 'translateZ(0)' // Force GPU acceleration
+            willChange: 'contents',
+            transform: 'translateZ(0)'
           }}
         >
          <div className="flex h-full" style={sliderStyle}>
@@ -596,8 +595,8 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                     }}
                   >
                     {slide.heading && (
-                      <h2 
-                        className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4 max-w-4xl" 
+                      <h2
+                        className="text-xl sm:text-4xl lg:text-5xl font-bold text-white mb-2 sm:mb-4 max-w-4xl"
                         style={{ 
                           textShadow: '2px 2px 8px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.5)',
                           lineHeight: '1.2'
@@ -607,8 +606,8 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                       </h2>
                     )}
                     {slide.description && (
-                      <p 
-                        className="text-lg sm:text-xl text-white mb-6 max-w-2xl" 
+                      <p
+                        className="text-sm sm:text-xl text-white mb-3 sm:mb-6 max-w-2xl"
                         style={{ 
                           textShadow: '1px 1px 6px rgba(0,0,0,0.9), 0 0 15px rgba(0,0,0,0.5)',
                           lineHeight: '1.6'
@@ -623,7 +622,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                           e.stopPropagation();
                           handleButtonClick(slide.button);
                         }}
-                        className="px-6 py-3 sm:px-8 sm:py-4 text-base sm:text-lg font-semibold text-white rounded-md hover:opacity-90 transition-opacity shadow-lg cursor-pointer"
+                        className="px-4 py-2 sm:px-8 sm:py-4 text-sm sm:text-lg font-semibold text-white rounded-md hover:opacity-90 transition-opacity shadow-lg cursor-pointer"
                         style={{
                           backgroundColor: slide.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),
                           zIndex: 20,

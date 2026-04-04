@@ -59,6 +59,10 @@ public class WatiService {
         log.info("Sending WATI template messages (bulk): template={}, recipients={}, apiUrl={}",
                 templateName, userDetails.size(), apiUrl);
 
+        // Upsert all contacts before sending — ensures required attributes are set
+        // (WATI rejects sends with "Missing customer attributes" if contact is incomplete)
+        upsertContacts(userDetails, apiKey, apiUrl);
+
         // Deduplicate based on phone number
         Map<String, Map<String, String>> uniqueUsers = userDetails.stream()
                 .collect(Collectors.toMap(
@@ -190,6 +194,44 @@ public class WatiService {
             return uniqueUsers.keySet().stream()
                     .map(phone -> Map.of(phone, false))
                     .collect(Collectors.toList());
+        }
+    }
+
+    /**
+     * Upsert all contacts before sending template messages.
+     * Sets allowbroadcast=true, allowcampaign=true, allowsms=true so WATI
+     * doesn't reject with "Missing customer attributes".
+     * Failures are logged and swallowed — send proceeds regardless.
+     */
+    private void upsertContacts(List<Map<String, Map<String, String>>> userDetails,
+                                 String apiKey, String apiUrl) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+
+        String endpoint = apiUrl + "/api/v1/addContact";
+
+        for (Map<String, Map<String, String>> userDetail : userDetails) {
+            String phone = userDetail.keySet().iterator().next();
+            String formattedPhone = phone.replaceAll("[^0-9]", "");
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("whatsappNumber", formattedPhone);
+            body.put("customParams", List.of(
+                    Map.of("name", "allowbroadcast", "value", "true"),
+                    Map.of("name", "allowcampaign", "value", "true"),
+                    Map.of("name", "allowsms", "value", "true")
+            ));
+
+            try {
+                String json = objectMapper.writeValueAsString(body);
+                HttpEntity<String> entity = new HttpEntity<>(json, headers);
+                ResponseEntity<String> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
+                log.debug("WATI upsert contact {}: status={}", formattedPhone, response.getStatusCode());
+            } catch (Exception e) {
+                // Non-fatal — continue with send even if upsert fails
+                log.warn("WATI contact upsert failed for {}: {}", formattedPhone, e.getMessage());
+            }
         }
     }
 

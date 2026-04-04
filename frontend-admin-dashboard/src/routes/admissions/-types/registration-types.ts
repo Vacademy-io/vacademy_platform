@@ -35,6 +35,10 @@ export interface RegistrationFee {
     paidAt?: string;
     paymentMode?: string;
     receiptNumber?: string;
+    concessionId?: string;
+    concessionAmount?: number;
+    concessionStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+    originalAmount?: number;
 }
 
 export interface ParentInfo {

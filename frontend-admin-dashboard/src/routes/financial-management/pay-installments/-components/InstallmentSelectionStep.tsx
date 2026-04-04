@@ -252,11 +252,11 @@ export function InstallmentSelectionStep({
         selectableDues.length > 0 && selectableDues.every((d) => selectedIds.has(d.id));
 
     return (
-        <div className="flex flex-col h-[calc(100vh-220px)]">
+        <div className="flex flex-col h-[calc(100vh-180px)]">
             {/* ── Top section ── */}
-            <div className="space-y-4 mb-4">
+            <div className="space-y-3 mb-3">
                 {/* Header */}
-                <div className="flex items-center gap-4 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center gap-3 bg-white rounded-xl shadow-sm border border-gray-100 p-3">
                     <button
                         onClick={onBack}
                         className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 transition-colors"
@@ -264,7 +264,7 @@ export function InstallmentSelectionStep({
                         <ArrowLeft size={16} />
                         Change Student
                     </button>
-                    <div className="h-5 w-px bg-gray-200" />
+                    <div className="h-4 w-px bg-gray-200" />
                     <div>
                         <span className="font-semibold text-gray-800">
                             {student.student_name}
@@ -276,7 +276,7 @@ export function InstallmentSelectionStep({
                 </div>
 
                 {(!dues || dues.length === 0) && (
-                    <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
+                    <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
                         <p className="text-lg font-semibold text-gray-600">No dues found.</p>
                         <p className="mt-2 text-sm text-gray-400">
                             This student has no pending installments.
@@ -288,7 +288,7 @@ export function InstallmentSelectionStep({
             {dues && dues.length > 0 && (
                 <>
                     {/* Summary Cards */}
-                    <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="grid grid-cols-3 gap-3 mb-3">
                         {[
                             {
                                 title: 'Total Fee',
@@ -317,20 +317,20 @@ export function InstallmentSelectionStep({
                         ].map((card, idx) => (
                             <div
                                 key={idx}
-                                className={`bg-white border ${card.borderColor} rounded-xl p-4 shadow-sm flex flex-col transition hover:shadow-md`}
+                                className={`bg-white border ${card.borderColor} rounded-xl p-3 shadow-sm flex flex-col transition hover:shadow-md`}
                             >
                                 <div className="flex justify-between items-start mb-1">
                                     <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                                         {card.title}
                                     </span>
                                     <div
-                                        className={`p-1.5 bg-gray-50/50 rounded-full ${card.iconColor}`}
+                                        className={`p-1 bg-gray-50/50 rounded-full ${card.iconColor}`}
                                     >
-                                        <card.icon size={18} weight="duotone" />
+                                        <card.icon size={16} weight="duotone" />
                                     </div>
                                 </div>
                                 <div
-                                    className={`text-xl font-extrabold mt-1 ${card.valueColor}`}
+                                    className={`text-lg font-extrabold mt-1 ${card.valueColor}`}
                                 >
                                     {card.value}
                                 </div>
@@ -339,7 +339,7 @@ export function InstallmentSelectionStep({
                     </div>
 
                     {/* Filters */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-3">
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                             <div className="flex items-center gap-2 flex-wrap">
                                 {FILTER_STATUS_CONFIG.map((s) => (
@@ -390,7 +390,7 @@ export function InstallmentSelectionStep({
                     </div>
 
                     {/* ── Scrollable table ── */}
-                    <div className="flex-1 min-h-0 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
+                    <div className="flex-[1.5] min-h-[430px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-3">
                         <div className="overflow-auto h-full">
                             <table className="w-full text-left border-collapse min-w-[900px]">
                                 <thead className="sticky top-0 z-10">
@@ -548,7 +548,7 @@ export function InstallmentSelectionStep({
                     </div>
 
                     {/* ── Fixed bottom action bar ── */}
-                    <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4">
+                    <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-3">
                         <div className="flex items-center gap-4">
                             <div className="text-sm text-gray-600">
                                 <span className="font-bold text-gray-800">{selectedIds.size}</span>{' '}

@@ -224,13 +224,26 @@ export function sanitizeHtml(dirtyHtml: string): string {
 
   const allowedTags = new Set([
     "b", "i", "em", "strong", "u", "br", "p", "span", "div", "ul", "ol", "li",
-    "blockquote", "code", "pre", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6"
+    "blockquote", "code", "pre", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6",
+    // SVG (used by KaTeX for rendering math symbols like square roots)
+    "svg", "path", "line", "rect", "circle", "g",
+    // MathML (used by KaTeX for accessible math rendering)
+    "math", "semantics", "mrow", "msup", "msub", "msubsup", "mfrac", "msqrt",
+    "mn", "mi", "mo", "mtext", "mspace", "annotation", "mtable", "mtr", "mtd",
+    "mover", "munder", "munderover", "mroot", "menclose", "mpadded", "mphantom"
   ]);
 
   const allowedAttrsByTag: Record<string, Set<string>> = {
     a: new Set(["href", "title", "target", "rel"]),
-    img: new Set(["src", "alt", "title"]),
-    '*': new Set(["style", "class"]),
+    img: new Set(["src", "alt", "title", "width", "height"]),
+    svg: new Set(["xmlns", "width", "height", "viewbox", "preserveaspectratio", "fill", "stroke"]),
+    path: new Set(["d", "fill", "stroke", "stroke-width"]),
+    line: new Set(["x1", "y1", "x2", "y2", "stroke", "stroke-width"]),
+    rect: new Set(["x", "y", "width", "height", "fill", "stroke"]),
+    circle: new Set(["cx", "cy", "r", "fill", "stroke"]),
+    math: new Set(["xmlns"]),
+    annotation: new Set(["encoding"]),
+    '*': new Set(["style", "class", "aria-hidden", "data-latex", "latex"]),
   };
 
   // Create a detached document to avoid executing anything

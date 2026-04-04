@@ -208,7 +208,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
   return (
     <div
       className={`
-        rounded-lg p-2.5 sm:p-3 border-2 transition-all duration-200 cursor-pointer active:scale-[0.97] hover:scale-[1.01]
+        rounded-lg p-2 sm:p-3 border-2 transition-all duration-200 cursor-pointer active:scale-[0.97] hover:scale-[1.01]
         ${isSelected
           ? 'bg-primary-500 border-primary-500 shadow-md'
           : 'bg-white border-gray-200 hover:border-primary-300 hover:shadow-sm'
@@ -216,37 +216,51 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
       `}
       onClick={handleSelectPlan}
     >
-      {/* Compact Card - 2 rows layout */}
-      <div className="space-y-2">
+      {/* Compact Card - Mobile shows title, price, books. Desktop shows description too */}
+      <div className="space-y-1.5 sm:space-y-2">
         {/* Row 1: Name and Price */}
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm sm:text-base font-semibold text-gray-900 line-clamp-1 flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-1.5">
+          <h3 className="text-xs sm:text-sm font-semibold text-gray-900 line-clamp-2 flex-1 min-w-0">
             {planName}
           </h3>
           <div className="flex items-baseline gap-0.5 flex-shrink-0">
-            <span className="text-sm sm:text-base font-bold text-gray-900">
+            <span className="text-xs sm:text-sm font-bold text-gray-900">
               {currencySymbol}{price.toFixed(0)}
             </span>
           </div>
         </div>
 
-        {/* Row 2: Description and Books Count */}
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-gray-600 line-clamp-1 flex-1 min-w-0">
+        {/* Row 2: Description (hidden on mobile) and Books Count */}
+        <div className="flex flex-col gap-1">
+          {/* Description - hidden on mobile, shown on sm+ */}
+          <p className="hidden sm:block text-xs text-gray-600 line-clamp-2">
             {description}
           </p>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <span className="text-xs text-gray-500">Books:</span>
-            <span className="text-xs font-semibold text-gray-700">
-              {numberOfBooks ?? 'No limit'}
-            </span>
+
+          {/* Books Count - Mobile shows compact, Desktop shows with description */}
+          <div className="flex flex-col gap-0.5 sm:gap-1">
+            {/* Max books at one time */}
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] sm:text-xs text-gray-500">Books at once:</span>
+              <span className={`font-semibold text-gray-700 ${numberOfBooks ? 'text-[10px] sm:text-xs' : 'text-sm sm:text-base'}`}>
+                {numberOfBooks ?? '∞'}
+              </span>
+            </div>
+
+            {/* Max books in period - always show */}
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] sm:text-xs text-gray-500">Books in period:</span>
+              <span className={`font-semibold text-gray-700 ${maxSeats ? 'text-[10px] sm:text-xs' : 'text-sm sm:text-base'}`}>
+                {maxSeats ?? '∞'}
+              </span>
+            </div>
           </div>
         </div>
 
         {/* Select Button */}
         <button
           className={`
-            w-full mt-2 py-2 px-2 rounded-md text-xs sm:text-sm font-semibold transition-all duration-200 active:scale-95
+            w-full mt-1.5 sm:mt-2 py-1.5 sm:py-2 px-2 rounded-md text-[10px] sm:text-xs font-semibold transition-all duration-200 active:scale-95
             ${isSelected
               ? 'bg-primary-600 text-white font-bold shadow-sm hover:bg-primary-700'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -646,7 +660,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
                 ))}
               </div>
             ) : membershipPlans.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {membershipPlans.map((plan) => (
                   <MembershipPlanCard key={plan.id} plan={plan} />
                 ))}

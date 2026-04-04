@@ -220,7 +220,10 @@ public class WatiService {
             body.put("customParams", List.of(
                     Map.of("name", "allowbroadcast", "value", "true"),
                     Map.of("name", "allowcampaign", "value", "true"),
-                    Map.of("name", "allowsms", "value", "true")
+                    Map.of("name", "allowsms", "value", "true"),
+                    Map.of("name", "Channel", "value", "WhatsApp"),
+                    Map.of("name", "Source", "value", "Vacademy"),
+                    Map.of("name", "attribute_1", "value", "")
             ));
 
             try {

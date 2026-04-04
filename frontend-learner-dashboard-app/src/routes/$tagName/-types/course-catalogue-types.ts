@@ -49,6 +49,7 @@ export interface GlobalSettings {
     provider: "razorpay" | "stripe" | "paypal";
     fields: string[];
   };
+  communityJoinLink?: string;
   layout?: {
     header?: {
       id: string;

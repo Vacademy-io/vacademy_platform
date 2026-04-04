@@ -38,7 +38,6 @@ import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
 import { Route as AiSettingsIndexRouteImport } from './routes/ai-settings/index'
 import { Route as TagNameIndexRouteImport } from './routes/$tagName/index'
 import { Route as ParentDocumentsRouteImport } from './routes/parent/documents'
-import { Route as AssignmentSlideIdRouteImport } from './routes/assignment/$slideId'
 import { Route as TagNamePageSlugRouteImport } from './routes/$tagName/$pageSlug'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
@@ -231,11 +230,6 @@ const TagNameIndexRoute = TagNameIndexRouteImport.update({
 const ParentDocumentsRoute = ParentDocumentsRouteImport.update({
   id: '/parent/documents',
   path: '/parent/documents',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AssignmentSlideIdRoute = AssignmentSlideIdRouteImport.update({
-  id: '/assignment/$slideId',
-  path: '/assignment/$slideId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TagNamePageSlugRoute = TagNamePageSlugRouteImport.update({
@@ -508,7 +502,6 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
 
 export interface FileRoutesByFullPath {
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
-  '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
   '/$tagName': typeof TagNameIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
@@ -587,7 +580,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
-  '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/$tagName': typeof TagNameIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
@@ -666,7 +658,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
-  '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
   '/$tagName/': typeof TagNameIndexRoute
   '/ai-settings/': typeof AiSettingsIndexRoute
@@ -747,7 +738,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/$tagName/$pageSlug'
-    | '/assignment/$slideId'
     | '/parent/documents'
     | '/$tagName'
     | '/ai-settings'
@@ -826,7 +816,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$tagName/$pageSlug'
-    | '/assignment/$slideId'
     | '/$tagName'
     | '/ai-settings'
     | '/assessment'
@@ -904,7 +893,6 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/$tagName/$pageSlug'
-    | '/assignment/$slideId'
     | '/parent/documents'
     | '/$tagName/'
     | '/ai-settings/'
@@ -984,7 +972,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   TagNamePageSlugRoute: typeof TagNamePageSlugRoute
-  AssignmentSlideIdRoute: typeof AssignmentSlideIdRoute
   ParentDocumentsRoute: typeof ParentDocumentsRouteWithChildren
   TagNameIndexRoute: typeof TagNameIndexRoute
   AiSettingsIndexRoute: typeof AiSettingsIndexRoute
@@ -1264,13 +1251,6 @@ declare module '@tanstack/react-router' {
       path: '/parent/documents'
       fullPath: '/parent/documents'
       preLoaderRoute: typeof ParentDocumentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/assignment/$slideId': {
-      id: '/assignment/$slideId'
-      path: '/assignment/$slideId'
-      fullPath: '/assignment/$slideId'
-      preLoaderRoute: typeof AssignmentSlideIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$tagName/$pageSlug': {
@@ -1619,7 +1599,6 @@ const ParentDocumentsRouteWithChildren = ParentDocumentsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   TagNamePageSlugRoute: TagNamePageSlugRoute,
-  AssignmentSlideIdRoute: AssignmentSlideIdRoute,
   ParentDocumentsRoute: ParentDocumentsRouteWithChildren,
   TagNameIndexRoute: TagNameIndexRoute,
   AiSettingsIndexRoute: AiSettingsIndexRoute,

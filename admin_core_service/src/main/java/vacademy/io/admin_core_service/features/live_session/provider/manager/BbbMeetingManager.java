@@ -12,9 +12,11 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.live_session.provider.LiveSessionProviderStrategy;
+import vacademy.io.admin_core_service.features.live_session.provider.entity.BbbServerPool;
 import vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.repository.LiveSessionProviderConfigRepository;
+import vacademy.io.admin_core_service.features.live_session.provider.service.BbbServerRouter;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -35,7 +37,11 @@ import java.util.*;
  * BBB uses a REST API with SHA-256 checksum authentication.
  * API reference: https://docs.bigbluebutton.org/development/api/
  *
- * Config stored in configJson:
+ * Multi-server support: When a BbbServerRouter is available, meeting creation
+ * uses sequential-fill routing across the server pool. Join/recording/attendance
+ * operations resolve the server from the schedule's bbbServerId field.
+ *
+ * Config stored in configJson (legacy, per-institute):
  * {
  * "apiUrl": "https://meet.vacademy.io/bigbluebutton/api",
  * "secret": "shared-secret-here"
@@ -51,6 +57,7 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
     private final WebClient.Builder webClientBuilder;
     private final InstituteRepository instituteRepository;
     private final MediaService mediaService;
+    private final BbbServerRouter serverRouter;
 
     @Value("${tool.executor.base-url:http://localhost}")
     private String backendBaseUrl;
@@ -127,9 +134,23 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
 
     @Override
     public CreateMeetingResponseDTO createMeeting(CreateMeetingRequestDTO request, String instituteId) {
-        Map<String, Object> cfg = getConfigMap(instituteId);
-        String apiUrl = (String) cfg.get("apiUrl");
-        String secret = (String) cfg.get("secret");
+        // Use server pool router for meeting placement
+        BbbServerPool selectedServer = null;
+        String apiUrl;
+        String secret;
+
+        try {
+            selectedServer = serverRouter.pickServer();
+            apiUrl = selectedServer.getApiUrl();
+            secret = selectedServer.getSecret();
+            log.info("[BBB] Routed meeting to server: {} ({})", selectedServer.getSlug(), selectedServer.getDomain());
+        } catch (Exception e) {
+            // Fallback to legacy config if router fails (e.g., empty pool table)
+            log.warn("[BBB] Server pool routing failed, falling back to legacy config: {}", e.getMessage());
+            Map<String, Object> cfg = getConfigMap(instituteId);
+            apiUrl = (String) cfg.get("apiUrl");
+            secret = (String) cfg.get("secret");
+        }
 
         String meetingId = UUID.randomUUID().toString();
 
@@ -293,6 +314,13 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         raw.put("meetingID", bbbMeetingId);
         raw.put("internalMeetingID", internalMeetingId);
 
+        // Track which server this meeting is on
+        if (selectedServer != null) {
+            raw.put("bbbServerId", selectedServer.getId());
+            raw.put("bbbServerSlug", selectedServer.getSlug());
+            serverRouter.onMeetingCreated(selectedServer.getId());
+        }
+
         return CreateMeetingResponseDTO.builder()
                 .providerMeetingId(bbbMeetingId)
                 .joinUrl(attendeeJoinUrl)
@@ -327,9 +355,33 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
      */
     public String buildJoinUrlForUser(String meetingId, String fullName,
             String userId, String role, String instituteId) {
-        Map<String, Object> cfg = getConfigMap(instituteId);
-        String apiUrl = (String) cfg.get("apiUrl");
-        String secret = (String) cfg.get("secret");
+        return buildJoinUrlForUser(meetingId, fullName, userId, role, instituteId, null);
+    }
+
+    /**
+     * Build a personalized join URL. Uses the schedule's assigned server if available,
+     * otherwise falls back to legacy config.
+     */
+    public String buildJoinUrlForUser(String meetingId, String fullName,
+            String userId, String role, String instituteId, String bbbServerId) {
+        String apiUrl;
+        String secret;
+        if (bbbServerId != null) {
+            try {
+                BbbServerPool server = serverRouter.getServer(bbbServerId);
+                apiUrl = server.getApiUrl();
+                secret = server.getSecret();
+            } catch (Exception e) {
+                log.warn("[BBB] Failed to resolve server {}, falling back to legacy config", bbbServerId);
+                Map<String, Object> cfg = getConfigMap(instituteId);
+                apiUrl = (String) cfg.get("apiUrl");
+                secret = (String) cfg.get("secret");
+            }
+        } else {
+            Map<String, Object> cfg = getConfigMap(instituteId);
+            apiUrl = (String) cfg.get("apiUrl");
+            secret = (String) cfg.get("secret");
+        }
 
         // Build base join params
         Map<String, String> params = new LinkedHashMap<>();
@@ -375,10 +427,31 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
      * Returns false if the meeting was force-ended or never started.
      */
     public boolean isMeetingRunning(String meetingId, String instituteId) {
+        return isMeetingRunning(meetingId, instituteId, null);
+    }
+
+    /**
+     * Check if meeting is running. Uses the schedule's assigned server if available.
+     */
+    public boolean isMeetingRunning(String meetingId, String instituteId, String bbbServerId) {
         try {
-            Map<String, Object> cfg = getConfigMap(instituteId);
-            String apiUrl = (String) cfg.get("apiUrl");
-            String secret = (String) cfg.get("secret");
+            String apiUrl;
+            String secret;
+            if (bbbServerId != null) {
+                try {
+                    BbbServerPool server = serverRouter.getServer(bbbServerId);
+                    apiUrl = server.getApiUrl();
+                    secret = server.getSecret();
+                } catch (Exception e) {
+                    Map<String, Object> cfg = getConfigMap(instituteId);
+                    apiUrl = (String) cfg.get("apiUrl");
+                    secret = (String) cfg.get("secret");
+                }
+            } else {
+                Map<String, Object> cfg = getConfigMap(instituteId);
+                apiUrl = (String) cfg.get("apiUrl");
+                secret = (String) cfg.get("secret");
+            }
 
             Map<String, String> params = new LinkedHashMap<>();
             params.put("meetingID", meetingId);
@@ -412,9 +485,30 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
 
     @Override
     public List<MeetingRecordingDTO> getRecordings(String providerMeetingId, String instituteId) {
-        Map<String, Object> cfg = getConfigMap(instituteId);
-        String apiUrl = (String) cfg.get("apiUrl");
-        String secret = (String) cfg.get("secret");
+        return getRecordings(providerMeetingId, instituteId, null);
+    }
+
+    /**
+     * Get recordings from the correct server. Uses bbbServerId if available.
+     */
+    public List<MeetingRecordingDTO> getRecordings(String providerMeetingId, String instituteId, String bbbServerId) {
+        String apiUrl;
+        String secret;
+        if (bbbServerId != null) {
+            try {
+                BbbServerPool server = serverRouter.getServer(bbbServerId);
+                apiUrl = server.getApiUrl();
+                secret = server.getSecret();
+            } catch (Exception e) {
+                Map<String, Object> cfg = getConfigMap(instituteId);
+                apiUrl = (String) cfg.get("apiUrl");
+                secret = (String) cfg.get("secret");
+            }
+        } else {
+            Map<String, Object> cfg = getConfigMap(instituteId);
+            apiUrl = (String) cfg.get("apiUrl");
+            secret = (String) cfg.get("secret");
+        }
 
         Map<String, String> params = new LinkedHashMap<>();
         params.put("meetingID", providerMeetingId);
@@ -484,9 +578,30 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
 
     @Override
     public List<MeetingAttendeeDTO> getAttendance(String providerMeetingId, String instituteId) {
-        Map<String, Object> cfg = getConfigMap(instituteId);
-        String apiUrl = (String) cfg.get("apiUrl");
-        String secret = (String) cfg.get("secret");
+        return getAttendance(providerMeetingId, instituteId, null);
+    }
+
+    /**
+     * Get attendance from the correct server. Uses bbbServerId if available.
+     */
+    public List<MeetingAttendeeDTO> getAttendance(String providerMeetingId, String instituteId, String bbbServerId) {
+        String apiUrl;
+        String secret;
+        if (bbbServerId != null) {
+            try {
+                BbbServerPool server = serverRouter.getServer(bbbServerId);
+                apiUrl = server.getApiUrl();
+                secret = server.getSecret();
+            } catch (Exception e) {
+                Map<String, Object> cfg = getConfigMap(instituteId);
+                apiUrl = (String) cfg.get("apiUrl");
+                secret = (String) cfg.get("secret");
+            }
+        } else {
+            Map<String, Object> cfg = getConfigMap(instituteId);
+            apiUrl = (String) cfg.get("apiUrl");
+            secret = (String) cfg.get("secret");
+        }
 
         Map<String, String> params = new LinkedHashMap<>();
         params.put("meetingID", providerMeetingId);
@@ -575,12 +690,21 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
 
     /**
      * Validates a BBB secret sent by the post-publish script.
-     * Compares against the stored BBB config secret.
+     * Checks against ALL pool server secrets (any match = valid)
+     * and falls back to legacy provider config if pool is empty.
      */
     public boolean validateBbbSecret(String secret) {
         if (secret == null || secret.isBlank())
             return false;
         try {
+            // Check against all pool server secrets first
+            List<BbbServerPool> servers = serverRouter.getAllEnabledServers();
+            for (BbbServerPool server : servers) {
+                if (secret.equals(server.getSecret())) {
+                    return true;
+                }
+            }
+            // Fallback: check legacy provider config
             var config = configRepository.findByProviderAndStatusIn(
                     MeetingProvider.BBB_MEETING.name(), ACTIVE);
             if (config.isEmpty())

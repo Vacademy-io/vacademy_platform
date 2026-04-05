@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.live_session.provider.LiveSession
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderMeetingCreateRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig;
+import vacademy.io.admin_core_service.features.live_session.provider.manager.BbbMeetingManager;
 import vacademy.io.admin_core_service.features.live_session.provider.repository.LiveSessionProviderConfigRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
@@ -124,6 +125,13 @@ public class LiveSessionProviderService {
                 }
                 schedule.setProviderMeetingId(response.getProviderMeetingId());
                 schedule.setProviderHostUrl(response.getHostUrl());
+
+                // Pin the meeting to its BBB server (multi-server pool support)
+                if (response.getRawResponse() != null
+                        && response.getRawResponse().containsKey("bbbServerId")) {
+                    schedule.setBbbServerId((String) response.getRawResponse().get("bbbServerId"));
+                }
+
                 scheduleRepository.save(schedule);
 
                 if (schedule.getSessionId() != null) {
@@ -151,7 +159,15 @@ public class LiveSessionProviderService {
     public List<MeetingRecordingDTO> getRecordings(String scheduleId, String instituteId) {
         SessionSchedule schedule = getScheduleOrThrow(scheduleId);
         LiveSessionProviderStrategy strategy = getStrategyForSchedule(schedule);
-        List<MeetingRecordingDTO> recordings = strategy.getRecordings(schedule.getProviderMeetingId(), instituteId);
+
+        // Route to the correct BBB server (multi-server pool support)
+        List<MeetingRecordingDTO> recordings;
+        if (strategy instanceof BbbMeetingManager bbbManager && schedule.getBbbServerId() != null) {
+            recordings = bbbManager.getRecordings(schedule.getProviderMeetingId(), instituteId, schedule.getBbbServerId());
+        } else {
+            recordings = strategy.getRecordings(schedule.getProviderMeetingId(), instituteId);
+        }
+
         try {
             schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(recordings));
             schedule.setLastRecordingSyncAt(new java.util.Date());
@@ -165,6 +181,11 @@ public class LiveSessionProviderService {
     public List<MeetingAttendeeDTO> getAttendance(String scheduleId, String instituteId) {
         SessionSchedule schedule = getScheduleOrThrow(scheduleId);
         LiveSessionProviderStrategy strategy = getStrategyForSchedule(schedule);
+
+        // Route to the correct BBB server (multi-server pool support)
+        if (strategy instanceof BbbMeetingManager bbbManager && schedule.getBbbServerId() != null) {
+            return bbbManager.getAttendance(schedule.getProviderMeetingId(), instituteId, schedule.getBbbServerId());
+        }
         return strategy.getAttendance(schedule.getProviderMeetingId(), instituteId);
     }
 

@@ -1,0 +1,506 @@
+name: BBB Pool Manage
+
+on:
+  # Community service triggers via workflow_dispatch
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - start
+          - stop
+          - status
+      server_slug:
+        description: 'Server slug (e.g. bbb-pool-1) or "all"'
+        required: true
+        default: 'all'
+      server_count:
+        description: 'How many servers to start (when slug=all + action=start)'
+        required: false
+        default: '1'
+
+# Per-server concurrency — allows S1 and S2 to run in parallel
+concurrency:
+  group: bbb-pool-${{ inputs.server_slug }}
+  cancel-in-progress: false
+
+env:
+  HETZNER_API: https://api.hetzner.cloud/v1
+  CF_API: https://api.cloudflare.com/client/v4
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Resolve which servers to operate on
+  # ─────────────────────────────────────────────────────────────
+  resolve-servers:
+    name: Resolve Servers
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - name: Checkout for pool config
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            bigbluebutton-server/pool-config.json
+          sparse-checkout-cone-mode: false
+
+      - name: Resolve server matrix
+        id: resolve
+        run: |
+          CONFIG="bigbluebutton-server/pool-config.json"
+
+          if [ "${{ inputs.server_slug }}" = "all" ]; then
+            COUNT="${{ inputs.server_count }}"
+            # For 'stop' and 'status', operate on ALL servers regardless of count
+            if [ "${{ inputs.action }}" = "stop" ] || [ "${{ inputs.action }}" = "status" ]; then
+              MATRIX=$(jq -c '{include: [.servers | sort_by(.priority) | .[]]}' "$CONFIG")
+            else
+              MATRIX=$(jq -c --argjson n "$COUNT" '{include: [.servers | sort_by(.priority) | .[:$n] | .[]]}' "$CONFIG")
+            fi
+          else
+            MATRIX=$(jq -c --arg slug "${{ inputs.server_slug }}" '{include: [.servers[] | select(.slug == $slug)]}' "$CONFIG")
+          fi
+
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Resolved servers: $MATRIX"
+
+  # ─────────────────────────────────────────────────────────────
+  # Start servers
+  # ─────────────────────────────────────────────────────────────
+  start-server:
+    name: Start ${{ matrix.slug }}
+    runs-on: ubuntu-latest
+    needs: resolve-servers
+    if: inputs.action == 'start'
+    strategy:
+      matrix: ${{ fromJson(needs.resolve-servers.outputs.matrix) }}
+      fail-fast: false
+    concurrency:
+      group: bbb-pool-${{ matrix.slug }}
+      cancel-in-progress: false
+    steps:
+      - name: Check if server already exists
+        id: check
+        run: |
+          RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/servers?name=${{ matrix.server_name }}")
+
+          SERVER_ID=$(echo "$RESPONSE" | jq -r '.servers[0].id // empty')
+          SERVER_STATUS=$(echo "$RESPONSE" | jq -r '.servers[0].status // empty')
+
+          if [ -n "$SERVER_ID" ]; then
+            echo "server_id=$SERVER_ID" >> "$GITHUB_OUTPUT"
+            if [ "$SERVER_STATUS" = "running" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "[${{ matrix.slug }}] Already running."
+            elif [ "$SERVER_STATUS" = "off" ]; then
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "needs_poweron=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Power on existing server
+        if: steps.check.outputs.skip != 'true' && steps.check.outputs.needs_poweron == 'true'
+        id: poweron
+        run: |
+          SERVER_ID="${{ steps.check.outputs.server_id }}"
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/servers/$SERVER_ID/actions/poweron" > /dev/null
+
+          for i in $(seq 1 18); do
+            sleep 10
+            STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+              "${{ env.HETZNER_API }}/servers/$SERVER_ID" | jq -r '.server.status')
+            if [ "$STATUS" = "running" ]; then
+              IP=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+                "${{ env.HETZNER_API }}/servers/$SERVER_ID" | jq -r '.server.public_net.ipv4.ip')
+              echo "server_ip=$IP" >> "$GITHUB_OUTPUT"
+              echo "powered_on=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::error::Timeout" && exit 1
+
+      - name: Find latest snapshot
+        if: steps.check.outputs.skip != 'true' && steps.check.outputs.needs_poweron != 'true'
+        id: snapshot
+        run: |
+          RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/images?type=snapshot&sort=created:desc&per_page=50")
+
+          # Find snapshot by per-server description label
+          SNAPSHOT_ID=$(echo "$RESPONSE" | jq -r \
+            --arg desc "${{ matrix.snapshot_desc }}" \
+            '[.images[] | select(.description | contains($desc))] | sort_by(.created) | last | .id // empty')
+
+          if [ -z "$SNAPSHOT_ID" ]; then
+            SNAPSHOT_ID=$(echo "$RESPONSE" | jq -r \
+              --arg name "${{ matrix.server_name }}" \
+              '[.images[] | select(.created_from.name == $name)] | sort_by(.created) | last | .id // empty')
+          fi
+
+          if [ -z "$SNAPSHOT_ID" ]; then
+            echo "::error::No snapshot found for ${{ matrix.slug }}!"
+            exit 1
+          fi
+
+          echo "snapshot_id=$SNAPSHOT_ID" >> "$GITHUB_OUTPUT"
+          echo "[${{ matrix.slug }}] Snapshot: $SNAPSHOT_ID"
+
+      - name: Get SSH keys
+        if: steps.check.outputs.skip != 'true' && steps.check.outputs.needs_poweron != 'true'
+        id: ssh
+        run: |
+          KEYS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/ssh_keys" | jq -c '[.ssh_keys[].id]')
+          echo "keys=$KEYS" >> "$GITHUB_OUTPUT"
+
+      - name: Create server from snapshot
+        if: steps.check.outputs.skip != 'true' && steps.check.outputs.needs_poweron != 'true'
+        id: create
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            "${{ env.HETZNER_API }}/servers" \
+            -d "{
+              \"name\": \"${{ matrix.server_name }}\",
+              \"server_type\": \"${{ matrix.server_type }}\",
+              \"image\": ${{ steps.snapshot.outputs.snapshot_id }},
+              \"location\": \"${{ matrix.location }}\",
+              \"ssh_keys\": ${{ steps.ssh.outputs.keys }},
+              \"labels\": {\"project\": \"vacademy\", \"service\": \"bbb\", \"pool\": \"${{ matrix.slug }}\"},
+              \"start_after_create\": true
+            }")
+
+          SERVER_ID=$(echo "$RESPONSE" | jq -r '.server.id // empty')
+          SERVER_IP=$(echo "$RESPONSE" | jq -r '.server.public_net.ipv4.ip // empty')
+
+          if [ -z "$SERVER_ID" ]; then
+            echo "::error::Failed to create ${{ matrix.slug }}"
+            echo "$RESPONSE" | jq .
+            exit 1
+          fi
+
+          echo "server_id=$SERVER_ID" >> "$GITHUB_OUTPUT"
+          echo "server_ip=$SERVER_IP" >> "$GITHUB_OUTPUT"
+
+      - name: Update Cloudflare DNS
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          if [ -n "${{ steps.poweron.outputs.server_ip }}" ]; then
+            IP="${{ steps.poweron.outputs.server_ip }}"
+          else
+            IP="${{ steps.create.outputs.server_ip }}"
+          fi
+
+          ZONE_ID="${{ secrets.BBB_CLOUDFLARE_ZONE_ID }}"
+          HOSTNAME="${{ matrix.domain }}"
+          RECORD_NAME="${HOSTNAME%%.*}"
+
+          echo "[${{ matrix.slug }}] Updating DNS: $HOSTNAME → $IP"
+
+          EXISTING=$(curl -s -X GET \
+            "${{ env.CF_API }}/zones/$ZONE_ID/dns_records?type=A&name=$HOSTNAME" \
+            -H "Authorization: Bearer ${{ secrets.BBB_CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json")
+
+          RECORD_ID=$(echo "$EXISTING" | jq -r '.result[0].id // empty')
+
+          if [ -n "$RECORD_ID" ]; then
+            curl -s -X PUT \
+              "${{ env.CF_API }}/zones/$ZONE_ID/dns_records/$RECORD_ID" \
+              -H "Authorization: Bearer ${{ secrets.BBB_CLOUDFLARE_API_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"type\":\"A\",\"name\":\"$RECORD_NAME\",\"content\":\"$IP\",\"ttl\":120,\"proxied\":false}" > /dev/null
+          else
+            curl -s -X POST \
+              "${{ env.CF_API }}/zones/$ZONE_ID/dns_records" \
+              -H "Authorization: Bearer ${{ secrets.BBB_CLOUDFLARE_API_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"type\":\"A\",\"name\":\"$RECORD_NAME\",\"content\":\"$IP\",\"ttl\":120,\"proxied\":false}" > /dev/null
+          fi
+          echo "DNS updated."
+
+      - name: Wait for boot
+        if: steps.check.outputs.skip != 'true' && steps.check.outputs.needs_poweron != 'true'
+        run: |
+          SERVER_ID="${{ steps.create.outputs.server_id }}"
+          for i in $(seq 1 120); do
+            sleep 10
+            STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+              "${{ env.HETZNER_API }}/servers/$SERVER_ID" | jq -r '.server.status')
+            if [ "$STATUS" = "running" ]; then
+              echo "[${{ matrix.slug }}] Running!"
+              exit 0
+            fi
+          done
+          echo "::warning::Boot timeout for ${{ matrix.slug }}"
+
+      - name: Reconfigure BBB IP
+        if: steps.check.outputs.skip != 'true'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.BBB_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -n "${{ steps.poweron.outputs.server_ip }}" ]; then
+            IP="${{ steps.poweron.outputs.server_ip }}"
+          else
+            IP="${{ steps.create.outputs.server_ip }}"
+          fi
+
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          READY=false
+          for i in $(seq 1 15); do
+            if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@$IP "echo 'SSH up'"; then
+              READY=true
+              break
+            fi
+            sleep 10
+          done
+
+          if [ "$READY" != "true" ]; then
+            echo "::error::SSH timeout for ${{ matrix.slug }}"
+            exit 1
+          fi
+
+          # Use per-server domain for setip
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$IP << EOF
+            echo "Running bbb-conf --setip ${{ matrix.domain }}..."
+            sudo bbb-conf --setip ${{ matrix.domain }}
+            echo "Running bbb-conf --clean..."
+            sudo bbb-conf --clean
+          EOF
+
+      - name: Summary
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          echo "## [${{ matrix.slug }}] BBB Server Started" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.poweron.outputs.powered_on }}" = "true" ]; then
+            echo "- **IP:** ${{ steps.poweron.outputs.server_ip }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Action:** Powered on" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **Server ID:** ${{ steps.create.outputs.server_id }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **IP:** ${{ steps.create.outputs.server_ip }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Snapshot:** ${{ steps.snapshot.outputs.snapshot_id }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "- **Type:** ${{ matrix.server_type }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **DNS:** ${{ matrix.domain }}" >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────────────────────
+  # Stop servers
+  # ─────────────────────────────────────────────────────────────
+  stop-server:
+    name: Stop ${{ matrix.slug }}
+    runs-on: ubuntu-latest
+    needs: resolve-servers
+    if: inputs.action == 'stop'
+    strategy:
+      matrix: ${{ fromJson(needs.resolve-servers.outputs.matrix) }}
+      fail-fast: false
+    concurrency:
+      group: bbb-pool-${{ matrix.slug }}
+      cancel-in-progress: false
+    steps:
+      - name: Find server
+        id: find
+        run: |
+          RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/servers?name=${{ matrix.server_name }}")
+
+          SERVER_ID=$(echo "$RESPONSE" | jq -r '.servers[0].id // empty')
+          SERVER_STATUS=$(echo "$RESPONSE" | jq -r '.servers[0].status // empty')
+
+          if [ -z "$SERVER_ID" ]; then
+            echo "[${{ matrix.slug }}] No server found."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "server_id=$SERVER_ID" >> "$GITHUB_OUTPUT"
+          echo "server_status=$SERVER_STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Shutdown server
+        if: steps.find.outputs.found == 'true'
+        run: |
+          SERVER_ID="${{ steps.find.outputs.server_id }}"
+          SERVER_STATUS="${{ steps.find.outputs.server_status }}"
+
+          if [ "$SERVER_STATUS" = "off" ]; then
+            echo "Already off."
+            exit 0
+          fi
+
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/servers/$SERVER_ID/actions/shutdown")
+
+          ACTION_ID=$(echo "$RESPONSE" | jq -r '.action.id // empty')
+          if [ -n "$ACTION_ID" ]; then
+            for i in $(seq 1 24); do
+              sleep 5
+              STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+                "${{ env.HETZNER_API }}/actions/$ACTION_ID" | jq -r '.action.status')
+              [ "$STATUS" = "success" ] && break
+              [ "$STATUS" = "error" ] && break
+            done
+          fi
+
+          sleep 3
+          CURRENT=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/servers/$SERVER_ID" | jq -r '.server.status')
+
+          if [ "$CURRENT" != "off" ]; then
+            curl -s -X POST \
+              -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+              "${{ env.HETZNER_API }}/servers/$SERVER_ID/actions/poweroff" > /dev/null
+            sleep 30
+
+            FINAL=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+              "${{ env.HETZNER_API }}/servers/$SERVER_ID" | jq -r '.server.status')
+            if [ "$FINAL" != "off" ]; then
+              echo "::error::Server still not off!"
+              exit 1
+            fi
+          fi
+
+      - name: Create snapshot
+        if: steps.find.outputs.found == 'true'
+        id: snapshot
+        run: |
+          SERVER_ID="${{ steps.find.outputs.server_id }}"
+
+          # Per-server snapshot label
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            "${{ env.HETZNER_API }}/servers/$SERVER_ID/actions/create_image" \
+            -d '{
+              "description": "${{ matrix.snapshot_desc }}",
+              "type": "snapshot",
+              "labels": {"project": "vacademy", "service": "bbb", "pool": "${{ matrix.slug }}", "auto": "true"}
+            }')
+
+          ACTION_ID=$(echo "$RESPONSE" | jq -r '.action.id // empty')
+          IMAGE_ID=$(echo "$RESPONSE" | jq -r '.image.id // empty')
+
+          if [ -z "$ACTION_ID" ] || [ -z "$IMAGE_ID" ]; then
+            echo "::error::Failed to create snapshot for ${{ matrix.slug }}!"
+            exit 1
+          fi
+
+          # Wait for snapshot
+          COMPLETED=false
+          for i in $(seq 1 120); do
+            sleep 10
+            STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+              "${{ env.HETZNER_API }}/actions/$ACTION_ID" | jq -r '.action.status')
+            [ "$STATUS" = "success" ] && COMPLETED=true && break
+            [ "$STATUS" = "error" ] && echo "::error::Snapshot failed!" && exit 1
+          done
+
+          if [ "$COMPLETED" != "true" ]; then
+            SNAP_STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+              "${{ env.HETZNER_API }}/images/$IMAGE_ID" | jq -r '.image.status')
+            [ "$SNAP_STATUS" = "available" ] && COMPLETED=true
+          fi
+
+          [ "$COMPLETED" != "true" ] && echo "::error::Snapshot timeout!" && exit 1
+
+          SNAP_STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/images/$IMAGE_ID" | jq -r '.image.status')
+          [ "$SNAP_STATUS" != "available" ] && echo "::error::Snapshot not available!" && exit 1
+
+          echo "snapshot_id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
+          echo "[${{ matrix.slug }}] Snapshot: $IMAGE_ID"
+
+      - name: Delete server
+        if: steps.find.outputs.found == 'true'
+        run: |
+          curl -s -X DELETE \
+            -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/servers/${{ steps.find.outputs.server_id }}"
+          sleep 3
+          echo "[${{ matrix.slug }}] Server deleted."
+
+      - name: Cleanup old snapshots
+        if: steps.find.outputs.found == 'true'
+        run: |
+          CURRENT_SNAP="${{ steps.snapshot.outputs.snapshot_id }}"
+
+          RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/images?type=snapshot&sort=created:desc&per_page=50")
+
+          # Only delete THIS server's old snapshots (by description label)
+          OLD_IDS=$(echo "$RESPONSE" | jq -r \
+            --arg desc "${{ matrix.snapshot_desc }}" \
+            --arg current "$CURRENT_SNAP" \
+            '[.images[] | select(.description | contains($desc)) | select((.id | tostring) != $current) | .id] | .[]')
+
+          if [ -n "$OLD_IDS" ]; then
+            for OLD_ID in $OLD_IDS; do
+              curl -s -X DELETE \
+                -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+                "${{ env.HETZNER_API }}/images/$OLD_ID"
+              echo "  Deleted old: $OLD_ID"
+            done
+          fi
+
+      - name: Summary
+        if: steps.find.outputs.found == 'true'
+        run: |
+          echo "## [${{ matrix.slug }}] BBB Server Stopped" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Snapshot:** ${{ steps.snapshot.outputs.snapshot_id }} (${{ matrix.snapshot_desc }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Billing:** STOPPED" >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────────────────────
+  # Status
+  # ─────────────────────────────────────────────────────────────
+  status:
+    name: Status ${{ matrix.slug }}
+    runs-on: ubuntu-latest
+    needs: resolve-servers
+    if: inputs.action == 'status'
+    strategy:
+      matrix: ${{ fromJson(needs.resolve-servers.outputs.matrix) }}
+    steps:
+      - name: Check server status
+        run: |
+          RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+            "${{ env.HETZNER_API }}/servers?name=${{ matrix.server_name }}")
+
+          SERVER_ID=$(echo "$RESPONSE" | jq -r '.servers[0].id // empty')
+
+          if [ -z "$SERVER_ID" ]; then
+            echo "[${{ matrix.slug }}] NOT RUNNING"
+            SNAP=$(curl -s -H "Authorization: Bearer ${{ secrets.BBB_HETZNER_API_TOKEN }}" \
+              "${{ env.HETZNER_API }}/images?type=snapshot&sort=created:desc&per_page=10" | jq -r \
+              --arg desc "${{ matrix.snapshot_desc }}" \
+              '[.images[] | select(.description | contains($desc))] | first | "\(.id) (\(.created))" // "none"')
+            echo "  Snapshot: $SNAP"
+
+            echo "## [${{ matrix.slug }}] STOPPED" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Snapshot: $SNAP" >> "$GITHUB_STEP_SUMMARY"
+          else
+            STATUS=$(echo "$RESPONSE" | jq -r '.servers[0].status')
+            IP=$(echo "$RESPONSE" | jq -r '.servers[0].public_net.ipv4.ip')
+            TYPE=$(echo "$RESPONSE" | jq -r '.servers[0].server_type.description')
+            echo "[${{ matrix.slug }}] $STATUS"
+            echo "  IP: $IP | Type: $TYPE | Domain: ${{ matrix.domain }}"
+
+            echo "## [${{ matrix.slug }}] $STATUS" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **IP:** $IP" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Type:** $TYPE" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Domain:** ${{ matrix.domain }}" >> "$GITHUB_STEP_SUMMARY"
+          fi

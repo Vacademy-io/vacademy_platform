@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.live_session.enums.LiveSessionPar
 import vacademy.io.admin_core_service.features.live_session.enums.SessionLog;
 import vacademy.io.admin_core_service.features.live_session.provider.LiveSessionProviderFactory;
 import vacademy.io.admin_core_service.features.live_session.provider.LiveSessionProviderStrategy;
+import vacademy.io.admin_core_service.features.live_session.provider.manager.BbbMeetingManager;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionParticipantRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
@@ -90,8 +91,16 @@ public class LiveSessionProviderSyncProcessor {
         for (SessionSchedule schedule : schedules) {
             try {
                 String instituteId = getInstituteId(schedule);
-                List<MeetingRecordingDTO> providerRecordings = strategy.getRecordings(
-                        schedule.getProviderMeetingId(), instituteId);
+
+                // Route to the correct BBB server (multi-server pool support)
+                List<MeetingRecordingDTO> providerRecordings;
+                if (strategy instanceof BbbMeetingManager bbbManager && schedule.getBbbServerId() != null) {
+                    providerRecordings = bbbManager.getRecordings(
+                            schedule.getProviderMeetingId(), instituteId, schedule.getBbbServerId());
+                } else {
+                    providerRecordings = strategy.getRecordings(
+                            schedule.getProviderMeetingId(), instituteId);
+                }
 
                 // Merge with existing recordings — never discard S3-uploaded recordings
                 // (those have a fileId set by the post-publish hook).
@@ -159,8 +168,16 @@ public class LiveSessionProviderSyncProcessor {
         for (SessionSchedule schedule : schedules) {
             try {
                 String instituteId = getInstituteId(schedule);
-                List<MeetingAttendeeDTO> attendees = strategy.getAttendance(schedule.getProviderMeetingId(),
-                        instituteId);
+
+                // Route to the correct BBB server (multi-server pool support)
+                List<MeetingAttendeeDTO> attendees;
+                if (strategy instanceof BbbMeetingManager bbbManager && schedule.getBbbServerId() != null) {
+                    attendees = bbbManager.getAttendance(
+                            schedule.getProviderMeetingId(), instituteId, schedule.getBbbServerId());
+                } else {
+                    attendees = strategy.getAttendance(schedule.getProviderMeetingId(),
+                            instituteId);
+                }
 
                 for (MeetingAttendeeDTO attendee : attendees) {
                     upsertAttendanceLog(schedule, attendee, instituteId);

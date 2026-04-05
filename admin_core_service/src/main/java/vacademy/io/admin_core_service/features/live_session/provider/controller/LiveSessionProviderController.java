@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.live_session.provider.dto.Provide
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig;
 import vacademy.io.admin_core_service.features.live_session.provider.manager.BbbMeetingManager;
+import vacademy.io.admin_core_service.features.live_session.provider.service.BbbServerRouter;
 import vacademy.io.admin_core_service.features.live_session.provider.service.LiveSessionProviderService;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
@@ -41,6 +42,7 @@ public class LiveSessionProviderController {
 
     private final LiveSessionProviderService providerService;
     private final BbbMeetingManager bbbMeetingManager;
+    private final BbbServerRouter serverRouter;
     private final SessionScheduleRepository scheduleRepository;
     private final LiveSessionLogsRepository liveSessionLogsRepository;
     private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository liveSessionRepository;
@@ -302,7 +304,7 @@ public class LiveSessionProviderController {
         // Skip this check if we just created the meeting — BBB reports it as "not running"
         // until the first participant joins, which would cause an infinite recreate loop.
         if (!justCreated) {
-            boolean isRunning = bbbMeetingManager.isMeetingRunning(providerMeetingId, null);
+            boolean isRunning = bbbMeetingManager.isMeetingRunning(providerMeetingId, null, schedule.getBbbServerId());
             if (!isRunning && "MODERATOR".equalsIgnoreCase(role)) {
                 // Meeting ended — tell the moderator so they can choose to recreate
                 return ResponseEntity.ok(Map.of(
@@ -334,7 +336,7 @@ public class LiveSessionProviderController {
             fullName = user.getUsername();
         }
         String joinUrl = bbbMeetingManager.buildJoinUrlForUser(
-                providerMeetingId, fullName, user.getUserId(), role, instituteId);
+                providerMeetingId, fullName, user.getUserId(), role, instituteId, schedule.getBbbServerId());
 
         // Mark attendance with join timestamp
         markBbbAttendance(schedule.getSessionId(), scheduleId, user.getUserId(), fullName, role, providerMeetingId);
@@ -371,6 +373,13 @@ public class LiveSessionProviderController {
                 // Mark the sync timestamp — attendance was already recorded at join time
                 schedule.setLastAttendanceSyncAt(new java.util.Date());
                 scheduleRepository.save(schedule);
+
+                // Decrement active meetings on the server (pool support)
+                if (schedule.getBbbServerId() != null) {
+                    serverRouter.onMeetingEnded(schedule.getBbbServerId());
+                    log.info("[BBB Callback] Decremented active meetings for server {}", schedule.getBbbServerId());
+                }
+
                 log.info("[BBB Callback] Updated sync timestamp for scheduleId={}", scheduleId);
             }
         } catch (Exception e) {

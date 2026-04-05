@@ -89,7 +89,9 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/live-sessions/provider/meeting/bbb-analytics-callback",
             // BBB recording upload (server-to-server from BBB post-publish script, auth via X-BBB-Secret header)
             "/admin-core-service/live-sessions/provider/meeting/recording/init-upload",
-            "/admin-core-service/live-sessions/provider/meeting/recording/complete"
+            "/admin-core-service/live-sessions/provider/meeting/recording/complete",
+            // BBB server pool management (server-to-server from community_service, no JWT)
+            "/admin-core-service/bbb/pool/**"
 
     };
     @Autowired

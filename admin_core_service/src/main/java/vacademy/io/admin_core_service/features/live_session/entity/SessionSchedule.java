@@ -82,5 +82,9 @@ public class SessionSchedule {
     @Column(name = "last_recording_sync_at")
     private Date lastRecordingSyncAt;
 
+    /** BBB server pool entry this meeting is hosted on. Null for legacy single-server schedules. */
+    @Column(name = "bbb_server_id")
+    private String bbbServerId;
+
     // Getters, Setters, etc.
 }

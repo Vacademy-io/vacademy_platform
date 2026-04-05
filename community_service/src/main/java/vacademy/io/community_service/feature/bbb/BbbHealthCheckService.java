@@ -50,10 +50,10 @@ public class BbbHealthCheckService {
     }
 
     /**
-     * Scheduled start — Mon-Sat at 3:20 PM IST.
+     * Scheduled start — Mon-Sat at 2:20 PM IST.
      * Triggers GitHub Actions workflow to create BBB server from snapshot.
      */
-    @Scheduled(cron = "0 20 15 * * MON-SAT", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 20 14 * * MON-SAT", zone = "Asia/Kolkata")
     public void scheduledStart() {
         log.info("[BBB] Scheduled START triggered");
         triggerGitHubAction("start");
@@ -63,7 +63,7 @@ public class BbbHealthCheckService {
      * Scheduled health check — Mon-Sat at 3:45 PM IST.
      * Runs 25 min after start to give server time to boot.
      */
-    @Scheduled(cron = "0 45 15 * * MON-SAT", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 50 14 * * MON-SAT", zone = "Asia/Kolkata")
     public void scheduledHealthCheck() {
         log.info("[BBB HealthCheck] Scheduled check triggered");
         runHealthCheck();
@@ -157,7 +157,8 @@ public class BbbHealthCheckService {
 
             HttpHeaders headers = new HttpHeaders();
             headers.set("Authorization", "Bearer " + githubToken);
-            headers.set("Accept", "application/vnd.github.v3+json");
+            headers.set("Accept", "application/vnd.github+json");
+            headers.set("X-GitHub-Api-Version", "2022-11-28");
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             String body = String.format("{\"ref\":\"main\",\"inputs\":{\"action\":\"%s\"}}", action);

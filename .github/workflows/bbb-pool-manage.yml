@@ -274,19 +274,21 @@ jobs:
             exit 1
           fi
 
-          # Use per-server domain for setip + fix FreeSWITCH IPs
+          # Use per-server domain for setip + fix FreeSWITCH/SFU IPs
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$IP << EOF
+            # Step 1: Set domain for web URLs (includes internal restart)
             echo "Running bbb-conf --setip ${{ matrix.domain }}..."
             sudo bbb-conf --setip ${{ matrix.domain }}
 
-            # Fix FreeSWITCH/nginx IPs that bbb-conf --setip doesn't update
-            # These configs need the raw IP, not the domain
+            # Step 2: Fix IPs that bbb-conf --setip doesn't update
             NEW_IP=\$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 2>/dev/null || echo "$IP")
-            echo "Fixing FreeSWITCH/nginx IPs to \$NEW_IP..."
-            for dir in /opt/freeswitch/etc/freeswitch /usr/share/bigbluebutton/nginx /etc/bigbluebutton; do
+            echo "Fixing stale IPs to \$NEW_IP..."
+            for dir in /opt/freeswitch/etc/freeswitch /usr/share/bigbluebutton/nginx \
+                       /etc/bigbluebutton /usr/local/bigbluebutton/bbb-webrtc-sfu/config; do
               [ -d "\$dir" ] || continue
-              find "\$dir" -type f \( -name "*.xml" -o -name "*.nginx" -o -name "*.properties" -o -name "*.yml" \) -exec grep -l '[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+' {} \; 2>/dev/null | while read f; do
-                OLD_IPS=\$(grep -oP '\d+\.\d+\.\d+\.\d+' "\$f" | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
+              find "\$dir" -type f \( -name "*.xml" -o -name "*.nginx" -o \
+                   -name "*.properties" -o -name "*.yml" -o -name "*.yaml" \) 2>/dev/null | while read f; do
+                OLD_IPS=\$(grep -oP '\d+\.\d+\.\d+\.\d+' "\$f" 2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
                 for old in \$OLD_IPS; do
                   if [ "\$old" != "\$NEW_IP" ]; then
                     echo "  \$f: \$old → \$NEW_IP"
@@ -296,8 +298,21 @@ jobs:
               done
             done
 
-            echo "Running bbb-conf --restart..."
+            # Step 3: Restart with fixed IPs
+            sudo systemctl restart bbb-webrtc-sfu bbb-webrtc-recorder freeswitch 2>/dev/null || true
             sudo bbb-conf --restart
+
+            # Step 4: Re-apply critical fixes (bbb-conf --restart may overwrite)
+            for f in /etc/bigbluebutton/bbb-webrtc-sfu/production.yml \
+                     /opt/freeswitch/etc/freeswitch/vars.xml \
+                     /usr/share/bigbluebutton/nginx/sip.nginx; do
+              [ -f "\$f" ] || continue
+              OLD_IPS=\$(grep -oP '\d+\.\d+\.\d+\.\d+' "\$f" 2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
+              for old in \$OLD_IPS; do
+                [ "\$old" != "\$NEW_IP" ] && sed -i "s/\$old/\$NEW_IP/g" "\$f"
+              done
+            done
+            sudo systemctl restart bbb-webrtc-sfu 2>/dev/null || true
           EOF
 
       - name: Summary

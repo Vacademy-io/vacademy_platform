@@ -314,6 +314,10 @@ jobs:
               done
             done
             sudo systemctl restart bbb-webrtc-sfu freeswitch 2>/dev/null || true
+
+            # Step 5: Fix default presentation URL to use domain
+            sudo sed -i "s|defaultUploadedPresentation=https://[^/]*/|defaultUploadedPresentation=https://${{ matrix.domain }}/|g" \
+                /etc/bigbluebutton/bbb-web.properties 2>/dev/null || true
           EOF
 
       - name: Summary

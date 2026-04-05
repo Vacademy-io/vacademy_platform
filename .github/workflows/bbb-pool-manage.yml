@@ -305,6 +305,7 @@ jobs:
             # Step 4: Re-apply critical fixes (bbb-conf --restart may overwrite)
             for f in /etc/bigbluebutton/bbb-webrtc-sfu/production.yml \
                      /opt/freeswitch/etc/freeswitch/vars.xml \
+                     /opt/freeswitch/etc/freeswitch/sip_profiles/external.xml \
                      /usr/share/bigbluebutton/nginx/sip.nginx; do
               [ -f "\$f" ] || continue
               OLD_IPS=\$(grep -oP '\d+\.\d+\.\d+\.\d+' "\$f" 2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
@@ -312,7 +313,7 @@ jobs:
                 [ "\$old" != "\$NEW_IP" ] && sed -i "s/\$old/\$NEW_IP/g" "\$f"
               done
             done
-            sudo systemctl restart bbb-webrtc-sfu 2>/dev/null || true
+            sudo systemctl restart bbb-webrtc-sfu freeswitch 2>/dev/null || true
           EOF
 
       - name: Summary

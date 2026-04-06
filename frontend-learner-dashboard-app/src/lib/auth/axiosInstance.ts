@@ -27,10 +27,11 @@ async function sessionHeartbeat(accessToken: string, instituteId: string) {
     if (error?.response?.status === 460 && !isHandlingSessionTermination) {
       isHandlingSessionTermination = true;
       toast.error(
-        "Your session was terminated because another device logged in. Please log in again."
+        "Your session was terminated because another device logged in. Please log in again.",
+        { duration: 5000 }
       );
       removeTokensAndLogout();
-      window.location.assign("/logout");
+      setTimeout(() => window.location.assign("/logout"), 3000);
     }
     // Other errors (network, 401) are silently ignored — not the heartbeat's job
   }
@@ -195,10 +196,11 @@ authenticatedAxiosInstance.interceptors.response.use(
     ) {
       isHandlingSessionTermination = true;
       toast.error(
-        "Your session was terminated because another device logged in. Please log in again."
+        "Your session was terminated because another device logged in. Please log in again.",
+        { duration: 5000 }
       );
       removeTokensAndLogout();
-      window.location.assign("/logout");
+      setTimeout(() => window.location.assign("/logout"), 3000);
       return Promise.reject(error);
     }
 

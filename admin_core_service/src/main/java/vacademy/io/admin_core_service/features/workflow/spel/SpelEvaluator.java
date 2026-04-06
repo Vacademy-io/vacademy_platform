@@ -3,14 +3,16 @@ package vacademy.io.admin_core_service.features.workflow.spel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
+import org.springframework.expression.TypeLocator;
 import org.springframework.expression.spel.SpelEvaluationException;
 import org.springframework.expression.spel.SpelParseException;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
-import org.springframework.expression.EvaluationContext;
-import org.springframework.expression.spel.support.SimpleEvaluationContext;
+import org.springframework.expression.spel.support.StandardEvaluationContext;
+import org.springframework.expression.spel.support.StandardTypeLocator;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * SpEL (Spring Expression Language) evaluator with enhanced error tracking.
@@ -36,11 +38,8 @@ public class SpelEvaluator {
         String exprStr = expressionString.trim();
 
         ExpressionParser parser = new SpelExpressionParser();
-        EvaluationContext context = SimpleEvaluationContext
-                .forReadOnlyDataBinding()
-                .withInstanceMethods()
-                .withRootObject(contextVars)
-                .build();
+        StandardEvaluationContext context = new StandardEvaluationContext(contextVars);
+        context.setTypeLocator(new SafeTypeLocator());
         context.setVariable("ctx", contextVars);
 
         try {
@@ -92,6 +91,31 @@ public class SpelEvaluator {
         } catch (SpelEvaluationError e) {
             log.warn("SpEL evaluation failed (safe mode): {}", e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Type locator that allows safe JDK types but blocks dangerous ones
+     * like Runtime, ProcessBuilder, Class, etc.
+     */
+    private static class SafeTypeLocator implements TypeLocator {
+        private static final Set<String> BLOCKED_PACKAGES = Set.of(
+                "java.lang.Runtime", "java.lang.ProcessBuilder", "java.lang.System",
+                "java.lang.Class", "java.lang.ClassLoader", "java.lang.Thread",
+                "java.lang.reflect", "java.io.File", "java.nio.file",
+                "javax.script", "java.net.URL", "java.net.URI"
+        );
+
+        private final StandardTypeLocator delegate = new StandardTypeLocator();
+
+        @Override
+        public Class<?> findType(String typeName) {
+            for (String blocked : BLOCKED_PACKAGES) {
+                if (typeName.startsWith(blocked)) {
+                    throw new IllegalStateException("Type access denied for security: " + typeName);
+                }
+            }
+            return delegate.findType(typeName);
         }
     }
 

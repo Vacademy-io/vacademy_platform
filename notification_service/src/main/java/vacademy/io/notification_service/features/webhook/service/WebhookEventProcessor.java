@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.notification_service.features.chatbot_flow.engine.ChatbotFlowEngine;
 import vacademy.io.notification_service.features.combot.action.dto.FlowContext;
 import vacademy.io.notification_service.features.combot.action.service.FlowActionRouter;
 import vacademy.io.notification_service.features.combot.entity.ChannelFlowConfig;
@@ -35,6 +36,7 @@ public class WebhookEventProcessor {
     private final FlowActionRouter flowActionRouter;
     private final ChannelToInstituteMappingRepository channelMappingRepository;
     private final ChannelFlowConfigRepository flowConfigRepository;
+    private final ChatbotFlowEngine chatbotFlowEngine;
 
     // Notification types for webhook events
     private static final String WHATSAPP_STATUS_EVENT = "WHATSAPP_STATUS_EVENT";
@@ -235,7 +237,18 @@ public class WebhookEventProcessor {
             String instituteId = mapping.getInstituteId();
             String channelType = mapping.getChannelType();
 
-            // 2. Get flow config for this channel
+            // 1b. NEW: Try chatbot flow engine first (graph-based flows)
+            boolean handledByNewFlow = chatbotFlowEngine.handleIncomingMessage(
+                    instituteId, channelType, event.getPhoneNumber(), event.getMessageText(),
+                    businessChannelId, event.getMessageType(),
+                    event.getButtonId(), event.getButtonPayload(), event.getListReplyId());
+            if (handledByNewFlow) {
+                log.info("Message handled by chatbot flow engine for phone={} via {}",
+                        maskPhoneNumber(event.getPhoneNumber()), event.getVendor());
+                return;
+            }
+
+            // 2. Fall back to legacy: Get flow config for this channel
             Optional<ChannelFlowConfig> configOpt = flowConfigRepository
                     .findByInstituteIdAndChannelTypeAndIsActiveTrue(instituteId, channelType);
 

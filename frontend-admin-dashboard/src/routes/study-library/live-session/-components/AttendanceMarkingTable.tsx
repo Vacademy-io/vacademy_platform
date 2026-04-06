@@ -177,8 +177,8 @@ export function AttendanceMarkingTable({
             switch (sortField) {
                 case 'status': {
                     const statusOrder: Record<string, number> = { PRESENT: 2, ABSENT: 1, UNMARKED: 0 };
-                    aVal = statusOrder[getStatus(a)] ?? 0;
-                    bVal = statusOrder[getStatus(b)] ?? 0;
+                    aVal = statusOrder[getStatus(a) ?? 'UNMARKED'] ?? 0;
+                    bVal = statusOrder[getStatus(b) ?? 'UNMARKED'] ?? 0;
                     break;
                 }
                 case 'duration': {

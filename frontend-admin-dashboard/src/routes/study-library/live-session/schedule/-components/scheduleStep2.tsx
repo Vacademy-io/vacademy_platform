@@ -116,6 +116,7 @@ export default function ScheduleStep2() {
                 beforeLive: false,
                 beforeLiveTime: [] as { time: string }[],
                 onLive: false,
+                onAttendance: false,
             };
 
             let mail = false;

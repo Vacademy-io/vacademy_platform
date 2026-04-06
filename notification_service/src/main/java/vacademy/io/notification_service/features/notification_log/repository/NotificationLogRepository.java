@@ -407,4 +407,8 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("messageList") String[] messageList,
             @Param("messageCount") Integer messageCount
     );
+
+    // Chatbot flow session message history
+    List<NotificationLog> findByChannelIdAndNotificationTypeInOrderByNotificationDateAsc(
+            String channelId, List<String> notificationTypes);
 }

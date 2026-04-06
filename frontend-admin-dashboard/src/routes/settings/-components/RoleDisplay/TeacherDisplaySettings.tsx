@@ -231,13 +231,13 @@ export default function TeacherDisplaySettings() {
     };
 
     // Generic move helper: swaps order of two adjacent items in a sorted list
-    const swapOrder = <T extends { order: number }>(
+    const swapOrder = <T extends { order?: number }>(
         items: T[],
         getId: (item: T) => string,
         targetId: string,
         direction: 'up' | 'down'
     ): T[] => {
-        const sorted = [...items].sort((a, b) => a.order - b.order);
+        const sorted = [...items].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         const idx = sorted.findIndex((item) => getId(item) === targetId);
         if (idx < 0) return items;
         const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -894,7 +894,7 @@ export default function TeacherDisplaySettings() {
                             { id: 'LMS' as const, visible: true, default: false, order: 1 },
                             { id: 'AI' as const, visible: true, default: false, order: 2 },
                         ];
-                        const sorted = [...categories].sort((a, b) => a.order - b.order);
+                        const sorted = [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
                         return sorted.map((cfg, idx) => {
                             const id = cfg.id;

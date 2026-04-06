@@ -16,14 +16,20 @@ const categories = [
 
 export function NodePalette() {
     const addNode = useWorkflowBuilderStore((s) => s.addNode);
+    const workflowType = useWorkflowBuilderStore((s) => s.workflowType);
     const [search, setSearch] = useState('');
 
-    const filteredNodeTypes = WORKFLOW_NODE_TYPES.filter(
-        (n) =>
-            !search ||
+    const filteredNodeTypes = WORKFLOW_NODE_TYPES.filter((n) => {
+        // Hide TRIGGER from palette — it's auto-managed by Workflow Settings
+        if (n.type === 'TRIGGER') return false;
+        // Hide ROUTER — internal use only
+        if (n.type === 'ROUTER') return false;
+        if (!search) return true;
+        return (
             n.label.toLowerCase().includes(search.toLowerCase()) ||
             n.type.toLowerCase().includes(search.toLowerCase())
-    );
+        );
+    });
 
     return (
         <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">

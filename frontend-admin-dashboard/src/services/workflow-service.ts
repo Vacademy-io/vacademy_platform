@@ -340,3 +340,84 @@ export async function fetchContextSchema(request: ContextSchemaRequest): Promise
     );
     return response.data;
 }
+
+// Catalog types
+export interface CatalogItem {
+    key: string;
+    label: string;
+    description: string;
+    category: string;
+    required_params: string[];
+}
+
+export interface TemplateItem {
+    id: string;
+    name: string;
+    subject?: string;
+    content?: string;
+    dynamic_parameters?: string; // JSON string
+    status: string;
+    type: string;
+}
+
+// Catalog fetch functions
+export async function fetchQueryKeys(): Promise<CatalogItem[]> {
+    const response = await authenticatedAxiosInstance.get(
+        `${WORKFLOW_SERVICE_BASE}/catalog/query-keys`
+    );
+    return response.data;
+}
+
+export function getQueryKeysQuery() {
+    return queryOptions({
+        queryKey: ['WORKFLOW_CATALOG_QUERY_KEYS'],
+        queryFn: fetchQueryKeys,
+        staleTime: 600_000,
+    });
+}
+
+export async function fetchTriggerEventsCatalog(): Promise<CatalogItem[]> {
+    const response = await authenticatedAxiosInstance.get(
+        `${WORKFLOW_SERVICE_BASE}/catalog/trigger-events`
+    );
+    return response.data;
+}
+
+export function getTriggerEventsCatalogQuery() {
+    return queryOptions({
+        queryKey: ['WORKFLOW_CATALOG_TRIGGER_EVENTS'],
+        queryFn: fetchTriggerEventsCatalog,
+        staleTime: 600_000,
+    });
+}
+
+export async function fetchActionTypes(): Promise<CatalogItem[]> {
+    const response = await authenticatedAxiosInstance.get(
+        `${WORKFLOW_SERVICE_BASE}/catalog/actions`
+    );
+    return response.data;
+}
+
+export function getActionTypesQuery() {
+    return queryOptions({
+        queryKey: ['WORKFLOW_CATALOG_ACTIONS'],
+        queryFn: fetchActionTypes,
+        staleTime: 600_000,
+    });
+}
+
+export async function fetchTemplatesByType(instituteId: string, type: string): Promise<TemplateItem[]> {
+    const response = await authenticatedAxiosInstance.get(
+        `${BASE_URL}/admin-core-service/institute/template/v1/institute/${instituteId}/type/${type}`
+    );
+    return response.data;
+}
+
+export function getTemplatesByTypeQuery(instituteId: string, type: string) {
+    return queryOptions({
+        queryKey: ['TEMPLATES_BY_TYPE', instituteId, type],
+        queryFn: () => fetchTemplatesByType(instituteId, type),
+        staleTime: 300_000,
+        enabled: !!instituteId,
+    });
+}

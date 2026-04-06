@@ -185,7 +185,8 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
        long countSessionLimitConfigured(@Param("instituteId") String instituteId);
 
        @Query(value = "SELECT COUNT(*) FROM user_session " +
-                     "WHERE session_token = :sessionToken AND is_active = true", nativeQuery = true)
+                     "WHERE session_token = :sessionToken AND is_active = true " +
+                     "AND institute_id IS NOT NULL", nativeQuery = true)
        long countActiveSession(@Param("sessionToken") String sessionToken);
 
        // Legacy boolean versions (used by AssessmentJwtAuthFilter — will silently fail and cache false)

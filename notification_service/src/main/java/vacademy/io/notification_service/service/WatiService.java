@@ -214,8 +214,7 @@ public class WatiService {
                 Map.of("name", "allowcampaign", "value", "true"),
                 Map.of("name", "allowsms", "value", "true"),
                 Map.of("name", "Channel", "value", "WhatsApp"),
-                Map.of("name", "Source", "value", "Vacademy"),
-                Map.of("name", "attribute_1", "value", "")
+                Map.of("name", "Source", "value", "Vacademy")
         );
 
         for (Map<String, Map<String, String>> userDetail : userDetails) {
@@ -243,7 +242,13 @@ public class WatiService {
             HttpEntity<String> entity = new HttpEntity<>(json, headers);
             ResponseEntity<String> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
             log.info("WATI updateContactAttributes {}: status={}, body={}", phone, response.getStatusCode(), response.getBody());
-            return response.getStatusCode().is2xxSuccessful();
+
+            // WATI returns HTTP 200 even on failure — check "result" field in body
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                JsonNode respJson = objectMapper.readTree(response.getBody());
+                return respJson.path("result").asBoolean(false);
+            }
+            return false;
         } catch (Exception e) {
             log.info("WATI updateContactAttributes failed for {} (contact may not exist yet): {}", phone, e.getMessage());
             return false;

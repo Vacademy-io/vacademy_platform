@@ -214,7 +214,8 @@ public class WatiService {
                 Map.of("name", "allowcampaign", "value", "true"),
                 Map.of("name", "allowsms", "value", "true"),
                 Map.of("name", "Channel", "value", "WhatsApp"),
-                Map.of("name", "Source", "value", "Vacademy")
+                Map.of("name", "Source", "value", "Vacademy"),
+                Map.of("name", "attribute_1", "value", "-")   // must be non-empty; WATI rejects ""
         );
 
         for (Map<String, Map<String, String>> userDetail : userDetails) {

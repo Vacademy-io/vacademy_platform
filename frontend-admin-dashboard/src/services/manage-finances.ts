@@ -255,3 +255,41 @@ export const sendPaymentLinkEmail = async (
         },
     });
 };
+// ─── Collection Dashboard ──────────────────────────────────────────────────
+
+export interface DashboardCollectionRequest {
+    instituteId: string;
+    sessionId: string;
+    feeTypeIds: string[];
+}
+
+export interface DashboardCollectionResponse {
+    projectedRevenue: number;
+    expectedToDate: number;
+    collectedToDate: number;
+    totalOverdue: number;
+    classWiseBreakdown: Array<{
+        cpoId: string;
+        cpoName: string;
+        projectedRevenue: number;
+        expectedToDate: number;
+        collectedToDate: number;
+        overdue: number;
+    }>;
+    paymentModeBreakdown: Array<{
+        vendor: string;
+        amount: number;
+    }>;
+}
+
+export const getCollectionDashboardQueryKey = (req: DashboardCollectionRequest) => ['collection-dashboard', req];
+
+export const fetchDashboardCollectionData = async (
+    req: DashboardCollectionRequest
+): Promise<DashboardCollectionResponse> => {
+    const response = await authenticatedAxiosInstance.post(
+        `http://localhost:8072/admin-core-service/v1/admin/student-fee/dashboard/collection`,
+        req
+    );
+    return response.data;
+};

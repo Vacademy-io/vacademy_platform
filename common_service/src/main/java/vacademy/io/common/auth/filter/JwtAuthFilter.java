@@ -201,12 +201,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         CacheEntry entry = instituteHasLimitCache.get(instituteId);
         if (entry != null && !entry.isExpired()) return entry.value();
         try {
-            boolean hasLimit = userSessionRepository.hasSessionLimitConfigured(instituteId);
+            boolean hasLimit = userSessionRepository.countSessionLimitConfigured(instituteId) > 0;
+            log.info("Institute {} session limit configured: {}", instituteId, hasLimit);
             instituteHasLimitCache.put(instituteId,
                     new CacheEntry(hasLimit, System.currentTimeMillis() + INSTITUTE_LIMIT_TTL_MS));
             return hasLimit;
         } catch (Exception e) {
-            // institute_settings table doesn't exist in this service's DB — cache as "no limit"
+            log.warn("Failed to check session limit for institute {}: {}", instituteId, e.getMessage());
             instituteHasLimitCache.put(instituteId,
                     new CacheEntry(false, System.currentTimeMillis() + INSTITUTE_LIMIT_TTL_MS));
             return false;
@@ -216,7 +217,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private boolean isSessionStillActive(String sessionToken) {
         CacheEntry entry = sessionActiveCache.get(sessionToken);
         if (entry != null && !entry.isExpired()) return entry.value();
-        boolean active = userSessionRepository.isSessionActive(sessionToken);
+        boolean active = userSessionRepository.countActiveSession(sessionToken) > 0;
+        log.info("Session {} active: {}", sessionToken, active);
         sessionActiveCache.put(sessionToken,
                 new CacheEntry(active, System.currentTimeMillis() + SESSION_ACTIVE_TTL_MS));
         return active;

@@ -245,6 +245,9 @@ export const INITIATE_APPLICANT_PAYMENT_OPEN = (applicantId: string) =>
 // AI service base url
 export const AI_SERVICE_URL = `${BASE_URL}/ai-service`;
 
+// Short links
+export const GET_OR_CREATE_SHORT_LINK = `${BASE_URL}/media-service/public/v1/short-link/get-or-create`;
+
 // Session management
 export const GET_ACTIVE_SESSIONS = `${BASE_URL}/auth-service/learner/v1/session/active`;
 export const TERMINATE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/logout`;

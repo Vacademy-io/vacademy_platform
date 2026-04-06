@@ -19,6 +19,7 @@ import {
 import { toTitleCase } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
+import { ShareButton } from "./ShareButton";
 
 interface BookCatalogueProps {
   title: string;
@@ -621,6 +622,18 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                               <span className="text-gray-600 uppercase tracking-wider">Out of Stock</span>
                             </>
                           )}
+                        </div>
+                      )}
+
+                      {/* Share Button - top-right corner */}
+                      {book.packageSessionId && (
+                        <div className="absolute top-2 right-2 z-20">
+                          <ShareButton
+                            packageSessionId={book.packageSessionId}
+                            destinationUrl={`${window.location.origin}/${tagName}/${book.id}?packageSessionId=${book.packageSessionId}${book.enrollInviteId ? `&enrollInviteId=${book.enrollInviteId}` : ""}${book.level ? `&level=${book.level}` : ""}`}
+                            instituteId={instituteId}
+                            size="sm"
+                          />
                         </div>
                       )}
 

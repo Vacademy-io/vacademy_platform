@@ -62,6 +62,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const [addressError, setAddressError] = useState("");
 
     const [paymentPlanData, setPaymentPlanData] = useState<any>(null);
+    const otpInputRef = React.useRef<HTMLInputElement>(null);
 
     const targetInviteId = membershipPlan?.enrollInviteId ||
         (items.length > 0 ? items[0]?.enrollInviteId : null);
@@ -77,6 +78,15 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         }
         // ... rest of fetch logic
     }, [open, targetInviteId, instituteId]);
+
+    // Auto-focus OTP input when it appears
+    useEffect(() => {
+        if (phoneOtpSent && otpInputRef.current) {
+            setTimeout(() => {
+                otpInputRef.current?.focus();
+            }, 100);
+        }
+    }, [phoneOtpSent]);
 
     // Reset state when opening/closing
     useEffect(() => {
@@ -666,12 +676,14 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                     {phoneOtpSent && !isPhoneVerified && (
                                         <div className="flex gap-2 mt-2 animate-in slide-in-from-top-1 duration-200">
                                             <input
+                                                ref={otpInputRef}
                                                 type="text"
                                                 value={otp}
                                                 onChange={(e) => setOtp(e.target.value)}
                                                 className="flex-1 px-3 py-1.5 bg-white border border-primary-300 rounded-lg text-sm font-bold tracking-[0.2em] text-center focus:ring-2 focus:ring-primary-50"
                                                 placeholder="------"
                                                 maxLength={6}
+                                                autoFocus
                                             />
                                             <MyButton
                                                 buttonType="primary"

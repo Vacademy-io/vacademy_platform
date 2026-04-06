@@ -180,7 +180,7 @@ interface MembershipPlanCardProps {
 
 const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
   const { setMembershipPlan, membershipPlan } = useCartStore();
-  const isSelected = membershipPlan?.id === plan.id;
+  const isSelected = membershipPlan?.id === (plan.enroll_invite_id || plan.id);
 
   const handleSelectPlan = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -670,6 +670,13 @@ export const CartComponent: React.FC<CartComponentProps> = ({
                 <p className="text-sm">No membership plans available at the moment.</p>
               </div>
             )}
+
+            {/* Security Deposit Notice */}
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs sm:text-sm text-blue-700">
+                <span className="font-semibold">Note:</span> A refundable security deposit of <span className="font-semibold">₹300</span> is included in all subscription plan prices and will be returned upon membership completion.
+              </p>
+            </div>
           </div>
 
           {/* Subtotal, Total and Checkout Button Section */}

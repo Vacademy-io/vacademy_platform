@@ -500,11 +500,11 @@ export const AddCourseStep2 = ({
         resolver: zodResolver(step2Schema),
         defaultValues: initialData
             ? {
-                  // Use values from initialData where available. Respect course settings for depth.
+                  // Use values from initialData where available. When editing, preserve the course's actual depth.
                   ...initialData,
                   levelStructure:
-                      courseSettings?.courseStructure?.defaultDepth ??
                       initialData.levelStructure ??
+                      courseSettings?.courseStructure?.defaultDepth ??
                       2,
                   hasLevels: initialData.hasLevels ?? getInitialHasLevels(),
                   hasSessions: initialData.hasSessions ?? getInitialHasSessions(),

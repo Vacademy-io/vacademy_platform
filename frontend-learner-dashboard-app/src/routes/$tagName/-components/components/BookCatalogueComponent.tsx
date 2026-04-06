@@ -14,6 +14,7 @@ import {
   Plus,
   Minus,
   ShoppingBag,
+  CheckCircle2,
 } from "lucide-react";
 import { toTitleCase } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
@@ -522,7 +523,16 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
             <div className="mt-0">
               <div className="flex font-bold flex-col gap-1">
                 <div className="flex items-center justify-between ">
-                  <h2 className="text-lg font-bold text-gray-800 tracking-tight">Browse by Genre</h2>
+                  <h2 className="text-lg font-bold text-gray-800 tracking-tight">
+                    Browse by Genre{' '}
+                    <span className={`text-sm font-semibold ml-2 ${
+                      cartMode === 'rent'
+                        ? 'text-blue-600'
+                        : 'text-green-600'
+                    }`}>
+                      [{cartMode === 'rent' ? 'Rent Mode' : 'Buy Mode'}]
+                    </span>
+                  </h2>
                   {selectedGenres.length > 0 && (
                     <button
                       onClick={() => setSelectedGenres([])}
@@ -626,42 +636,65 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                               const existingItem = book.enrollInviteId ? getItemByEnrollInviteId(book.enrollInviteId) : null;
                               const isBuyMode = cartMode === 'buy';
 
-                              // Show counter for Buy mode if item exists
-                              if (isBuyMode && existingItem) {
-                                return (
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex items-center gap-1 border border-gray-200 rounded-lg bg-white shadow-xl">
+                              // Show counter for Buy mode if item exists, or for Rent mode show "Go to Cart"
+                              if (existingItem) {
+                                // Buy mode: show quantity controls
+                                if (isBuyMode) {
+                                  return (
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-1 border border-gray-200 rounded-lg bg-white shadow-xl">
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 hover:bg-gray-100 active:bg-gray-200 rounded-l-lg transition-all duration-150"
+                                          onClick={async () => {
+                                            if (book.enrollInviteId) {
+                                              await updateQuantity(book.enrollInviteId, existingItem.quantity - 1);
+                                              window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                            }
+                                          }}
+                                          disabled={!book.enrollInviteId}
+                                        >
+                                          <Minus className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <span className="w-8 text-center text-xs font-semibold text-gray-700">{existingItem.quantity}</span>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 hover:bg-gray-100 active:bg-gray-200 rounded-r-lg transition-all duration-150"
+                                          onClick={async () => {
+                                            if (book.enrollInviteId) {
+                                              await updateQuantity(book.enrollInviteId, existingItem.quantity + 1);
+                                              window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                            }
+                                          }}
+                                          disabled={!book.enrollInviteId || book.available_slots === 0}
+                                        >
+                                          <Plus className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </div>
+                                      {/* Go to Cart button */}
                                       <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 hover:bg-gray-100 active:bg-gray-200 rounded-l-lg transition-all duration-150"
-                                        onClick={async () => {
-                                          if (book.enrollInviteId) {
-                                            await updateQuantity(book.enrollInviteId, existingItem.quantity - 1);
-                                            window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                          }
-                                        }}
-                                        disabled={!book.enrollInviteId}
+                                        className="h-8 px-3 bg-primary-400 hover:bg-primary-500 text-white text-xs font-semibold rounded-lg shadow-md flex items-center gap-1.5 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                                        onClick={() => navigate({ to: `/${tagName}/cart` })}
                                       >
-                                        <Minus className="h-3.5 w-3.5" />
-                                      </Button>
-                                      <span className="w-8 text-center text-xs font-semibold text-gray-700">{existingItem.quantity}</span>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 hover:bg-gray-100 active:bg-gray-200 rounded-r-lg transition-all duration-150"
-                                        onClick={async () => {
-                                          if (book.enrollInviteId) {
-                                            await updateQuantity(book.enrollInviteId, existingItem.quantity + 1);
-                                            window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                          }
-                                        }}
-                                        disabled={!book.enrollInviteId || book.available_slots === 0}
-                                      >
-                                        <Plus className="h-3.5 w-3.5" />
+                                        <ShoppingBag className="h-3.5 w-3.5" />
+                                        Cart
                                       </Button>
                                     </div>
-                                    {/* Go to Cart button */}
+                                  );
+                                }
+
+                                // Rent mode: show "Added to Cart" + "Go to Cart"
+                                return (
+                                  <div className="flex items-center gap-2 w-full">
+                                    <Button
+                                      disabled
+                                      className="flex-1 px-4 bg-green-100 text-green-700 text-xs font-semibold shadow-md rounded-lg py-2 border border-green-200 flex items-center justify-center gap-2"
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                      Added
+                                    </Button>
                                     <Button
                                       className="h-8 px-3 bg-primary-400 hover:bg-primary-500 text-white text-xs font-semibold rounded-lg shadow-md flex items-center gap-1.5 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                                       onClick={() => navigate({ to: `/${tagName}/cart` })}
@@ -679,25 +712,20 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                   className="px-6 w-full bg-white text-gray-900 text-sm font-medium shadow-xl hover:bg-primary-50 hover:text-primary-700 active:bg-primary-100 active:scale-95 transition-all duration-300 transform py-2 rounded-lg border border-gray-200"
                                   onClick={async () => {
                                     if (book.enrollInviteId) {
-                                      const existing = getItemByEnrollInviteId(book.enrollInviteId);
-                                      if (existing && !isBuyMode) {
-                                        toast.info("This item is already in the cart", { duration: 2000 });
-                                      } else {
-                                        await addItem({
-                                          id: book.id,
-                                          title: book.title,
-                                          price: book.price,
-                                          image: book.thumbnail,
-                                          level: book.level,
-                                          packageSessionId: book.packageSessionId,
-                                          enrollInviteId: book.enrollInviteId,
-                                          levelId: book.levelId,
-                                          courseId: book.courseId,
-                                        });
-                                        // Dispatch event to update cart count in header
-                                        window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                        toast.success("Added to cart", { duration: 2000 });
-                                      }
+                                      await addItem({
+                                        id: book.id,
+                                        title: book.title,
+                                        price: book.price,
+                                        image: book.thumbnail,
+                                        level: book.level,
+                                        packageSessionId: book.packageSessionId,
+                                        enrollInviteId: book.enrollInviteId,
+                                        levelId: book.levelId,
+                                        courseId: book.courseId,
+                                      });
+                                      // Dispatch event to update cart count in header
+                                      window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                      toast.success("Added to cart", { duration: 2000 });
                                     }
                                   }}
                                   disabled={!book.enrollInviteId || book.available_slots === 0}

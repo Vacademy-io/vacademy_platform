@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { User, ShoppingCart, Plus, Minus, ShoppingBag } from "lucide-react";
+import { User, ShoppingCart, Plus, Minus, ShoppingBag, CheckCircle2 } from "lucide-react";
 import { useCartStore } from "../../-stores/cart-store";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -176,11 +176,20 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
 
                 {/* Details Section */}
                 <div className="flex-1 space-y-4 md:space-y-5">
-                    {/* Book Title */}
+                    {/* Book Title with Mode Indicator */}
                     <div>
-                        <h1 className="text-xl sm:text-2xl md:text-2xl font-semibold text-gray-900 leading-snug mb-3">
-                            {courseData.title}
-                        </h1>
+                        <div className="flex items-start gap-2 mb-3">
+                            <h1 className="text-xl sm:text-2xl md:text-2xl font-semibold text-gray-900 leading-snug">
+                                {courseData.title}
+                            </h1>
+                            <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap mt-1 ${
+                              cartMode === 'rent'
+                                ? 'text-blue-600 bg-blue-50'
+                                : 'text-green-600 bg-green-50'
+                            }`}>
+                              [{cartMode === 'rent' ? 'Rent' : 'Buy'}]
+                            </span>
+                        </div>
                     </div>
 
                     {/* Author Name */}
@@ -273,31 +282,52 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                 );
                             }
 
+                            // Show "Added" + "Go to Cart" for Rent mode if item exists
+                            if (!isBuyMode && existingItem) {
+                                return (
+                                    <div className="flex items-center gap-3">
+                                        <Button
+                                            disabled
+                                            className="flex-1 bg-green-100 text-green-700 font-semibold text-sm py-2.5 px-6 rounded-lg border border-green-200 flex items-center justify-center gap-2 shadow-sm"
+                                        >
+                                            <CheckCircle2 className="h-4 w-4" />
+                                            Added
+                                        </Button>
+                                        {/* Go to Cart button */}
+                                        <Button
+                                            className="bg-primary-400 hover:bg-primary-500 text-white font-semibold text-sm py-2.5 px-4 rounded-lg shadow-md flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                                            onClick={() => {
+                                                const pathTag = window.location.pathname.split('/').filter(Boolean)[0] || 'collections';
+                                                navigate({ to: `/${pathTag}/cart` });
+                                            }}
+                                        >
+                                            <ShoppingBag className="h-4 w-4" />
+                                            Go to Cart
+                                        </Button>
+                                    </div>
+                                );
+                            }
+
                             // Show Add to Cart button
                             return (
                                 <Button
                                     className="w-min-[40px] sm:w-auto bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 px-6 rounded-lg shadow-md transform transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
                                     onClick={async () => {
                                         if (courseData.enrollInviteId) {
-                                            const existing = getItemByEnrollInviteId(courseData.enrollInviteId);
-                                            if (existing && !isBuyMode) {
-                                                toast.info("This item is already in the cart", { duration: 2000 });
-                                            } else {
-                                                await addItem({
-                                                    id: courseData.courseId || courseData.id,
-                                                    title: courseData.title,
-                                                    price: courseData.price,
-                                                    image: coverUrl,
-                                                    level: courseData.level_name,
-                                                    packageSessionId: courseData.packageSessionId,
-                                                    enrollInviteId: courseData.enrollInviteId,
-                                                    levelId: courseData.levelId,
-                                                    courseId: courseData.courseId
-                                                });
-                                                // Dispatch event to update cart count in header
-                                                window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                                toast.success("Added to cart", { duration: 2000 });
-                                            }
+                                            await addItem({
+                                                id: courseData.courseId || courseData.id,
+                                                title: courseData.title,
+                                                price: courseData.price,
+                                                image: coverUrl,
+                                                level: courseData.level_name,
+                                                packageSessionId: courseData.packageSessionId,
+                                                enrollInviteId: courseData.enrollInviteId,
+                                                levelId: courseData.levelId,
+                                                courseId: courseData.courseId
+                                            });
+                                            // Dispatch event to update cart count in header
+                                            window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                            toast.success("Added to cart", { duration: 2000 });
                                         } else {
                                             toast.error("Cannot add to cart: Missing enrollment info", { duration: 2000 });
                                         }

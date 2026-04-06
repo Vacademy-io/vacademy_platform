@@ -288,7 +288,7 @@ export const fetchDashboardCollectionData = async (
     req: DashboardCollectionRequest
 ): Promise<DashboardCollectionResponse> => {
     const response = await authenticatedAxiosInstance.post(
-        `http://localhost:8072/admin-core-service/v1/admin/student-fee/dashboard/collection`,
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/dashboard/collection`,
         req
     );
     return response.data;

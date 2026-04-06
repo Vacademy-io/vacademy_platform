@@ -59,45 +59,79 @@ public class ChatbotFlowEngine {
             if (activeSession.isPresent()) {
                 ChatbotFlowSession session = activeSession.get();
 
-                // Check if the incoming message matches a trigger keyword for ANY flow.
-                // If it does, the user wants to start over — complete the old session and let
-                // a new flow start below. This prevents AI_RESPONSE sessions from "trapping"
-                // the user when they type a trigger keyword like "hello" again.
-                boolean matchesTrigger = doesMessageMatchAnyTrigger(instituteId, channelType, userText,
-                        messageType, buttonId, buttonPayload, listReplyId);
+                // Check if current node is a CONDITION or AI_RESPONSE (waiting for input)
+                ChatbotFlowNode currentNode = session.getCurrentNodeId() != null
+                        ? nodeRepository.findById(session.getCurrentNodeId()).orElse(null) : null;
+                boolean isWaitingNode = currentNode != null && (
+                        ChatbotNodeType.CONDITION.name().equals(currentNode.getNodeType())
+                        || ChatbotNodeType.AI_RESPONSE.name().equals(currentNode.getNodeType()));
 
-                if (matchesTrigger) {
-                    // Check if current node is a CONDITION or AI_RESPONSE (waiting for input)
-                    ChatbotFlowNode currentNode = session.getCurrentNodeId() != null
-                            ? nodeRepository.findById(session.getCurrentNodeId()).orElse(null) : null;
-                    boolean isWaitingNode = currentNode != null && (
-                            ChatbotNodeType.CONDITION.name().equals(currentNode.getNodeType())
-                            || ChatbotNodeType.AI_RESPONSE.name().equals(currentNode.getNodeType()));
+                if (isWaitingNode) {
+                    // Session is waiting for user input on a CONDITION/AI_RESPONSE node.
+                    // FIRST try to resume the session with this input — the CONDITION node
+                    // will evaluate whether the input matches one of its branches.
+                    FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
+                            userText, businessChannelId, messageType, buttonId, buttonPayload,
+                            listReplyId, session);
 
-                    if (isWaitingNode) {
-                        log.info("Trigger keyword detected while session active on {} node — restarting flow",
-                                currentNode.getNodeType());
+                    // Try executing the condition node with the user's input
+                    ChatbotNodeExecutor executor = findExecutor(currentNode.getNodeType());
+                    if (executor != null) {
+                        NodeExecutionResult condResult = executor.execute(currentNode, session,
+                                userText, context);
+                        if (condResult.isSuccess() && !condResult.isWaitForInput()) {
+                            // Condition matched a branch — resume normally within this flow
+                            log.info("CONDITION node matched branch in active session — resuming flow: "
+                                    + "sessionId={}, branchId={}",
+                                    session.getId(), condResult.getSelectedBranchId());
+                            mergeSessionContext(session, condResult.getOutputVariables());
+                            advanceToNextNodes(session, currentNode.getId(),
+                                    condResult.getSelectedBranchId(), context, 0);
+                            return true;
+                        }
+                    }
+
+                    // Condition didn't match any branch. Check if input matches
+                    // a DIFFERENT flow's trigger (not the current flow's own catch-all).
+                    String matchedFlowId = findMatchingTriggerFlowId(instituteId, channelType,
+                            userText, messageType, buttonId, buttonPayload, listReplyId);
+
+                    if (matchedFlowId != null && !matchedFlowId.equals(session.getFlowId())) {
+                        log.info("Input matches a different flow's trigger (flowId={}) "
+                                + "while on {} node — restarting",
+                                matchedFlowId, currentNode.getNodeType());
                         completeSession(session);
-                        // Fall through to trigger matching below to start a new flow
+                        // Fall through to trigger matching below to start the new flow
                     } else {
-                        // Not on a waiting node — resume normally
+                        // No other flow matches — stay on current node waiting for valid input
+                        log.info("No specific trigger matched for other flow — staying on "
+                                + "current CONDITION node: sessionId={}", session.getId());
+                        return true;
+                    }
+                } else {
+                    // Not on a waiting node — check if a trigger keyword matches to restart
+                    boolean matchesTrigger = doesMessageMatchAnyTrigger(instituteId, channelType,
+                            userText, messageType, buttonId, buttonPayload, listReplyId);
+
+                    if (matchesTrigger) {
+                        // Not on a waiting node, just resume normally
                         FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
                                 userText, businessChannelId, messageType, buttonId, buttonPayload,
                                 listReplyId, session);
                         resumeSession(session, context);
                         return true;
+                    } else {
+                        // Message doesn't match any trigger — resume current session
+                        log.info("Resuming chatbot flow session: sessionId={}, flowId={}, currentNode={}",
+                                session.getId(), session.getFlowId(), session.getCurrentNodeId());
+
+                        FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
+                                userText, businessChannelId, messageType, buttonId, buttonPayload,
+                                listReplyId, session);
+
+                        resumeSession(session, context);
+                        return true;
                     }
-                } else {
-                    // Message doesn't match any trigger — resume current session
-                    log.info("Resuming chatbot flow session: sessionId={}, flowId={}, currentNode={}",
-                            session.getId(), session.getFlowId(), session.getCurrentNodeId());
-
-                    FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
-                            userText, businessChannelId, messageType, buttonId, buttonPayload,
-                            listReplyId, session);
-
-                    resumeSession(session, context);
-                    return true;
                 }
             }
 
@@ -129,6 +163,11 @@ public class ChatbotFlowEngine {
 
             log.info("Found {} active flows for institute={}, channelType={}", activeFlows.size(), instituteId, channelType);
 
+            // Collect all matching triggers with their priority, then pick the highest
+            record MatchedTrigger(ChatbotFlow flow, ChatbotFlowNode triggerNode, int priority,
+                                  boolean isSpecific) {}
+            List<MatchedTrigger> matchedTriggers = new ArrayList<>();
+
             for (ChatbotFlow flow : activeFlows) {
                 List<ChatbotFlowNode> triggerNodes = nodeRepository
                         .findByFlowIdAndNodeType(flow.getId(), ChatbotNodeType.TRIGGER.name());
@@ -143,27 +182,53 @@ public class ChatbotFlowEngine {
 
                     NodeExecutionResult result = executor.execute(triggerNode, null, userText, context);
                     if (result.isSuccess()) {
-                        log.info("Trigger matched for flow: flowId={}, trigger={}",
-                                flow.getId(), triggerNode.getName());
-
-                        // Create new session
-                        ChatbotFlowSession session = ChatbotFlowSession.builder()
-                                .flowId(flow.getId())
-                                .instituteId(instituteId)
-                                .userPhone(userPhone)
-                                .currentNodeId(triggerNode.getId())
-                                .status(ChatbotSessionStatus.ACTIVE.name())
-                                .context(toJson(new HashMap<>()))
-                                .lastActivityAt(new Timestamp(System.currentTimeMillis()))
-                                .build();
-                        session = sessionRepository.save(session);
-
-                        // Advance past the trigger node to the next node(s)
-                        context.setSessionVariables(new HashMap<>());
-                        advanceToNextNodes(session, triggerNode.getId(), null, context, 0);
-                        return true;
+                        Map<String, Object> triggerConfig = parseJson(triggerNode.getConfig());
+                        int priority = 0;
+                        boolean isSpecific = false;
+                        if (triggerConfig != null) {
+                            Object p = triggerConfig.get("priority");
+                            if (p instanceof Number) priority = ((Number) p).intValue();
+                            // A trigger with actual keywords is "specific"; one without is catch-all
+                            Object keywords = triggerConfig.get("keywords");
+                            isSpecific = keywords instanceof List && !((List<?>) keywords).isEmpty();
+                        }
+                        matchedTriggers.add(new MatchedTrigger(flow, triggerNode, priority, isSpecific));
                     }
                 }
+            }
+
+            if (!matchedTriggers.isEmpty()) {
+                // Sort: specific triggers first, then by priority descending
+                matchedTriggers.sort((a, b) -> {
+                    if (a.isSpecific() != b.isSpecific()) return a.isSpecific() ? -1 : 1;
+                    return Integer.compare(b.priority(), a.priority());
+                });
+
+                MatchedTrigger best = matchedTriggers.get(0);
+                log.info("Trigger matched for flow: flowId={}, trigger={}, priority={}, specific={}",
+                        best.flow().getId(), best.triggerNode().getName(),
+                        best.priority(), best.isSpecific());
+
+                // Create new session
+                FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
+                        userText, businessChannelId, messageType, buttonId, buttonPayload,
+                        listReplyId, null);
+
+                ChatbotFlowSession session = ChatbotFlowSession.builder()
+                        .flowId(best.flow().getId())
+                        .instituteId(instituteId)
+                        .userPhone(userPhone)
+                        .currentNodeId(best.triggerNode().getId())
+                        .status(ChatbotSessionStatus.ACTIVE.name())
+                        .context(toJson(new HashMap<>()))
+                        .lastActivityAt(new Timestamp(System.currentTimeMillis()))
+                        .build();
+                session = sessionRepository.save(session);
+
+                // Advance past the trigger node to the next node(s)
+                context.setSessionVariables(new HashMap<>());
+                advanceToNextNodes(session, best.triggerNode().getId(), null, context, 0);
+                return true;
             }
 
             // 3. No flow matched — fall back to legacy
@@ -305,7 +370,7 @@ public class ChatbotFlowEngine {
         if (isAutoExecuteNode(nextNode.getNodeType())) {
             ChatbotNodeExecutor executor = findExecutor(nextNode.getNodeType());
             if (executor != null) {
-                NodeExecutionResult result = executor.execute(nextNode, session, null, context);
+                NodeExecutionResult result = executor.execute(nextNode, session, context.getMessageText(), context);
                 if (result.isSuccess()) {
                     // Log outgoing message so it appears in WhatsApp Inbox
                     logOutgoingMessage(nextNode, context, result);
@@ -345,7 +410,8 @@ public class ChatbotFlowEngine {
                 || ChatbotNodeType.SEND_INTERACTIVE.name().equals(nodeType)
                 || ChatbotNodeType.WORKFLOW_ACTION.name().equals(nodeType)
                 || ChatbotNodeType.DELAY.name().equals(nodeType)
-                || ChatbotNodeType.HTTP_WEBHOOK.name().equals(nodeType);
+                || ChatbotNodeType.HTTP_WEBHOOK.name().equals(nodeType)
+                || ChatbotNodeType.AI_RESPONSE.name().equals(nodeType);
     }
 
     /**
@@ -377,6 +443,18 @@ public class ChatbotFlowEngine {
     private boolean doesMessageMatchAnyTrigger(String instituteId, String channelType,
                                                 String userText, String messageType,
                                                 String buttonId, String buttonPayload, String listReplyId) {
+        return findMatchingTriggerFlowId(instituteId, channelType, userText,
+                messageType, buttonId, buttonPayload, listReplyId) != null;
+    }
+
+    /**
+     * Find the flow ID of the best matching trigger for this message.
+     * Returns the flow ID of the highest-priority, most-specific matching trigger,
+     * or null if no trigger matches.
+     */
+    private String findMatchingTriggerFlowId(String instituteId, String channelType,
+                                             String userText, String messageType,
+                                             String buttonId, String buttonPayload, String listReplyId) {
         // Collect all active flows (same logic as main trigger scan)
         List<ChatbotFlow> activeFlows = new ArrayList<>(flowRepository
                 .findByInstituteIdAndChannelTypeAndStatus(instituteId, channelType,
@@ -397,6 +475,12 @@ public class ChatbotFlowEngine {
                 .buttonPayload(buttonPayload).listReplyId(listReplyId)
                 .build();
 
+        // Track the best matching trigger: prefer specific (has keywords) over catch-all,
+        // then by priority
+        String bestFlowId = null;
+        int bestPriority = Integer.MIN_VALUE;
+        boolean bestIsSpecific = false;
+
         for (ChatbotFlow flow : activeFlows) {
             List<ChatbotFlowNode> triggerNodes = nodeRepository
                     .findByFlowIdAndNodeType(flow.getId(), ChatbotNodeType.TRIGGER.name());
@@ -404,11 +488,31 @@ public class ChatbotFlowEngine {
                 ChatbotNodeExecutor executor = findExecutor(triggerNode.getNodeType());
                 if (executor != null) {
                     NodeExecutionResult result = executor.execute(triggerNode, null, userText, ctx);
-                    if (result.isSuccess()) return true;
+                    if (result.isSuccess()) {
+                        Map<String, Object> triggerConfig = parseJson(triggerNode.getConfig());
+                        int priority = 0;
+                        boolean isSpecific = false;
+                        if (triggerConfig != null) {
+                            Object p = triggerConfig.get("priority");
+                            if (p instanceof Number) priority = ((Number) p).intValue();
+                            Object keywords = triggerConfig.get("keywords");
+                            isSpecific = keywords instanceof List && !((List<?>) keywords).isEmpty();
+                        }
+
+                        // Better match if: (a) this is specific and best isn't, or
+                        // (b) same specificity but higher priority
+                        if ((!bestIsSpecific && isSpecific)
+                                || (isSpecific == bestIsSpecific && priority > bestPriority)
+                                || bestFlowId == null) {
+                            bestFlowId = flow.getId();
+                            bestPriority = priority;
+                            bestIsSpecific = isSpecific;
+                        }
+                    }
                 }
             }
         }
-        return false;
+        return bestFlowId;
     }
 
     /**

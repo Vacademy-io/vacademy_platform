@@ -156,18 +156,30 @@ public class MetaWebhookHandler implements VendorWebhookHandler {
         String type = message.path("type").asText();
         long timestamp = message.path("timestamp").asLong();
 
+        // Extract interactive reply fields for chatbot flow engine
+        String buttonId = null;
+        String buttonPayload = null;
+        String listReplyId = null;
+
         // Get message text based on type
         String messageText = null;
         if ("text".equals(type)) {
             messageText = message.path("text").path("body").asText();
         } else if ("button".equals(type)) {
-            messageText = message.path("button").path("text").asText();
+            // Template quick_reply button
+            JsonNode button = message.path("button");
+            messageText = button.path("text").asText();
+            buttonPayload = button.path("payload").asText(null);
         } else if ("interactive".equals(type)) {
             JsonNode interactive = message.path("interactive");
             if (interactive.has("button_reply")) {
-                messageText = interactive.path("button_reply").path("title").asText();
+                JsonNode btnReply = interactive.path("button_reply");
+                messageText = btnReply.path("title").asText();
+                buttonId = btnReply.path("id").asText(null);
             } else if (interactive.has("list_reply")) {
-                messageText = interactive.path("list_reply").path("title").asText();
+                JsonNode listReply = interactive.path("list_reply");
+                messageText = listReply.path("title").asText();
+                listReplyId = listReply.path("id").asText(null);
             }
         }
 
@@ -189,6 +201,10 @@ public class MetaWebhookHandler implements VendorWebhookHandler {
                 .externalMessageId(messageId)
                 .phoneNumber(from)
                 .messageText(messageText)
+                .messageType(type)
+                .buttonId(buttonId)
+                .buttonPayload(buttonPayload)
+                .listReplyId(listReplyId)
                 .senderName(senderName)
                 .businessChannelId(businessChannelId)
                 .timestamp(timestamp > 0 ? Instant.ofEpochSecond(timestamp) : Instant.now())

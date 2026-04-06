@@ -195,6 +195,41 @@ public class WhatsAppTemplateManagerService {
 
     @Transactional
     public int syncFromMeta(String instituteId) {
+        // Detect provider from institute settings
+        String provider = detectProvider(instituteId);
+
+        return switch (provider) {
+            case "WATI" -> syncFromWati(instituteId);
+            default -> syncFromMetaDirect(instituteId);
+        };
+    }
+
+    /**
+     * Detect the WhatsApp provider configured for this institute.
+     */
+    private String detectProvider(String instituteId) {
+        try {
+            InstituteInfoDTO institute = instituteInternalService.getInstituteByInstituteId(instituteId);
+            JsonNode root = objectMapper.readTree(institute.getSetting());
+
+            JsonNode ws = root.path("setting")
+                    .path(NotificationConstants.WHATSAPP_SETTING)
+                    .path(NotificationConstants.DATA)
+                    .path(NotificationConstants.UTILITY_WHATSAPP);
+            if (ws.isMissingNode()) {
+                ws = root.path(NotificationConstants.WHATSAPP_SETTING)
+                        .path(NotificationConstants.DATA)
+                        .path(NotificationConstants.UTILITY_WHATSAPP);
+            }
+
+            return ws.path("provider").asText("META").toUpperCase();
+        } catch (Exception e) {
+            log.warn("Failed to detect provider, defaulting to META: {}", e.getMessage());
+            return "META";
+        }
+    }
+
+    private int syncFromMetaDirect(String instituteId) {
         MetaCredentials creds = resolveMetaCredentials(instituteId);
         if (creds == null) {
             throw new RuntimeException("Meta WhatsApp credentials not configured");
@@ -314,6 +349,165 @@ public class WhatsAppTemplateManagerService {
             throw e;
         } catch (Exception e) {
             throw new RuntimeException("Sync failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Sync templates from WATI API: GET /api/v1/getMessageTemplates
+     * Upserts templates into the local DB the same way Meta sync does.
+     */
+    private int syncFromWati(String instituteId) {
+        WatiCredentials watiCreds = resolveWatiCredentials(instituteId);
+        if (watiCreds == null) {
+            throw new RuntimeException("WATI WhatsApp credentials not configured");
+        }
+
+        try {
+            String url = watiCreds.apiUrl + "/api/v1/getMessageTemplates";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + watiCreds.apiKey);
+
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET,
+                    new HttpEntity<>(headers), String.class);
+
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                throw new RuntimeException("WATI API returned: " + response.getStatusCode());
+            }
+
+            JsonNode body = objectMapper.readTree(response.getBody());
+            // WATI returns: { "messageTemplates": [...] } or { "result": [...] }
+            JsonNode templateArray = body.path("messageTemplates");
+            if (!templateArray.isArray()) {
+                templateArray = body.path("result");
+            }
+            if (!templateArray.isArray()) return 0;
+
+            int synced = 0;
+            for (JsonNode tmpl : templateArray) {
+                String name = tmpl.path("elementName").asText(tmpl.path("name").asText(""));
+                String language = tmpl.path("languageCode").asText(tmpl.path("language").asText("en"));
+                String status = tmpl.path("status").asText("APPROVED").toUpperCase();
+                String category = tmpl.path("category").asText("");
+                String rejectedReason = tmpl.path("rejectedReason").asText(null);
+
+                // Parse body
+                String bodyText = tmpl.path("body").asText(tmpl.path("bodyOriginal").asText(""));
+
+                // Parse header
+                String headerType = "NONE";
+                String headerText = null;
+                JsonNode headerNode = tmpl.path("header");
+                if (!headerNode.isMissingNode() && headerNode.isObject()) {
+                    String format = headerNode.path("format").asText(
+                            headerNode.path("type").asText("TEXT")).toUpperCase();
+                    headerType = format;
+                    if ("TEXT".equals(format)) {
+                        headerText = headerNode.path("text").asText(null);
+                    }
+                }
+
+                // Parse footer
+                String footerText = null;
+                JsonNode footerNode = tmpl.path("footer");
+                if (!footerNode.isMissingNode()) {
+                    if (footerNode.isTextual()) {
+                        footerText = footerNode.asText(null);
+                    } else if (footerNode.isObject()) {
+                        footerText = footerNode.path("text").asText(null);
+                    }
+                }
+
+                // Parse buttons
+                List<WhatsAppTemplateDTO.TemplateButton> buttons = new ArrayList<>();
+                JsonNode buttonsNode = tmpl.path("buttons");
+                if (buttonsNode.isArray()) {
+                    for (JsonNode btn : buttonsNode) {
+                        buttons.add(WhatsAppTemplateDTO.TemplateButton.builder()
+                                .type(btn.path("type").asText(""))
+                                .text(btn.path("text").asText(""))
+                                .url(btn.path("url").asText(null))
+                                .phoneNumber(btn.path("phone_number").asText(null))
+                                .build());
+                    }
+                }
+
+                // Upsert: find existing or create new
+                Optional<WhatsAppTemplate> existingOpt = templateRepository
+                        .findByInstituteIdAndNameAndLanguage(instituteId, name, language);
+
+                WhatsAppTemplate template;
+                if (existingOpt.isPresent()) {
+                    template = existingOpt.get();
+                    template.setStatus(status);
+                    template.setCategory(category);
+                    template.setRejectionReason(rejectedReason);
+                    template.setHeaderType(headerType);
+                    template.setHeaderText(headerText);
+                    template.setBodyText(bodyText);
+                    template.setFooterText(footerText);
+                    template.setButtonsConfig(toJson(buttons));
+                    if ("APPROVED".equals(status) && template.getApprovedAt() == null) {
+                        template.setApprovedAt(new Timestamp(System.currentTimeMillis()));
+                    }
+                } else {
+                    template = WhatsAppTemplate.builder()
+                            .instituteId(instituteId)
+                            .name(name)
+                            .language(language)
+                            .category(category)
+                            .status(status)
+                            .rejectionReason(rejectedReason)
+                            .headerType(headerType)
+                            .headerText(headerText)
+                            .bodyText(bodyText)
+                            .footerText(footerText)
+                            .buttonsConfig(toJson(buttons))
+                            .createdViaVacademy(false)
+                            .build();
+                    if ("APPROVED".equals(status)) {
+                        template.setApprovedAt(new Timestamp(System.currentTimeMillis()));
+                    }
+                }
+
+                templateRepository.save(template);
+                synced++;
+            }
+
+            log.info("Synced {} templates from WATI for institute {}", synced, instituteId);
+            return synced;
+
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("WATI sync failed: " + e.getMessage());
+        }
+    }
+
+    private WatiCredentials resolveWatiCredentials(String instituteId) {
+        try {
+            InstituteInfoDTO institute = instituteInternalService.getInstituteByInstituteId(instituteId);
+            JsonNode root = objectMapper.readTree(institute.getSetting());
+
+            JsonNode ws = root.path("setting")
+                    .path(NotificationConstants.WHATSAPP_SETTING)
+                    .path(NotificationConstants.DATA)
+                    .path(NotificationConstants.UTILITY_WHATSAPP);
+            if (ws.isMissingNode()) {
+                ws = root.path(NotificationConstants.WHATSAPP_SETTING)
+                        .path(NotificationConstants.DATA)
+                        .path(NotificationConstants.UTILITY_WHATSAPP);
+            }
+
+            JsonNode wati = ws.path("wati");
+            String apiKey = wati.path("apiKey").asText(wati.path("api_key").asText(""));
+            String apiUrl = wati.path("apiUrl").asText(wati.path("api_url").asText("https://live-server.wati.io"));
+
+            if (apiKey.isBlank()) return null;
+            return new WatiCredentials(apiKey, apiUrl);
+        } catch (Exception e) {
+            log.error("Failed to resolve WATI credentials: {}", e.getMessage());
+            return null;
         }
     }
 
@@ -485,4 +679,5 @@ public class WhatsAppTemplateManagerService {
     }
 
     private record MetaCredentials(String accessToken, String wabaId) {}
+    private record WatiCredentials(String apiKey, String apiUrl) {}
 }

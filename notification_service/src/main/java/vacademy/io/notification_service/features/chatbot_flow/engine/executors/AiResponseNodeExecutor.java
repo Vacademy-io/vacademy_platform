@@ -74,8 +74,9 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
         }
 
         if (userText == null || userText.isBlank()) {
-            // First time arriving at AI node — wait for user input
-            return NodeExecutionResult.builder().success(true).waitForInput(true).build();
+            // First time arriving at AI node with no text — use a default greeting
+            // so the AI initiates the conversation instead of waiting silently
+            userText = "Hello";
         }
 
         try {

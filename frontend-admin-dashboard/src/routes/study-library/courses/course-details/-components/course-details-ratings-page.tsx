@@ -52,8 +52,8 @@ const transformRatingToReview = (rating: Rating): Review => {
     return {
         id: rating.id,
         user: {
-            name: rating.user.full_name || rating.user.username,
-            avatarUrl: rating.user.profile_pic_file_id || '',
+            name: rating.user?.full_name || rating.user?.username || 'Unknown',
+            avatarUrl: rating.user?.profile_pic_file_id || '',
         },
         createdAt: rating.created_at,
         rating: rating.points,

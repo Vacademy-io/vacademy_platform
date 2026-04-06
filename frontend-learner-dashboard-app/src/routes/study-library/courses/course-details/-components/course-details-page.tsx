@@ -1343,18 +1343,26 @@ export const CourseDetailsPage = () => {
       return;
     }
 
-    if (
-      sessionOptions.length > 0 &&
-      !selectedSession &&
-      sessionOptions[0]?.value
-    ) {
-      const initialSessionId = sessionOptions[0].value;
-      handleSessionChange(initialSessionId);
-      if (import.meta.env.MODE !== "production") {
-        console.info("[CourseDetailsPage] auto-select session", {
-          initialSessionId,
-          sessionOptions: sessionOptions.map((s) => s.value),
-        });
+    if (sessionOptions.length > 0 && sessionOptions[0]?.value) {
+      if (!selectedSession) {
+        // No session selected yet — auto-select first session
+        const initialSessionId = sessionOptions[0].value;
+        handleSessionChange(initialSessionId);
+        if (import.meta.env.MODE !== "production") {
+          console.info("[CourseDetailsPage] auto-select session", {
+            initialSessionId,
+            sessionOptions: sessionOptions.map((s) => s.value),
+          });
+        }
+      } else if (!selectedLevel) {
+        // Session was set outside handleSessionChange (e.g. course-init fallback)
+        // but level was never set — call handleSessionChange to populate level options and select a level
+        handleSessionChange(selectedSession);
+        if (import.meta.env.MODE !== "production") {
+          console.info("[CourseDetailsPage] auto-select level for existing session", {
+            selectedSession,
+          });
+        }
       }
     }
   }, [

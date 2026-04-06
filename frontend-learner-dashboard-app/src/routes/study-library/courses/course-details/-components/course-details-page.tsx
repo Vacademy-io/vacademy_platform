@@ -1267,10 +1267,6 @@ export const CourseDetailsPage = () => {
                   value: level.id,
                   label: level.name,
                 }));
-        } else if ((enrolledSessions || []).length > 0 && enrolledPackageSessionsForCourse.length === 0) {
-          // User has enrollments but package_sessions haven't matched yet — wait
-          // Don't set level options or select a level; re-filter effect will handle it
-          return;
         } else {
           // User not enrolled in this course/session — show all levels (browsing)
           newLevelOptions = selectedSessionData.levelDetails.map((level) => ({

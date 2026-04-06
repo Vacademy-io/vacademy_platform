@@ -116,7 +116,8 @@ public class InstituteSettingsService {
         // Update or insert max_active_sessions key
         String updated;
         if (existing.contains("\"max_active_sessions\"")) {
-            updated = existing.replaceAll("\"max_active_sessions\"\\s*:\\s*\\d+",
+            // Handle both number (1) and string ("1") formats
+            updated = existing.replaceAll("\"max_active_sessions\"\\s*:\\s*\"?\\d+\"?",
                     "\"max_active_sessions\": " + maxSessions);
         } else {
             if ("{}".equals(existing.trim())) {

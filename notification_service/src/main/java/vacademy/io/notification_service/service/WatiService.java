@@ -209,32 +209,62 @@ public class WatiService {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiKey);
 
-        String endpoint = apiUrl + "/api/v1/addContact";
+        List<Map<String, String>> requiredAttributes = List.of(
+                Map.of("name", "allowbroadcast", "value", "true"),
+                Map.of("name", "allowcampaign", "value", "true"),
+                Map.of("name", "allowsms", "value", "true"),
+                Map.of("name", "Channel", "value", "WhatsApp"),
+                Map.of("name", "Source", "value", "Vacademy"),
+                Map.of("name", "attribute_1", "value", "")
+        );
 
         for (Map<String, Map<String, String>> userDetail : userDetails) {
             String phone = userDetail.keySet().iterator().next();
             String formattedPhone = phone.replaceAll("[^0-9]", "");
 
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("whatsappNumber", formattedPhone);
-            body.put("customParams", List.of(
-                    Map.of("name", "allowbroadcast", "value", "true"),
-                    Map.of("name", "allowcampaign", "value", "true"),
-                    Map.of("name", "allowsms", "value", "true"),
-                    Map.of("name", "Channel", "value", "WhatsApp"),
-                    Map.of("name", "Source", "value", "Vacademy"),
-                    Map.of("name", "attribute_1", "value", "")
-            ));
+            // Step 1: Try updateContactAttributes (for existing contacts)
+            boolean updated = updateContactAttributes(formattedPhone, requiredAttributes, headers, apiUrl);
 
-            try {
-                String json = objectMapper.writeValueAsString(body);
-                HttpEntity<String> entity = new HttpEntity<>(json, headers);
-                ResponseEntity<String> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
-                log.debug("WATI upsert contact {}: status={}", formattedPhone, response.getStatusCode());
-            } catch (Exception e) {
-                // Non-fatal — continue with send even if upsert fails
-                log.warn("WATI contact upsert failed for {}: {}", formattedPhone, e.getMessage());
+            // Step 2: If contact didn't exist (update failed), create it via addContact
+            if (!updated) {
+                addContact(formattedPhone, requiredAttributes, headers, apiUrl);
             }
+        }
+    }
+
+    private boolean updateContactAttributes(String phone, List<Map<String, String>> customParams,
+                                             HttpHeaders headers, String apiUrl) {
+        // POST /{tenantId}/api/v1/updateContactAttributes/{whatsappNumber}
+        String endpoint = apiUrl + "/api/v1/updateContactAttributes/" + phone;
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("customParams", customParams);
+        try {
+            String json = objectMapper.writeValueAsString(body);
+            HttpEntity<String> entity = new HttpEntity<>(json, headers);
+            ResponseEntity<String> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
+            log.info("WATI updateContactAttributes {}: status={}, body={}", phone, response.getStatusCode(), response.getBody());
+            return response.getStatusCode().is2xxSuccessful();
+        } catch (Exception e) {
+            log.info("WATI updateContactAttributes failed for {} (contact may not exist yet): {}", phone, e.getMessage());
+            return false;
+        }
+    }
+
+    private void addContact(String phone, List<Map<String, String>> customParams,
+                             HttpHeaders headers, String apiUrl) {
+        // POST /{tenantId}/api/v1/addContact/{whatsappNumber}
+        // Body requires "name" field (use phone as fallback name)
+        String endpoint = apiUrl + "/api/v1/addContact/" + phone;
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", phone);
+        body.put("customParams", customParams);
+        try {
+            String json = objectMapper.writeValueAsString(body);
+            HttpEntity<String> entity = new HttpEntity<>(json, headers);
+            ResponseEntity<String> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
+            log.info("WATI addContact {}: status={}, body={}", phone, response.getStatusCode(), response.getBody());
+        } catch (Exception e) {
+            log.warn("WATI addContact failed for {}: {}", phone, e.getMessage());
         }
     }
 

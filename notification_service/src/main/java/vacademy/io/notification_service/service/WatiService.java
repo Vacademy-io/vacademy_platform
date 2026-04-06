@@ -103,9 +103,12 @@ public class WatiService {
 
             String buttonUrl = params.get("_buttonUrl");
             if (buttonUrl != null) {
+                // Strip leading slash — template URL is "https://js.vacademy.io/{{1}}"
+                // so suffix must NOT start with "/" or Meta gets a double-slash URL
+                String buttonUrlSuffix = buttonUrl.startsWith("/") ? buttonUrl.substring(1) : buttonUrl;
                 WatiCustomParam btnParam = new WatiCustomParam();
                 btnParam.setName("button_url_suffix");
-                btnParam.setValue(buttonUrl);
+                btnParam.setValue(buttonUrlSuffix);
                 customParams.add(btnParam);
             }
 
@@ -215,9 +218,10 @@ public class WatiService {
                 Map.of("name", "allowsms", "value", "true"),
                 Map.of("name", "Channel", "value", "WhatsApp"),
                 Map.of("name", "Source", "value", "Vacademy"),
-                Map.of("name", "attribute_1", "value", "-"),       // must be non-empty; WATI rejects ""
-                Map.of("name", "contact_owner", "value", "-"),     // required — empty contact_owner blocks sends
-                Map.of("name", "lead_stage", "value", "New Lead")  // required — must match WATI's defined values
+                Map.of("name", "attribute_1", "value", "-")
+                // NOTE: do NOT set contact_owner or lead_stage — these are WATI system attributes
+                // that require valid WATI user IDs / predefined enum values.
+                // Setting them to arbitrary strings (e.g. "-") causes async delivery failure.
         );
 
         for (Map<String, Map<String, String>> userDetail : userDetails) {

@@ -377,11 +377,13 @@ public class FeeTrackingService {
             }).collect(Collectors.toList());
         }
 
+        @Autowired
+        private CollectionDashboardRepository collectionDashboardRepository;
+
         @Transactional(readOnly = true)
         public CollectionDashboardResponseDTO getCollectionDashboard(CollectionDashboardRequestDTO request) {
                 String instituteId = request.getInstituteId();
-                boolean hasSession = StringUtils.hasText(request.getSessionId());
-                String sessionId = hasSession ? request.getSessionId() : null;
+                String sessionId = StringUtils.hasText(request.getSessionId()) ? request.getSessionId() : null;
 
                 List<String> feeTypeIds = (request.getFeeTypeIds() != null)
                                 ? request.getFeeTypeIds().stream().filter(StringUtils::hasText)
@@ -389,61 +391,14 @@ public class FeeTrackingService {
                                 : Collections.emptyList();
                 boolean hasFeeTypes = !feeTypeIds.isEmpty();
 
-                // Shared SQL fragments
-                String sessionClause = hasSession ? buildSessionClause() : "";
-                String feeTypeClause = hasFeeTypes ? buildFeeTypeClause(feeTypeIds) : "";
+                Object[] sr = collectionDashboardRepository.getCollectionSummary(
+                                instituteId, sessionId, hasFeeTypes, feeTypeIds);
 
-                // ── Query 1: Overall summary ──────────────────────────────────────────
-                String summarySql = "SELECT " +
-                                "  COALESCE(SUM(sfp.amount_expected - COALESCE(sfp.discount_amount,0)),0), " +
-                                "  COALESCE(SUM(CASE WHEN sfp.due_date <= CURRENT_DATE " +
-                                "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) ELSE 0 END),0), " +
-                                "  COALESCE(SUM(sfp.amount_paid),0), " +
-                                "  COALESCE(SUM(CASE " +
-                                "    WHEN sfp.due_date <= CURRENT_DATE " +
-                                "      AND sfp.status NOT IN ('WAIVED') " +
-                                "      AND sfp.amount_paid < (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) " +
-                                "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) - sfp.amount_paid " +
-                                "    ELSE 0 END),0) " +
-                                "FROM student_fee_payment sfp " +
-                                "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
-                                "WHERE cpo.institute_id = :instituteId " +
-                                "  AND sfp.status NOT IN ('CANCELLED','DROPPED') " +
-                                sessionClause + feeTypeClause;
+                List<Object[]> classRows = collectionDashboardRepository.getClassWiseBreakdown(
+                                instituteId, sessionId, hasFeeTypes, feeTypeIds);
 
-                jakarta.persistence.Query summaryQ = entityManager.createNativeQuery(summarySql);
-                bindParams(summaryQ, instituteId, hasSession, sessionId, feeTypeIds);
-                Object[] sr = (Object[]) summaryQ.getSingleResult();
-
-                BigDecimal projectedRevenue = toBD(sr[0]);
-                BigDecimal expectedToDate = toBD(sr[1]);
-                BigDecimal collectedToDate = toBD(sr[2]);
-                BigDecimal totalOverdue = toBD(sr[3]);
-
-                // ── Query 2: Class-wise breakdown ─────────────────────────────────────
-                String classWiseSql = "SELECT " +
-                                "  CAST(cpo.id AS VARCHAR), cpo.name, " +
-                                "  COALESCE(SUM(sfp.amount_expected - COALESCE(sfp.discount_amount,0)),0), " +
-                                "  COALESCE(SUM(CASE WHEN sfp.due_date <= CURRENT_DATE " +
-                                "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) ELSE 0 END),0), " +
-                                "  COALESCE(SUM(sfp.amount_paid),0), " +
-                                "  COALESCE(SUM(CASE " +
-                                "    WHEN sfp.due_date <= CURRENT_DATE " +
-                                "      AND sfp.status NOT IN ('WAIVED') " +
-                                "      AND sfp.amount_paid < (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) " +
-                                "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) - sfp.amount_paid " +
-                                "    ELSE 0 END),0) " +
-                                "FROM student_fee_payment sfp " +
-                                "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
-                                "WHERE cpo.institute_id = :instituteId " +
-                                "  AND sfp.status NOT IN ('CANCELLED','DROPPED') " +
-                                sessionClause + feeTypeClause +
-                                "GROUP BY cpo.id, cpo.name ORDER BY cpo.name";
-
-                jakarta.persistence.Query classQ = entityManager.createNativeQuery(classWiseSql);
-                bindParams(classQ, instituteId, hasSession, sessionId, feeTypeIds);
-                @SuppressWarnings("unchecked")
-                List<Object[]> classRows = classQ.getResultList();
+                List<Object[]> modeRows = collectionDashboardRepository.getPaymentModeBreakdown(
+                                instituteId, sessionId, hasFeeTypes, feeTypeIds);
 
                 List<CollectionDashboardResponseDTO.ClassWiseBreakdownDTO> classWiseBreakdown = classRows.stream()
                                 .map(row -> CollectionDashboardResponseDTO.ClassWiseBreakdownDTO.builder()
@@ -456,23 +411,6 @@ public class FeeTrackingService {
                                                 .build())
                                 .collect(Collectors.toList());
 
-                // ── Query 3: Payment mode insights ────────────────────────────────────
-                String modeSql = "SELECT pl.vendor, COALESCE(SUM(sal.amount_allocated),0) " +
-                                "FROM student_fee_allocation_ledger sal " +
-                                "JOIN payment_log pl ON sal.payment_log_id = pl.id " +
-                                "JOIN student_fee_payment sfp ON sal.student_fee_payment_id = sfp.id " +
-                                "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
-                                "WHERE cpo.institute_id = :instituteId " +
-                                "  AND sal.transaction_type NOT IN ('REFUND','BOUNCE_REVERSAL') " +
-                                "  AND pl.payment_status = 'PAID' " +
-                                sessionClause + feeTypeClause +
-                                "GROUP BY pl.vendor";
-
-                jakarta.persistence.Query modeQ = entityManager.createNativeQuery(modeSql);
-                bindParams(modeQ, instituteId, hasSession, sessionId, feeTypeIds);
-                @SuppressWarnings("unchecked")
-                List<Object[]> modeRows = modeQ.getResultList();
-
                 List<CollectionDashboardResponseDTO.PaymentModeBreakdownDTO> paymentModeBreakdown = modeRows.stream()
                                 .map(row -> CollectionDashboardResponseDTO.PaymentModeBreakdownDTO.builder()
                                                 .vendor(row[0] != null ? row[0].toString() : "UNKNOWN")
@@ -481,10 +419,10 @@ public class FeeTrackingService {
                                 .collect(Collectors.toList());
 
                 return CollectionDashboardResponseDTO.builder()
-                                .projectedRevenue(projectedRevenue)
-                                .expectedToDate(expectedToDate)
-                                .collectedToDate(collectedToDate)
-                                .totalOverdue(totalOverdue)
+                                .projectedRevenue(toBD(sr[0]))
+                                .expectedToDate(toBD(sr[1]))
+                                .collectedToDate(toBD(sr[2]))
+                                .totalOverdue(toBD(sr[3]))
                                 .classWiseBreakdown(classWiseBreakdown)
                                 .paymentModeBreakdown(paymentModeBreakdown)
                                 .build();
@@ -496,44 +434,6 @@ public class FeeTrackingService {
                 if (val instanceof BigDecimal)
                         return (BigDecimal) val;
                 return new BigDecimal(val.toString());
-        }
-
-
-        /** Subquery clause to scope results to all CPOs under a given academic session. */
-        private String buildSessionClause() {
-                return "  AND sfp.cpo_id IN (" +
-                                "SELECT psl.cpo_id FROM package_session_learner_invitation_to_payment_option psl " +
-                                "JOIN package_session ps ON psl.package_session_id = ps.id " +
-                                "WHERE ps.session_id = :sessionId) ";
-        }
-
-        /**
-         * Builds an IN clause for fee type IDs using indexed named params (:ft0, :ft1, ...).
-         * @param feeTypeIds list of fee type UUIDs (not names)
-         */
-        private String buildFeeTypeClause(List<String> feeTypeIds) {
-                StringBuilder clause = new StringBuilder(
-                                "  AND sfp.asv_id IN (SELECT afv.id FROM assigned_fee_value afv WHERE afv.fee_type_id IN (");
-                for (int i = 0; i < feeTypeIds.size(); i++) {
-                        if (i > 0)
-                                clause.append(",");
-                        clause.append(":ft").append(i);
-                }
-                return clause.append(")) ").toString();
-        }
-
-        /**
-         * Binds all common parameters to a native EntityManager query.
-         * @param feeTypeIds list of fee type UUIDs (not names)
-         */
-        private void bindParams(jakarta.persistence.Query q, String instituteId,
-                        boolean hasSession, String sessionId, List<String> feeTypeIds) {
-                q.setParameter("instituteId", instituteId);
-                if (hasSession)
-                        q.setParameter("sessionId", sessionId);
-                for (int i = 0; i < feeTypeIds.size(); i++) {
-                        q.setParameter("ft" + i, feeTypeIds.get(i));
-                }
         }
 
 

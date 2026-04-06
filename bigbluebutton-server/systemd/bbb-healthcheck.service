@@ -1,0 +1,10 @@
+[Unit]
+Description=BBB health check (bbb-conf --status + WhatsApp alert)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/bbb-schedule/bbb-schedule.sh healthcheck
+TimeoutStartSec=120
+Environment=PATH=/usr/local/bin:/usr/bin:/bin

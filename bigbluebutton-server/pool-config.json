@@ -1,0 +1,22 @@
+{
+  "servers": [
+    {
+      "slug": "bbb-pool-1",
+      "priority": 1,
+      "server_name": "vacademy-bbb-1",
+      "server_type": "ccx33",
+      "domain": "meet.vacademy.io",
+      "snapshot_desc": "vacademy-bbb-pool-1",
+      "location": "sin"
+    },
+    {
+      "slug": "bbb-pool-2",
+      "priority": 2,
+      "server_name": "vacademy-bbb-2",
+      "server_type": "cpx42",
+      "domain": "meet2.vacademy.io",
+      "snapshot_desc": "vacademy-bbb-pool-2",
+      "location": "sin"
+    }
+  ]
+}

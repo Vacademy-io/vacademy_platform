@@ -1,0 +1,10 @@
+[Unit]
+Description=Start BBB server (restore from snapshot + update DNS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/bbb-schedule/bbb-schedule.sh start
+TimeoutStartSec=1200
+Environment=PATH=/usr/local/bin:/usr/bin:/bin

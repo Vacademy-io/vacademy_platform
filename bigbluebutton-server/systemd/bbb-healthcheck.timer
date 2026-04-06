@@ -1,0 +1,10 @@
+[Unit]
+Description=BBB health check at 3:45 PM IST daily
+
+[Timer]
+OnCalendar=Mon..Sat 15:45 Asia/Kolkata
+Persistent=true
+RandomizedDelaySec=15
+
+[Install]
+WantedBy=timers.target

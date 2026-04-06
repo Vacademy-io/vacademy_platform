@@ -1,0 +1,10 @@
+[Unit]
+Description=Stop BBB server (snapshot + delete to stop billing)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/bbb-schedule/bbb-schedule.sh stop
+TimeoutStartSec=1800
+Environment=PATH=/usr/local/bin:/usr/bin:/bin

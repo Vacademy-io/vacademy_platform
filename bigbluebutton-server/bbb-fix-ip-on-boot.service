@@ -1,0 +1,13 @@
+[Unit]
+Description=Fix BBB IP address after boot (handles IP change from snapshot restore)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/bbb-fix-ip-on-boot.sh
+TimeoutStartSec=300
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

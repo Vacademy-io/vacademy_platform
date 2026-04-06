@@ -12,22 +12,26 @@ let isHandlingSessionTermination = false;
 const SESSION_HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
 let lastHeartbeatTime = 0;
 
-async function sessionHeartbeat(accessToken: string) {
+async function sessionHeartbeat(accessToken: string, instituteId: string) {
   const now = Date.now();
   if (now - lastHeartbeatTime < SESSION_HEARTBEAT_INTERVAL_MS) return;
   lastHeartbeatTime = now;
   try {
     await axios.get(VALIDATE_SESSION, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        clientId: instituteId,
+      },
     });
   } catch (error: any) {
     if (error?.response?.status === 460 && !isHandlingSessionTermination) {
       isHandlingSessionTermination = true;
       toast.error(
-        "Your session was terminated because another device logged in. Please log in again."
+        "Your session was terminated because another device logged in. Please log in again.",
+        { duration: 5000 }
       );
       removeTokensAndLogout();
-      window.location.assign("/logout");
+      setTimeout(() => window.location.assign("/logout"), 3000);
     }
     // Other errors (network, 401) are silently ignored — not the heartbeat's job
   }
@@ -135,8 +139,8 @@ authenticatedAxiosInstance.interceptors.request.use(
 
     if (!isExpired) {
       request.headers.Authorization = `Bearer ${accessToken}`;
-      // Piggyback session heartbeat (fires at most once every 5 min)
-      sessionHeartbeat(accessToken!);
+      // Piggyback session heartbeat (fires at most once every 10 min)
+      if (instituteId) sessionHeartbeat(accessToken!, instituteId);
       // Serve from client cache for GET when possible
       request = maybeServeFromCache(request);
       return request;
@@ -192,10 +196,11 @@ authenticatedAxiosInstance.interceptors.response.use(
     ) {
       isHandlingSessionTermination = true;
       toast.error(
-        "Your session was terminated because another device logged in. Please log in again."
+        "Your session was terminated because another device logged in. Please log in again.",
+        { duration: 5000 }
       );
       removeTokensAndLogout();
-      window.location.assign("/logout");
+      setTimeout(() => window.location.assign("/logout"), 3000);
       return Promise.reject(error);
     }
 

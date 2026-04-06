@@ -179,14 +179,22 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
 
        // ── Session-limit enforcement (used by JwtAuthFilter cache) ──
 
-       @Query(value = "SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END " +
-                     "FROM institute_settings " +
+       @Query(value = "SELECT COUNT(*) FROM institute_settings " +
                      "WHERE CAST(institute_id AS TEXT) = :instituteId " +
                      "AND settings_json LIKE '%max_active_sessions%'", nativeQuery = true)
-       boolean hasSessionLimitConfigured(@Param("instituteId") String instituteId);
+       long countSessionLimitConfigured(@Param("instituteId") String instituteId);
 
-       @Query(value = "SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END " +
-                     "FROM user_session " +
-                     "WHERE session_token = :sessionToken AND is_active = true", nativeQuery = true)
-       boolean isSessionActive(@Param("sessionToken") String sessionToken);
+       @Query(value = "SELECT COUNT(*) FROM user_session " +
+                     "WHERE session_token = :sessionToken AND is_active = true " +
+                     "AND institute_id IS NOT NULL", nativeQuery = true)
+       long countActiveSession(@Param("sessionToken") String sessionToken);
+
+       // Legacy boolean versions (used by AssessmentJwtAuthFilter — will silently fail and cache false)
+       default boolean hasSessionLimitConfigured(String instituteId) {
+              return countSessionLimitConfigured(instituteId) > 0;
+       }
+
+       default boolean isSessionActive(String sessionToken) {
+              return countActiveSession(sessionToken) > 0;
+       }
 }

@@ -92,7 +92,7 @@ public class UserActivityTrackingService {
         @Transactional
         public void createOrUpdateSession(String userId, String instituteId, String sessionToken,
                         String ipAddress, String userAgent) {
-                if (!shouldLogActivity()) {
+                if (!shouldLogActivity() || instituteId == null || instituteId.isBlank()) {
                         return;
                 }
 

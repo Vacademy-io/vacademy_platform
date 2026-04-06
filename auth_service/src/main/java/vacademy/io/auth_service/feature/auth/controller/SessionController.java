@@ -33,6 +33,18 @@ public class SessionController {
     private UserSessionService userSessionService;
 
     /**
+     * Lightweight heartbeat — frontend pings this every 5 minutes.
+     * If session is terminated, JwtAuthFilter returns 460 before this is reached.
+     * If session is active, returns 200.
+     *
+     * GET /auth-service/learner/v1/session/validate
+     */
+    @GetMapping("/validate")
+    public ResponseEntity<String> validateSession() {
+        return ResponseEntity.ok("active");
+    }
+
+    /**
      * Returns all currently active sessions for a user.
      * Called by the frontend to populate the session-limit popup.
      *

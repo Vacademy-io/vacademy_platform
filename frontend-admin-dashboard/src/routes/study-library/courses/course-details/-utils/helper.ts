@@ -171,7 +171,7 @@ export const transformApiDataToCourseData = async (apiData: CourseWithSessionsTy
                         duration_in_days: level.duration_in_days,
                         newLevel: level.new_level,
                         instructors: (Array.isArray(level.instructors)
-                            ? level.instructors
+                            ? level.instructors.filter(Boolean)
                             : []
                         ).map((inst) => ({
                             id: inst.id,
@@ -286,7 +286,7 @@ export function getInstructorsBySessionAndLevel(
         if (session.session_dto.id === sessionId) {
             for (const level of session.level_with_details) {
                 if (level.id === levelId) {
-                    return level.instructors.map((inst: Instructor) => ({
+                    return (level.instructors || []).filter(Boolean).map((inst: Instructor) => ({
                         id: inst.id,
                         name: inst.full_name,
                         email: inst.email,

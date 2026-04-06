@@ -9,39 +9,26 @@ import vacademy.io.auth_service.feature.institute.service.InstituteSettingsServi
 import java.util.Map;
 
 @RestController
+@RequestMapping("/auth-service/internal/institute-settings")
 public class InstituteSettingsInternalController {
 
     @Autowired
     private InstituteSettingsService instituteSettingsService;
 
-    /**
-     * Called by admin_core_service (via HMAC).
-     */
-    @PutMapping("/auth-service/internal/institute-settings")
+    @PutMapping("")
     public ResponseEntity<String> updateSettings(@RequestBody UpdateInstituteSettingsDTO request) {
         instituteSettingsService.updateInstituteSettings(request);
         return ResponseEntity.ok("Settings updated successfully");
     }
 
     /**
-     * Called by admin_core_service (via HMAC) when the admin sets MAX_ACTIVE_SESSIONS.
+     * Called by admin_core_service (via HMAC) when the admin sets
+     * MAX_ACTIVE_SESSIONS.
      * POST /auth-service/internal/institute-settings/sync-max-sessions
-     */
-    @PostMapping("/auth-service/internal/institute-settings/sync-max-sessions")
-    public ResponseEntity<String> syncMaxSessions(@RequestBody Map<String, Object> body) {
-        String instituteId = (String) body.get("institute_id");
-        int maxSessions = Integer.parseInt(body.get("max_active_sessions").toString());
-        instituteSettingsService.updateMaxActiveSessions(instituteId, maxSessions);
-        return ResponseEntity.ok("max_active_sessions synced for institute: " + instituteId);
-    }
-
-    /**
-     * Called by admin-dashboard frontend (via JWT) to sync max_active_sessions.
-     * POST /auth-service/v1/institute-settings/update-max-sessions
      * Body: { "institute_id": "...", "max_active_sessions": 3 }
      */
-    @PostMapping("/auth-service/v1/institute-settings/update-max-sessions")
-    public ResponseEntity<String> updateMaxSessions(@RequestBody Map<String, Object> body) {
+    @PostMapping("/sync-max-sessions")
+    public ResponseEntity<String> syncMaxSessions(@RequestBody Map<String, Object> body) {
         String instituteId = (String) body.get("institute_id");
         int maxSessions = Integer.parseInt(body.get("max_active_sessions").toString());
         instituteSettingsService.updateMaxActiveSessions(instituteId, maxSessions);

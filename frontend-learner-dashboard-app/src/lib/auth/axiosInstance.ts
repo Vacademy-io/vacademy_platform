@@ -12,13 +12,16 @@ let isHandlingSessionTermination = false;
 const SESSION_HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
 let lastHeartbeatTime = 0;
 
-async function sessionHeartbeat(accessToken: string) {
+async function sessionHeartbeat(accessToken: string, instituteId: string) {
   const now = Date.now();
   if (now - lastHeartbeatTime < SESSION_HEARTBEAT_INTERVAL_MS) return;
   lastHeartbeatTime = now;
   try {
     await axios.get(VALIDATE_SESSION, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        clientId: instituteId,
+      },
     });
   } catch (error: any) {
     if (error?.response?.status === 460 && !isHandlingSessionTermination) {
@@ -135,8 +138,8 @@ authenticatedAxiosInstance.interceptors.request.use(
 
     if (!isExpired) {
       request.headers.Authorization = `Bearer ${accessToken}`;
-      // Piggyback session heartbeat (fires at most once every 5 min)
-      sessionHeartbeat(accessToken!);
+      // Piggyback session heartbeat (fires at most once every 10 min)
+      if (instituteId) sessionHeartbeat(accessToken!, instituteId);
       // Serve from client cache for GET when possible
       request = maybeServeFromCache(request);
       return request;

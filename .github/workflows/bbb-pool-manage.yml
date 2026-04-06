@@ -275,50 +275,62 @@ jobs:
           fi
 
           # Use per-server domain for setip + fix FreeSWITCH/SFU IPs
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$IP << EOF
-            # Step 1: Set domain for web URLs (includes internal restart)
-            echo "Running bbb-conf --setip ${{ matrix.domain }}..."
-            sudo bbb-conf --setip ${{ matrix.domain }}
+          # Write fix script to avoid heredoc escaping issues
+          cat > /tmp/bbb-fix-ip.sh <<'SCRIPT'
+          #!/bin/bash
+          DOMAIN="$1"
+          NEW_IP="$2"
 
-            # Step 2: Fix IPs that bbb-conf --setip doesn't update
-            NEW_IP=\$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 2>/dev/null || echo "$IP")
-            echo "Fixing stale IPs to \$NEW_IP..."
-            for dir in /opt/freeswitch/etc/freeswitch /usr/share/bigbluebutton/nginx \
-                       /etc/bigbluebutton /usr/local/bigbluebutton/bbb-webrtc-sfu/config; do
-              [ -d "\$dir" ] || continue
-              find "\$dir" -type f \( -name "*.xml" -o -name "*.nginx" -o \
-                   -name "*.properties" -o -name "*.yml" -o -name "*.yaml" \) 2>/dev/null | while read f; do
-                OLD_IPS=\$(grep -oP '\d+\.\d+\.\d+\.\d+' "\$f" 2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
-                for old in \$OLD_IPS; do
-                  if [ "\$old" != "\$NEW_IP" ]; then
-                    echo "  \$f: \$old → \$NEW_IP"
-                    sed -i "s/\$old/\$NEW_IP/g" "\$f"
-                  fi
-                done
+          # Step 1: Set domain for web URLs
+          echo "Setting BBB hostname to $DOMAIN..."
+          bbb-conf --setip "$DOMAIN" 2>&1 | tail -5
+
+          # Step 2: Replace all stale IPs
+          echo "Fixing stale IPs to $NEW_IP..."
+          for dir in /opt/freeswitch/etc/freeswitch /usr/share/bigbluebutton/nginx \
+                     /etc/bigbluebutton /usr/local/bigbluebutton/bbb-webrtc-sfu/config; do
+            [ -d "$dir" ] || continue
+            find "$dir" -type f \( -name "*.xml" -o -name "*.nginx" -o \
+                 -name "*.properties" -o -name "*.yml" -o -name "*.yaml" \) 2>/dev/null | while read f; do
+              OLD_IPS=$(grep -oP '\d+\.\d+\.\d+\.\d+' "$f" 2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
+              for old in $OLD_IPS; do
+                if [ "$old" != "$NEW_IP" ]; then
+                  echo "  $f: $old → $NEW_IP"
+                  sed -i "s/$old/$NEW_IP/g" "$f"
+                fi
               done
             done
+          done
 
-            # Step 3: Restart with fixed IPs
-            sudo systemctl restart bbb-webrtc-sfu bbb-webrtc-recorder freeswitch 2>/dev/null || true
-            sudo bbb-conf --restart
+          # Step 3: Restart with fixed IPs
+          systemctl restart bbb-webrtc-sfu bbb-webrtc-recorder freeswitch 2>/dev/null || true
+          bbb-conf --restart 2>&1 | tail -5
 
-            # Step 4: Re-apply critical fixes (bbb-conf --restart may overwrite)
-            for f in /etc/bigbluebutton/bbb-webrtc-sfu/production.yml \
-                     /opt/freeswitch/etc/freeswitch/vars.xml \
-                     /opt/freeswitch/etc/freeswitch/sip_profiles/external.xml \
-                     /usr/share/bigbluebutton/nginx/sip.nginx; do
-              [ -f "\$f" ] || continue
-              OLD_IPS=\$(grep -oP '\d+\.\d+\.\d+\.\d+' "\$f" 2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
-              for old in \$OLD_IPS; do
-                [ "\$old" != "\$NEW_IP" ] && sed -i "s/\$old/\$NEW_IP/g" "\$f"
-              done
+          # Step 4: Re-apply critical fixes (bbb-conf --restart may overwrite)
+          for f in /etc/bigbluebutton/bbb-webrtc-sfu/production.yml \
+                   /opt/freeswitch/etc/freeswitch/vars.xml \
+                   /opt/freeswitch/etc/freeswitch/sip_profiles/external.xml \
+                   /usr/share/bigbluebutton/nginx/sip.nginx; do
+            [ -f "$f" ] || continue
+            OLD_IPS=$(grep -oP '\d+\.\d+\.\d+\.\d+' "$f" 2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
+            for old in $OLD_IPS; do
+              [ "$old" != "$NEW_IP" ] && sed -i "s/$old/$NEW_IP/g" "$f"
             done
-            sudo systemctl restart bbb-webrtc-sfu freeswitch 2>/dev/null || true
+          done
+          systemctl restart bbb-webrtc-sfu freeswitch 2>/dev/null || true
 
-            # Step 5: Fix default presentation URL to use domain
-            sudo sed -i "s|defaultUploadedPresentation=https://[^/]*/|defaultUploadedPresentation=https://${{ matrix.domain }}/|g" \
-                /etc/bigbluebutton/bbb-web.properties 2>/dev/null || true
-          EOF
+          # Step 5: Fix default presentation URL
+          sed -i "s|defaultUploadedPresentation=https://[^/]*/|defaultUploadedPresentation=https://$DOMAIN/|g" \
+              /etc/bigbluebutton/bbb-web.properties 2>/dev/null || true
+
+          echo "BBB IP fix complete: $DOMAIN ($NEW_IP)"
+          SCRIPT
+
+          chmod +x /tmp/bbb-fix-ip.sh
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            /tmp/bbb-fix-ip.sh root@$IP:/tmp/bbb-fix-ip.sh
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$IP \
+            "bash /tmp/bbb-fix-ip.sh '${{ matrix.domain }}' '$IP'"
 
       - name: Summary
         if: steps.check.outputs.skip != 'true'

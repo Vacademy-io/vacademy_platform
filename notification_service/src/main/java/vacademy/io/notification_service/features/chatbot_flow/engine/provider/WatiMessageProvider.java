@@ -200,11 +200,11 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
 
         String formattedPhone = phone.replaceAll("[^0-9]", "");
         // WATI sendSessionMessage: messageText is a QUERY PARAMETER, not JSON body
-        // Use UriComponentsBuilder to handle encoding properly (avoids double-encoding)
+        // encode() handles spaces, newlines, special chars properly
         String url = org.springframework.web.util.UriComponentsBuilder
                 .fromHttpUrl(config.apiUrl + "/api/v1/sendSessionMessage/" + formattedPhone)
                 .queryParam("messageText", text)
-                .build()
+                .encode()
                 .toUriString();
 
         sendRequestWithRawUrl(config, url, Map.of());

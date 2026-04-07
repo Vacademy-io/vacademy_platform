@@ -201,7 +201,6 @@ class RenderWorker:
                 str(timeline_path),
                 str(output_path),  # not used in frames-only mode, but required arg
                 "--frames-dir", str(frames_dir),
-                "--background", "#000000",
                 "--fps", str(FPS),
                 "--width", str(render_width),
                 "--height", str(render_height),

@@ -1024,7 +1024,7 @@ export const SlideMaterial = ({
                             | 'SPLIT_SCRATCH'
                             | 'SPLIT_CODE'
                         }
-                        isEditable={activeItem.status !== 'PUBLISHED'}
+                        isEditable={true}
                         currentSlideId={activeItem.id}
                         onDataChange={async (updatedSplitData) => {
                             // Update split-screen data locally and handle title changes
@@ -1491,7 +1491,7 @@ export const SlideMaterial = ({
                             slideType={
                                 documentType as 'SPLIT_JUPYTER' | 'SPLIT_SCRATCH' | 'SPLIT_CODE'
                             }
-                            isEditable={activeItem.status !== 'PUBLISHED'}
+                            isEditable={true}
                             currentSlideId={activeItem.id}
                             onDataChange={async (updatedSplitData) => {
                                 try {

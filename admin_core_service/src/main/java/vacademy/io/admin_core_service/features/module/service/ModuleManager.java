@@ -35,6 +35,7 @@ public class ModuleManager {
             SubjectModuleMapping subjectModuleMapping = new SubjectModuleMapping();
             subjectModuleMapping.setModule(newModule);
             subjectModuleMapping.setSubject(newSubject);
+            subjectModuleMapping.setModuleOrder(0);
             subjectModuleMappings.add(subjectModuleMapping);
         }
         moduleRepository.saveAll(newModules);

@@ -191,7 +191,7 @@ public class SubjectService {
     }
 
     public void saveSubjectModuleMapping(Subject subject, Module module) {
-        subjectModuleMappingRepository.save(new SubjectModuleMapping(subject, module));
+        subjectModuleMappingRepository.save(new SubjectModuleMapping(subject, module, 0));
     }
 
     @Transactional
@@ -378,6 +378,7 @@ public class SubjectService {
             SubjectPackageSession subjectPackageSession = new SubjectPackageSession();
             subjectPackageSession.setSubject(subject);
             subjectPackageSession.setPackageSession(packageSession);
+            subjectPackageSession.setSubjectOrder(0);
             subjectPackageSessions.add(subjectPackageSession);
         }
         return subjectPackageSessions;

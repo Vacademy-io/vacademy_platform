@@ -48,6 +48,7 @@ interface Module {
 
 interface ModuleWithChapters {
   module: Module;
+  module_order: number | null;
   chapters: Chapter[];
 }
 

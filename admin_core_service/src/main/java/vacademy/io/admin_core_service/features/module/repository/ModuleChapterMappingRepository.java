@@ -20,7 +20,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
     List<Chapter> findChaptersByModuleIdAndStatusNotDeleted(String moduleId, String packageSessionId);
 
     @Query(value = """
-            SELECT json_agg(module_data) AS module_array
+            SELECT json_agg(module_data ORDER BY module_order_val ASC NULLS LAST, created_at_val ASC) AS module_array
             FROM (
                 SELECT json_build_object(
                     'module', json_build_object(
@@ -35,6 +35,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                             ELSE '0'
                         END) AS FLOAT
                     ), 0.0),
+                    'module_order', smm.module_order,
                     'chapters', COALESCE(json_agg(
                         jsonb_build_object(
                             'id', c.id,
@@ -55,7 +56,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                             'chapter_order', cpsm.chapter_order
                         ) ORDER BY cpsm.chapter_order ASC NULLS LAST, c.created_at ASC
                     ) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
-                ) AS module_data
+                ) AS module_data, smm.module_order AS module_order_val, m.created_at AS created_at_val
                 FROM subject_module_mapping smm
                 JOIN modules m ON smm.module_id = m.id AND m.status IN (:moduleStatusList)
                 LEFT JOIN learner_operation mo
@@ -100,7 +101,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                     GROUP BY c.id
                 ) AS chap_data ON chap_data.chapter_id = c.id
                 WHERE smm.subject_id = :subjectId
-                GROUP BY m.id, m.module_name, m.description, m.thumbnail_id, mo.value
+                GROUP BY m.id, m.module_name, m.description, m.thumbnail_id, mo.value, smm.module_order, m.created_at
             ) AS module_data
             """, nativeQuery = true)
     String getModuleChapterProgress(
@@ -120,7 +121,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
     List<ModuleChapterMapping> findByModuleId(@Param("moduleId") String moduleId);
 
     @Query(value = """
-            SELECT json_agg(module_data) AS module_array
+            SELECT json_agg(module_data ORDER BY module_order_val ASC NULLS LAST, created_at_val ASC) AS module_array
             FROM (
                 SELECT json_build_object(
                     'module', json_build_object(
@@ -129,6 +130,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         'description', m.description,
                         'thumbnail_id', m.thumbnail_id
                     ),
+                    'module_order', smm.module_order,
                     'chapters', COALESCE(json_agg(jsonb_build_object(
                         'id', c.id,
                         'chapter_name', c.chapter_name,
@@ -144,7 +146,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         'unknown_count', counts.unknown_count,
                         'chapter_order', cpsm.chapter_order
                     ) ORDER BY cpsm.chapter_order ASC NULLS LAST, c.created_at ASC) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
-                ) AS module_data
+                ) AS module_data, smm.module_order AS module_order_val, m.created_at AS created_at_val
                 FROM subject_module_mapping smm
                 JOIN modules m ON smm.module_id = m.id AND m.status IN (:moduleStatusList)
                 LEFT JOIN (SELECT DISTINCT module_id, chapter_id FROM module_chapter_mapping) mcm ON mcm.module_id = m.id
@@ -171,7 +173,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                     GROUP BY c.id
                 ) AS counts ON counts.chapter_id = c.id
                 WHERE smm.subject_id = :subjectId
-                GROUP BY m.id, m.module_name, m.description, m.thumbnail_id
+                GROUP BY m.id, m.module_name, m.description, m.thumbnail_id, smm.module_order, m.created_at
             ) AS module_data
             """, nativeQuery = true)
     String getOpenModuleChapterDetails(
@@ -183,7 +185,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             @Param("moduleStatusList") List<String> moduleStatusList);
 
     @Query(value = """
-            SELECT json_agg(module_data) AS module_array
+            SELECT json_agg(module_data ORDER BY module_order_val ASC NULLS LAST, created_at_val ASC) AS module_array
             FROM (
                 SELECT json_build_object(
                     'module', json_build_object(
@@ -198,6 +200,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                             ELSE '0'
                         END) AS FLOAT
                     ), 0.0),
+                    'module_order', smm.module_order,
                     'chapters', COALESCE(json_agg(
                         jsonb_build_object(
                             'id', c.id,
@@ -564,7 +567,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                             )
                         ) ORDER BY cpsm.chapter_order ASC NULLS LAST, c.created_at ASC
                     ) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
-                ) AS module_data
+                ) AS module_data, smm.module_order AS module_order_val, m.created_at AS created_at_val
                 FROM subject_module_mapping smm
                 JOIN modules m ON smm.module_id = m.id AND m.status IN (:moduleStatusList)
                 LEFT JOIN learner_operation mo
@@ -609,7 +612,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                     GROUP BY c.id
                 ) AS chap_data ON chap_data.chapter_id = c.id
                 WHERE smm.subject_id = :subjectId
-                GROUP BY m.id, m.module_name, m.description, m.thumbnail_id, mo.value
+                GROUP BY m.id, m.module_name, m.description, m.thumbnail_id, mo.value, smm.module_order, m.created_at
             ) AS module_data
             """, nativeQuery = true)
     String getModuleChapterProgressWithSlides(

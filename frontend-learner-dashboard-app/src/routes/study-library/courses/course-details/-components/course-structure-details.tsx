@@ -1605,93 +1605,130 @@ export const CourseStructureDetails = ({
                 </Collapsible>
               );
             })}
+          {/* Depth 4: modules at top level (no subject shown) */}
           {courseStructure === 4 &&
-            studyLibraryData?.map((subject: SubjectType, idx: number) => {
-              const isSubjectOpen = openSubjects.has(subject.id);
-              return (
-                <Collapsible
-                  key={subject.id}
-                  open={isSubjectOpen}
-                  onOpenChange={() => toggleSubject(subject.id)}
-                >
-                  <CollapsibleTrigger
-                    className={cn(
-                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                      "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
-                      // Play Styles — solid, bold, Duolingo-style
-                      "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
-                      "[.ui-play_&]:shadow-[0_3px_0_#1a3d6d] [.ui-play_&]:hover:bg-[#1a3d6d] [.ui-play_&]:hover:text-white"
-                    )}
+            (() => {
+              // Collect all modules from all (default) subjects into a flat list
+              const allModules: { subject: SubjectType; mod: ModuleWithChapters; globalIdx: number }[] = [];
+              studyLibraryData?.forEach((subject: SubjectType) => {
+                (subjectModulesMap[subject.id] ?? []).forEach((mod) => {
+                  allModules.push({ subject, mod, globalIdx: allModules.length });
+                });
+              });
+              return allModules.map(({ subject, mod, globalIdx }) => {
+                const isModuleOpen = openModules.has(mod.module.id);
+                return (
+                  <Collapsible
+                    key={mod.module.id}
+                    open={isModuleOpen}
+                    onOpenChange={() => toggleModule(mod.module.id)}
                   >
-                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                      {isSubjectOpen ? (
-                        <CaretDown size={18} weight="bold" className="shrink-0 text-neutral-500" />
-                      ) : (
-                        <CaretRight size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                    <CollapsibleTrigger
+                      className={cn(
+                        "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                        "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
+                        "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
+                        "[.ui-play_&]:shadow-[0_3px_0_#1a3d6d] [.ui-play_&]:hover:bg-[#1a3d6d] [.ui-play_&]:hover:text-white"
                       )}
-                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary-600 text-white text-xs font-bold shrink-0">
-                        <Folder size={12} />
-                      </div>
-                      {showContentPrefixes && (
-                        <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
-                          S{idx + 1}
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                        {isModuleOpen ? (
+                          <CaretDown size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                        ) : (
+                          <CaretRight size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                        )}
+                        <div className="flex items-center justify-center w-6 h-6 rounded-md bg-blue-600 text-white text-xs font-bold shrink-0">
+                          <FileText size={12} />
+                        </div>
+                        {showContentPrefixes && (
+                          <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
+                            M{globalIdx + 1}
+                          </span>
+                        )}
+                        <span className="break-words font-medium" title={toTitleCase(mod.module.module_name)}>
+                          {toTitleCase(mod.module.module_name)}
                         </span>
-                      )}
-                      <span className="break-words font-medium" title={toTitleCase(subject.subject_name)}>
-                        {toTitleCase(subject.subject_name)}
-                      </span>
-                    </div>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative pl-3 border-l-2 border-primary-200/60">
-                      {(subjectModulesMap[subject.id] ?? []).map(
-                        (mod, modIdx) => {
-                          const isModuleOpen = openModules.has(mod.module.id);
-                          const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
+                        {/* Module Progress Indicator */}
+                        <div className="flex items-center gap-2 ml-auto shrink-0">
+                          {(() => {
+                            const progress = calculateModuleProgress(mod.chapters || []);
+                            return (
+                              <>
+                                <div className="w-16 hidden sm:block">
+                                  {renderProgressBar(progress, "sm")}
+                                </div>
+                                {renderCompletionBadge(progress)}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pb-1 pt-2">
+                      <div className="space-y-0.5 relative pl-3 border-l-2 border-blue-200/60">
+                        {(mod.chapters ?? []).map((ch, chIdx) => {
+                          const isChapterOpen = openChapters.has(ch.id);
+                          const chapterEval = chapterEvaluations[ch.id];
+                          const shouldHideChapter = chapterEval && shouldFilterItem(chapterEval);
+                          const isChapterLocked = chapterEval && isItemLocked(chapterEval);
+                          if (shouldHideChapter) return null;
                           return (
                             <Collapsible
-                              key={mod.module.id}
-                              open={isModuleOpen}
-                              onOpenChange={() => toggleModule(mod.module.id)}
+                              key={ch.id}
+                              open={isChapterOpen}
+                              onOpenChange={() => {
+                                if (isChapterLocked) return;
+                                toggleChapter(ch.id);
+                                getSlidesWithChapterId(ch.id);
+                              }}
                             >
-                              <CollapsibleTrigger className={cn("group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-blue-50/70 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#1cb0f6] [.ui-play_&]:hover:text-white")}>
-                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                  {isModuleOpen ? (
-                                    <CaretDown
-                                      size={16}
-                                      className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
-                                    />
+                              <CollapsibleTrigger
+                                disabled={isChapterLocked}
+                                className={cn(
+                                  `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                    isChapterLocked
+                                      ? "cursor-not-allowed opacity-60"
+                                      : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                                  }`,
+                                  !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ffc800] [.ui-play_&]:hover:text-[#3c3c3c]"
+                                )}
+                              >
+                                <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                  {isChapterOpen ? (
+                                    <CaretDown size={14} className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors" />
                                   ) : (
-                                    <CaretRight
-                                      size={16}
-                                      className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
-                                    />
+                                    <CaretRight size={14} className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors" />
                                   )}
-                                  <div className="flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white">
-                                    <FileText size={12} />
+                                  <div className="flex items-center justify-center w-4 h-4 rounded bg-primary text-primary-foreground">
+                                    <PresentationChart size={10} />
                                   </div>
                                   {showContentPrefixes && (
-                                    <span className="w-6 shrink-0 text-center font-mono text-xs font-medium text-neutral-500 bg-neutral-100 rounded px-1">
-                                      M{modIdx + 1}
+                                    <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                      C{chIdx + 1}
                                     </span>
                                   )}
-                                  <span
-                                    className="break-words group-hover:text-blue-700 transition-colors"
-                                    title={toTitleCase(mod.module.module_name)}
-                                  >
-                                    {toTitleCase(mod.module.module_name)}
+                                  <span className="break-words group-hover:text-primary transition-colors text-xs" title={toTitleCase(ch.chapter_name)}>
+                                    {toTitleCase(ch.chapter_name)}
                                   </span>
-                                  {/* Module Progress Indicator */}
-                                  <div className="flex items-center gap-2 ml-auto shrink-0">
+                                  {isChapterLocked && (
+                                    <LockedBadge size="sm" unlockMessage={chapterEval?.unlockMessage} />
+                                  )}
+                                  <div className="flex items-center gap-1.5 ml-auto shrink-0">
                                     {(() => {
-                                      const progress = calculateModuleProgress(
-                                        mod.chapters || []
-                                      );
+                                      const progress = calculateChapterProgress(ch.id);
+                                      const slidesForChapter = slidesMap[ch.id] || [];
+                                      const completedSlides = slidesForChapter.filter((slide) => (slide.percentage_completed || 0) >= 80).length;
+                                      const totalSlides = slidesForChapter.length;
                                       return (
                                         <>
-                                          <div className="w-16 hidden sm:block">
+                                          <div className="w-12 hidden sm:block">
                                             {renderProgressBar(progress, "sm")}
                                           </div>
+                                          {slidesMap[ch.id] !== undefined && (
+                                            <span className="text-xs text-neutral-500 hidden sm:inline">
+                                              {completedSlides}/{totalSlides}
+                                            </span>
+                                          )}
                                           {renderCompletionBadge(progress)}
                                         </>
                                       );
@@ -1699,297 +1736,108 @@ export const CourseStructureDetails = ({
                                   </div>
                                 </div>
                               </CollapsibleTrigger>
-
-                              <CollapsibleContent
-                                className={`py-1 ${moduleContentIndent}`}
-                              >
-                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
-                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
-                                  {(mod.chapters ?? []).map((ch, chIdx) => {
-                                    const isChapterOpen = openChapters.has(
-                                      ch.id
-                                    );
-
-                                    // Apply drip conditions
-
-                                    const chapterEval =
-                                      chapterEvaluations[ch.id];
-                                    const shouldHideChapter =
-                                      chapterEval &&
-                                      shouldFilterItem(chapterEval);
-                                    const isChapterLocked =
-                                      chapterEval && isItemLocked(chapterEval);
-
-                                    // Hide chapter if drip condition says so
-                                    if (shouldHideChapter) {
-                                      return null;
+                              <CollapsibleContent>
+                                <div className="space-y-px ml-3 sm:ml-5 border-l border-border/50 py-1 pl-2 relative">
+                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-border"></div>
+                                  {(() => {
+                                    const status = slidesLoadingStatus[ch.id] || "idle";
+                                    const filtered = filterSlides(slidesMap[ch.id] ?? []);
+                                    if (status === "loading") {
+                                      return (
+                                        <div className="pr-2">
+                                          {Array.from({ length: 3 }).map((_, i) => (
+                                            <div key={i} className="flex items-center gap-2 px-2 py-1">
+                                              <Skeleton className="w-5 h-5 rounded" />
+                                              <Skeleton className="h-4 w-32" />
+                                              <div className="ml-auto flex items-center gap-2">
+                                                <Skeleton className="h-3 w-16" />
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      );
                                     }
-
-                                    return (
-                                      <Collapsible
-                                        key={ch.id}
-                                        open={isChapterOpen}
-                                        onOpenChange={() => {
-                                          if (isChapterLocked) return;
-                                          toggleChapter(ch.id);
-                                          getSlidesWithChapterId(ch.id);
-                                        }}
+                                    if (status === "loaded" && filtered.length === 0) {
+                                      return (
+                                        <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
+                                          No Slides
+                                        </div>
+                                      );
+                                    }
+                                    return filtered.map((slide, sIdx) => (
+                                      <div
+                                        key={slide.id}
+                                        className={cn(
+                                          getSlideStyling() + " rounded-md",
+                                          "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ce82ff] [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
+                                        )}
+                                        onClick={
+                                          isSlideClickable()
+                                            ? () => { handleSlideNavigation(subject.id, mod.module.id, ch.id, slide.id); }
+                                            : undefined
+                                        }
                                       >
-                                        <CollapsibleTrigger
-                                          disabled={isChapterLocked}
-                                          className={cn(
-                                            `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
-                                              isChapterLocked
-                                                ? "cursor-not-allowed opacity-60"
-                                                : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                                            }`,
-                                            !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ffc800] [.ui-play_&]:hover:text-[#3c3c3c]"
+                                        {showContentPrefixes && (
+                                          <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
+                                            S{sIdx + 1}
+                                          </span>
+                                        )}
+                                        <div className="shrink-0 group-hover:scale-110 transition-transform">
+                                          {getIcon(slide, "3")}
+                                        </div>
+                                        <span className="break-words text-sm sm:text-base text-neutral-800 group-hover:text-amber-700 transition-colors" title={slide.title}>
+                                          {slide.title}
+                                        </span>
+                                        {(() => {
+                                          const sd = getStatusDetails(slide.percentage_completed || 0);
+                                          const badgeClass =
+                                            sd.badge === "done"
+                                              ? "bg-primary/10 text-primary border-border"
+                                              : sd.badge === "active"
+                                              ? "bg-primary-50 text-primary-700 border-primary-200"
+                                              : "bg-neutral-50 text-neutral-600 border-neutral-200";
+                                          return (
+                                            <Badge variant="secondary" className={`ml-2 hidden sm:inline align-middle text-[10px] font-medium border ${badgeClass}`}>
+                                              {sd.label}
+                                            </Badge>
+                                          );
+                                        })()}
+                                        <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                          {getSlideTypeDisplay(slide) && (
+                                            <Badge variant="secondary" className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(slide)}`}>
+                                              {getSlideTypeDisplay(slide)}
+                                            </Badge>
                                           )}
-                                        >
-                                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                            {isChapterOpen ? (
-                                              <CaretDown
-                                                size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
-                                              />
-                                            ) : (
-                                              <CaretRight
-                                                size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
-                                              />
-                                            )}
-                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-primary text-primary-foreground">
-                                              <PresentationChart size={10} />
-                                            </div>
-                                            {showContentPrefixes && (
-                                              <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
-                                                C{chIdx + 1}
-                                              </span>
-                                            )}
-                                            <span
-                                              className="break-words group-hover:text-primary transition-colors text-xs"
-                                              title={toTitleCase(
-                                                ch.chapter_name
-                                              )}
-                                            >
-                                              {toTitleCase(ch.chapter_name)}
-                                            </span>
-                                            {/* Show locked badge if chapter is locked */}
-                                            {isChapterLocked && (
-                                              <LockedBadge
-                                                size="sm"
-                                                unlockMessage={
-                                                  chapterEval?.unlockMessage
-                                                }
-                                              />
-                                            )}
-                                            {/* Chapter Progress Indicator */}
-                                            <div className="flex items-center gap-1.5 ml-auto shrink-0">
-                                              {(() => {
-                                                const progress =
-                                                  calculateChapterProgress(
-                                                    ch.id
-                                                  );
-                                                const slidesForChapter =
-                                                  slidesMap[ch.id] || [];
-                                                const completedSlides =
-                                                  slidesForChapter.filter(
-                                                    (slide) =>
-                                                      (slide.percentage_completed ||
-                                                        0) >= 80
-                                                  ).length;
-                                                const totalSlides =
-                                                  slidesForChapter.length;
-
-                                                return (
-                                                  <>
-                                                    <div className="w-12 hidden sm:block">
-                                                      {renderProgressBar(
-                                                        progress,
-                                                        "sm"
-                                                      )}
-                                                    </div>
-                                                    {slidesMap[ch.id] !==
-                                                      undefined && (
-                                                      <span className="text-xs text-neutral-500 hidden sm:inline">
-                                                        {completedSlides}/
-                                                        {totalSlides}
-                                                      </span>
-                                                    )}
-                                                    {renderCompletionBadge(
-                                                      progress
-                                                    )}
-                                                  </>
-                                                );
-                                              })()}
-                                            </div>
+                                          {getSlideMetaText(slide) && (
+                                            <Badge variant="outline" className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200">
+                                              {getSlideMetaText(slide)}
+                                            </Badge>
+                                          )}
+                                          <div className="w-7 sm:w-8 hidden sm:block">
+                                            {renderProgressBar(slide.percentage_completed || 0, "sm")}
                                           </div>
-                                        </CollapsibleTrigger>
-                                        <CollapsibleContent>
-                                          <div className="space-y-px ml-3 sm:ml-5 border-l border-border/50 py-1 pl-2 relative">
-                                            <div className="absolute left-0 top-0 w-0.5 h-full bg-border"></div>
-                                            {(() => {
-                                              const status =
-                                                slidesLoadingStatus[ch.id] ||
-                                                "idle";
-                                              const filtered = filterSlides(
-                                                slidesMap[ch.id] ?? []
-                                              );
-                                              if (status === "loading") {
-                                                return (
-                                                  <div className="pr-2">
-                                                    {Array.from({
-                                                      length: 3,
-                                                    }).map((_, i) => (
-                                                      <div
-                                                        key={i}
-                                                        className="flex items-center gap-2 px-2 py-1"
-                                                      >
-                                                        <Skeleton className="w-5 h-5 rounded" />
-                                                        <Skeleton className="h-4 w-32" />
-                                                        <div className="ml-auto flex items-center gap-2">
-                                                          <Skeleton className="h-3 w-16" />
-                                                        </div>
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                );
-                                              }
-                                              if (
-                                                status === "loaded" &&
-                                                filtered.length === 0
-                                              ) {
-                                                return (
-                                                  <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                    No Slides
-                                                  </div>
-                                                );
-                                              }
-                                              return filtered.map(
-                                                (slide, sIdx) => (
-                                                  <div
-                                                    key={slide.id}
-                                                    className={cn(
-                                                      getSlideStyling() +
-                                                      " rounded-md",
-                                                      "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ce82ff] [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
-                                                    )}
-                                                    onClick={
-                                                      isSlideClickable()
-                                                        ? () => {
-                                                            handleSlideNavigation(
-                                                              subject.id,
-                                                              mod.module.id,
-                                                              ch.id,
-                                                              slide.id
-                                                            );
-                                                          }
-                                                        : undefined
-                                                    }
-                                                  >
-                                                    {showContentPrefixes && (
-                                                      <span className="w-5 shrink-0 text-center font-mono text-neutral-400 bg-neutral-100 rounded px-0.5 text-xs">
-                                                        S{sIdx + 1}
-                                                      </span>
-                                                    )}
-                                                    <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                      {getIcon(slide, "3")}
-                                                    </div>
-                                                    <span
-                                                      className="break-words text-sm sm:text-base text-neutral-800 group-hover:text-amber-700 transition-colors"
-                                                      title={slide.title}
-                                                    >
-                                                      {slide.title}
-                                                    </span>
-                                                    {(() => {
-                                                      const sd =
-                                                        getStatusDetails(
-                                                          slide.percentage_completed ||
-                                                            0
-                                                        );
-                                                      const badgeClass =
-                                                        sd.badge === "done"
-                                                          ? "bg-primary/10 text-primary border-border"
-                                                          : sd.badge ===
-                                                            "active"
-                                                          ? "bg-primary-50 text-primary-700 border-primary-200"
-                                                          : "bg-neutral-50 text-neutral-600 border-neutral-200";
-                                                      return (
-                                                        <Badge
-                                                          variant="secondary"
-                                                          className={`ml-2 hidden sm:inline align-middle text-[10px] font-medium border ${badgeClass}`}
-                                                        >
-                                                          {sd.label}
-                                                        </Badge>
-                                                      );
-                                                    })()}
-                                                    {/* Slide Progress and Meta */}
-                                                    <div className="flex items-center gap-1.5 ml-auto shrink-0">
-                                                      {getSlideTypeDisplay(
-                                                        slide
-                                                      ) && (
-                                                        <Badge
-                                                          variant="secondary"
-                                                          className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(
-                                                            slide
-                                                          )}`}
-                                                        >
-                                                          {getSlideTypeDisplay(
-                                                            slide
-                                                          )}
-                                                        </Badge>
-                                                      )}
-                                                      {getSlideMetaText(
-                                                        slide
-                                                      ) && (
-                                                        <Badge
-                                                          variant="outline"
-                                                          className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
-                                                        >
-                                                          {getSlideMetaText(
-                                                            slide
-                                                          )}
-                                                        </Badge>
-                                                      )}
-                                                      <div className="w-7 sm:w-8 hidden sm:block">
-                                                        {renderProgressBar(
-                                                          slide.percentage_completed ||
-                                                            0,
-                                                          "sm"
-                                                        )}
-                                                      </div>
-                                                      <div
-                                                        className={`w-2 h-2 rounded-full ${
-                                                          (slide.percentage_completed ||
-                                                            0) >= 80
-                                                            ? "bg-primary/100"
-                                                            : (slide.percentage_completed ||
-                                                                0) > 0
-                                                            ? "bg-primary-500"
-                                                            : "bg-neutral-300"
-                                                        }`}
-                                                      />
-                                                    </div>
-                                                  </div>
-                                                )
-                                              );
-                                            })()}
-                                          </div>
-                                        </CollapsibleContent>
-                                      </Collapsible>
-                                    );
-                                  })}
+                                          <div className={`w-2 h-2 rounded-full ${
+                                            (slide.percentage_completed || 0) >= 80
+                                              ? "bg-primary/100"
+                                              : (slide.percentage_completed || 0) > 0
+                                              ? "bg-primary-500"
+                                              : "bg-neutral-300"
+                                          }`} />
+                                        </div>
+                                      </div>
+                                    ));
+                                  })()}
                                 </div>
                               </CollapsibleContent>
                             </Collapsible>
                           );
-                        }
-                      )}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              );
-            })}
+                        })}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              });
+            })()}
           {/* Depth 3: chapters only (no subject, no module) */}
           {courseStructure === 3 && (
             <div className="space-y-0.5">

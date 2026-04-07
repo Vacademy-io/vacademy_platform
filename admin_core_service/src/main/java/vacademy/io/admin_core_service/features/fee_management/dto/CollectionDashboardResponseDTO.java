@@ -14,60 +14,33 @@ import java.util.List;
 @AllArgsConstructor
 public class CollectionDashboardResponseDTO {
 
-    private SummaryDTO summary;
-    private PipelineDTO pipeline;
-    private List<ClassWiseCollectionDTO> classWiseDetails;
-    private List<PaymentModeInsightDTO> paymentModeInsights;
+    private BigDecimal projectedRevenue;
+    private BigDecimal expectedToDate;
+    private BigDecimal collectedToDate;
+    private BigDecimal totalOverdue;
 
-    // ── Top summary cards ──────────────────────────────────────────────────────
+    private List<ClassWiseBreakdownDTO> classWiseBreakdown;
+    private List<PaymentModeBreakdownDTO> paymentModeBreakdown;
+
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class SummaryDTO {
-        private BigDecimal projectedRevenue;   // Full-year target (net of discounts)
-        private BigDecimal tillNowExpected;    // Installments due on or before today
-        private BigDecimal tillNowCollected;   // Total amount_paid across all installments
-        private BigDecimal totalOverdue;       // tillNowExpected - paid (only past-due, un-waived)
-        private BigDecimal totalDue;           // projectedRevenue - tillNowCollected (remaining balance)
-        private Double collectionRate;         // (tillNowCollected / tillNowExpected) * 100
-    }
-
-    // ── Waterfall / pipeline chart ─────────────────────────────────────────────
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class PipelineDTO {
+    public static class ClassWiseBreakdownDTO {
+        private String cpoId;
+        private String cpoName;
         private BigDecimal projectedRevenue;
         private BigDecimal expectedToDate;
         private BigDecimal collectedToDate;
-        private BigDecimal totalOverdue;
-        private BigDecimal totalDue;
+        private BigDecimal overdue;
     }
 
-    // ── Class-wise interactive table ───────────────────────────────────────────
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class ClassWiseCollectionDTO {
-        private String className;
-        private BigDecimal projectedRevenue;
-        private BigDecimal expectedToDate;
-        private BigDecimal collectedToDate;
-        private Double collectionRate;
-        private BigDecimal totalOverdue;
-    }
-
-    // ── Payment mode donut chart ───────────────────────────────────────────────
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class PaymentModeInsightDTO {
-        private String mode;
-        private Double percentage;
-        private String color;
+    public static class PaymentModeBreakdownDTO {
+        private String vendor;
+        private BigDecimal amount;
     }
 }

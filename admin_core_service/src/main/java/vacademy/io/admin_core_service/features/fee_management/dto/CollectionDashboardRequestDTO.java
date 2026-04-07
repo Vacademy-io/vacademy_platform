@@ -7,6 +7,6 @@ import java.util.List;
 @Data
 public class CollectionDashboardRequestDTO {
     private String instituteId;
-    private String sessionId;         // nullable – if null, all sessions in the institute
-    private List<String> feeTypes;    // nullable / empty – if empty, all fee types
+    private String sessionId;          // nullable – if null, all sessions in the institute
+    private List<String> feeTypeIds;   // nullable / empty – if empty, all fee types; MUST be fee type UUIDs, not names
 }

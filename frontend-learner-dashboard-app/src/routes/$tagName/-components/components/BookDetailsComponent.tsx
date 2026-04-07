@@ -171,6 +171,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                         packageSessionId={courseData.packageSessionId}
                                         destinationUrl={window.location.href}
                                         instituteId={instituteId}
+                                        title={courseData.title}
                                         size="md"
                                     />
                                 </div>

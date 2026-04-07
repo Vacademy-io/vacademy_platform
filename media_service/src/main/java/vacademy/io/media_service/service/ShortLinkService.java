@@ -90,12 +90,20 @@ public class ShortLinkService {
         }
 
         // Generate unique short code with collision retry
+        String baseCode = ShortCodeGenerator.generateShortCode(hint);
         String shortCode = null;
-        for (int attempt = 0; attempt < 5; attempt++) {
-            String candidate = ShortCodeGenerator.generateShortCode(hint);
-            if (shortLinkRepository.findByShortName(candidate).isEmpty()) {
-                shortCode = candidate;
-                break;
+
+        // First try: use the clean slug/code as-is
+        if (shortLinkRepository.findByShortName(baseCode).isEmpty()) {
+            shortCode = baseCode;
+        } else {
+            // Collision: append random suffixes (e.g. compiler-design-a3k7)
+            for (int attempt = 0; attempt < 5; attempt++) {
+                String candidate = ShortCodeGenerator.appendRandomSuffix(baseCode);
+                if (shortLinkRepository.findByShortName(candidate).isEmpty()) {
+                    shortCode = candidate;
+                    break;
+                }
             }
         }
         if (shortCode == null) {

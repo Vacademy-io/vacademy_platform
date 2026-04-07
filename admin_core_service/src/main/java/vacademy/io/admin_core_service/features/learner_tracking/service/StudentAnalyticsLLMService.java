@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
+import vacademy.io.admin_core_service.features.ai_models.service.AIModelRegistryService;
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
@@ -27,25 +28,28 @@ import java.util.Map;
 public class StudentAnalyticsLLMService {
 
         private static final String API_URL = "https://openrouter.ai";
-        private static final int RESPONSE_TIMEOUT_SECONDS = 30;
+        private static final int RESPONSE_TIMEOUT_SECONDS = 120;
 
         // Model priority list - fallback order
-        private static final List<String> MODEL_PRIORITY = List.of(
-                        "xiaomi/mimo-v2-flash:free",
-                        "mistralai/devstral-2512:free",
-                        "nvidia/nemotron-3-nano-30b-a3b:free");
+        private static final List<String> FALLBACK_MODEL_PRIORITY = List.of(
+                        "nvidia/nemotron-3-nano-30b-a3b:free",
+                        "arcee-ai/trinity-large-preview:free",
+                        "z-ai/glm-4.5-air:free");
         private static final int MAX_RETRIES_PER_MODEL = 2;
 
         private final WebClient webClient;
         private final ObjectMapper objectMapper;
         private final AiTokenUsageService aiTokenUsageService;
+        private final AIModelRegistryService aiModelRegistryService;
 
         public StudentAnalyticsLLMService(
                         @Value("${openrouter.api.key}") String apiKey,
                         ObjectMapper objectMapper,
-                        AiTokenUsageService aiTokenUsageService) {
+                        AiTokenUsageService aiTokenUsageService,
+                        AIModelRegistryService aiModelRegistryService) {
                 this.objectMapper = objectMapper;
                 this.aiTokenUsageService = aiTokenUsageService;
+                this.aiModelRegistryService = aiModelRegistryService;
 
                 this.webClient = WebClient.builder()
                                 .baseUrl(API_URL)
@@ -65,8 +69,16 @@ public class StudentAnalyticsLLMService {
         public Mono<JsonNode> generateStudentInsights(String rawJson, String activityType) {
                 String prompt = createStudentAnalysisPrompt(rawJson, activityType);
 
+                List<String> modelPriority = aiModelRegistryService.getModelPriority("analytics");
+                if (modelPriority.isEmpty()) {
+                        modelPriority = FALLBACK_MODEL_PRIORITY;
+                }
+
+                log.debug("[LLM-Analytics] Model priority size: {}, ActivityType: {}, PromptChars: {}",
+                                modelPriority.size(), activityType, prompt.length());
+
                 // Try each model in priority order with retries
-                return tryModelsWithFallback(prompt, 0);
+                return tryModelsWithFallback(prompt, modelPriority, 0);
         }
 
         /**
@@ -76,13 +88,16 @@ public class StudentAnalyticsLLMService {
          * @param modelIndex Current model index in priority list
          * @return Mono containing the insights or error
          */
-        private Mono<JsonNode> tryModelsWithFallback(String prompt, int modelIndex) {
-                if (modelIndex >= MODEL_PRIORITY.size()) {
-                        log.error("All LLM models failed after retries. Tried: {}", MODEL_PRIORITY);
-                        return Mono.error(new RuntimeException("All LLM models failed. Tried: " + MODEL_PRIORITY));
+        private Mono<JsonNode> tryModelsWithFallback(String prompt, List<String> modelPriority, int modelIndex) {
+                if (modelIndex >= modelPriority.size()) {
+                        log.error("All LLM models failed after retries. Tried: {}", modelPriority);
+                        return Mono.error(new RuntimeException("All LLM models failed. Tried: " + modelPriority));
                 }
 
-                String currentModel = MODEL_PRIORITY.get(modelIndex);
+                String currentModel = modelPriority.get(modelIndex);
+
+                log.debug("[LLM-Analytics] Trying model {}/{}: {}",
+                                modelIndex + 1, modelPriority.size(), currentModel);
 
                 return generateWithModel(prompt, currentModel)
                                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
@@ -98,7 +113,7 @@ public class StudentAnalyticsLLMService {
                                 .onErrorResume(error -> {
                                         log.warn("Model {} failed: {}. Trying next model...",
                                                         currentModel, error.getMessage());
-                                        return tryModelsWithFallback(prompt, modelIndex + 1);
+                                        return tryModelsWithFallback(prompt, modelPriority, modelIndex + 1);
                                 });
         }
 
@@ -115,13 +130,27 @@ public class StudentAnalyticsLLMService {
                                                 Map.of("role", "user", "content", prompt)),
                                 "response_format", Map.of("type", "json_object"));
 
+                long requestStart = System.nanoTime();
+
                 return webClient.post()
                                 .uri("/api/v1/chat/completions")
                                 .bodyValue(payload)
                                 .retrieve()
                                 .bodyToMono(String.class)
                                 .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
-                                .doOnNext(response -> logTokenUsage(response, model))
+                                .doOnSubscribe(sub -> log.debug("[LLM-Analytics] POST {} model={} payloadChars={}",
+                                                API_URL + "/api/v1/chat/completions", model, prompt.length()))
+                                .doOnNext(response -> {
+                                        long durationMs = Duration.ofNanos(System.nanoTime() - requestStart).toMillis();
+                                        log.debug("[LLM-Analytics] Response received model={} in {} ms, size={} chars",
+                                                        model, durationMs, response.length());
+                                        logTokenUsage(response, model);
+                                })
+                                .doOnError(error -> {
+                                        long durationMs = Duration.ofNanos(System.nanoTime() - requestStart).toMillis();
+                                        log.warn("[LLM-Analytics] Request failed model={} after {} ms: {}",
+                                                        model, durationMs, error.getMessage());
+                                })
                                 .flatMap(response -> parseResponse(response, model));
         }
 
@@ -156,57 +185,112 @@ public class StudentAnalyticsLLMService {
 
         private String createStudentAnalysisPrompt(String rawJson, String activityType) {
                 return """
-                                Analyze the following student submission data and generate comprehensive insights.
+                                Analyze the following student assessment submission and generate comprehensive AI-powered insights.
 
-                                Activity Type: %s
+                                Activity Type: """
+                                + activityType
+                                + """
 
-                                Student Submission Data:
-                                %s
 
-                                Generate a JSON response with the following structure:
-                                {
-                                  "performance_analysis": "Detailed markdown analysis of overall performance including correct/incorrect answers, time management, patterns observed",
-                                  "weaknesses": {
-                                    "topic_name_1": 30,
-                                    "topic_name_2": 45
-                                  },
-                                  "strengths": {
-                                    "topic_name_1": 90,
-                                    "topic_name_2": 85
-                                  },
-                                  "areas_of_improvement": "Markdown formatted list of specific areas where student needs improvement with explanations",
-                                  "improvement_path": "Markdown formatted step-by-step study plan tailored to address weaknesses. Include specific topics, resources, and learning strategies",
-                                  "flashcards": [
-                                    {
-                                      "front": "Concept or question the student struggled with",
-                                      "back": "Clear explanation or answer"
-                                    }
-                                  ]
-                                }
+                                                Student Submission Data (includes question details, marks, class comparison):
+                                                """
+                                + rawJson
+                                + """
 
-                                Important Guidelines:
-                                1. Performance Analysis: Write 2-3 paragraphs analyzing the STUDENT'S performance - their understanding, accuracy, and learning patterns. Focus on what the student knows/doesn't know, NOT on system functionality.
-                                2. Weaknesses/Strengths: Use topic names from the questions, score 0-100 based on performance
-                                3. Areas of Improvement: List 3-5 specific areas with markdown bullets and explanations
-                                4. Improvement Path: Create a structured learning path with:
-                                   - Step-by-step progression (Step 1, Step 2, etc.)
-                                   - Specific topics to review
-                                   - Practice recommendations
-                                   - Expected time commitment
-                                5. Flashcards: Generate 5-10 flashcards focusing on concepts the student got wrong or struggled with
 
-                                CRITICAL: Base your analysis ONLY on:
-                                - Student's actual response text/content
-                                - Auto-evaluation JSON data (marks awarded, feedback, explanations)
-                                - Question content and correct answers provided
-                                - Time spent on each question (if available)
-                                - DO NOT rely on any "is_correct" or similar boolean flags - these may be inaccurate
-                                - Evaluate correctness by comparing student response with correct answers and auto-evaluation data
-                                - Focus ENTIRELY on the student's learning and performance, NOT on system evaluation or technical aspects
+                                                Generate a JSON response with ALL of the following sections:
 
-                                Return ONLY valid JSON. Be specific and actionable in your recommendations.
-                                """
-                                .formatted(activityType, rawJson);
+                                                {
+                                                  "performance_analysis": "2-3 paragraphs: overall performance, accuracy patterns, time usage, comparison with class if class_context is available",
+
+                                                  "strengths": { "topic_name": 90 },
+                                                  "weaknesses": { "topic_name": 30 },
+
+                                                  "areas_of_improvement": "Markdown bullet list of 3-5 specific areas",
+
+                                                  "improvement_path": "Markdown step-by-step study plan with topics, practice recommendations, time estimates",
+
+                                                  "flashcards": [
+                                                    { "front": "Concept the student got wrong", "back": "Clear explanation" }
+                                                  ],
+
+                                                  "confidence_estimation": {
+                                                    "overall_confidence": 78,
+                                                    "high_confidence_correct": 15,
+                                                    "high_confidence_wrong": 2,
+                                                    "low_confidence_correct": 3,
+                                                    "guessed_correct": 5,
+                                                    "insight": "1-2 sentences about student's confidence patterns"
+                                                  },
+
+                                                  "topic_analysis": [
+                                                    {
+                                                      "topic": "Inferred topic name from question content",
+                                                      "questions_count": 5,
+                                                      "correct": 4,
+                                                      "accuracy": 80,
+                                                      "avg_time_seconds": 52,
+                                                      "mastery_level": "Expert|Proficient|Developing|Beginner"
+                                                    }
+                                                  ],
+
+                                                  "misconception_analysis": [
+                                                    {
+                                                      "question_summary": "Brief question description",
+                                                      "student_answer": "What student chose",
+                                                      "correct_answer": "What was correct",
+                                                      "misconception": "Why the student got it wrong — the underlying conceptual error",
+                                                      "remediation": "Specific advice to fix this misconception"
+                                                    }
+                                                  ],
+
+                                                  "blooms_taxonomy": {
+                                                    "remember": { "total": 5, "correct": 5 },
+                                                    "understand": { "total": 8, "correct": 6 },
+                                                    "apply": { "total": 7, "correct": 4 },
+                                                    "analyze": { "total": 5, "correct": 2 },
+                                                    "evaluate": { "total": 3, "correct": 1 },
+                                                    "create": { "total": 2, "correct": 0 }
+                                                  },
+
+                                                  "behavioral_insights": {
+                                                    "time_management": "Analysis of how student allocated time across questions",
+                                                    "difficulty_response": "How student performed across easy/medium/hard questions",
+                                                    "fatigue_indicator": "Whether accuracy dropped in later questions",
+                                                    "skip_pattern": "Analysis of skipped questions or very fast responses"
+                                                  },
+
+                                                  "recommended_learning_path": [
+                                                    {
+                                                      "priority": 1,
+                                                      "topic": "Topic name",
+                                                      "current_level": "Beginner|Developing|Proficient",
+                                                      "target_level": "Proficient|Expert",
+                                                      "suggestion": "Specific actionable study advice",
+                                                      "estimated_time": "2-3 hours"
+                                                    }
+                                                  ]
+                                                }
+
+                                                GUIDELINES:
+                                                1. TOPICS: Infer topic names from question text content. Group similar questions under the same topic.
+                                                2. CONFIDENCE: Estimate from time_taken + difficulty + correctness. Fast correct = high confidence. Slow wrong = low confidence. Very fast wrong = likely guessed.
+                                                3. BLOOM'S TAXONOMY: Classify each question into a cognitive level based on question wording:
+                                                   - Remember: recall facts (define, list, name)
+                                                   - Understand: explain concepts (describe, explain, summarize)
+                                                   - Apply: use in new situations (calculate, solve, demonstrate)
+                                                   - Analyze: break down (compare, contrast, differentiate)
+                                                   - Evaluate: justify decisions (evaluate, judge, critique)
+                                                   - Create: produce new work (design, construct, formulate)
+                                                4. MISCONCEPTIONS: Only for INCORRECT questions. Explain the specific conceptual error, not just "wrong answer."
+                                                5. BEHAVIORAL: Use time_taken per question data. Look for patterns (rushing, fatigue, difficulty avoidance).
+                                                6. COMPARISON: If class_context is present, reference rank/percentile/class averages in performance_analysis.
+                                                7. FLASHCARDS: 5-10 cards focusing on concepts from wrong/partial answers.
+                                                8. LEARNING PATH: 3-5 steps ordered by priority (weakest topics first).
+
+                                                CRITICAL: Use the "status" field (CORRECT/INCORRECT/PARTIAL_CORRECT) as the source of truth for correctness.
+                                                Return ONLY valid JSON. No markdown outside JSON strings.
+                                                """;
         }
 
         private Mono<JsonNode> parseResponse(String responseBody, String model) {

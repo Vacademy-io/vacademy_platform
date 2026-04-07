@@ -46,6 +46,32 @@ public class AdminCoreServiceClient {
      * Fetches report branding settings for an institute from admin-core-service.
      * Uses the internal HMAC-authenticated endpoint. Cached for 30 minutes per institute.
      */
+    /**
+     * Fetches processed AI report JSON from admin-core-service for a given user and assessment.
+     * Returns null if not found or not yet processed.
+     */
+    public String getProcessedAIReport(String userId, String assessmentId) {
+        try {
+            String route = "/admin-core-service/llm-analytics/internal/processed-logs?userId="
+                    + userId + "&sourceId=" + assessmentId;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "GET", adminCoreServiceBaseUrl, route, null);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> body = objectMapper.readValue(response.getBody(), Map.class);
+                java.util.List<?> logs = (java.util.List<?>) body.get("activity_logs");
+                if (logs != null && !logs.isEmpty()) {
+                    Map<String, Object> firstLog = (Map<String, Object>) logs.get(0);
+                    Object processedJson = firstLog.get("processed_json");
+                    return processedJson != null ? processedJson.toString() : null;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch AI report for user {} assessment {}: {}", userId, assessmentId, e.getMessage());
+        }
+        return null;
+    }
+
     @Cacheable(value = "reportBranding", key = "#instituteId", unless = "#result.primaryColor == null")
     public ReportBrandingDto getReportBranding(String instituteId) {
         try {

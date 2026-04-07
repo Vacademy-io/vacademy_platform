@@ -34,7 +34,9 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.io.ByteArrayOutputStream;
 import java.util.*;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 public class LearnerReportService {
 
@@ -58,6 +60,9 @@ public class LearnerReportService {
 
     @Autowired
     private HtmlBuilderService htmlBuilderService;
+
+    @Autowired
+    private vacademy.io.assessment_service.features.assessment.service.AiReportHtmlBuilder aiReportHtmlBuilder;
 
     @Autowired
     private vacademy.io.common.media.service.FileService fileService;
@@ -477,5 +482,76 @@ public class LearnerReportService {
         }
 
         return comparisons;
+    }
+
+    /**
+     * Generate AI report PDF by fetching processed JSON from admin-core-service
+     * and converting to HTML → PDF with branding.
+     */
+    public ResponseEntity<byte[]> getAiReportPdf(CustomUserDetails user, String assessmentId, String attemptId, String instituteId) {
+        try {
+            // Fetch processed AI report from admin-core-service
+            String processedJson = adminCoreServiceClient.getProcessedAIReport(user.getUserId(), assessmentId);
+            if (processedJson == null || processedJson.isEmpty()) {
+                throw new VacademyException("AI report not yet available for this assessment");
+            }
+
+            // Get assessment name
+            String assessmentName = assessmentRepository.findById(assessmentId)
+                    .map(a -> a.getName()).orElse("Assessment");
+
+            // Get branding
+            ReportBrandingDto branding = ReportBrandingDto.builder().build();
+            try {
+                branding = adminCoreServiceClient.getReportBranding(instituteId);
+            } catch (Exception e) {
+                log.warn("Failed to fetch branding for AI report PDF: {}", e.getMessage());
+            }
+
+            // Get comparison data (rank, percentile, class avg, leaderboard)
+            // If attemptId not provided, resolve from registration
+            StudentComparisonDto comparison = null;
+            String resolvedAttemptId = attemptId;
+            if (resolvedAttemptId == null || resolvedAttemptId.isEmpty()) {
+                try {
+                    // Use a direct query instead of lazy-loaded collection to avoid LazyInitializationException
+                    var reg = registrationRepository.findTopByUserIdAndAssessmentId(user.getUserId(), assessmentId);
+                    if (reg.isPresent()) {
+                        var latestAttempt = studentAttemptRepository.findTopByRegistrationOrderByCreatedAtDesc(reg.get());
+                        if (latestAttempt.isPresent()) {
+                            resolvedAttemptId = latestAttempt.get().getId();
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to resolve attemptId for AI report: {}", e.getMessage());
+                }
+            }
+            if (resolvedAttemptId != null && !resolvedAttemptId.isEmpty()) {
+                try {
+                    comparison = self.buildComparisonData(user.getUserId(), assessmentId, resolvedAttemptId, instituteId);
+                } catch (Exception e) {
+                    log.warn("Failed to fetch comparison for AI report PDF: {}", e.getMessage());
+                }
+            }
+
+            // Build HTML and convert to PDF
+            String html = aiReportHtmlBuilder.generateAiReportHtml(assessmentName, processedJson, branding, comparison);
+
+            java.io.ByteArrayOutputStream pdfOutputStream = new java.io.ByteArrayOutputStream();
+            com.itextpdf.html2pdf.ConverterProperties converterProperties = new com.itextpdf.html2pdf.ConverterProperties();
+            com.itextpdf.html2pdf.HtmlConverter.convertToPdf(html, pdfOutputStream, converterProperties);
+
+            return ResponseEntity.ok()
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=ai-report-" + assessmentId + ".pdf")
+                    .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                    .body(pdfOutputStream.toByteArray());
+
+        } catch (VacademyException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error generating AI report PDF", e);
+            throw new VacademyException("Failed to generate AI report PDF");
+        }
     }
 }

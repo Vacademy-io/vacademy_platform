@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityL
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogProcessingProjection;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -116,13 +117,14 @@ public class ActivityLogProcessorService {
         }
 
         /**
-         * Process a single activity log asynchronously
+         * Process a single activity log.
+         * LLM call happens OUTSIDE any transaction to avoid holding DB connections
+         * during the long HTTP request.
          */
-        @Async
-        @Transactional
         public void processActivityLog(ActivityLogProcessingProjection activityLog) {
-                log.info("[LLM-Analytics-Processing] Processing activity log ID: {}, Type: {}",
-                                activityLog.getId(), activityLog.getSourceType());
+                int rawJsonLength = activityLog.getRawJson() != null ? activityLog.getRawJson().length() : 0;
+                log.info("[LLM-Analytics-Processing] Processing activity log ID: {}, Type: {}, RawJsonBytes: {}",
+                                activityLog.getId(), activityLog.getSourceType(), rawJsonLength);
 
                 if (activityLog.getRawJson() == null || activityLog.getRawJson().isEmpty()) {
                         log.warn("[LLM-Analytics-Processing] Activity log {} has no raw JSON, skipping",
@@ -131,21 +133,28 @@ public class ActivityLogProcessorService {
                 }
 
                 try {
-                        // Call LLM to generate insights
+                        long llmStart = System.nanoTime();
+                        // Step 1: Call LLM (no DB connection held during this)
                         JsonNode insights = studentAnalyticsLLMService
                                         .generateStudentInsights(activityLog.getRawJson(), activityLog.getSourceType())
-                                        .block(); // Block since we're already async
+                                        .block();
+                        long llmDurationMs = Duration.ofNanos(System.nanoTime() - llmStart).toMillis();
+                        log.info("[LLM-Analytics-Processing] LLM call completed for activity log ID: {} in {} ms",
+                                        activityLog.getId(), llmDurationMs);
 
                         if (insights == null) {
                                 throw new RuntimeException("LLM returned null insights");
                         }
 
-                        // Validate the insights structure
                         validateInsights(insights);
-
-                        // Convert to JSON string and update
                         String processedJson = objectMapper.writeValueAsString(insights);
+
+                        // Step 2: Quick DB update (connection borrowed and returned immediately)
+                        long dbStart = System.nanoTime();
                         activityLogRepository.updateProcessedData(activityLog.getId(), processedJson, STATUS_PROCESSED);
+                        long dbDurationMs = Duration.ofNanos(System.nanoTime() - dbStart).toMillis();
+                        log.debug("[LLM-Analytics-Processing] DB update completed for activity log ID: {} in {} ms",
+                                        activityLog.getId(), dbDurationMs);
 
                         log.info("[LLM-Analytics-Processing] Successfully processed activity log ID: {}",
                                         activityLog.getId());
@@ -180,8 +189,7 @@ public class ActivityLogProcessorService {
                 }
         }
 
-        @Transactional
-        protected void markAsFailed(String activityLogId, String errorMessage) {
+        private void markAsFailed(String activityLogId, String errorMessage) {
                 try {
                         // Store error info in processed_json for debugging
                         String errorJson = String.format("{\"error\": \"%s\", \"timestamp\": \"%s\"}",
@@ -207,7 +215,6 @@ public class ActivityLogProcessorService {
         /**
          * Process a specific activity log by ID (for manual retry)
          */
-        @Transactional
         public void reprocessActivityLog(String activityLogId) {
                 log.info("[LLM-Analytics-Manual] Manual reprocess triggered for activity log ID: {}", activityLogId);
 

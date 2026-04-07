@@ -8,6 +8,11 @@ import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
+import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
+import vacademy.io.assessment_service.features.learner_assessment.dto.SectionComparisonDto;
+import vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto;
+import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
@@ -28,6 +33,8 @@ public class AssessmentDataEnrichmentService {
     private final QuestionRepository questionRepository;
     private final OptionRepository optionRepository;
     private final SectionRepository sectionRepository;
+    private final QuestionWiseMarksRepository questionWiseMarksRepository;
+    private final LearnerReportService learnerReportService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -39,20 +46,19 @@ public class AssessmentDataEnrichmentService {
             String assessmentName,
             String assessmentType,
             Integer durationMinutes,
-            Integer totalMarks) {
+            Integer totalMarks,
+            String instituteId) {
 
         Map<String, Object> enrichedData = new HashMap<>();
 
         try {
-            // Activity type and timestamp (for LLM processing alignment)
             enrichedData.put("activity_type", "assessment_attempt");
             enrichedData.put("timestamp",
                     studentAttempt.getSubmitTime() != null ? studentAttempt.getSubmitTime().toInstant().toString()
                             : java.time.Instant.now().toString());
 
-            // Assessment metadata
-            Map<String, Object> assessment = new HashMap<>();
-            assessment.put("id", assessmentId);
+            // Assessment metadata (compact — no IDs AI doesn't need)
+            Map<String, Object> assessment = new LinkedHashMap<>();
             assessment.put("name", assessmentName);
             assessment.put("type", assessmentType);
             assessment.put("total_marks", totalMarks != null ? totalMarks : 0);
@@ -60,42 +66,38 @@ public class AssessmentDataEnrichmentService {
             enrichedData.put("assessment", assessment);
 
             // Attempt metadata
-            Map<String, Object> attempt = new HashMap<>();
-            attempt.put("id", studentAttempt.getId());
-            attempt.put("number", studentAttempt.getAttemptNumber());
+            Map<String, Object> attempt = new LinkedHashMap<>();
             attempt.put("user_id", studentAttempt.getRegistration().getUserId());
             attempt.put("start_time",
-                    studentAttempt.getStartTime() != null ? studentAttempt.getStartTime().toInstant().toString()
-                            : null);
-            attempt.put("end_time",
-                    studentAttempt.getSubmitTime() != null ? studentAttempt.getSubmitTime().toInstant().toString()
-                            : null);
+                    studentAttempt.getStartTime() != null ? studentAttempt.getStartTime().toInstant().toString() : null);
             attempt.put("submit_time",
-                    studentAttempt.getSubmitTime() != null ? studentAttempt.getSubmitTime().toInstant().toString()
-                            : null);
+                    studentAttempt.getSubmitTime() != null ? studentAttempt.getSubmitTime().toInstant().toString() : null);
             attempt.put("duration_seconds", studentAttempt.getTotalTimeInSeconds());
             attempt.put("time_limit_seconds", durationMinutes != null ? durationMinutes * 60 : 0);
             enrichedData.put("attempt", attempt);
 
-            enrichedData.put("attempt", attempt);
-
-            // Summary/Results
-            Map<String, Object> summary = new HashMap<>();
-            summary.put("total_score", studentAttempt.getResultMarks());
-            summary.put("max_score", totalMarks != null ? totalMarks : 0);
-            summary.put("scored_marks", studentAttempt.getResultMarks());
-            summary.put("total_marks", studentAttempt.getTotalMarks());
+            // Summary
+            double maxScore = totalMarks != null ? totalMarks : 0;
+            double scored = studentAttempt.getResultMarks() != null ? studentAttempt.getResultMarks() : 0;
+            Map<String, Object> summary = new LinkedHashMap<>();
+            summary.put("scored_marks", scored);
+            summary.put("total_marks", maxScore);
             summary.put("result_status", studentAttempt.getResultStatus());
-            summary.put("percentage",
-                    totalMarks != null && totalMarks > 0 ? (studentAttempt.getResultMarks() / totalMarks) * 100 : 0);
+            summary.put("percentage", maxScore > 0 ? Math.round((scored / maxScore) * 1000.0) / 10.0 : 0);
             enrichedData.put("summary", summary);
 
-            // Parse submit data and enrich with actual content
+            // Comparison context (rank, percentile, class avg) — for AI comparative insights
+            addComparisonContext(enrichedData, studentAttempt, assessmentId, instituteId);
+
+            // Question-wise marks (status per question — CORRECT/INCORRECT/PARTIAL_CORRECT)
+            Map<String, QuestionWiseMarks> qwmMap = buildQuestionWiseMarksMap(assessmentId, studentAttempt.getId());
+
+            // Parse submit data and enrich with actual content + marks status
             String submitDataJson = studentAttempt.getSubmitData() != null ? studentAttempt.getSubmitData()
                     : studentAttempt.getAttemptData();
 
             if (submitDataJson != null) {
-                List<Map<String, Object>> enrichedSections = enrichSubmitData(submitDataJson, assessmentId);
+                List<Map<String, Object>> enrichedSections = enrichSubmitData(submitDataJson, assessmentId, qwmMap);
                 enrichedData.put("sections", enrichedSections);
             }
 
@@ -108,9 +110,75 @@ public class AssessmentDataEnrichmentService {
     }
 
     /**
+     * Add comparison context (rank, percentile, class stats) from buildComparisonData
+     */
+    private void addComparisonContext(Map<String, Object> enrichedData, StudentAttempt studentAttempt,
+                                       String assessmentId, String instituteId) {
+        try {
+            String userId = studentAttempt.getRegistration().getUserId();
+            StudentComparisonDto comparison = learnerReportService.buildComparisonData(
+                    userId, assessmentId, studentAttempt.getId(), instituteId);
+
+            if (comparison != null) {
+                Map<String, Object> ctx = new LinkedHashMap<>();
+                ctx.put("student_rank", comparison.getStudentRank());
+                ctx.put("student_percentile", comparison.getStudentPercentile());
+                ctx.put("total_participants", comparison.getTotalParticipants());
+                ctx.put("class_average_marks", comparison.getAverageMarks());
+                ctx.put("highest_marks", comparison.getHighestMarks());
+                ctx.put("lowest_marks", comparison.getLowestMarks());
+                ctx.put("student_accuracy", comparison.getStudentAccuracy());
+                ctx.put("class_accuracy", comparison.getClassAccuracy());
+                ctx.put("student_duration_seconds", comparison.getStudentDuration());
+                ctx.put("average_duration_seconds", comparison.getAverageDuration());
+
+                // Section-wise comparison
+                if (comparison.getSectionWiseComparison() != null) {
+                    List<Map<String, Object>> sectionCtx = new ArrayList<>();
+                    for (SectionComparisonDto sc : comparison.getSectionWiseComparison()) {
+                        Map<String, Object> s = new LinkedHashMap<>();
+                        s.put("section_name", sc.getSectionName());
+                        s.put("student_marks", sc.getStudentMarks());
+                        s.put("section_total", sc.getSectionTotalMarks());
+                        s.put("class_average", sc.getSectionAverageMarks());
+                        s.put("class_highest", sc.getSectionHighestMarks());
+                        s.put("student_accuracy", sc.getStudentAccuracy());
+                        s.put("class_accuracy", sc.getClassAccuracy());
+                        sectionCtx.add(s);
+                    }
+                    ctx.put("section_comparison", sectionCtx);
+                }
+
+                enrichedData.put("class_context", ctx);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to add comparison context for AI enrichment: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Build a map of questionId -> QuestionWiseMarks for quick lookup
+     */
+    private Map<String, QuestionWiseMarks> buildQuestionWiseMarksMap(String assessmentId, String attemptId) {
+        Map<String, QuestionWiseMarks> map = new HashMap<>();
+        try {
+            List<QuestionWiseMarks> qwmList = questionWiseMarksRepository.findByStudentAttemptId(attemptId);
+            for (QuestionWiseMarks qwm : qwmList) {
+                if (qwm.getQuestion() != null) {
+                    map.put(qwm.getQuestion().getId(), qwm);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to load question-wise marks: {}", e.getMessage());
+        }
+        return map;
+    }
+
+    /**
      * Parse submit data JSON and enrich with question/option text content
      */
-    private List<Map<String, Object>> enrichSubmitData(String submitDataJson, String assessmentId) {
+    private List<Map<String, Object>> enrichSubmitData(String submitDataJson, String assessmentId,
+                                                         Map<String, QuestionWiseMarks> qwmMap) {
         List<Map<String, Object>> enrichedSections = new ArrayList<>();
 
         try {
@@ -121,24 +189,17 @@ public class AssessmentDataEnrichmentService {
                 return enrichedSections;
             }
 
-            // Get all section IDs first
-            Set<String> sectionIds = new HashSet<>();
-            sectionsNode.forEach(sectionNode -> {
-                String sectionId = sectionNode.get("sectionId").asText();
-                sectionIds.add(sectionId);
-            });
-
             // Fetch all sections at once
+            Set<String> sectionIds = new HashSet<>();
+            sectionsNode.forEach(sectionNode -> sectionIds.add(sectionNode.get("sectionId").asText()));
+
             Map<String, Section> sectionMap = new HashMap<>();
             if (!sectionIds.isEmpty()) {
-                Iterable<Section> sectionsIterable = sectionRepository.findAllById(sectionIds);
-                sectionsIterable.forEach(section -> sectionMap.put(section.getId(), section));
+                sectionRepository.findAllById(sectionIds).forEach(section -> sectionMap.put(section.getId(), section));
             }
 
-            // Process each section
             for (JsonNode sectionNode : sectionsNode) {
-                Map<String, Object> enrichedSection = enrichSection(sectionNode, sectionMap);
-                enrichedSections.add(enrichedSection);
+                enrichedSections.add(enrichSection(sectionNode, sectionMap, qwmMap));
             }
 
         } catch (Exception e) {
@@ -151,45 +212,31 @@ public class AssessmentDataEnrichmentService {
     /**
      * Enrich a single section with metadata and questions
      */
-    private Map<String, Object> enrichSection(JsonNode sectionNode, Map<String, Section> sectionMap) {
-        Map<String, Object> enrichedSection = new HashMap<>();
+    private Map<String, Object> enrichSection(JsonNode sectionNode, Map<String, Section> sectionMap,
+                                                Map<String, QuestionWiseMarks> qwmMap) {
+        Map<String, Object> enrichedSection = new LinkedHashMap<>();
 
         try {
             String sectionId = sectionNode.get("sectionId").asText();
-            enrichedSection.put("sectionId", sectionId);
 
-            // Get section metadata from database
             Section section = sectionMap.get(sectionId);
             if (section != null) {
-                enrichedSection.put("sectionName", section.getName());
-                enrichedSection.put("sectionType", section.getSectionType());
-                enrichedSection.put("totalMarks", section.getTotalMarks());
-                enrichedSection.put("cutOffMarks", section.getCutOffMarks());
-                enrichedSection.put("marksPerQuestion", section.getMarksPerQuestion());
-
-                if (section.getDescription() != null) {
-                    enrichedSection.put("description", section.getDescription().getContent());
-                }
+                enrichedSection.put("section_name", section.getName());
+                enrichedSection.put("total_marks", section.getTotalMarks());
+                enrichedSection.put("cut_off_marks", section.getCutOffMarks());
+                enrichedSection.put("marks_per_question", section.getMarksPerQuestion());
             }
 
-            // Time metadata
-            enrichedSection.put("sectionDurationLeftInSeconds",
-                    sectionNode.has("sectionDurationLeftInSeconds")
-                            ? sectionNode.get("sectionDurationLeftInSeconds").asInt()
-                            : 0);
-            enrichedSection.put("timeElapsedInSeconds",
+            enrichedSection.put("time_elapsed_seconds",
                     sectionNode.has("timeElapsedInSeconds") ? sectionNode.get("timeElapsedInSeconds").asInt() : 0);
 
-            // Process questions
             JsonNode questionsNode = sectionNode.get("questions");
             if (questionsNode != null && questionsNode.isArray()) {
-                List<Map<String, Object>> enrichedQuestions = enrichQuestions(questionsNode);
-                enrichedSection.put("questions", enrichedQuestions);
+                enrichedSection.put("questions", enrichQuestions(questionsNode, qwmMap));
             }
 
         } catch (Exception e) {
             log.error("[DataEnrichment] Error enriching section", e);
-            enrichedSection.put("error", e.getMessage());
         }
 
         return enrichedSection;
@@ -198,28 +245,28 @@ public class AssessmentDataEnrichmentService {
     /**
      * Enrich questions with full text content
      */
-    private List<Map<String, Object>> enrichQuestions(JsonNode questionsNode) {
+    private List<Map<String, Object>> enrichQuestions(JsonNode questionsNode,
+                                                       Map<String, QuestionWiseMarks> qwmMap) {
         List<Map<String, Object>> enrichedQuestions = new ArrayList<>();
 
         try {
-            // Collect all question IDs
             Set<String> questionIds = new HashSet<>();
-            questionsNode.forEach(qNode -> {
-                String questionId = qNode.get("questionId").asText();
-                questionIds.add(questionId);
-            });
+            questionsNode.forEach(qNode -> questionIds.add(qNode.get("questionId").asText()));
 
-            // Fetch all questions at once
             Map<String, Question> questionMap = new HashMap<>();
             if (!questionIds.isEmpty()) {
-                Iterable<Question> questionsIterable = questionRepository.findAllById(questionIds);
-                questionsIterable.forEach(q -> questionMap.put(q.getId(), q));
+                questionRepository.findAllById(questionIds).forEach(q -> questionMap.put(q.getId(), q));
             }
 
-            // Process each question
+            // Batch-fetch all options for these questions
+            Map<String, List<Option>> optionsByQuestion = new HashMap<>();
+            for (String qId : questionIds) {
+                optionsByQuestion.put(qId, optionRepository.findByQuestionId(qId));
+            }
+
             for (JsonNode questionNode : questionsNode) {
-                Map<String, Object> enrichedQuestion = enrichQuestion(questionNode, questionMap);
-                enrichedQuestions.add(enrichedQuestion);
+                String qId = questionNode.get("questionId").asText();
+                enrichedQuestions.add(enrichQuestion(questionNode, questionMap, qwmMap, optionsByQuestion.getOrDefault(qId, List.of())));
             }
 
         } catch (Exception e) {
@@ -232,115 +279,83 @@ public class AssessmentDataEnrichmentService {
     /**
      * Enrich a single question with full text and options
      */
-    private Map<String, Object> enrichQuestion(JsonNode questionNode, Map<String, Question> questionMap) {
-        Map<String, Object> enrichedQuestion = new HashMap<>();
+    private Map<String, Object> enrichQuestion(JsonNode questionNode, Map<String, Question> questionMap,
+                                                Map<String, QuestionWiseMarks> qwmMap, List<Option> options) {
+        Map<String, Object> eq = new LinkedHashMap<>();
 
         try {
             String questionId = questionNode.get("questionId").asText();
-            enrichedQuestion.put("questionId", questionId);
 
-            // Get question from database
             Question question = questionMap.get(questionId);
             if (question != null) {
-                // Question metadata
-                enrichedQuestion.put("questionType", question.getQuestionType());
-                enrichedQuestion.put("questionResponseType", question.getQuestionResponseType());
-                enrichedQuestion.put("difficulty", question.getDifficulty());
-                enrichedQuestion.put("evaluationType", question.getEvaluationType());
+                eq.put("question_type", question.getQuestionType());
+                eq.put("difficulty", question.getDifficulty());
 
-                // Question text content
+                // Plain text — strip HTML/KaTeX for AI readability
                 if (question.getTextData() != null) {
-                    enrichedQuestion.put("questionText", question.getTextData().getContent());
-                    enrichedQuestion.put("questionTextType", question.getTextData().getType());
+                    eq.put("question_text", stripForAI(question.getTextData().getContent()));
                 }
-
-                // Parent text if exists
                 if (question.getParentRichText() != null) {
-                    enrichedQuestion.put("parentText", question.getParentRichText().getContent());
+                    eq.put("parent_text", stripForAI(question.getParentRichText().getContent()));
                 }
-
-                // Explanation text
                 if (question.getExplanationTextData() != null) {
-                    enrichedQuestion.put("explanationText", question.getExplanationTextData().getContent());
+                    eq.put("explanation", stripForAI(question.getExplanationTextData().getContent()));
                 }
 
-                // Auto evaluation JSON (contains correct answers)
-                enrichedQuestion.put("autoEvaluationJson", question.getAutoEvaluationJson());
-
-                // Fetch and enrich options
-                List<Map<String, Object>> enrichedOptions = enrichOptions(questionId);
-                if (!enrichedOptions.isEmpty()) {
-                    enrichedQuestion.put("options", enrichedOptions);
+                // Options as readable text (not IDs)
+                if (!options.isEmpty()) {
+                    List<Map<String, String>> optList = new ArrayList<>();
+                    for (Option opt : options) {
+                        Map<String, String> o = new LinkedHashMap<>();
+                        o.put("label", opt.getText() != null ? stripForAI(opt.getText().getContent()) : "");
+                        optList.add(o);
+                    }
+                    eq.put("options", optList);
                 }
             }
 
-            // Student's response data
+            // Marks status from question_wise_marks
+            QuestionWiseMarks qwm = qwmMap.get(questionId);
+            if (qwm != null) {
+                eq.put("status", qwm.getStatus()); // CORRECT, INCORRECT, PARTIAL_CORRECT, PENDING
+                eq.put("marks_obtained", qwm.getMarks());
+            }
+
+            // Student's selected answer as readable text
             JsonNode responseData = questionNode.get("responseData");
-            if (responseData != null) {
-                enrichedQuestion.put("studentResponse", objectMapper.writeValueAsString(responseData));
-
-                // Add specific response fields
-                if (responseData.has("type")) {
-                    enrichedQuestion.put("responseType", responseData.get("type").asText());
+            if (responseData != null && responseData.has("optionIds") && !options.isEmpty()) {
+                List<String> selectedTexts = new ArrayList<>();
+                Map<String, String> optionIdToText = new HashMap<>();
+                for (Option opt : options) {
+                    optionIdToText.put(opt.getId(), opt.getText() != null ? stripForAI(opt.getText().getContent()) : "");
                 }
-                if (responseData.has("optionIds")) {
-                    enrichedQuestion.put("selectedOptionIds", responseData.get("optionIds"));
+                for (JsonNode optId : responseData.get("optionIds")) {
+                    String text = optionIdToText.get(optId.asText());
+                    if (text != null) selectedTexts.add(text);
                 }
-                if (responseData.has("answer")) {
-                    enrichedQuestion.put("studentAnswer", responseData.get("answer").asText());
-                }
+                eq.put("student_answer", String.join(", ", selectedTexts));
+            } else if (responseData != null && responseData.has("answer")) {
+                eq.put("student_answer", responseData.get("answer").asText());
             }
 
-            // Time taken
-            enrichedQuestion.put("timeTakenInSeconds",
+            eq.put("time_taken_seconds",
                     questionNode.has("timeTakenInSeconds") ? questionNode.get("timeTakenInSeconds").asInt() : 0);
-            enrichedQuestion.put("isMarkedForReview",
-                    questionNode.has("isMarkedForReview") &&
-                            questionNode.get("isMarkedForReview").asBoolean());
-            enrichedQuestion.put("isVisited",
-                    questionNode.has("isVisited") &&
-                            questionNode.get("isVisited").asBoolean());
+            eq.put("marked_for_review",
+                    questionNode.has("isMarkedForReview") && questionNode.get("isMarkedForReview").asBoolean());
 
         } catch (Exception e) {
             log.error("[DataEnrichment] Error enriching question: {}", questionNode.get("questionId"), e);
-            enrichedQuestion.put("error", e.getMessage());
         }
 
-        return enrichedQuestion;
+        return eq;
     }
 
     /**
-     * Fetch and enrich options for a question
+     * Strip HTML/KaTeX markup from text to produce clean plain text for AI analysis.
+     * Reuses HtmlBuilderService's proven stripping logic.
      */
-    private List<Map<String, Object>> enrichOptions(String questionId) {
-        List<Map<String, Object>> enrichedOptions = new ArrayList<>();
-
-        try {
-            List<Option> options = optionRepository.findByQuestionId(questionId);
-
-            for (Option option : options) {
-                Map<String, Object> enrichedOption = new HashMap<>();
-                enrichedOption.put("optionId", option.getId());
-
-                // Option text content
-                if (option.getText() != null) {
-                    enrichedOption.put("optionText", option.getText().getContent());
-                    enrichedOption.put("optionTextType", option.getText().getType());
-                }
-
-                // Explanation
-                if (option.getExplanationTextData() != null) {
-                    enrichedOption.put("explanationText", option.getExplanationTextData().getContent());
-                }
-
-                enrichedOption.put("mediaId", option.getMediaId());
-                enrichedOptions.add(enrichedOption);
-            }
-
-        } catch (Exception e) {
-            log.error("[DataEnrichment] Error enriching options for question: {}", questionId, e);
-        }
-
-        return enrichedOptions;
+    private String stripForAI(String content) {
+        if (content == null || content.isEmpty()) return "";
+        return HtmlBuilderService.stripHtmlTags(content);
     }
 }

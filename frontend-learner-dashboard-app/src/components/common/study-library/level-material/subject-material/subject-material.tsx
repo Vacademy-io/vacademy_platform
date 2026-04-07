@@ -62,6 +62,7 @@ export interface Module {
 }
 export interface ModuleWithChapters {
   module: Module;
+  module_order: number | null;
   chapters: Chapter[];
 }
 export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };

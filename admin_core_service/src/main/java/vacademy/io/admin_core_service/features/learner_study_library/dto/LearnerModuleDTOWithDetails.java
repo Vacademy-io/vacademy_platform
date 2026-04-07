@@ -15,6 +15,7 @@ import java.util.List;
 public class LearnerModuleDTOWithDetails {
     private ModuleDTO module;
     private Double percentageCompleted;
+    private Integer moduleOrder;
     private List<LearnerChapterDetailsDTO> chapters;
 
     public LearnerModuleDTOWithDetails(ModuleDTO module,Double percentageCompleted, List<LearnerChapterDetailsDTO> chapters) {

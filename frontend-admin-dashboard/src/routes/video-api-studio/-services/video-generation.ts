@@ -494,6 +494,7 @@ export interface RenderSettings {
     captionBgColor: string;
     captionBgOpacity: number; // 0-100
     captionSize: CaptionSize;
+    watermark: boolean;
 }
 
 export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
@@ -505,6 +506,7 @@ export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
     captionBgColor: '#000000',
     captionBgOpacity: 60,
     captionSize: 'M',
+    watermark: true,
 };
 
 export async function requestVideoRender(
@@ -523,6 +525,7 @@ export async function requestVideoRender(
             resolution: settings.resolution,
             fps: settings.fps,
             show_captions: settings.captions,
+            show_branding: settings.watermark,
             caption_position: settings.captionPosition,
             caption_text_color: settings.captionTextColor,
             caption_bg_color: settings.captionBgColor,

@@ -1,5 +1,5 @@
 // StudentListSection.tsx
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { GetFilterData } from '@/routes/manage-students/students-list/-constants/all-filters';
@@ -15,6 +15,9 @@ import {
     getCustomColumns,
 } from '@/components/design-system/utils/constants/table-column-data';
 import { STUDENT_LIST_COLUMN_WIDTHS } from '@/components/design-system/utils/constants/table-layout';
+import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useLeadProfiles } from '@/hooks/use-lead-profiles';
+import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import { BulkActions } from './bulk-actions/bulk-actions';
 import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
@@ -44,8 +47,7 @@ export const StudentsListSection = () => {
     const { isError, isLoading } = useQuery(useInstituteQuery());
     const [isOpen, setIsOpen] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const { getCourseFromPackage, instituteDetails } =
-        useInstituteDetailsStore();
+    const { getCourseFromPackage, instituteDetails } = useInstituteDetailsStore();
     const tableRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -115,6 +117,14 @@ export const StudentsListSection = () => {
         search.package_session_id ? [search.package_session_id] : null
     );
 
+    const leadSettings = useLeadSettings();
+    const showLeadScore = leadSettings.enabled && leadSettings.showScoreInStudentsTable;
+    const studentUserIds = useMemo(
+        () => (studentTableData?.content ?? []).map((s) => s.user_id).filter(Boolean) as string[],
+        [studentTableData]
+    );
+    const { profiles: leadProfiles } = useLeadProfiles(studentUserIds, showLeadScore);
+
     const [allPagesData, setAllPagesData] = useState<Record<number, StudentTable[]>>({});
     useEffect(() => {
         if (studentTableData?.content) {
@@ -167,7 +177,6 @@ export const StudentsListSection = () => {
         0
     );
 
-
     if (isLoading) return <DashboardLoader />;
     if (isError) return <RootErrorComponent />;
 
@@ -188,7 +197,7 @@ export const StudentsListSection = () => {
             </p>
             <div className="flex flex-col items-center gap-2 sm:flex-row">
                 <InviteFormProvider>
-                    <button className="hover:to-primary-700 group flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary-500 to-primary-600 px-3 py-1.5 text-sm text-white shadow-md transition-all duration-200 hover:scale-105 hover:from-primary-600">
+                    <button className="group flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary-500 to-primary-600 px-3 py-1.5 text-sm text-white shadow-md transition-all duration-200 hover:scale-105 hover:from-primary-600 hover:to-primary-700">
                         <Users className="size-3.5 transition-transform duration-200 group-hover:scale-110" />
                         Invite {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
                     </button>
@@ -277,12 +286,48 @@ export const StudentsListSection = () => {
                                                 total_elements: studentTableData.total_elements,
                                                 last: studentTableData.last,
                                             }}
-                                            columns={getCustomColumns(
-                                                // Show approval actions if INVITED or PENDING_FOR_APPROVAL is in statuses
-                                                appliedFilters.statuses?.some(s =>
-                                                    ['INVITED', 'PENDING_FOR_APPROVAL'].includes(s)
-                                                ) || false
-                                            )}
+                                            columns={(() => {
+                                                const cols = getCustomColumns(
+                                                    // Show approval actions if INVITED or PENDING_FOR_APPROVAL is in statuses
+                                                    appliedFilters.statuses?.some((s) =>
+                                                        [
+                                                            'INVITED',
+                                                            'PENDING_FOR_APPROVAL',
+                                                        ].includes(s)
+                                                    ) || false
+                                                );
+                                                if (!showLeadScore) return cols;
+                                                // Augment the full_name cell to show a score badge below the name
+                                                return cols.map((col) => {
+                                                    if (col.id !== 'full_name') return col;
+                                                    const originalCell = col.cell;
+                                                    return {
+                                                        ...col,
+                                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                                        cell: (props: any) => {
+                                                            const userId = props.row.original
+                                                                .user_id as string;
+                                                            const profile = leadProfiles[userId];
+                                                            return (
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    {typeof originalCell ===
+                                                                    'function'
+                                                                        ? originalCell(props)
+                                                                        : null}
+                                                                    {profile && (
+                                                                        <LeadScoreBadge
+                                                                            score={
+                                                                                profile.best_score
+                                                                            }
+                                                                            size="sm"
+                                                                        />
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        },
+                                                    };
+                                                });
+                                            })()}
                                             tableState={{
                                                 columnVisibility: getColumnsVisibility(),
                                             }}

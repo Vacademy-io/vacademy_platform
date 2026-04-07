@@ -6,6 +6,7 @@ import { useStudentSidebar } from '@/routes/manage-students/students-list/-conte
 import { StudentTable } from '@/types/student-table-types';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import { useRef } from 'react';
+import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 
 // Reusing the click handler logic pattern
 export const useClickHandlers = () => {
@@ -132,7 +133,10 @@ const CreateClickableCell = ({ row, columnId }: { row: Row<ContactUser>; columnI
     );
 };
 
-export const getContactColumns = (onSort?: (columnId: string, direction: string) => void): ColumnDef<ContactUser>[] => [
+export const getContactColumns = (
+    onSort?: (columnId: string, direction: string) => void,
+    showLeadScore = false
+): ColumnDef<ContactUser>[] => [
     {
         id: 'details',
         size: 80,
@@ -159,7 +163,15 @@ export const getContactColumns = (onSort?: (columnId: string, direction: string)
                 </button>
             </MyDropdown>
         ),
-        cell: ({ row }) => <CreateClickableCell row={row} columnId="user.full_name" />,
+        cell: ({ row }) => {
+            const score = showLeadScore ? row.original.lead_score : undefined;
+            return (
+                <div className="flex flex-col gap-0.5">
+                    <CreateClickableCell row={row} columnId="user.full_name" />
+                    {score != null && <LeadScoreBadge score={score} size="sm" />}
+                </div>
+            );
+        },
     },
     {
         id: 'user.username',
@@ -204,7 +216,7 @@ export const getContactColumns = (onSort?: (columnId: string, direction: string)
         cell: ({ row }) => <CreateClickableCell row={row} columnId="user.city" />,
     },
     {
-        // created_at seems missing from user object in provided JSON, 
+        // created_at seems missing from user object in provided JSON,
         // fallback to last_login_time or remove if strictly needed from root?
         // JSON shows last_login_time.
         // Let's use last_login_time for now as created_at is not in the sample JSON user object.
@@ -227,6 +239,6 @@ export const getContactColumns = (onSort?: (columnId: string, direction: string)
             if (isInst) sources.push('Institute');
             if (isAud) sources.push('Audience');
             return <div>{sources.join(', ')}</div>;
-        }
-    }
+        },
+    },
 ];

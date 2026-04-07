@@ -21,11 +21,35 @@ import {
     CurrencyCircleDollar,
     Buildings,
     PushPin,
+    CalendarCheck,
+    GitMerge,
 } from '@phosphor-icons/react';
 
 // ─── Action Type Icons & Colors ──────────────────────────────────────────────
 
 const ACTION_CONFIG: Record<string, { icon: ReactNode; color: string; bgColor: string }> = {
+    // ── New creatable types ──
+    NOTE: {
+        icon: <NotePencil weight="fill" className="size-4" />,
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-100',
+    },
+    CALL_LOG: {
+        icon: <Phone weight="fill" className="size-4" />,
+        color: 'text-teal-600',
+        bgColor: 'bg-teal-100',
+    },
+    FOLLOW_UP: {
+        icon: <CalendarCheck weight="fill" className="size-4" />,
+        color: 'text-violet-600',
+        bgColor: 'bg-violet-100',
+    },
+    MEETING: {
+        icon: <Buildings weight="fill" className="size-4" />,
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-100',
+    },
+    // ── Legacy types (display only — backward compat) ──
     NOTE_ADDED: {
         icon: <NotePencil weight="fill" className="size-4" />,
         color: 'text-blue-600',
@@ -71,6 +95,11 @@ const ACTION_CONFIG: Record<string, { icon: ReactNode; color: string; bgColor: s
         color: 'text-orange-600',
         bgColor: 'bg-orange-100',
     },
+    DUPLICATE_MERGED: {
+        icon: <GitMerge weight="fill" className="size-4" />,
+        color: 'text-neutral-600',
+        bgColor: 'bg-neutral-100',
+    },
     DEFAULT: {
         icon: <PushPin weight="fill" className="size-4" />,
         color: 'text-neutral-600',
@@ -90,20 +119,16 @@ const getActionConfig = (actionType: string): { icon: ReactNode; color: string; 
 // ─── Note Action Types ───────────────────────────────────────────────────────
 
 const NOTE_ACTION_TYPES = [
-    { value: 'NOTE_ADDED', label: 'Note', icon: <NotePencil weight="fill" className="size-3.5" /> },
+    { value: 'NOTE', label: 'Note', icon: <NotePencil weight="fill" className="size-3.5" /> },
+    { value: 'CALL_LOG', label: 'Call Log', icon: <Phone weight="fill" className="size-3.5" /> },
     {
-        value: 'PHONE_CALL',
-        label: 'Phone Call',
-        icon: <Phone weight="fill" className="size-3.5" />,
+        value: 'FOLLOW_UP',
+        label: 'Follow Up',
+        icon: <CalendarCheck weight="fill" className="size-3.5" />,
     },
     {
-        value: 'EMAIL_SENT',
-        label: 'Email Sent',
-        icon: <EnvelopeSimple weight="fill" className="size-3.5" />,
-    },
-    {
-        value: 'CAMPUS_VISIT',
-        label: 'Campus Visit',
+        value: 'MEETING',
+        label: 'Meeting',
         icon: <Buildings weight="fill" className="size-3.5" />,
     },
 ];
@@ -200,7 +225,7 @@ interface AddNoteFormProps {
 
 const AddNoteForm = ({ entityType, entityId }: AddNoteFormProps) => {
     const [noteText, setNoteText] = useState('');
-    const [actionType, setActionType] = useState('NOTE_ADDED');
+    const [actionType, setActionType] = useState('NOTE');
     const [isExpanded, setIsExpanded] = useState(false);
     const queryClient = useQueryClient();
 

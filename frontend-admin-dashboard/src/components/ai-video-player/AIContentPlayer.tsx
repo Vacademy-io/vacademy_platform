@@ -184,6 +184,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                 : undefined,
         currentTime,
         audioStartAt: meta.audio_start_at,
+        playbackRate,
     });
 
     // Map page index to audio time range {start, end}

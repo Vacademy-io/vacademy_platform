@@ -66,23 +66,79 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         List<AudienceResponse> findByAudienceIdAndSourceType(String audienceId, String sourceType);
 
         /**
-         * Find leads with filters and pagination
+         * Find leads with filters and pagination.
+         * Supports: source, date range, score range, tier, counselor, unassigned, dedup, search, dynamic sort.
          */
         @Query(value = """
-                            SELECT * FROM audience_response ar
+                            SELECT ar.*
+                            FROM audience_response ar
+                            LEFT JOIN lead_score ls ON ls.audience_response_id = ar.id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
                             WHERE ar.audience_id = :audienceId
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
-                            ORDER BY ar.submitted_at DESC
+                              AND (:excludeDuplicates IS NULL OR :excludeDuplicates = FALSE OR COALESCE(ar.is_duplicate, FALSE) = FALSE)
+                              AND (COALESCE(:searchQuery, '') = '' OR
+                                   LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
+                                   LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
+                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%'))
+                              AND (:minLeadScore IS NULL OR COALESCE(ls.raw_score, 0) >= :minLeadScore)
+                              AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
+                              AND (COALESCE(:leadTier, '') = '' OR
+                                   (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
+                                   (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
+                                   (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
+                              AND (COALESCE(:assignedCounselorId, '') = '' OR lu.user_id = :assignedCounselorId)
+                              AND (:isUnassigned IS NULL OR :isUnassigned = FALSE OR lu.user_id IS NULL)
+                              AND (COALESCE(:overallStatusStr, '') = '' OR ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
+                            ORDER BY
+                              CASE WHEN :sortBy = 'LEAD_SCORE' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN COALESCE(ls.raw_score, 0) END DESC,
+                              CASE WHEN :sortBy = 'LEAD_SCORE' AND :sortDirection = 'ASC'
+                                   THEN COALESCE(ls.raw_score, 0) END ASC,
+                              CASE WHEN :sortBy = 'PARENT_NAME' AND (:sortDirection IS NULL OR :sortDirection = 'ASC')
+                                   THEN ar.parent_name END ASC,
+                              CASE WHEN :sortBy = 'PARENT_NAME' AND :sortDirection = 'DESC'
+                                   THEN ar.parent_name END DESC,
+                              ar.submitted_at DESC
                         """, countQuery = """
-                            SELECT COUNT(*) FROM audience_response ar
+                            SELECT COUNT(*)
+                            FROM audience_response ar
+                            LEFT JOIN lead_score ls ON ls.audience_response_id = ar.id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
                             WHERE ar.audience_id = :audienceId
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
+                              AND (:excludeDuplicates IS NULL OR :excludeDuplicates = FALSE OR COALESCE(ar.is_duplicate, FALSE) = FALSE)
+                              AND (COALESCE(:searchQuery, '') = '' OR
+                                   LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
+                                   LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
+                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%'))
+                              AND (:minLeadScore IS NULL OR COALESCE(ls.raw_score, 0) >= :minLeadScore)
+                              AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
+                              AND (COALESCE(:leadTier, '') = '' OR
+                                   (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
+                                   (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
+                                   (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
+                              AND (COALESCE(:assignedCounselorId, '') = '' OR lu.user_id = :assignedCounselorId)
+                              AND (:isUnassigned IS NULL OR :isUnassigned = FALSE OR lu.user_id IS NULL)
+                              AND (COALESCE(:overallStatusStr, '') = '' OR ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
                         """, nativeQuery = true)
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
@@ -90,6 +146,16 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("sourceId") String sourceId,
                         @Param("submittedFrom") Timestamp submittedFrom,
                         @Param("submittedTo") Timestamp submittedTo,
+                        @Param("excludeDuplicates") Boolean excludeDuplicates,
+                        @Param("searchQuery") String searchQuery,
+                        @Param("minLeadScore") Integer minLeadScore,
+                        @Param("maxLeadScore") Integer maxLeadScore,
+                        @Param("leadTier") String leadTier,
+                        @Param("assignedCounselorId") String assignedCounselorId,
+                        @Param("isUnassigned") Boolean isUnassigned,
+                        @Param("overallStatusStr") String overallStatusStr,
+                        @Param("sortBy") String sortBy,
+                        @Param("sortDirection") String sortDirection,
                         Pageable pageable);
 
         /**
@@ -243,5 +309,19 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         Optional<AudienceResponse> findByInstituteIdAndEnquiryId(
                         @Param("instituteId") String instituteId,
                         @Param("enquiryId") String enquiryId);
+
+        /**
+         * Find a non-duplicate response by audience ID and dedupe key.
+         * Used for within-campaign deduplication.
+         */
+        Optional<AudienceResponse> findFirstByAudienceIdAndDedupeKeyAndIsDuplicateFalse(
+                        String audienceId, String dedupeKey);
+
+        /**
+         * Alias for dedup service compatibility.
+         */
+        default Optional<AudienceResponse> findByAudienceIdAndDedupeKey(String audienceId, String dedupeKey) {
+                return findFirstByAudienceIdAndDedupeKeyAndIsDuplicateFalse(audienceId, dedupeKey);
+        }
 }
 

@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Pagination, PaginationContent, PaginationItem } from '@/components/ui/pagination';
 import { ChevronLeft, ChevronRight, Download, Upload, UserPlus, MessageSquare } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCampaignUsers } from '../../-hooks/useCampaignUsers';
 import {
     campaignUsersColumns,
     CampaignUserTable,
     generateDynamicColumns,
 } from './campaign-users-columns';
+import { deleteAudienceLead } from '../../-services/delete-audience-lead';
 import { convertToLocalDateTime } from '@/constants/helper';
 import { useCustomFieldSetup } from '../../-hooks/useCustomFieldSetup';
 import { CustomFieldSetupItem } from '../../-services/get-custom-field-setup';
@@ -49,6 +51,7 @@ export const CampaignUsersTable = ({
     const [showBulkImportDialog, setShowBulkImportDialog] = useState(false);
     const [showSendMessageDialog, setShowSendMessageDialog] = useState(false);
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const bulkImportCustomFields = useMemo(
         () => parseCustomFieldsFromJson(customFieldsJson),
         [customFieldsJson]
@@ -189,7 +192,7 @@ export const CampaignUsersTable = ({
         }
 
         const fieldIdsToUse = allCustomFieldsArray.length > 0 ? allCustomFieldsArray : customFields;
-        const generatedColumns = generateDynamicColumns(fieldIdsToUse, customFieldMap);
+        const generatedColumns = generateDynamicColumns(fieldIdsToUse, customFieldMap, handleDeleteLead);
         return generatedColumns;
     }, [customFields, allFieldIdsFromAllUsers, customFieldMap]);
 
@@ -287,6 +290,17 @@ export const CampaignUsersTable = ({
             last: usersResponse.last,
         };
     }, [usersResponse, allFieldIdsFromAllUsers, customFieldMap, page, pageSize]);
+
+    const handleDeleteLead = async (responseId: string) => {
+        if (!confirm('Delete this lead? This action cannot be undone.')) return;
+        try {
+            await deleteAudienceLead(responseId);
+            toast.success('Lead deleted');
+            queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
+        } catch {
+            toast.error('Failed to delete lead');
+        }
+    };
 
     const handlePageChange = (newPage: number) => {
         setPage(newPage);

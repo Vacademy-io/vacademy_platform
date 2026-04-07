@@ -154,10 +154,7 @@ public class WatiService {
 
         try {
             String jsonRequest = objectMapper.writeValueAsString(request);
-            log.info("WATI Bulk Request: template={}, receivers={}, apiUrl={}", templateName, uniqueUsers.size(), apiUrl);
-            if (log.isDebugEnabled()) {
-                log.debug("WATI Bulk Request body: {}", jsonRequest);
-            }
+            log.info("WATI Bulk Request body: {}", jsonRequest);
             String logId = externalCommunicationLogService.start(ExternalCommunicationSource.WHATSAPP, null, request);
             HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
 
@@ -219,9 +216,9 @@ public class WatiService {
                 Map.of("name", "Channel", "value", "WhatsApp"),
                 Map.of("name", "Source", "value", "Vacademy"),
                 Map.of("name", "attribute_1", "value", "-")
-                // NOTE: do NOT set contact_owner or lead_stage — these are WATI system attributes
-                // that require valid WATI user IDs / predefined enum values.
-                // Setting them to arbitrary strings (e.g. "-") causes async delivery failure.
+                // DO NOT set contact_owner — it is a WATI system attribute requiring a valid agent email.
+                // DO NOT set lead_stage — WATI system attribute with predefined values.
+                // Setting these to arbitrary values (e.g. "-") breaks template sends.
         );
 
         for (Map<String, Map<String, String>> userDetail : userDetails) {

@@ -15,7 +15,7 @@ import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.enums.CampaignStatusEnum;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
-import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceCommunication;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceCommunicationRepository;
 import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendRequest;
@@ -124,6 +124,21 @@ public class AudienceService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.admission.service.AdmissionPipelineService admissionPipelineService;
+
+    @Autowired
+    private LeadDistributionService leadDistributionService;
+
+    @Autowired
+    private LeadScoringService leadScoringService;
+
+    @Autowired
+    private LeadDeduplicationService leadDeduplicationService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.timeline.service.TimelineEventService timelineEventService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository leadScoreRepository;
 
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
@@ -679,6 +694,113 @@ public class AudienceService {
     }
 
     /**
+     * Submit a walk-in lead — simplified flow for events/fairs.
+     * Auto-sets sourceType to WALK_IN, auto-assigns the logged-in counselor.
+     * Works with zero config — no campaign settings required.
+     */
+    @Transactional
+    public SubmitLeadWithEnquiryResponseDTO submitWalkIn(WalkInRegistrationDTO walkInDTO,
+                                                          vacademy.io.common.auth.model.CustomUserDetails user) {
+        logger.info("Registering walk-in lead for audience: {}", walkInDTO.getAudienceId());
+
+        // Build parent UserDTO
+        UserDTO parentDTO = UserDTO.builder()
+                .fullName(walkInDTO.getParentName())
+                .mobileNumber(walkInDTO.getParentMobile())
+                .email(walkInDTO.getParentEmail())
+                .build();
+
+        // Build child UserDTO
+        UserDTO childDTO = UserDTO.builder()
+                .fullName(walkInDTO.getChildName())
+                .gender(walkInDTO.getChildGender())
+                .build();
+
+        // Convert to SubmitLeadWithEnquiryRequestDTO
+        SubmitLeadWithEnquiryRequestDTO requestDTO = SubmitLeadWithEnquiryRequestDTO.builder()
+                .audienceId(walkInDTO.getAudienceId())
+                .sourceType("WALK_IN")
+                .parentName(walkInDTO.getParentName())
+                .parentEmail(walkInDTO.getParentEmail())
+                .parentMobile(walkInDTO.getParentMobile())
+                .destinationPackageSessionId(walkInDTO.getDestinationPackageSessionId())
+                .counsellorId(user.getUserId()) // Auto-assign the logged-in user as counselor
+                .parentUserDTO(parentDTO)
+                .childUserDTO(childDTO)
+                .build();
+
+        SubmitLeadWithEnquiryResponseDTO response = submitLeadWithEnquiry(requestDTO);
+
+        // Log walk-in timeline event with notes if provided
+        if (walkInDTO.getNotes() != null && !walkInDTO.getNotes().isBlank()
+                && response.getAudienceResponseId() != null) {
+            try {
+                timelineEventService.logEvent(
+                        "AUDIENCE_RESPONSE", response.getAudienceResponseId(),
+                        "WALK_IN_NOTE", "COUNSELOR", user.getUserId(), user.getUsername(),
+                        "Walk-in Note", walkInDTO.getNotes(), null);
+            } catch (Exception e) {
+                logger.warn("Could not log walk-in notes to timeline: {}", e.getMessage());
+            }
+        }
+
+        logger.info("Walk-in lead registered successfully: {}", response.getAudienceResponseId());
+        return response;
+    }
+
+    /**
+     * Get lead score for a specific AudienceResponse.
+     * Returns default score if none calculated yet.
+     */
+    public LeadScoreDTO getLeadScore(String responseId) {
+        return leadScoreRepository
+                .findByAudienceResponseId(responseId)
+                .map(score -> {
+                    Object factors = null;
+                    if (score.getScoringFactorsJson() != null) {
+                        try {
+                            ObjectMapper om = new ObjectMapper();
+                            factors = om.readValue(score.getScoringFactorsJson(), Object.class);
+                        } catch (Exception e) {
+                            logger.warn("Could not parse scoring factors JSON", e);
+                        }
+                    }
+                    return LeadScoreDTO.builder()
+                            .audienceResponseId(responseId)
+                            .rawScore(score.getRawScore())
+                            .tier(score.getTier())
+                            .percentileRank(score.getPercentileRank())
+                            .scoringFactors(factors)
+                            .lastCalculatedAt(score.getLastCalculatedAt())
+                            .build();
+                })
+                .orElse(LeadScoreDTO.builder()
+                        .audienceResponseId(responseId)
+                        .rawScore(0)
+                        .tier("COLD")
+                        .build());
+    }
+
+    /**
+     * Force recalculate all lead scores for a campaign.
+     */
+    @Transactional
+    public void recalculateScoresForAudience(String audienceId) {
+        logger.info("Force recalculating all scores for audience: {}", audienceId);
+        List<AudienceResponse> responses = audienceResponseRepository.findByAudienceId(audienceId);
+        for (AudienceResponse resp : responses) {
+            try {
+                leadScoringService.recalculateScore(resp.getId());
+            } catch (Exception e) {
+                logger.error("Failed to recalculate score for response {}: {}", resp.getId(), e.getMessage());
+            }
+        }
+        // Also recalculate percentiles
+        leadScoreRepository.recalculatePercentilesForAudience(audienceId);
+        logger.info("Score recalculation complete for audience: {} ({} leads)", audienceId, responses.size());
+    }
+
+    /**
      * Submit a lead with enquiry information
      * Creates enquiry entry first, then links it to audience response
      */
@@ -767,6 +889,11 @@ public class AudienceService {
 
         // STEP 4: Create Audience Response Entry with new fields - store parent's
         // user_id and child's student_user_id
+
+        // Generate dedupe key for within-campaign deduplication
+        String dedupeKey = leadDeduplicationService.generateDedupeKey(
+                requestDTO.getParentEmail(), requestDTO.getParentMobile());
+
         AudienceResponse response = AudienceResponse.builder()
                 .audienceId(requestDTO.getAudienceId())
                 .sourceType(requestDTO.getSourceType())
@@ -779,11 +906,38 @@ public class AudienceService {
                 .parentEmail(requestDTO.getParentEmail())
                 .parentMobile(requestDTO.getParentMobile())
                 .overallStatus("ENQUIRY")
+                .dedupeKey(dedupeKey)
                 .build();
+
+        // Check for duplicate within this campaign
+        if (dedupeKey != null) {
+            java.util.Optional<AudienceResponse> existingPrimary =
+                    leadDeduplicationService.findDuplicate(requestDTO.getAudienceId(), dedupeKey);
+            if (existingPrimary.isPresent()) {
+                leadDeduplicationService.markDuplicate(response, existingPrimary.get(), requestDTO.getSourceType());
+                logger.info("Duplicate lead detected for campaign {}, primary={}",
+                        requestDTO.getAudienceId(), existingPrimary.get().getId());
+            }
+        }
 
         AudienceResponse savedResponse = audienceResponseRepository.save(response);
         logger.info("Saved audience response with ID: {} linked to enquiry: {} with parent user_id: {}",
                 savedResponse.getId(), enquiryId, parentUserId);
+
+        // STEP 4b: Calculate initial lead score (real-time)
+        try {
+            leadScoringService.calculateAndSaveScore(
+                    savedResponse.getId(),
+                    savedResponse.getAudienceId(),
+                    instituteId,
+                    savedResponse.getSourceType(),
+                    savedResponse.getEnquiryId()
+            );
+        } catch (Exception e) {
+            logger.error("Failed to calculate initial lead score for response {}: {}",
+                    savedResponse.getId(), e.getMessage());
+            // Non-blocking — lead is still saved even if scoring fails
+        }
 
         // Send Enquiry Confirmation Email
         if (audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail()) {
@@ -895,7 +1049,8 @@ public class AudienceService {
                         && campaignSettings.getCounsellorIds() != null
                         && !campaignSettings.getCounsellorIds().isEmpty()) {
 
-                    finalCounsellorId = selectRandomCounselor(campaignSettings.getCounsellorIds());
+                    finalCounsellorId = leadDistributionService.selectCounselor(
+                            campaignSettings, "AUDIENCE", audienceId, instituteId);
                     assignedFromCampaign = true;
                     logger.info("Auto-assigned counselor from Campaign Settings: {}", finalCounsellorId);
                 }
@@ -913,7 +1068,8 @@ public class AudienceService {
                         && instituteSettings.getCounsellorIds() != null
                         && !instituteSettings.getCounsellorIds().isEmpty()) {
 
-                    finalCounsellorId = selectRandomCounselor(instituteSettings.getCounsellorIds());
+                    finalCounsellorId = leadDistributionService.selectCounselor(
+                            instituteSettings, "INSTITUTE", instituteId, instituteId);
                     logger.info("Auto-assigned counselor from Institute Settings: {}", finalCounsellorId);
                 } else {
                     logger.info("No counselor assigned from Institute Settings conditions not met");
@@ -1017,8 +1173,10 @@ public class AudienceService {
     }
 
     /**
-     * Select random counselor from list
+     * @deprecated Replaced by {@link LeadDistributionService#selectCounselor}.
+     * Kept for backward compatibility — remove after confirming no external callers.
      */
+    @Deprecated
     private String selectRandomCounselor(List<String> counsellorIds) {
         if (counsellorIds == null || counsellorIds.isEmpty()) {
             return null;
@@ -1098,11 +1256,13 @@ public class AudienceService {
      */
     @Transactional(readOnly = true)
     public Page<LeadDetailDTO> getLeads(LeadFilterDTO filterDTO) {
-        // Create Pageable without sorting since the query already has ORDER BY clause
-        // Native queries don't map camelCase to snake_case automatically
         Pageable pageable = PageRequest.of(
                 filterDTO.getPage() != null ? filterDTO.getPage() : 0,
                 filterDTO.getSize() != null ? filterDTO.getSize() : 50);
+
+        // Convert list filters to comma-separated strings for native query
+        String overallStatusStr = filterDTO.getOverallStatuses() != null && !filterDTO.getOverallStatuses().isEmpty()
+                ? String.join(",", filterDTO.getOverallStatuses()) : null;
 
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
                 filterDTO.getAudienceId(),
@@ -1110,32 +1270,74 @@ public class AudienceService {
                 filterDTO.getSourceId(),
                 filterDTO.getSubmittedFromLocal(),
                 filterDTO.getSubmittedToLocal(),
+                filterDTO.getExcludeDuplicates(),
+                filterDTO.getSearchQuery(),
+                filterDTO.getMinLeadScore(),
+                filterDTO.getMaxLeadScore(),
+                filterDTO.getLeadTier(),
+                filterDTO.getAssignedCounselorId(),
+                filterDTO.getIsUnassigned(),
+                overallStatusStr,
+                filterDTO.getSortBy(),
+                filterDTO.getSortDirection(),
                 pageable);
-        // Batch fetch UserDTOs for all userIds in this page
-        Set<String> userIds = responses.getContent().stream()
+
+        List<AudienceResponse> content = responses.getContent();
+
+        // Batch fetch UserDTOs
+        Set<String> userIds = content.stream()
                 .map(AudienceResponse::getUserId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-
         Map<String, UserDTO> userIdToUser = userIds.isEmpty() ? Collections.emptyMap()
                 : authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds))
-                        .stream()
-                        .filter(Objects::nonNull)
+                        .stream().filter(Objects::nonNull)
                         .collect(Collectors.toMap(UserDTO::getId, u -> u, (a, b) -> a));
 
+        // Batch fetch lead scores
+        List<String> responseIds = content.stream().map(AudienceResponse::getId).collect(Collectors.toList());
+        Map<String, LeadScore> scoreByResponseId =
+                leadScoreRepository.findByAudienceResponseIdIn(responseIds).stream()
+                        .collect(Collectors.toMap(LeadScore::getAudienceResponseId, s -> s, (a, b) -> a));
+
+        // Batch fetch counselor assignments (enquiry_id → counselor userId)
+        List<String> enquiryIds = content.stream()
+                .map(AudienceResponse::getEnquiryId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        Map<String, String> enquiryIdToCounselor = enquiryIds.isEmpty() ? Collections.emptyMap()
+                : linkedUsersRepository.findBySourceAndSourceIdIn("ENQUIRY", enquiryIds).stream()
+                        .collect(Collectors.toMap(LinkedUsers::getSourceId, LinkedUsers::getUserId, (a, b) -> a));
+
         return responses.map(response -> {
-            // Get custom field values for this response
             Map<String, String> customFieldValues = getCustomFieldValuesForResponse(response.getId());
+            var score = scoreByResponseId.get(response.getId());
+            String counselorId = response.getEnquiryId() != null
+                    ? enquiryIdToCounselor.get(response.getEnquiryId()) : null;
 
             return LeadDetailDTO.builder()
                     .responseId(response.getId())
                     .audienceId(response.getAudienceId())
                     .userId(response.getUserId())
+                    .studentUserId(response.getStudentUserId())
                     .user(StringUtils.hasText(response.getUserId()) ? userIdToUser.get(response.getUserId()) : null)
                     .sourceType(response.getSourceType())
                     .sourceId(response.getSourceId())
                     .submittedAtLocal(response.getSubmittedAt())
                     .customFieldValues(customFieldValues)
+                    .isDuplicate(response.getIsDuplicate())
+                    .primaryResponseId(response.getPrimaryResponseId())
+                    .overallStatus(response.getOverallStatus())
+                    .conversionStatus(response.getConversionStatus())
+                    .enquiryId(response.getEnquiryId())
+                    .parentName(response.getParentName())
+                    .parentEmail(response.getParentEmail())
+                    .parentMobile(response.getParentMobile())
+                    .leadScore(score != null ? score.getRawScore() : null)
+                    .leadTier(score != null ? score.getTier() : null)
+                    .percentileRank(score != null && score.getPercentileRank() != null
+                            ? score.getPercentileRank().doubleValue() : null)
+                    .assignedCounselorId(counselorId)
                     .build();
         });
     }
@@ -1163,6 +1365,17 @@ public class AudienceService {
                 .submittedAtLocal(response.getSubmittedAt())
                 .customFieldValues(customFieldValues)
                 .build();
+    }
+
+    /**
+     * Delete a single lead (audience response) by response ID.
+     */
+    @Transactional
+    public void deleteLead(String responseId) {
+        AudienceResponse response = audienceResponseRepository.findById(responseId)
+                .orElseThrow(() -> new VacademyException("Lead not found"));
+        audienceResponseRepository.delete(response);
+        logger.info("Deleted lead: {}", responseId);
     }
 
     /**
@@ -1942,6 +2155,7 @@ public class AudienceService {
                 filterDTO.getCreatedFrom(),
                 filterDTO.getCreatedTo(),
                 filterDTO.getSearch(),
+                filterDTO.getExcludeDuplicates(),
                 pageable);
 
         logger.info("Found {} enquiries", enquiries.getTotalElements());
@@ -1995,6 +2209,11 @@ public class AudienceService {
             logger.info("Fetched custom fields for {} responses", customFieldsMap.size());
         }
 
+        // Batch fetch lead scores for all audience responses
+        Map<String, LeadScore> leadScoreMap = responseIds.isEmpty() ? Collections.emptyMap()
+                : leadScoreRepository.findByAudienceResponseIdIn(responseIds).stream()
+                        .collect(Collectors.toMap(LeadScore::getAudienceResponseId, ls -> ls, (a, b) -> a));
+
         // Batch fetch assigned counsellors from linked_users table
         Map<String, String> enquiryToCounsellorMap = enquiryIds.isEmpty() ? Collections.emptyMap()
                 : linkedUsersRepository.findBySourceAndSourceIdIn("ENQUIRY", enquiryIds)
@@ -2035,6 +2254,9 @@ public class AudienceService {
                     // Get assigned counsellor from map
                     String assignedCounsellorId = enquiryToCounsellorMap.get(enquiry.getId().toString());
 
+                    // Get lead score from map
+                    LeadScore leadScore = leadScoreMap.get(audienceResponse.getId());
+
                     return EnquiryWithResponseDTO.builder()
                             // Enquiry fields
                             .enquiryId(enquiry.getId())
@@ -2068,11 +2290,57 @@ public class AudienceService {
                             .customFields(customFields)
                             // Assigned counsellor
                             .assignedCounsellorId(assignedCounsellorId)
+                            // Deduplication
+                            .isDuplicate(audienceResponse.getIsDuplicate())
+                            .primaryResponseId(audienceResponse.getPrimaryResponseId())
+                            // Lead score
+                            .leadScore(leadScore != null ? leadScore.getRawScore() : null)
+                            .leadTier(leadScore != null ? leadScore.getTier() : null)
+                            .percentileRank(leadScore != null && leadScore.getPercentileRank() != null
+                                    ? leadScore.getPercentileRank().doubleValue() : null)
                             .build();
                 })
                 .collect(Collectors.toList());
 
-        return new PageImpl<>(dtos, pageable, enquiries.getTotalElements());
+        // Post-fetch: filter by lead tier (requires lead_score join not available in JPQL query)
+        String leadTier = filterDTO.getLeadTier();
+        List<EnquiryWithResponseDTO> filteredDtos = dtos;
+        if (leadTier != null && !leadTier.isBlank()) {
+            filteredDtos = dtos.stream().filter(dto -> {
+                Integer score = dto.getLeadScore();
+                if (score == null) return false;
+                return switch (leadTier.toUpperCase()) {
+                    case "HOT"  -> score >= 80;
+                    case "WARM" -> score >= 50 && score < 80;
+                    case "COLD" -> score < 50;
+                    default -> true;
+                };
+            }).collect(Collectors.toList());
+        }
+
+        // Post-fetch: sort by lead score if requested
+        String sortBy = filterDTO.getSortBy();
+        if ("LEAD_SCORE".equalsIgnoreCase(sortBy)) {
+            boolean desc = !"ASC".equalsIgnoreCase(filterDTO.getSortDirection());
+            filteredDtos.sort((a, b) -> {
+                int sa = a.getLeadScore() != null ? a.getLeadScore() : 0;
+                int sb = b.getLeadScore() != null ? b.getLeadScore() : 0;
+                return desc ? Integer.compare(sb, sa) : Integer.compare(sa, sb);
+            });
+        } else if ("PARENT_NAME".equalsIgnoreCase(sortBy)) {
+            boolean desc = "DESC".equalsIgnoreCase(filterDTO.getSortDirection());
+            filteredDtos.sort((a, b) -> {
+                String na = a.getParentName() != null ? a.getParentName() : "";
+                String nb = b.getParentName() != null ? b.getParentName() : "";
+                return desc ? nb.compareToIgnoreCase(na) : na.compareToIgnoreCase(nb);
+            });
+        }
+
+        long totalElements = leadTier != null && !leadTier.isBlank()
+                ? filteredDtos.size()
+                : enquiries.getTotalElements();
+
+        return new PageImpl<>(filteredDtos, pageable, totalElements);
     }
 
     /**

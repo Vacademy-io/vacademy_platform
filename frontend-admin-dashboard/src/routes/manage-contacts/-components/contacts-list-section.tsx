@@ -8,22 +8,23 @@ import { DashboardLoader, ErrorBoundary } from '@/components/core/dashboard-load
 import RootErrorComponent from '@/components/core/deafult-error';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
-import { StudentSidebarContext } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
-import { StudentTable } from '@/types/student-table-types';
 import { ContactUser } from '../-types/contact-types';
 import { getContactColumns } from './contacts-table-columns';
 import EmptyStudentListImage from '@/assets/svgs/empty-students-image.svg';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
+import { useLeadSettings } from '@/hooks/use-lead-settings';
 
 export const ContactsListSection = () => {
     const { setNavHeading } = useNavHeadingStore();
     const filters = useContactFilters();
     const { contactTableData, isLoading, error, handleSort, handlePageChange, page } =
         useContactTable(filters.appliedFilters, filters.setAppliedFilters);
-    const [selectedStudent, setSelectedStudent] = useState<StudentTable | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const tableRef = useRef<HTMLDivElement>(null);
+
+    const leadSettings = useLeadSettings();
+    const showLeadScore = leadSettings.enabled && leadSettings.showScoreInContactsTable;
 
     useEffect(() => {
         setNavHeading(<h1 className="text-lg">Contacts</h1>);
@@ -72,7 +73,7 @@ export const ContactsListSection = () => {
     if (error) return <RootErrorComponent />;
 
     // Columns
-    const columns = getContactColumns(handleSort);
+    const columns = getContactColumns(handleSort, showLeadScore);
 
     return (
         <ErrorBoundary>

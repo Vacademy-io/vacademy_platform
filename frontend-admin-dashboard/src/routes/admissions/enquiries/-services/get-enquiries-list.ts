@@ -61,7 +61,8 @@ export interface EnquiryItem {
     created_by_user_id?: string;
     to_notify?: string;
     send_respondent_email?: boolean;
-    institute_custom_fields?: any[];
+    institute_custom_fields?: Record<string, unknown>[];
+    session_id?: string | null;
 }
 
 const fetchEnquiriesList = async (payload: EnquiryListRequest): Promise<EnquiryListResponse> => {
@@ -75,15 +76,7 @@ const fetchEnquiriesList = async (payload: EnquiryListRequest): Promise<EnquiryL
 
 export const handleFetchEnquiriesList = (payload: EnquiryListRequest) => {
     return {
-        queryKey: [
-            'enquiriesList',
-            payload.institute_id,
-            payload.page,
-            payload.size,
-            payload.campaign_name,
-            payload.status,
-            payload.campaign_type,
-        ],
+        queryKey: ['enquiriesList', payload],
         queryFn: async () => {
             const data = await fetchEnquiriesList(payload);
             return data;

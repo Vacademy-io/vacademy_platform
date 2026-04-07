@@ -33,6 +33,7 @@ public class EnquiryRepositoryCustomImpl implements EnquiryRepositoryCustom {
             Timestamp createdFrom,
             Timestamp createdTo,
             String search,
+            Boolean excludeDuplicates,
             Pageable pageable) {
 
         boolean hasSearch = StringUtils.hasText(search);
@@ -90,6 +91,11 @@ public class EnquiryRepositoryCustomImpl implements EnquiryRepositoryCustom {
                             "   OR (s IS NOT NULL AND LOWER(s.fullName) LIKE :search)" +
                             " )");
             parameters.put("search", searchPattern);
+        }
+
+        // Exclude duplicate leads when requested
+        if (Boolean.TRUE.equals(excludeDuplicates)) {
+            jpql.append(" AND (ar.isDuplicate IS NULL OR ar.isDuplicate = false)");
         }
 
         jpql.append(")");

@@ -51,6 +51,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     enrollDerollTab: false,
     enquiryTab: false,
     applicationTab: false,
+    leadTab: false,
 };
 
 const STUDENT_SIDE_VIEW_OPTIONS: Array<{
@@ -114,6 +115,11 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
         key: 'applicationTab',
         label: 'Application Tab',
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.applicationTab,
+    },
+    {
+        key: 'leadTab',
+        label: 'Lead Profile Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.leadTab,
     },
 ];
 

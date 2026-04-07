@@ -52,7 +52,15 @@ export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/in
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
+export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
+export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
+export const GET_USER_LEAD_PROFILES_BATCH = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profiles/batch`;
+export const MARK_LEAD_CONVERTED = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile/mark-converted`;
+export const GET_USER_AUDIENCES = `${BASE_URL}/admin-core-service/v1/audience/user-audiences`;
+export const GET_CROSS_STAGE_TIMELINE = `${BASE_URL}/admin-core-service/timeline/v1/student`;
+export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;
 export const BULK_SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit`;

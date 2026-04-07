@@ -24,4 +24,15 @@ public interface LinkedUsersRepository extends JpaRepository<LinkedUsers, UUID> 
      * Used to fetch assigned counsellors for multiple enquiries at once.
      */
     List<LinkedUsers> findBySourceAndSourceIdIn(String source, List<String> sourceIds);
+
+    /**
+     * Count the number of active lead assignments for a specific counselor.
+     * Used by LeadDistributionService for LEAST_LOADED and workload cap.
+     */
+    long countBySourceAndUserId(String source, String userId);
+
+    /**
+     * Find all linked users for a specific user (all leads assigned to a counselor).
+     */
+    List<LinkedUsers> findBySourceAndUserId(String source, String userId);
 }

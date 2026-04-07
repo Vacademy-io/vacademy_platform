@@ -103,6 +103,7 @@ export const enum SettingsTabs {
     SchoolSettings = 'schoolSettings',
     WhiteLabel = 'whiteLabel',
     WhatsApp = 'whatsapp',
+    LeadSettings = 'leadSettings',
 }
 
 export const DAYS_IN_MONTH = 30;

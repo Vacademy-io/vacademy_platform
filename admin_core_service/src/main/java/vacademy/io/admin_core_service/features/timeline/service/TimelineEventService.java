@@ -29,11 +29,24 @@ public class TimelineEventService {
 
         /**
          * Internal method to log a timeline event from other services.
+         * studentUserId is optional — pass null for non-student-linked events.
          */
         @Transactional
         public void logEvent(String type, String typeId, String actionType,
                         String actorType, String actorId, String actorName,
                         String title, String description, Object metadata) {
+                logEvent(type, typeId, actionType, actorType, actorId, actorName,
+                        title, description, metadata, null);
+        }
+
+        /**
+         * Internal method to log a timeline event with optional student user ID for cross-stage continuity.
+         */
+        @Transactional
+        public void logEvent(String type, String typeId, String actionType,
+                        String actorType, String actorId, String actorName,
+                        String title, String description, Object metadata,
+                        String studentUserId) {
 
                 String metadataJson = null;
                 if (metadata != null) {
@@ -54,6 +67,7 @@ public class TimelineEventService {
                                 .title(title)
                                 .description(description)
                                 .metadataJson(metadataJson)
+                                .studentUserId(studentUserId)
                                 .build();
 
                 timelineEventRepository.save(event);
@@ -62,14 +76,14 @@ public class TimelineEventService {
 
         /**
          * Create a manual timeline event (used by the controller for frontend-submitted
-         * actions).
+         * actions like notes, call logs, follow-ups).
          */
         @Transactional
         public TimelineEventDTO createManualEvent(TimelineEventRequestDTO request, CustomUserDetails user) {
 
                 String actorId = user.getUserId();
-                String actorName = user.getUsername(); // Can also be full name depending on what's available
-                String actorType = "ADMIN"; // For now assume ADMIN or system user, could customize based on roles
+                String actorName = user.getUsername();
+                String actorType = "ADMIN";
 
                 String metadataJson = null;
                 if (request.getMetadata() != null) {
@@ -90,6 +104,8 @@ public class TimelineEventService {
                                 .title(request.getTitle())
                                 .description(request.getDescription())
                                 .metadataJson(metadataJson)
+                                .isPinned(request.getIsPinned() != null ? request.getIsPinned() : false)
+                                .studentUserId(request.getStudentUserId())
                                 .build();
 
                 TimelineEvent savedEvent = timelineEventRepository.save(event);
@@ -97,7 +113,7 @@ public class TimelineEventService {
         }
 
         /**
-         * Fetch timeline events for an entity.
+         * Fetch timeline events for an entity (original — backward compatible).
          */
         @Transactional(readOnly = true)
         public Page<TimelineEventDTO> getTimelineEvents(String type, String typeId, Pageable pageable) {
@@ -106,12 +122,45 @@ public class TimelineEventService {
                 return events.map(this::mapToDTO);
         }
 
+        /**
+         * Fetch timeline events for an entity, with pinned notes first.
+         */
+        @Transactional(readOnly = true)
+        public Page<TimelineEventDTO> getTimelineEventsWithPinnedFirst(String type, String typeId, Pageable pageable) {
+                Page<TimelineEvent> events = timelineEventRepository
+                                .findByTypeAndTypeIdOrderByIsPinnedDescCreatedAtDesc(type, typeId, pageable);
+                return events.map(this::mapToDTO);
+        }
+
+        /**
+         * Fetch ALL timeline events for a student across all stages (cross-stage notes).
+         * Pinned notes appear first.
+         */
+        @Transactional(readOnly = true)
+        public Page<TimelineEventDTO> getCrossStageTimeline(String studentUserId, Pageable pageable) {
+                Page<TimelineEvent> events = timelineEventRepository
+                                .findByStudentUserIdOrderByIsPinnedDescCreatedAtDesc(studentUserId, pageable);
+                return events.map(this::mapToDTO);
+        }
+
+        /**
+         * Toggle pin status on a timeline event.
+         * Returns the updated event.
+         */
+        @Transactional
+        public TimelineEventDTO togglePin(String eventId) {
+                TimelineEvent event = timelineEventRepository.findById(eventId)
+                                .orElseThrow(() -> new VacademyException("Timeline event not found: " + eventId));
+
+                event.setIsPinned(event.getIsPinned() != null ? !event.getIsPinned() : true);
+                TimelineEvent saved = timelineEventRepository.save(event);
+                return mapToDTO(saved);
+        }
+
         private TimelineEventDTO mapToDTO(TimelineEvent event) {
                 Object metadata = null;
                 if (event.getMetadataJson() != null) {
                         try {
-                                // Parse the JSON string back to a generic object/map so the frontend receives
-                                // real JSON instead of a string
                                 metadata = objectMapper.readValue(event.getMetadataJson(), Object.class);
                         } catch (JsonProcessingException e) {
                                 logger.error("Failed to deserialize metadata JSON", e);
@@ -129,6 +178,8 @@ public class TimelineEventService {
                                 .title(event.getTitle())
                                 .description(event.getDescription())
                                 .metadata(metadata)
+                                .isPinned(event.getIsPinned() != null ? event.getIsPinned() : false)
+                                .studentUserId(event.getStudentUserId())
                                 .createdAt(event.getCreatedAt())
                                 .build();
         }

@@ -81,6 +81,21 @@ public class AudienceResponse {
     @Column(name = "overall_status", length = 50)
     private String overallStatus;
 
+    // ── Deduplication fields ──────────────────────────────────
+
+    /** SHA-256 hash of normalized email+phone for dedup within campaign */
+    @Column(name = "dedupe_key", length = 64)
+    private String dedupeKey;
+
+    /** True if this response is a known duplicate of another */
+    @Column(name = "is_duplicate")
+    @Builder.Default
+    private Boolean isDuplicate = false;
+
+    /** If duplicate, references the primary/original response ID */
+    @Column(name = "primary_response_id")
+    private String primaryResponseId;
+
     /**
      * Constructor from DTO
      */

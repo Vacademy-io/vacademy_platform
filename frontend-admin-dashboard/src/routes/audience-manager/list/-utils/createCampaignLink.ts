@@ -17,7 +17,11 @@ export const createCampaignLink = (
 
     const instituteId = getCurrentInstituteId();
 
-    const portalBase = learnerPortalBaseUrl || DEFAULT_LEARNER_PORTAL_URL;
+    const rawBase = learnerPortalBaseUrl || DEFAULT_LEARNER_PORTAL_URL;
+    const portalBase =
+        rawBase.startsWith('http://') || rawBase.startsWith('https://')
+            ? rawBase
+            : `https://${rawBase}`;
     const encodedInstitute = encodeURIComponent(instituteId || '');
     const encodedCampaign = encodeURIComponent(campaignId);
 

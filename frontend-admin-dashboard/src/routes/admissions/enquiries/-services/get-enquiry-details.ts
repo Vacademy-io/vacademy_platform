@@ -44,7 +44,7 @@ export interface EnquiryDetails {
     mode: string;
     interest_score: number | null;
     notes: string | null;
-    checklist: any | null;
+    checklist: unknown | null;
     enquiry_created_at: string;
     enquiry_updated_at: string;
     parent: EnquiryDetailParent;
@@ -58,6 +58,12 @@ export interface EnquiryDetails {
     campaign: EnquiryDetailCampaign;
     assigned_counselor: string | null;
     custom_fields: Record<string, string>;
+    // Phase 1 — lead score + dedup (populated when backend returns them)
+    lead_score?: number | null;
+    lead_tier?: string | null;
+    percentile_rank?: number | null;
+    is_duplicate?: boolean | null;
+    primary_response_id?: string | null;
 }
 
 export const fetchEnquiryDetails = async (enquiryId: string): Promise<EnquiryDetails> => {

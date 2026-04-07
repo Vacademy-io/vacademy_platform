@@ -28,9 +28,18 @@ const testInputFieldSchema = z.object({
 
 const counsellorSettingsDataSchema = z.object({
     autoAssignEnabled: z.boolean(),
-    assignmentStrategy: z.enum(['round_robin', 'in_order']),
+    assignmentStrategy: z.enum([
+        'round_robin',
+        'in_order',
+        'RANDOM',
+        'ROUND_ROBIN',
+        'WEIGHTED_ROUND_ROBIN',
+        'PERFORMANCE_BASED',
+        'LEAST_LOADED',
+    ]),
     allowParentSelection: z.boolean(),
     counsellorIds: z.array(z.string()),
+    maxActiveLeadsPerCounselor: z.number().optional(),
 });
 
 const counsellorSettingsSchema = z.object({

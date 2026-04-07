@@ -86,6 +86,11 @@ export interface ContactUser {
     parents_to_mother_email?: string;
     linked_institute_name?: string;
     custom_fields_map?: Record<string, string | null>;
+
+    // Lead profile data (populated by backend when lead system is active)
+    lead_score?: number | null;
+    lead_tier?: string | null;
+    lead_conversion_status?: string | null;
 }
 
 export interface ContactListResponse {

@@ -2,7 +2,10 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useState, useEffect, useMemo } from 'react';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
-import { handleFetchEnquiriesList } from './-services/get-enquiries-list';
+import {
+    handleFetchEnquiriesList,
+    EnquiryItem as EnquiryListItem,
+} from './-services/get-enquiries-list';
 import {
     Select,
     SelectContent,
@@ -14,7 +17,7 @@ import { Card } from '@/components/ui/card';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { EnquiryTable } from './-components/EnquiryTable';
 import { MyButton } from '@/components/design-system/button';
-import { Copy, Plus, X, UserPlus } from 'lucide-react';
+import { Copy, Plus, X, Monitor } from 'lucide-react';
 import createCampaignLink from '@/routes/audience-manager/list/-utils/createCampaignLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { FilterChips } from '@/components/design-system/chips';
@@ -25,6 +28,10 @@ import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { CreateEnquiryDialog } from './-components/create-enquiry-dialog/CreateEnquiryDialog';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 export const Route = createFileRoute('/admissions/enquiries/')({
     component: RouteComponent,
 });
@@ -57,6 +64,12 @@ const SOURCE_TYPES = [
     { id: 'INSTAGRAM', label: 'Instagram' },
     { id: 'REFERRAL', label: 'Referral' },
     { id: 'OTHER', label: 'Other' },
+];
+
+const LEAD_TIERS = [
+    { id: 'HOT', label: '🔴 HOT' },
+    { id: 'WARM', label: '🟡 WARM' },
+    { id: 'COLD', label: '🔵 COLD' },
 ];
 
 // Helper function to calculate date range
@@ -103,7 +116,7 @@ const getDateRange = (rangeValue: string) => {
 function EnquiryPage() {
     const { data: instituteData } = useSuspenseQuery(useInstituteQuery());
     const [selectedEnquiryId, setSelectedEnquiryId] = useState<string>('');
-    const [selectedEnquiry, setSelectedEnquiry] = useState<any>(null);
+    const [selectedEnquiry, setSelectedEnquiry] = useState<EnquiryListItem | null>(null);
     const { instituteDetails } = useInstituteDetailsStore();
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
@@ -116,8 +129,15 @@ function EnquiryPage() {
     >([]);
     const [searchInput, setSearchInput] = useState('');
     const [searchFilter, setSearchFilter] = useState('');
+    // Phase 1 filters
+    const [tierFilter, setTierFilter] = useState('');
+    const [showDuplicates, setShowDuplicates] = useState(true);
+    const [sortBy, setSortBy] = useState('');
+    const [sortDirection, setSortDirection] = useState('DESC');
+    const [isWalkInOpen, setIsWalkInOpen] = useState(false);
     const { setNavHeading } = useNavHeadingStore();
     const navigate = useNavigate();
+    const leadSettings = useLeadSettings();
 
     // Fetch all enquiries (campaigns)
     const { data: enquiriesData, refetch: refetchEnquiries } = useSuspenseQuery(
@@ -131,7 +151,7 @@ function EnquiryPage() {
     const enquiries = useMemo(
         () =>
             (enquiriesData?.content || []).filter(
-                (enquiry: any) => enquiry.session_id !== null && enquiry.session_id !== undefined
+                (enquiry) => enquiry.session_id !== null && enquiry.session_id !== undefined
             ),
         [enquiriesData?.content]
     );
@@ -143,7 +163,7 @@ function EnquiryPage() {
     useEffect(() => {
         if (enquiries.length > 0 && !selectedEnquiryId) {
             setSelectedEnquiryId(enquiries[0]?.id || '');
-            setSelectedEnquiry(enquiries[0]);
+            setSelectedEnquiry(enquiries[0] ?? null);
         }
     }, [enquiries, selectedEnquiryId]);
 
@@ -206,7 +226,9 @@ function EnquiryPage() {
         sourceFilters.length > 0 ||
         dateRangeFilters.length > 0 ||
         packageSessionFilters.length > 0 ||
-        searchFilter.length > 0;
+        searchFilter.length > 0 ||
+        tierFilter.length > 0 ||
+        sortBy.length > 0;
 
     const clearAllFilters = () => {
         setStatusFilters([]);
@@ -215,6 +237,9 @@ function EnquiryPage() {
         setPackageSessionFilters([]);
         setSearchInput('');
         setSearchFilter('');
+        setTierFilter('');
+        setSortBy('');
+        setSortDirection('DESC');
     };
 
     return (
@@ -265,6 +290,20 @@ function EnquiryPage() {
                         Copy Form Link
                         <Copy />
                     </MyButton>
+                    {leadSettings.enabled && (
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => setIsWalkInOpen(true)}
+                            className="h-full"
+                            title="Open walk-in registration form"
+                            aria-label="Open walk-in registration form"
+                            disabled={!selectedEnquiryId}
+                        >
+                            Walk-in Register
+                            <Monitor className="ml-1 size-4" />
+                        </MyButton>
+                    )}
                 </div>
             </div>
 
@@ -366,9 +405,80 @@ function EnquiryPage() {
                         className="h-8 px-3"
                         onClick={() => setSearchFilter(searchInput)}
                     >
-                        <Search className="h-4 w-4" />
+                        <Search className="size-4" />
                     </Button>
                 </div>
+
+                {/* Lead Tier Filter — only shown when lead system is enabled */}
+                {leadSettings.enabled && (
+                    <div className="flex items-center gap-1">
+                        {LEAD_TIERS.map((tier) => (
+                            <button
+                                key={tier.id}
+                                onClick={() => setTierFilter(tierFilter === tier.id ? '' : tier.id)}
+                                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                    tierFilter === tier.id
+                                        ? tier.id === 'HOT'
+                                            ? 'bg-red-500 text-white'
+                                            : tier.id === 'WARM'
+                                              ? 'bg-amber-500 text-white'
+                                              : 'bg-blue-500 text-white'
+                                        : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                                }`}
+                            >
+                                {tier.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {/* Sort By */}
+                <Select
+                    value={sortBy || 'none'}
+                    onValueChange={(v) => {
+                        if (v === 'none') {
+                            setSortBy('');
+                        } else if (v === sortBy) {
+                            setSortDirection((d) => (d === 'ASC' ? 'DESC' : 'ASC'));
+                        } else {
+                            setSortBy(v);
+                            // Names default ASC (A→Z); scores/dates default DESC (highest/newest first)
+                            setSortDirection(v === 'PARENT_NAME' ? 'ASC' : 'DESC');
+                        }
+                    }}
+                >
+                    <SelectTrigger className="h-8 w-[180px] text-xs">
+                        <SelectValue placeholder="Sort by..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="none">Default Order</SelectItem>
+                        <SelectItem value="SUBMITTED_AT">Date Submitted</SelectItem>
+                        {leadSettings.enabled && (
+                            <SelectItem value="LEAD_SCORE">
+                                Lead Score{' '}
+                                {sortBy === 'LEAD_SCORE' ? (sortDirection === 'DESC' ? '↓' : '↑') : ''}
+                            </SelectItem>
+                        )}
+                        <SelectItem value="PARENT_NAME">
+                            Parent Name{' '}
+                            {sortBy === 'PARENT_NAME' ? (sortDirection === 'DESC' ? '↓' : '↑') : ''}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+
+                {/* Show Duplicates Toggle — only shown when lead system is enabled */}
+                {leadSettings.enabled && (
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            id="show-duplicates"
+                            checked={showDuplicates}
+                            onCheckedChange={setShowDuplicates}
+                        />
+                        <Label htmlFor="show-duplicates" className="text-xs text-neutral-600">
+                            Show duplicates
+                        </Label>
+                    </div>
+                )}
 
                 {hasActiveFilters && (
                     <MyButton
@@ -377,7 +487,7 @@ function EnquiryPage() {
                         onClick={clearAllFilters}
                         className="h-8 px-2 text-xs"
                     >
-                        <X className="mr-1 h-3 w-3" />
+                        <X className="mr-1 size-3" />
                         Clear All
                     </MyButton>
                 )}
@@ -394,6 +504,10 @@ function EnquiryPage() {
                     packageSessionFilter={packageSessionFilter}
                     dateRangeFilter={dateRange}
                     searchFilter={searchFilter}
+                    leadTierFilter={tierFilter || undefined}
+                    excludeDuplicates={showDuplicates ? undefined : true}
+                    sortBy={sortBy || undefined}
+                    sortDirection={sortBy ? sortDirection : undefined}
                 />
             )}
 
@@ -407,7 +521,7 @@ function EnquiryPage() {
             )}
 
             {/* Disconnected Create Button */}
-            <div className="fixed bottom-8 right-8 z-[50]">
+            <div className="fixed bottom-8 right-8 z-50">
                 <Button
                     onClick={() => setIsCreateDialogOpen(true)}
                     className="h-12 rounded-full bg-[#f37033] px-6 text-white shadow-xl transition-all hover:-translate-y-1 hover:bg-[#d65f29] hover:shadow-2xl md:h-14"
@@ -419,6 +533,26 @@ function EnquiryPage() {
 
             {/* Create Enquiry Dialog */}
             <CreateEnquiryDialog isOpen={isCreateDialogOpen} onClose={handleCreateSuccess} />
+
+            {/* Walk-in Registration Sheet */}
+            <Sheet open={isWalkInOpen} onOpenChange={setIsWalkInOpen}>
+                <SheetContent side="right" className="w-full max-w-2xl p-0 sm:max-w-2xl">
+                    <SheetHeader className="border-b px-6 py-4">
+                        <SheetTitle>Walk-in Registration</SheetTitle>
+                    </SheetHeader>
+                    {selectedEnquiryId && (
+                        <iframe
+                            src={createCampaignLink(
+                                selectedEnquiryId,
+                                instituteDetails?.learner_portal_base_url,
+                                true
+                            )}
+                            className="h-[calc(100vh-70px)] w-full border-0"
+                            title="Walk-in Registration Form"
+                        />
+                    )}
+                </SheetContent>
+            </Sheet>
         </div>
     );
 }

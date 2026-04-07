@@ -135,6 +135,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         enrollDerollTab: false,
         enquiryTab: false,
         applicationTab: false,
+        leadTab: false,
     },
     learnerManagement: {
         allowPortalAccess: true,

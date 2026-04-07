@@ -25,7 +25,7 @@ export interface EnquiryUser {
 
 export interface EnquiryItem {
     enquiry_id: string;
-    checklist?: any | null;
+    checklist?: unknown | null;
     enquiry_status: string;
     convertion_status: string;
     reference_source?: string | null;
@@ -51,6 +51,13 @@ export interface EnquiryItem {
     child_user: EnquiryUser;
     custom_fields: Record<string, string>;
     assigned_counsellor_id?: string | null;
+    // Deduplication
+    is_duplicate?: boolean | null;
+    primary_response_id?: string | null;
+    // Lead score
+    lead_score?: number | null;
+    lead_tier?: string | null;
+    percentile_rank?: number | null;
 }
 
 export interface EnquiriesResponse {
@@ -73,6 +80,15 @@ export interface EnquiriesRequest {
     search?: string;
     page: number;
     size: number;
+    // Phase 1 filters
+    lead_tier?: string;
+    assigned_counselor_id?: string;
+    exclude_duplicates?: boolean;
+    min_lead_score?: number;
+    max_lead_score?: number;
+    overall_statuses?: string[];
+    sort_by?: string;
+    sort_direction?: string;
 }
 
 export const fetchEnquiries = async (payload: EnquiriesRequest): Promise<EnquiriesResponse> => {
@@ -96,6 +112,14 @@ export const fetchEnquiries = async (payload: EnquiriesRequest): Promise<Enquiri
                     search: payload.search || undefined,
                     page: payload.page,
                     size: payload.size,
+                    lead_tier: payload.lead_tier || undefined,
+                    assigned_counselor_id: payload.assigned_counselor_id || undefined,
+                    exclude_duplicates: payload.exclude_duplicates,
+                    min_lead_score: payload.min_lead_score,
+                    max_lead_score: payload.max_lead_score,
+                    overall_statuses: payload.overall_statuses,
+                    sort_by: payload.sort_by || undefined,
+                    sort_direction: payload.sort_direction || undefined,
                 }),
             }
         );
@@ -113,18 +137,7 @@ export const fetchEnquiries = async (payload: EnquiriesRequest): Promise<Enquiri
 
 export const handleFetchEnquiries = (payload: EnquiriesRequest) => {
     return {
-        queryKey: [
-            'enquiries',
-            payload.audience_id,
-            payload.page,
-            payload.size,
-            payload.status,
-            payload.source,
-            payload.destination_package_session_id,
-            payload.created_from,
-            payload.created_to,
-            payload.search,
-        ],
+        queryKey: ['enquiries', payload],
         queryFn: () => fetchEnquiries(payload),
         staleTime: 60 * 1000, // 1 minute
     };

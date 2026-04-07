@@ -5,6 +5,8 @@ import { format } from 'date-fns';
 import { TimelinePanel } from './timeline-panel';
 import { toast } from 'sonner';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { AlertTriangle } from 'lucide-react';
 
 const InfoRow = ({ label, value }: { label: string; value: string | null | undefined }) => (
     <div className="flex flex-col gap-0.5 border-b border-neutral-100 py-2 last:border-0">
@@ -94,6 +96,19 @@ export const EnquiryDetails = ({ enquiryId }: { enquiryId: string | null }) => {
 
     return (
         <div className="flex flex-col gap-4">
+            {/* Duplicate Banner */}
+            {data.is_duplicate && (
+                <div className="flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    <span>This is a duplicate lead.</span>
+                    {data.primary_response_id && (
+                        <span className="ml-auto text-xs font-medium text-orange-600">
+                            Primary: {data.primary_response_id.slice(0, 8)}…
+                        </span>
+                    )}
+                </div>
+            )}
+
             {/* Header Card */}
             <div className="rounded-xl border border-neutral-100 bg-gradient-to-r from-neutral-50 to-primary-50/20 p-4 shadow-sm">
                 {/* Tracking ID */}
@@ -172,7 +187,14 @@ export const EnquiryDetails = ({ enquiryId }: { enquiryId: string | null }) => {
             <SectionCard title="Enquiry Info">
                 <InfoRow label="Mode" value={data.mode} />
                 <InfoRow label="Reference Source" value={data.reference_source} />
-                <InfoRow label="Interest Score" value={data.interest_score?.toString()} />
+                {(data.lead_score != null || data.interest_score != null) && (
+                    <div className="flex flex-col gap-0.5 border-b border-neutral-100 py-2 last:border-0">
+                        <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                            Lead Interest Score
+                        </span>
+                        <LeadScoreBadge score={data.lead_score ?? data.interest_score} size="md" />
+                    </div>
+                )}
                 <InfoRow label="Fee Range Expectation" value={data.fee_range_expectation} />
                 <InfoRow label="Transport Requirement" value={data.transport_requirement} />
                 <InfoRow label="Current Stage" value={data.current_stage_name} />

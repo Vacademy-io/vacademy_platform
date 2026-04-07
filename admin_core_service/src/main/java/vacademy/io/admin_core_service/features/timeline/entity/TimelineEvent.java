@@ -53,6 +53,15 @@ public class TimelineEvent {
         @Column(name = "metadata_json", columnDefinition = "jsonb")
         private String metadataJson;
 
+        /** Whether this event/note is pinned to the top of the timeline */
+        @Column(name = "is_pinned")
+        @Builder.Default
+        private Boolean isPinned = false;
+
+        /** Student user ID for cross-stage note continuity (query all notes for a student regardless of stage) */
+        @Column(name = "student_user_id")
+        private String studentUserId;
+
         @Column(name = "created_at", insertable = false, updatable = false)
         private Timestamp createdAt;
 }

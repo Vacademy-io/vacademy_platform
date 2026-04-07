@@ -25,5 +25,7 @@ public class TimelineEventDTO {
         private String title;
         private String description;
         private Object metadata; // Will hold parsed JSON from DB
+        private Boolean isPinned;
+        private String studentUserId;
         private Timestamp createdAt;
 }

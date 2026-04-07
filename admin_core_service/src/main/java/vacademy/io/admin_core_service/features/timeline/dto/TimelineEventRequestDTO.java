@@ -30,4 +30,10 @@ public class TimelineEventRequestDTO {
         private String description;
 
         private Object metadata; // Arbitrary JSON data
+
+        /** Optional — pin this event to the top of the timeline */
+        private Boolean isPinned;
+
+        /** Optional — link this event to a student for cross-stage visibility */
+        private String studentUserId;
 }

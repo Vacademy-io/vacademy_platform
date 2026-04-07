@@ -61,4 +61,13 @@ public class EnquiryWithResponseDTO {
 
     // Assigned counsellor user ID from linked_users table
     private String assignedCounsellorId;
+
+    // ── Deduplication ──
+    private Boolean isDuplicate;
+    private String primaryResponseId;
+
+    // ── Lead Score (from lead_score table) ──
+    private Integer leadScore;
+    private String leadTier;          // HOT / WARM / COLD
+    private Double percentileRank;
 }

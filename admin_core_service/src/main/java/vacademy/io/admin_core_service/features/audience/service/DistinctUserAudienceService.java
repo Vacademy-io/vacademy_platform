@@ -26,6 +26,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import vacademy.io.admin_core_service.features.audience.dto.UserLeadProfileDTO;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldValueMap;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
@@ -59,6 +60,9 @@ public class DistinctUserAudienceService {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private UserLeadProfileService userLeadProfileService;
 
     /**
      * Get all users for an institute (from both institute users and audience respondents)
@@ -174,6 +178,11 @@ public class DistinctUserAudienceService {
             logger.info("Enrollment filters active but no matches, {} audience-only users remain", allUserIds.size());
         }
 
+        // Step 6.6: Batch fetch lead profiles for all users
+        Map<String, UserLeadProfileDTO> leadProfilesByUserId = userLeadProfileService
+                .getProfilesForUsers(new ArrayList<>(allUserIds));
+        logger.info("Fetched lead profiles for {} users", leadProfilesByUserId.size());
+
         // Step 7: Build response DTOs
         List<UserWithCustomFieldsDTO> users = new ArrayList<>();
         for (String userId : allUserIds) {
@@ -187,6 +196,14 @@ public class DistinctUserAudienceService {
                     .isInstituteUser(instituteUserIdSet.contains(userId))
                     .isAudienceRespondent(audienceRespondentUserIdSet.contains(userId))
                     .customFields(userIdToCustomFields.getOrDefault(userId, new ArrayList<>()));
+
+            // Enrich with lead profile data
+            UserLeadProfileDTO leadProfile = leadProfilesByUserId.get(userId);
+            if (leadProfile != null) {
+                builder.leadScore(leadProfile.getBestScore())
+                       .leadTier(leadProfile.getLeadTier())
+                       .leadConversionStatus(leadProfile.getConversionStatus());
+            }
 
             // Enrich with v2 data for institute users
             StudentListV2Projection v2Data = v2DataByUserId.get(userId);
@@ -541,6 +558,9 @@ public class DistinctUserAudienceService {
                 break;
             case "mobile_number":
                 comparator = Comparator.comparing(u -> u.getUser() != null && u.getUser().getMobileNumber() != null ? u.getUser().getMobileNumber() : "");
+                break;
+            case "lead_score":
+                comparator = Comparator.comparing(u -> u.getLeadScore() != null ? u.getLeadScore() : 0);
                 break;
             default:
                 // Since createdAt is not available in UserDTO, sort by userId as fallback

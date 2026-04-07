@@ -19,5 +19,6 @@ public interface EnquiryRepositoryCustom {
             Timestamp createdFrom,
             Timestamp createdTo,
             String search,
+            Boolean excludeDuplicates,
             Pageable pageable);
 }

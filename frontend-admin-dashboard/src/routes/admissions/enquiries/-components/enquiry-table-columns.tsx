@@ -10,7 +10,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { CustomFieldSetupItem } from '@/routes/audience-manager/list/-services/get-custom-field-setup';
 import { CounsellorNameCell } from './CounsellorNameCell';
-import { toast } from 'sonner';
+import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { DuplicateBadge } from '@/components/shared/duplicate-badge';
 
 // Helper function to generate key from name
 const generateKeyFromName = (name: string): string =>
@@ -40,8 +41,14 @@ export interface EnquiryTableRow {
     sourceType: string;
     assignedCounsellor?: string;
 
+    // Phase 1 — Lead score + dedup
+    leadScore?: number | null;
+    leadTier?: string | null;
+    isDuplicate?: boolean | null;
+    primaryResponseId?: string | null;
+
     // Custom Fields (dynamic)
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 const getFieldFromLookup = (
@@ -57,13 +64,14 @@ const getFieldFromLookup = (
  * Columns are organized logically but flattened (no nested column groups)
  */
 export const generateDynamicColumns = (
-    enquiryCustomFields: any[] = [],
+    enquiryCustomFields: Record<string, unknown>[] = [],
     fieldLookup?: Map<string, CustomFieldSetupItem>,
     selectedRows?: Set<string>,
     onRowSelectionChange?: (id: string, selected: boolean) => void,
     onSelectAll?: (selected: boolean) => void,
     onViewDetails?: (enquiryId: string) => void,
-    onActivityLog?: (enquiryId: string) => void
+    onActivityLog?: (enquiryId: string) => void,
+    showLeadScore = true
 ): ColumnDef<EnquiryTableRow>[] => {
     const columns: ColumnDef<EnquiryTableRow>[] = [];
 
@@ -127,8 +135,11 @@ export const generateDynamicColumns = (
         minSize: 150,
         maxSize: 250,
         cell: ({ row }) => (
-            <div className="p-3 text-sm font-medium text-neutral-900">
-                {row.original.studentName || '-'}
+            <div className="flex flex-col gap-0.5 p-3">
+                <span className="text-sm font-medium text-neutral-900">
+                    {row.original.studentName || '-'}
+                </span>
+                <DuplicateBadge isDuplicate={row.original.isDuplicate} />
             </div>
         ),
     });
@@ -282,12 +293,13 @@ export const generateDynamicColumns = (
         const fieldIdsToProcess = new Set<string>();
 
         if (enquiryCustomFields && enquiryCustomFields.length > 0) {
-            enquiryCustomFields.forEach((enquiryField: any) => {
+            enquiryCustomFields.forEach((enquiryField) => {
+                const cf = enquiryField.custom_field as Record<string, unknown> | undefined;
                 const fieldId =
-                    enquiryField.custom_field?.id ||
-                    enquiryField.id ||
-                    enquiryField._id ||
-                    enquiryField.field_id;
+                    (cf?.id as string) ||
+                    (enquiryField.id as string) ||
+                    (enquiryField._id as string) ||
+                    (enquiryField.field_id as string);
                 if (fieldId) {
                     fieldIdsToProcess.add(fieldId);
                 }
@@ -346,6 +358,22 @@ export const generateDynamicColumns = (
         });
     } catch (error) {
         console.error('❌ Error generating dynamic columns:', error);
+    }
+
+    // Lead Interest Score column — gated by lead settings config
+    if (showLeadScore) {
+        columns.push({
+            accessorKey: 'leadScore',
+            header: 'Lead Interest Score',
+            size: 160,
+            minSize: 140,
+            maxSize: 200,
+            cell: ({ row }) => (
+                <div className="p-3">
+                    <LeadScoreBadge score={row.original.leadScore} size="sm" />
+                </div>
+            ),
+        });
     }
 
     // Actions column at the end

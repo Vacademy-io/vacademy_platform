@@ -227,6 +227,17 @@ export function RenderSettingsDialog({
                             </div>
                         </div>
                     )}
+
+                    <hr className="border-border" />
+
+                    {/* Watermark toggle */}
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium">Watermark</Label>
+                        <Switch
+                            checked={settings.watermark}
+                            onCheckedChange={(v) => update('watermark', v)}
+                        />
+                    </div>
                 </div>
 
                 <DialogFooter className="gap-2 sm:gap-0">

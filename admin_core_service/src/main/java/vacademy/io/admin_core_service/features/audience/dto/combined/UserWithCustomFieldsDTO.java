@@ -49,4 +49,9 @@ public class UserWithCustomFieldsDTO {
     private String parentsToMotherEmail;
     private String linkedInstituteName;
     private Map<String, String> customFieldsMap;
+
+    // Lead profile data (populated when lead system is active)
+    private Integer leadScore;
+    private String leadTier;
+    private String leadConversionStatus;
 }

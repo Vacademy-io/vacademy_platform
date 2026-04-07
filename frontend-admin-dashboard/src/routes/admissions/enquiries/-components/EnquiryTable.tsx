@@ -1,10 +1,11 @@
 import { useMemo, useState, useEffect } from 'react';
+import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { MyTable } from '@/components/design-system/table';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import EmptyInvitePage from '@/assets/svgs/empty-invite-page.svg';
 import { Button } from '@/components/ui/button';
 import { Pagination, PaginationContent, PaginationItem } from '@/components/ui/pagination';
-import { ChevronLeft, ChevronRight, Download, UserPlus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { generateDynamicColumns, EnquiryTableRow } from './enquiry-table-columns';
 import { convertToLocalDateTime } from '@/constants/helper';
 import { useCustomFieldSetup } from '@/routes/audience-manager/list/-hooks/useCustomFieldSetup';
@@ -14,7 +15,6 @@ import { toast } from 'sonner';
 import { fetchEnquiries } from '../-services/get-enquiries';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { handleFetchEnquiries } from '../-services/get-enquiries';
-import { format } from 'date-fns';
 import { useNavigate } from '@tanstack/react-router';
 import { MyButton } from '@/components/design-system/button';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -57,11 +57,19 @@ interface EnquiryTableProps {
     packageSessionFilter?: string;
     dateRangeFilter?: { from?: string; to?: string };
     searchFilter?: string;
+    // Phase 1 filters
+    leadTierFilter?: string;
+    excludeDuplicates?: boolean;
+    sortBy?: string;
+    sortDirection?: string;
+    minLeadScore?: number;
+    maxLeadScore?: number;
 }
 
 interface EnquiryTableInnerProps extends EnquiryTableProps {
     setIsSidebarOpen: (open: boolean) => void;
     setSelectedEnquiryId: (id: string | null) => void;
+    onSortChange?: (sortBy: string, direction: string) => void;
 }
 
 // Map an EnquiryItem to a minimal StudentTable shape for the sidebar profile header
@@ -116,6 +124,12 @@ const EnquiryTableInner = ({
     packageSessionFilter,
     dateRangeFilter,
     searchFilter,
+    leadTierFilter,
+    excludeDuplicates,
+    sortBy,
+    sortDirection,
+    minLeadScore,
+    maxLeadScore,
     setIsSidebarOpen,
     setSelectedEnquiryId,
 }: EnquiryTableInnerProps) => {
@@ -123,6 +137,7 @@ const EnquiryTableInner = ({
     const pageSize = 10;
     const { instituteDetails, getDetailsFromPackageSessionId } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
+    const leadSettings = useLeadSettings();
     const [isDownloading, setIsDownloading] = useState(false);
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const navigate = useNavigate();
@@ -145,6 +160,12 @@ const EnquiryTableInner = ({
         packageSessionFilter,
         dateRangeFilter,
         searchFilter,
+        leadTierFilter,
+        excludeDuplicates,
+        sortBy,
+        sortDirection,
+        minLeadScore,
+        maxLeadScore,
     ]);
 
     const bulkUpdateMutation = useMutation({
@@ -234,6 +255,12 @@ const EnquiryTableInner = ({
             created_from: dateRangeFilter?.from,
             created_to: dateRangeFilter?.to,
             search: searchFilter,
+            lead_tier: leadTierFilter,
+            exclude_duplicates: excludeDuplicates,
+            sort_by: sortBy,
+            sort_direction: sortDirection,
+            min_lead_score: minLeadScore,
+            max_lead_score: maxLeadScore,
         }),
         [
             enquiryId,
@@ -244,6 +271,12 @@ const EnquiryTableInner = ({
             packageSessionFilter,
             dateRangeFilter,
             searchFilter,
+            leadTierFilter,
+            excludeDuplicates,
+            sortBy,
+            sortDirection,
+            minLeadScore,
+            maxLeadScore,
         ]
     );
 
@@ -268,12 +301,13 @@ const EnquiryTableInner = ({
         const allFieldIds = new Set<string>();
 
         if (customFields && customFields.length > 0) {
-            customFields.forEach((enquiryField: any) => {
+            customFields.forEach((enquiryField: Record<string, unknown>) => {
+                const cf = enquiryField.custom_field as Record<string, unknown> | undefined;
                 const fieldId =
-                    enquiryField.custom_field?.id ||
-                    enquiryField.id ||
-                    enquiryField._id ||
-                    enquiryField.field_id;
+                    (cf?.id as string) ||
+                    (enquiryField.id as string) ||
+                    (enquiryField._id as string) ||
+                    (enquiryField.field_id as string);
                 if (fieldId) {
                     allFieldIds.add(fieldId);
                 }
@@ -281,7 +315,7 @@ const EnquiryTableInner = ({
         }
 
         if (enquiriesResponse && enquiriesResponse.content) {
-            enquiriesResponse.content.forEach((enquiry: any) => {
+            enquiriesResponse.content.forEach((enquiry) => {
                 const customValues = enquiry.custom_fields || {};
                 Object.keys(customValues).forEach((fieldId) => {
                     allFieldIds.add(fieldId);
@@ -333,7 +367,8 @@ const EnquiryTableInner = ({
             (enquiryId) => {
                 setSelectedActivityEnquiryId(enquiryId);
                 setIsActivityLogOpen(true);
-            }
+            },
+            leadSettings.enabled && leadSettings.showScoreInEnquiryTable
         );
     }, [
         customFields,
@@ -341,6 +376,8 @@ const EnquiryTableInner = ({
         customFieldMap,
         selectedRows,
         handleOpenSidebar,
+        leadSettings.enabled,
+        leadSettings.showScoreInEnquiryTable,
     ]);
 
     const tableKey = useMemo(() => {
@@ -363,9 +400,6 @@ const EnquiryTableInner = ({
         return {
             content: enquiriesResponse.content.map((enquiry, index) => {
                 const customValues = enquiry.custom_fields || {};
-                const submittedAt = enquiry.submitted_at
-                    ? format(enquiry.submitted_at, 'd MMM, yyyy')
-                    : '-';
 
                 // Get class name from package session
                 const packageSessionDetails = enquiry.destination_package_session_id
@@ -378,7 +412,7 @@ const EnquiryTableInner = ({
                     ? `${packageSessionDetails.level.level_name}`
                     : '-';
 
-                const rowData: any = {
+                const rowData: EnquiryTableRow = {
                     id: enquiry.enquiry_id || enquiry.audience_response_id || `${index}`,
                     index: page * pageSize + index,
 
@@ -398,7 +432,13 @@ const EnquiryTableInner = ({
                     className,
                     enquiryStatus: enquiry.enquiry_status || '-',
                     sourceType: enquiry.source_type || '-',
-                    assignedCounsellor: enquiry.assigned_counsellor_id || null,
+                    assignedCounsellor: enquiry.assigned_counsellor_id || undefined,
+
+                    // Phase 1 — Lead score + dedup
+                    leadScore: enquiry.lead_score ?? null,
+                    leadTier: enquiry.lead_tier ?? null,
+                    isDuplicate: enquiry.is_duplicate ?? null,
+                    primaryResponseId: enquiry.primary_response_id ?? null,
                 };
 
                 // Add custom field values
@@ -501,7 +541,7 @@ const EnquiryTableInner = ({
                     return '-';
                 };
 
-                const safeString = (val: any) => {
+                const safeString = (val: unknown) => {
                     if (val === undefined || val === null) return '';
                     const str = String(val);
                     if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -647,7 +687,7 @@ const EnquiryTableInner = ({
                     currentPage={page}
                     tableState={{ columnVisibility: {} }}
                     onCellClick={(row, colDef) => {
-                        const colId = colDef.id || (colDef as any).accessorKey;
+                        const colId = colDef.id || (colDef as { accessorKey?: string }).accessorKey;
                         if (colId !== 'select' && colId !== 'actions') {
                             handleOpenSidebar(row.id);
                         }
@@ -798,7 +838,11 @@ const EnquiryTableInner = ({
     );
 };
 
-export const EnquiryTable = (props: EnquiryTableProps) => {
+interface EnquiryTableWithSortProps extends EnquiryTableProps {
+    onSortChange?: (sortBy: string, direction: string) => void;
+}
+
+export const EnquiryTable = (props: EnquiryTableWithSortProps) => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [selectedEnquiryId, setSelectedEnquiryId] = useState<string | null>(null);
 

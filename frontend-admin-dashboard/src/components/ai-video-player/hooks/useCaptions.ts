@@ -11,6 +11,7 @@ interface UseCaptionsProps {
     wordsUrl?: string;
     currentTime: number;
     audioStartAt?: number; // Offset for when audio starts in timeline
+    playbackRate?: number; // Current playback speed (scales caption tail duration)
 }
 
 interface CaptionPhrase {
@@ -103,6 +104,7 @@ export function useCaptions({
     wordsUrl,
     currentTime,
     audioStartAt = 0,
+    playbackRate = 1,
 }: UseCaptionsProps): UseCaptionsReturn {
     const [words, setWords] = useState<WordTimestamp[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -198,16 +200,22 @@ export function useCaptions({
     const currentPhrase = useMemo((): CaptionPhrase | null => {
         if (!settings.enabled || phrasesRef.current.length === 0) return null;
 
+        // Scale caption tail inversely with playback speed so captions
+        // linger proportionally at high speeds.
+        // At 1x: 0.3s tail / 0.1s lead (unchanged). At 2x: 0.6s. At 0.5x: 0.15s.
+        const rate = Math.max(0.5, playbackRate);
+        const scaledTail = 0.3 * rate;
+        const scaledLead = 0.1 * rate;
+
         // Find the phrase that contains current time
         for (const phrase of phrasesRef.current) {
-            // Show phrase from slightly before start until end
-            if (audioTime >= phrase.startTime - 0.1 && audioTime <= phrase.endTime + 0.3) {
+            if (audioTime >= phrase.startTime - scaledLead && audioTime <= phrase.endTime + scaledTail) {
                 return phrase;
             }
         }
 
         return null;
-    }, [audioTime, settings.enabled]);
+    }, [audioTime, settings.enabled, playbackRate]);
 
     // Find current word index within the phrase (for karaoke mode)
     const currentWordIndex = useMemo(() => {

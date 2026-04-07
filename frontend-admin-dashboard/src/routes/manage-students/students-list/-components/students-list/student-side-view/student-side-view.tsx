@@ -22,6 +22,8 @@ import { StudentEnrollDeroll } from './student-enroll-deroll/student-enroll-dero
 import { StudentPaymentHistory } from './student-payment-history/student-payment-history';
 import { StudentEnquiry } from './student-enquiry/student-enquiry';
 import { StudentApplication } from './student-application/student-application';
+import { StudentLeadProfile } from './student-lead-profile/student-lead-profile';
+import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ErrorBoundary } from '@/components/core/dashboard-loader';
 import { useStudentSidebar } from '../../../-context/selected-student-sidebar-context';
@@ -65,6 +67,7 @@ export const StudentSidebar = ({
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     const tabContainerRef = useRef<HTMLDivElement>(null);
     const activeTabRef = useRef<HTMLButtonElement>(null);
+    const leadSettings = useLeadSettings();
 
     useEffect(() => {
         if (state == 'expanded') {
@@ -501,6 +504,25 @@ export const StudentSidebar = ({
                                         </button>
                                     )}
 
+                                    {tabSettings.leadTab && leadSettings.enabled && (
+                                        <button
+                                            ref={category === 'lead' ? activeTabRef : null}
+                                            className={`group relative z-10 shrink-0 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300 ${
+                                                category === 'lead'
+                                                    ? 'bg-white text-primary-500 shadow-lg'
+                                                    : 'text-neutral-600 hover:text-neutral-800'
+                                            }`}
+                                            onClick={() => setCategory('lead')}
+                                        >
+                                            <span className="relative">
+                                                Lead Profile
+                                                {category === 'lead' && (
+                                                    <div className="absolute -bottom-1 left-1/2 size-1 -translate-x-1/2 animate-bounce rounded-full bg-primary-500"></div>
+                                                )}
+                                            </span>
+                                        </button>
+                                    )}
+
                                     {selectedStudent?.sub_org_name && (
                                         <button
                                             ref={category === 'subOrg' ? activeTabRef : null}
@@ -645,6 +667,13 @@ export const StudentSidebar = ({
                             tabSettings?.applicationTab &&
                             !isEnrollRequestStudentList && (
                                 <StudentApplication applicantId={applicantId} />
+                            )}
+                        {category === 'lead' &&
+                            tabSettings?.leadTab &&
+                            leadSettings.enabled &&
+                            !isEnrollRequestStudentList &&
+                            selectedStudent?.user_id && (
+                                <StudentLeadProfile userId={selectedStudent.user_id} />
                             )}
                     </ErrorBoundary>
                 </div>

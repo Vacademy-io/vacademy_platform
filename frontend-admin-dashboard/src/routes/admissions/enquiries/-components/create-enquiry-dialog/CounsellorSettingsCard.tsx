@@ -1,12 +1,43 @@
 import React from 'react';
-import { Control, UseFormSetValue, UseFormWatch } from 'react-hook-form';
+import { UseFormSetValue, UseFormWatch } from 'react-hook-form';
 import { EnquiryForm } from '../../-schema/EnquirySchema';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
-import { X } from 'lucide-react';
+import { X, ChevronDown } from 'lucide-react';
 import { MyButton } from '@/components/design-system/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+
+const ASSIGNMENT_STRATEGIES = [
+    {
+        value: 'ROUND_ROBIN',
+        label: 'Round Robin',
+        desc: 'Distributes equally in rotation',
+    },
+    {
+        value: 'RANDOM',
+        label: 'Random',
+        desc: 'Picks any counselor randomly',
+    },
+    {
+        value: 'WEIGHTED_ROUND_ROBIN',
+        label: 'Weighted',
+        desc: 'Senior counselors handle more',
+        disabled: true,
+        disabledNote: 'Per-counselor weights coming soon',
+    },
+    {
+        value: 'PERFORMANCE_BASED',
+        label: 'Performance',
+        desc: 'Routes to highest-converting counselor',
+    },
+    {
+        value: 'LEAST_LOADED',
+        label: 'Least Loaded',
+        desc: 'Assigns to counselor with fewest active leads',
+    },
+];
 
 interface CounsellorSettingsCardProps {
     watch: UseFormWatch<EnquiryForm>;
@@ -23,6 +54,8 @@ export const CounsellorSettingsCard: React.FC<CounsellorSettingsCardProps> = ({
     const autoAssignEnabled = watch('counsellor_settings.data.autoAssignEnabled');
     const assignmentStrategy = watch('counsellor_settings.data.assignmentStrategy');
     const counsellorIds = watch('counsellor_settings.data.counsellorIds') || [];
+    const maxActiveLeadsPerCounselor = watch('counsellor_settings.data.maxActiveLeadsPerCounselor');
+    const [isAdvancedOpen, setIsAdvancedOpen] = React.useState(false);
 
     const handleAllowParentSelectionChange = (checked: boolean) => {
         setValue('counsellor_settings.data.allowParentSelection', checked, {
@@ -125,34 +158,99 @@ export const CounsellorSettingsCard: React.FC<CounsellorSettingsCardProps> = ({
                         Assignment Strategy
                     </Label>
                     <RadioGroup
-                        value={assignmentStrategy}
-                        onValueChange={(value: 'round_robin' | 'in_order') => {
-                            setValue('counsellor_settings.data.assignmentStrategy', value, {
-                                shouldValidate: true,
-                                shouldDirty: true,
-                            });
+                        value={
+                            // Migrate legacy values to new format
+                            assignmentStrategy === 'round_robin' ||
+                            assignmentStrategy === 'in_order'
+                                ? 'ROUND_ROBIN'
+                                : assignmentStrategy
+                        }
+                        onValueChange={(value) => {
+                            setValue(
+                                'counsellor_settings.data.assignmentStrategy',
+                                value as
+                                    | 'round_robin'
+                                    | 'in_order'
+                                    | 'RANDOM'
+                                    | 'ROUND_ROBIN'
+                                    | 'WEIGHTED_ROUND_ROBIN'
+                                    | 'PERFORMANCE_BASED'
+                                    | 'LEAST_LOADED',
+                                {
+                                    shouldValidate: true,
+                                    shouldDirty: true,
+                                }
+                            );
                         }}
                         className="space-y-2"
                     >
-                        <div className="flex items-center space-x-3 rounded-lg border border-neutral-200 p-3 hover:border-primary-300 hover:bg-primary-50/30">
-                            <RadioGroupItem value="round_robin" id="round_robin" />
-                            <Label htmlFor="round_robin" className="flex-1 cursor-pointer text-sm">
-                                <div className="font-medium">Round Robin</div>
-                                <div className="text-xs text-neutral-500">
-                                    Distribute enquiries equally among counsellors
-                                </div>
-                            </Label>
-                        </div>
-                        <div className="flex items-center space-x-3 rounded-lg border border-neutral-200 p-3 hover:border-primary-300 hover:bg-primary-50/30">
-                            <RadioGroupItem value="in_order" id="in_order" />
-                            <Label htmlFor="in_order" className="flex-1 cursor-pointer text-sm">
-                                <div className="font-medium">In Order</div>
-                                <div className="text-xs text-neutral-500">
-                                    Assign to counsellors in sequential order
-                                </div>
-                            </Label>
-                        </div>
+                        {ASSIGNMENT_STRATEGIES.map((strategy) => (
+                            <div
+                                key={strategy.value}
+                                className={`flex items-center space-x-3 rounded-lg border p-3 transition-colors ${
+                                    strategy.disabled
+                                        ? 'cursor-not-allowed border-neutral-100 bg-neutral-50 opacity-60'
+                                        : 'border-neutral-200 hover:border-primary-300 hover:bg-primary-50/30'
+                                }`}
+                            >
+                                <RadioGroupItem
+                                    value={strategy.value}
+                                    id={strategy.value}
+                                    disabled={strategy.disabled}
+                                />
+                                <Label
+                                    htmlFor={strategy.value}
+                                    className={`flex-1 text-sm ${strategy.disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                                >
+                                    <div className="font-medium">{strategy.label}</div>
+                                    <div className="text-xs text-neutral-500">{strategy.desc}</div>
+                                    {strategy.disabled && strategy.disabledNote && (
+                                        <div className="mt-0.5 text-[10px] font-medium text-amber-600">
+                                            {strategy.disabledNote}
+                                        </div>
+                                    )}
+                                </Label>
+                            </div>
+                        ))}
                     </RadioGroup>
+
+                    {/* Advanced Settings */}
+                    <Collapsible open={isAdvancedOpen} onOpenChange={setIsAdvancedOpen}>
+                        <CollapsibleTrigger className="flex w-full items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-50">
+                            <ChevronDown
+                                className={`size-3.5 transition-transform ${isAdvancedOpen ? 'rotate-180' : ''}`}
+                            />
+                            Advanced
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="mt-2 space-y-3 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-medium text-neutral-700">
+                                    Max active leads per counselor
+                                </Label>
+                                <Input
+                                    type="number"
+                                    placeholder="No limit"
+                                    min={1}
+                                    value={maxActiveLeadsPerCounselor ?? ''}
+                                    onChange={(e) => {
+                                        const v = e.target.value
+                                            ? parseInt(e.target.value, 10)
+                                            : undefined;
+                                        setValue(
+                                            'counsellor_settings.data.maxActiveLeadsPerCounselor',
+                                            v,
+                                            { shouldValidate: true, shouldDirty: true }
+                                        );
+                                    }}
+                                    className="h-8 text-sm"
+                                />
+                                <p className="text-[10px] text-neutral-400">
+                                    Leave empty for no limit. New leads beyond this cap will go to
+                                    the next available counselor.
+                                </p>
+                            </div>
+                        </CollapsibleContent>
+                    </Collapsible>
                 </div>
             )}
 

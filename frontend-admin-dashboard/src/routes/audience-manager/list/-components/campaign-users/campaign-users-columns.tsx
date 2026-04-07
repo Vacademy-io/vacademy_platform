@@ -1,4 +1,5 @@
 import { ColumnDef } from '@tanstack/react-table';
+import { Trash2 } from 'lucide-react';
 import { CustomFieldSetupItem } from '../../-services/get-custom-field-setup';
 import { getCampaignCustomFields, CampaignFormCustomField } from '../../-utils/getCampaignCustomFields';
 
@@ -68,7 +69,8 @@ const isEmailField = (fieldKey?: string, fieldName?: string): boolean => {
  */
 export const generateDynamicColumns = (
     campaignCustomFields: any[] = [],
-    fieldLookup?: Map<string, CustomFieldSetupItem>
+    fieldLookup?: Map<string, CustomFieldSetupItem>,
+    onDelete?: (responseId: string) => void
 ): ColumnDef<CampaignUserTable>[] => {
     const columns: ColumnDef<CampaignUserTable>[] = [indexColumn]; // Start with S.No column
 
@@ -187,6 +189,28 @@ export const generateDynamicColumns = (
             <div className="p-3 text-sm text-neutral-700">{row.original.submittedAt || '-'}</div>
         ),
     });
+
+    if (onDelete) {
+        columns.push({
+            id: 'actions',
+            header: '',
+            size: 60,
+            minSize: 60,
+            maxSize: 60,
+            enableResizing: false,
+            cell: ({ row }) => (
+                <div className="flex items-center justify-center p-2">
+                    <button
+                        onClick={() => onDelete(row.original.id)}
+                        className="text-neutral-400 transition-colors hover:text-red-500"
+                        title="Delete lead"
+                    >
+                        <Trash2 className="size-4" />
+                    </button>
+                </div>
+            ),
+        });
+    }
 
     return columns;
 };

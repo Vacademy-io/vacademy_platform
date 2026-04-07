@@ -15,6 +15,7 @@ import SchoolSettings from '../-components/School/SchoolSettings';
 import WhiteLabelSettings from '../-components/WhiteLabelSettings';
 import AssessmentSettings from '../-components/AssessmentSettings';
 import WhatsAppSettings from '../-components/WhatsAppSettings/WhatsAppSettings';
+import LeadSettings from '../-components/LeadSettings';
 
 export const getAvailableSettingsTabs = () => {
     return [
@@ -97,6 +98,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.WhatsApp,
             value: 'WhatsApp Settings',
             component: WhatsAppSettings,
+        },
+        {
+            tab: SettingsTabs.LeadSettings,
+            value: 'Lead Settings',
+            component: LeadSettings,
         },
     ];
 };

@@ -44,4 +44,10 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
         return records.isEmpty() ? Optional.empty() : Optional.of(records.get(0));
     }
 
+    /**
+     * Count attendance records for a specific user across all sessions.
+     * Used by UserLeadProfileService to compute demo_attendance_count.
+     */
+    long countByUserSourceIdAndLogType(String userSourceId, String logType);
+
 }

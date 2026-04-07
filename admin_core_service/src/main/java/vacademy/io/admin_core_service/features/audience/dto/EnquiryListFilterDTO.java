@@ -28,6 +28,16 @@ public class EnquiryListFilterDTO {
 
     private String search;
 
+    // ── New Phase 1 filters ──
+    private String leadTier;                // HOT / WARM / COLD
+    private String assignedCounselorId;     // filter by counselor
+    private Boolean excludeDuplicates;      // hide duplicate leads
+    private Integer minLeadScore;           // score >= this
+    private Integer maxLeadScore;           // score <= this
+    private java.util.List<String> overallStatuses; // filter by overall_status
+    private String sortBy;                  // SUBMITTED_AT | LEAD_SCORE | PARENT_NAME
+    private String sortDirection;           // ASC | DESC
+
     // Pagination
     private Integer page;
     private Integer size;

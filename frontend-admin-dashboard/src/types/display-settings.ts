@@ -117,6 +117,7 @@ export interface StudentSideViewSettings {
     enrollDerollTab: boolean;
     enquiryTab: boolean;
     applicationTab: boolean;
+    leadTab: boolean;
 }
 
 export interface LearnerManagementSettings {

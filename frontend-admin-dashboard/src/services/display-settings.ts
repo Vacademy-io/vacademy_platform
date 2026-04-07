@@ -371,6 +371,7 @@ function mergeDisplayWithDefaults(
         enrollDerollTab: false,
         enquiryTab: false,
         applicationTab: false,
+        leadTab: false,
     };
     merged.studentSideView = {
         overviewTab: incoming?.studentSideView?.overviewTab ?? defStudentSideView.overviewTab,
@@ -392,6 +393,7 @@ function mergeDisplayWithDefaults(
             incoming?.studentSideView?.enrollDerollTab ?? defStudentSideView.enrollDerollTab,
         enquiryTab: incoming?.studentSideView?.enquiryTab ?? defStudentSideView.enquiryTab,
         applicationTab: incoming?.studentSideView?.applicationTab ?? defStudentSideView.applicationTab,
+        leadTab: incoming?.studentSideView?.leadTab ?? defStudentSideView.leadTab,
     };
 
     const defLearnerManagement = defaults.learnerManagement || {

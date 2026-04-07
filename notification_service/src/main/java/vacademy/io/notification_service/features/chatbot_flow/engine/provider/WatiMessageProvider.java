@@ -237,6 +237,14 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
             if (!response.getStatusCode().is2xxSuccessful()) {
                 throw new RuntimeException("WATI API returned " + response.getStatusCode());
             }
+            // WATI returns HTTP 200 even on failure — check "result" field
+            if (response.getBody() != null) {
+                JsonNode respJson = objectMapper.readTree(response.getBody());
+                if (!respJson.path("result").asBoolean(true)) {
+                    String info = respJson.path("info").asText("unknown error");
+                    throw new RuntimeException("WATI API result=false: " + info);
+                }
+            }
         } catch (Exception e) {
             log.error("Failed to send message via WATI: url={}, error={}", url, e.getMessage());
             throw e;

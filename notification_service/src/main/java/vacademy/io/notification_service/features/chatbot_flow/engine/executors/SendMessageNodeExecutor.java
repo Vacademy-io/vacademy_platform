@@ -72,6 +72,12 @@ public class SendMessageNodeExecutor implements ChatbotNodeExecutor {
             if ("text".equals(messageType)) {
                 String text = (String) config.getOrDefault("text", "");
                 String resolved = resolveVariables(text, context);
+                log.info("SEND_MESSAGE node: phone={}, rawText=[{}], resolved=[{}], configKeys={}",
+                        context.getPhoneNumber(), text, resolved, config.keySet());
+                if (resolved == null || resolved.isBlank()) {
+                    return NodeExecutionResult.builder()
+                            .success(false).errorMessage("Resolved message text is empty").build();
+                }
                 provider.sendText(context.getPhoneNumber(), resolved,
                         context.getInstituteId(), context.getBusinessChannelId());
                 log.info("Session text message sent to {}", context.getPhoneNumber());

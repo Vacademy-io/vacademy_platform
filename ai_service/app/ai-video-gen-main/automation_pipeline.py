@@ -985,6 +985,66 @@ class VideoGenerationPipeline:
             }
         }
 
+    # ── Pacing profiles (The Video Pacing Map) ──────────────────────────
+    # Reels:     Frenetic, high cut frequency, 2-4s per shot
+    # Marketing: Rhythmic, moderate cuts, 4-6s per shot, builds to climax
+    # Education: Deliberate, low cuts, 6-10s per shot, room to breathe
+    PACING_PROFILES = {
+        "reels": {
+            "seconds_per_shot": 3,
+            "min_shots": 3,
+            "max_shots": 12,
+            "min_shot_duration": 2.0,
+            "max_shot_duration": 5.0,
+        },
+        "marketing": {
+            "seconds_per_shot": 5,
+            "min_shots": 2,
+            "max_shots": 9,
+            "min_shot_duration": 3.0,
+            "max_shot_duration": 12.0,
+        },
+        "education": {
+            "seconds_per_shot": 8,
+            "min_shots": 2,
+            "max_shots": 7,
+            "min_shot_duration": 4.0,
+            "max_shot_duration": 20.0,
+        },
+    }
+
+    @staticmethod
+    def _derive_pacing_style(target_duration: str, content_type: str) -> str:
+        """Derive pacing style from target_duration string and content_type.
+
+        Returns 'reels', 'marketing', or 'education'.
+        """
+        # Non-video content types are always education-paced
+        if content_type != "VIDEO":
+            return "education"
+
+        # Parse target_duration (e.g. "2-3 minutes", "30 seconds", "1 minute")
+        import re
+        dur_lower = target_duration.lower().strip()
+        # Extract numbers
+        nums = [float(n) for n in re.findall(r"[\d.]+", dur_lower)]
+        if not nums:
+            return "education"  # default
+
+        # Convert to seconds
+        if "second" in dur_lower:
+            avg_seconds = sum(nums) / len(nums)
+        else:  # minutes (default)
+            avg_seconds = (sum(nums) / len(nums)) * 60
+
+        # Short (< 60s) → reels, Medium (60-180s) → marketing, Long (> 180s) → education
+        if avg_seconds <= 60:
+            return "reels"
+        elif avg_seconds <= 180:
+            return "marketing"
+        else:
+            return "education"
+
     def run(
         self,
         base_prompt: Optional[str],
@@ -1016,6 +1076,10 @@ class VideoGenerationPipeline:
         self.aspect_label = "9:16 portrait" if video_width < video_height else "16:9 landscape"
         # Store max_segments for use in concept-aligned segmentation
         self._max_segments = max_segments
+
+        # ── Pacing profile ──
+        # Derived from target_duration: short→reels, medium→marketing, long→education
+        self._pacing_style = self._derive_pacing_style(target_duration, content_type)
         # Store reference context (processed images/PDFs from user uploads)
         self._reference_context = reference_context
         if start_from not in self.STAGE_INDEX:
@@ -3492,12 +3556,28 @@ class VideoGenerationPipeline:
             _complexity = seg.get("complexity_level", "moderate")
             user_prompt += f"\n\n**COMPLEXITY LEVEL FOR THIS SEGMENT**: {_complexity}\n"
 
-            # Inject segment duration + recommended shot count (duration-proportional)
+            # Inject segment duration + recommended shot count (pacing-aware)
             _seg_duration = seg.get("duration", seg["end"] - seg["start"])
-            _recommended_shots = max(2, min(7, round(_seg_duration / 8)))
+            _pacing = self.PACING_PROFILES.get(self._pacing_style, self.PACING_PROFILES["education"])
+            _sps = _pacing["seconds_per_shot"]
+            # Complexity adjustment: complex content gets fewer, longer shots
+            if _complexity == "high":
+                _sps = _sps * 1.4  # 40% longer shots for complex content
+            elif _complexity == "low":
+                _sps = _sps * 0.75  # 25% shorter shots for simple content
+            _recommended_shots = max(
+                _pacing["min_shots"],
+                min(_pacing["max_shots"], round(_seg_duration / _sps)),
+            )
+            _pacing_hint = {
+                "reels": "Fast-paced, frenetic cuts. Each shot should be punchy and visually dynamic.",
+                "marketing": "Rhythmic pacing that builds momentum. Vary shot lengths for emotional flow.",
+                "education": "Deliberate pacing with room to breathe. Hold complex visuals longer.",
+            }.get(self._pacing_style, "")
             user_prompt += (
                 f"\n**SEGMENT DURATION**: {_seg_duration:.0f} seconds."
-                f" Aim for approximately {_recommended_shots} shots to fill this time.\n"
+                f" Aim for approximately {_recommended_shots} shots to fill this time."
+                f"\n**PACING STYLE**: {self._pacing_style.upper()} — {_pacing_hint}\n"
             )
 
             # Retry logic: distinguishes server overload (500), rate-limit (429),
@@ -4009,8 +4089,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             offset = idx * default_span
         return max(base_start, base_start + offset)
 
-    @staticmethod
-    def _resolve_shot_duration(shot: Dict[str, Any], seg_duration: float, default_span: float) -> float:
+    def _resolve_shot_duration(self, shot: Dict[str, Any], seg_duration: float, default_span: float) -> float:
         def coerce(value, fallback):
             try:
                 return float(value)
@@ -4024,9 +4103,12 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             duration = coerce(shot["durationFraction"], 0.0) * seg_duration
         if duration is None:
             duration = default_span
-        # Enforce a readable minimum: 3 seconds per shot (prompt asks for 5+ but segments
-        # shorter than ~12s would produce fewer than the requested 3-4 shots at 5s each).
-        return max(3.0, duration)
+        # Enforce pacing-aware min/max per shot
+        _pacing = self.PACING_PROFILES.get(
+            getattr(self, "_pacing_style", "education"),
+            self.PACING_PROFILES["education"],
+        )
+        return max(_pacing["min_shot_duration"], min(_pacing["max_shot_duration"], duration))
 
     def _resolve_shot_box(self, shot: Dict[str, Any]) -> Tuple[int, int, int, int, bool]:
         def coerce_int(value, fallback):

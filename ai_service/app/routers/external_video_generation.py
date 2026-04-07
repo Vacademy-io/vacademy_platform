@@ -40,6 +40,7 @@ class RenderOptionsBody(BaseModel):
     resolution: Optional[str] = Field(None, description="720p or 1080p")
     fps: Optional[int] = Field(None, description="15, 20, or 25")
     show_captions: Optional[bool] = Field(None)
+    show_branding: Optional[bool] = Field(None)
     caption_position: Optional[str] = Field(None, description="top or bottom")
     caption_text_color: Optional[str] = Field(None, description="Hex color e.g. #ffffff")
     caption_bg_color: Optional[str] = Field(None, description="Hex color e.g. #000000")
@@ -515,6 +516,7 @@ async def request_video_render(
     # Build optional render params — explicit None checks so `False` / `0` values are respected
     _fps = (body.fps if body is not None and body.fps is not None and body.fps in (15, 20, 25) else None)
     _show_captions = body.show_captions if (body is not None and body.show_captions is not None) else True
+    _show_branding = body.show_branding if (body is not None and body.show_branding is not None) else True
     _caption_position = (body.caption_position if body is not None and body.caption_position in ("top", "bottom") else None)
     _caption_text_color = (body.caption_text_color if body and body.caption_text_color else None)
     _caption_bg_color = (body.caption_bg_color if body and body.caption_bg_color else None)
@@ -530,6 +532,7 @@ async def request_video_render(
             branding_meta_url=s3_urls.get("branding_meta"),
             avatar_video_url=s3_urls.get("avatar"),
             show_captions=_show_captions,
+            show_branding=_show_branding,
             width=_render_width,
             height=_render_height,
             fps=_fps,

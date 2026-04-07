@@ -1699,10 +1699,10 @@ def render_video_from_json(
     video_options_path: str = "",
     captions_words_path: str = "",
     captions_settings_path: str = "",
-    show_captions: bool = False,
+    show_captions: Optional[bool] = None,
     branding_json_path: str = "",
-    show_branding: bool = False,
-    show_character: bool = False,
+    show_branding: Optional[bool] = None,
+    show_character: Optional[bool] = None,
     character_config_path: str = "",
     phoneme_map_path: str = "",
     alignment_json_path: str = "",
@@ -1748,18 +1748,22 @@ def render_video_from_json(
     fps = fps if fps is not None else opts.get("fps", 30)
     background_color = background_color if background_color is not None and background_color != "" else opts.get("background_color", "#000")
     temp_frames_dir = temp_frames_dir if temp_frames_dir else opts.get("frames_dir", ".render_frames")
-    if opts.get("show_captions"):
-        show_captions = True
+    # Resolve boolean flags with precedence: CLI args (explicit) > options.json > default (False)
+    # When CLI passes an explicit True/False, respect it. When None (not set), fall back to config.
+    if show_captions is None:
+        show_captions = bool(opts.get("show_captions", False))
+    if show_captions:
         if not captions_words_path and opts.get("words_json_path"):
             captions_words_path = opts["words_json_path"]
         if not captions_settings_path and opts.get("captions_settings_path"):
             captions_settings_path = opts["captions_settings_path"]
-    if opts.get("show_branding"):
-        show_branding = True
+    if show_branding is None:
+        show_branding = bool(opts.get("show_branding", False))
+    if show_branding:
         if not branding_json_path and opts.get("branding_json_path"):
             branding_json_path = opts["branding_json_path"]
-    if opts.get("show_character"):
-        show_character = True
+    if show_character is None:
+        show_character = bool(opts.get("show_character", False))
     if not character_config_path and opts.get("character_config_path"):
         character_config_path = opts["character_config_path"]
     if not phoneme_map_path and opts.get("phoneme_map_path"):
@@ -2353,12 +2357,12 @@ def _parse_args(argv: List[str]):
     parser.add_argument("--frames-dir", default=None, help="Temp frames directory (overrides options JSON)")
     parser.add_argument("--background", default=None, help="Background color (CSS), overrides options JSON")
     parser.add_argument("--video-options", default="", help="Path to video options JSON")
-    parser.add_argument("--show-captions", action="store_true", help="Enable captions from words JSON + settings")
+    parser.add_argument("--show-captions", action=argparse.BooleanOptionalAction, default=None, help="Enable/disable captions (--show-captions / --no-show-captions)")
     parser.add_argument("--captions-words", default="", help="Path to words JSON for captions")
     parser.add_argument("--captions-settings", default="", help="Path to captions settings JSON")
-    parser.add_argument("--show-branding", action="store_true", help="Enable branding overlay")
+    parser.add_argument("--show-branding", action=argparse.BooleanOptionalAction, default=None, help="Enable/disable branding overlay (--show-branding / --no-show-branding)")
     parser.add_argument("--branding-json", default="", help="Path to branding JSON")
-    parser.add_argument("--show-character", action="store_true", help="Enable Matamata-style character animation")
+    parser.add_argument("--show-character", action=argparse.BooleanOptionalAction, default=None, help="Enable/disable character animation (--show-character / --no-show-character)")
     parser.add_argument("--character-config", default="", help="Path to character configuration JSON")
     parser.add_argument("--phoneme-map", default="", help="Path to phoneme-to-mouth mapping JSON")
     parser.add_argument("--alignment-json", default="", help="Path to Gentle alignment JSON with phonemes")

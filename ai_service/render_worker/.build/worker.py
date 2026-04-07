@@ -64,6 +64,7 @@ class RenderWorker:
         branding_meta_url: Optional[str] = None,
         avatar_video_url: Optional[str] = None,
         show_captions: bool = True,
+        show_branding: bool = True,
         audio_delay: float = 0.0,
         on_progress: Optional[Callable[[float], None]] = None,
         width: int = 1920,
@@ -159,13 +160,18 @@ class RenderWorker:
                 base_cmd.extend(["--captions-settings", str(CAPTIONS_SETTINGS)])
             if audio_delay > 0:
                 base_cmd.extend(["--audio-delay", str(audio_delay)])
+            # Pass explicit caption/branding flags so they override video_options.json defaults
             if show_captions:
                 base_cmd.append("--show-captions")
+            else:
+                base_cmd.append("--no-show-captions")
 
             # Branding watermark overlay (branding.json is baked into Docker image)
             branding_json = REPO_ROOT / "branding.json"
-            if branding_json.exists():
+            if show_branding and branding_json.exists():
                 base_cmd.extend(["--show-branding", "--branding-json", str(branding_json)])
+            else:
+                base_cmd.append("--no-show-branding")
 
             # Split frame ranges
             chunk_size = (total_frames + NUM_WORKERS - 1) // NUM_WORKERS

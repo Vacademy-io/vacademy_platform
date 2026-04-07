@@ -253,7 +253,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
                     transform-origin: center; will-change: transform;
                     animation-duration: var(--kb-duration, 12s);
-                    animation-timing-function: linear; animation-fill-mode: both;
+                    animation-timing-function: ease-in-out; animation-fill-mode: both;
                   }
                   .image-text-overlay {
                     position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -300,7 +300,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   .image-split-layout .split-image img {
                     width: 100%; height: 100%; object-fit: cover; will-change: transform;
                     animation-duration: var(--kb-duration, 12s);
-                    animation-timing-function: linear; animation-fill-mode: both;
+                    animation-timing-function: ease-in-out; animation-fill-mode: both;
                   }
                   .image-split-layout .split-text { display: flex; flex-direction: column; justify-content: center; padding: 60px 80px; }
 
@@ -336,7 +336,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
 
                   /* ANNOTATION_MAP */
                   .annotation-map-container { position: relative; width: 100%; height: 100%; overflow: hidden; }
-                  .annotation-map-container .annotation-map-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; will-change: transform; animation-duration: var(--kb-duration, 12s); animation-timing-function: linear; animation-fill-mode: both; }
+                  .annotation-map-container .annotation-map-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; will-change: transform; animation-duration: var(--kb-duration, 12s); animation-timing-function: ease-in-out; animation-fill-mode: both; }
                   .annotation-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
 
                   /* PROCESS_STEPS */
@@ -783,7 +783,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       position: absolute; inset: 0; width: 100%; height: 100%;
                       object-fit: cover; transform-origin: center; will-change: transform;
                       animation-duration: var(--kb-duration, 12s);
-                      animation-timing-function: linear; animation-fill-mode: both;
+                      animation-timing-function: ease-in-out; animation-fill-mode: both;
                     }
                     .image-text-overlay {
                       position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -833,7 +833,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     .image-split-layout .split-image img {
                       width: 100%; height: 100%; object-fit: cover; will-change: transform;
                       animation-duration: var(--kb-duration, 12s);
-                      animation-timing-function: linear; animation-fill-mode: both;
+                      animation-timing-function: ease-in-out; animation-fill-mode: both;
                     }
                     .image-split-layout .split-text {
                       display: flex; flex-direction: column;
@@ -888,7 +888,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
                       object-fit: cover; will-change: transform;
                       animation-duration: var(--kb-duration, 12s);
-                      animation-timing-function: linear; animation-fill-mode: both;
+                      animation-timing-function: ease-in-out; animation-fill-mode: both;
                     }
                     .annotation-overlay {
                       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -1794,10 +1794,10 @@ def render_video_from_json(
     video_options_path: str = "",
     captions_words_path: str = "",
     captions_settings_path: str = "",
-    show_captions: bool = False,
+    show_captions: Optional[bool] = None,
     branding_json_path: str = "",
-    show_branding: bool = False,
-    show_character: bool = False,
+    show_branding: Optional[bool] = None,
+    show_character: Optional[bool] = None,
     character_config_path: str = "",
     phoneme_map_path: str = "",
     alignment_json_path: str = "",
@@ -1844,18 +1844,22 @@ def render_video_from_json(
     fps = fps if fps is not None else opts.get("fps", 30)
     background_color = background_color if background_color is not None and background_color != "" else opts.get("background_color", "#000")
     temp_frames_dir = temp_frames_dir if temp_frames_dir else opts.get("frames_dir", ".render_frames")
-    if opts.get("show_captions"):
-        show_captions = True
+    # Resolve boolean flags with precedence: CLI args (explicit) > options.json > default (False)
+    # When CLI passes an explicit True/False, respect it. When None (not set), fall back to config.
+    if show_captions is None:
+        show_captions = bool(opts.get("show_captions", False))
+    if show_captions:
         if not captions_words_path and opts.get("words_json_path"):
             captions_words_path = opts["words_json_path"]
         if not captions_settings_path and opts.get("captions_settings_path"):
             captions_settings_path = opts["captions_settings_path"]
-    if opts.get("show_branding"):
-        show_branding = True
+    if show_branding is None:
+        show_branding = bool(opts.get("show_branding", False))
+    if show_branding:
         if not branding_json_path and opts.get("branding_json_path"):
             branding_json_path = opts["branding_json_path"]
-    if opts.get("show_character"):
-        show_character = True
+    if show_character is None:
+        show_character = bool(opts.get("show_character", False))
     if not character_config_path and opts.get("character_config_path"):
         character_config_path = opts["character_config_path"]
     if not phoneme_map_path and opts.get("phoneme_map_path"):
@@ -2165,79 +2169,104 @@ def render_video_from_json(
                 }""")
                 # Wait for Rough Notation annotations to position after layout
                 page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+
+                # ── Resolve Ken Burns / Camera Drift overlap ──
+                # Pause CSS Ken Burns animations; the deterministic camera drift system
+                # handles all motion to avoid double-motion conflicts.
+                page.evaluate("""() => {
+                    document.querySelectorAll('.kb-zoom-in,.kb-zoom-out,.kb-pan-left,.kb-pan-right,.kb-pan-up,.kb-zoom-pan-tl').forEach(el => {
+                        el.style.animationPlayState = 'paused';
+                        el.style.transform = 'scale(1)';
+                    });
+                }""")
+
                 _prev_active_ids = _cur_active_ids
 
-            # --- Calculate Camera Drift ---
-            # 1. Identify active visuals (exclude branding/character)
+            # --- Calculate Camera Drift (content-aware + eased transitions) ---
             primary_visuals = [e for e in active if e.get("id") != "branding"]
-            
+
             cam_scale = 1.0
             cam_x = 0.0
             cam_y = 0.0
-            
+
             if primary_visuals:
-                # Let's map active IDs back to timeline entries to find start times
                 active_ids = {e["id"] for e in primary_visuals}
-                # Find corresponding timeline items
                 relevant_items = [
-                    item for item in timeline 
-                    if item["id"] in active_ids 
+                    item for item in timeline
+                    if item["id"] in active_ids
                     and item["id"] != "branding"
                 ]
                 if relevant_items:
-                    # Sort by start time, picking the most recent one as the "anchor"
                     focus_item = sorted(relevant_items, key=lambda x: x["inTime"])[-1]
-                    
-                    # Deterministically pick a move type based on the shot ID
-                    # This ensures the same shot always gets the same move type
-                    shot_hash = sum(ord(c) for c in str(focus_item["id"]))
-                    move_types = ["zoom_in", "zoom_out", "pan_right", "pan_left", "semistatic"]
-                    move_type = move_types[shot_hash % len(move_types)]
 
-                    # Calculate progress in this shot
+                    # ── Content-aware camera selection ──
+                    # Analyze the first 2000 chars of HTML (avoids scanning huge base64 data URIs)
+                    _html_content = focus_item.get("html", "")
+                    _html_lower = _html_content[:2000].lower() if _html_content else ""
+
+                    if any(kw in _html_lower for kw in ("<code", "<pre>", "fira code", "monospace", "mermaid", "katex")):
+                        # Code / math / diagrams → minimal motion so text stays readable
+                        move_type = "semistatic"
+                    elif any(kw in _html_lower for kw in ("image-hero", "kb-zoom", "video-hero", "background-image")):
+                        # Hero images → cinematic zoom in
+                        move_type = "zoom_in"
+                    elif any(kw in _html_lower for kw in ("image-split", "split-image", "grid-template-columns")):
+                        # Split layouts → gentle pan across
+                        move_type = "pan_right"
+                    elif any(kw in _html_lower for kw in ("process-flow", "step", "timeline")):
+                        # Step/process content → slow zoom out to reveal
+                        move_type = "zoom_out"
+                    else:
+                        # Default: deterministic pick from remaining suitable types
+                        shot_hash = sum(ord(c) for c in str(focus_item["id"]))
+                        _content_moves = ["zoom_in", "zoom_out", "pan_right", "pan_left", "semistatic"]
+                        move_type = _content_moves[shot_hash % len(_content_moves)]
+
+                    # ── Shot progress with ease-in-out ──
                     shot_duration = max(0.1, focus_item["exitTime"] - focus_item["inTime"])
-                    shot_progress = (t - focus_item["inTime"]) / shot_duration
-                    shot_progress = max(0, min(1, shot_progress))
-                    
-                    # Apply Transform Math
-                    # Scale base = 1.05 to allow wiggle room for pans/zooms without black bars
-                    # (Assumes we are okay with slight cropping)
-                    # Actually, if we scale < 1, we get black bars. So base scale should be >= 1.0.
-                    
+                    raw_progress = (t - focus_item["inTime"]) / shot_duration
+                    raw_progress = max(0.0, min(1.0, raw_progress))
+                    # Smoothstep ease-in-out: 3p^2 - 2p^3
+                    shot_progress = raw_progress * raw_progress * (3.0 - 2.0 * raw_progress)
+
+                    # ── Apply transform ──
                     if move_type == "zoom_in":
-                        # 1.0 -> 1.15 (More noticeable)
                         cam_scale = 1.0 + (shot_progress * 0.15)
-                        cam_x = 0
-                        cam_y = 0
                     elif move_type == "zoom_out":
-                        # 1.15 -> 1.0
                         cam_scale = 1.15 - (shot_progress * 0.15)
-                        cam_x = 0
-                        cam_y = 0
                     elif move_type == "pan_right":
-                        # Move left to simulate camera panning right
-                        # x: 0 -> -60, Scale constant 1.05 to avoid edges
                         cam_scale = 1.05
-                        cam_x = (shot_progress * 60.0)
-                        cam_y = 0
+                        cam_x = shot_progress * 60.0
                     elif move_type == "pan_left":
-                        # x: -60 -> 0 
                         cam_scale = 1.05
                         cam_x = -60.0 + (shot_progress * 60.0)
-                        cam_y = 0
-                    else: # semistatic
-                        # Breathe slightly more
+                    else:  # semistatic
                         cam_scale = 1.02 + (math.sin(shot_progress * 3.14) * 0.02)
-                        cam_x = 0
-                        cam_y = 0
 
-            # Only print occasionally to avoid spam, or finding a way to log debug info
-            # print(f"DEBUG: T={t:.2f} Cam: {move_type} S={cam_scale:.3f} X={cam_x:.1f}") (Commented out for speed)
-            
+                    # ── Shot-to-shot transition easing ──
+                    # Ease camera in/out at shot boundaries (first/last 0.3s)
+                    _TRANSITION_SECS = 0.3
+                    _t_into_shot = t - focus_item["inTime"]
+                    _t_until_end = focus_item["exitTime"] - t
+                    if _t_into_shot < _TRANSITION_SECS:
+                        # Ease in from neutral
+                        _blend = _t_into_shot / _TRANSITION_SECS
+                        _blend = _blend * _blend * (3.0 - 2.0 * _blend)  # smoothstep
+                        cam_scale = 1.0 + (cam_scale - 1.0) * _blend
+                        cam_x *= _blend
+                        cam_y *= _blend
+                    elif _t_until_end < _TRANSITION_SECS:
+                        # Ease out to neutral
+                        _blend = _t_until_end / _TRANSITION_SECS
+                        _blend = _blend * _blend * (3.0 - 2.0 * _blend)
+                        cam_scale = 1.0 + (cam_scale - 1.0) * _blend
+                        cam_x *= _blend
+                        cam_y *= _blend
+
             page.evaluate("(state) => window.__updateCamera && window.__updateCamera(state)", {
                 "x": cam_x,
                 "y": cam_y,
-                "scale": cam_scale
+                "scale": cam_scale,
             })
             # ------------------------------
 
@@ -2523,12 +2552,12 @@ def _parse_args(argv: List[str]):
     parser.add_argument("--frames-dir", default=None, help="Temp frames directory (overrides options JSON)")
     parser.add_argument("--background", default=None, help="Background color (CSS), overrides options JSON")
     parser.add_argument("--video-options", default="", help="Path to video options JSON")
-    parser.add_argument("--show-captions", action="store_true", help="Enable captions from words JSON + settings")
+    parser.add_argument("--show-captions", action=argparse.BooleanOptionalAction, default=None, help="Enable/disable captions (--show-captions / --no-show-captions)")
     parser.add_argument("--captions-words", default="", help="Path to words JSON for captions")
     parser.add_argument("--captions-settings", default="", help="Path to captions settings JSON")
-    parser.add_argument("--show-branding", action="store_true", help="Enable branding overlay")
+    parser.add_argument("--show-branding", action=argparse.BooleanOptionalAction, default=None, help="Enable/disable branding overlay (--show-branding / --no-show-branding)")
     parser.add_argument("--branding-json", default="", help="Path to branding JSON")
-    parser.add_argument("--show-character", action="store_true", help="Enable Matamata-style character animation")
+    parser.add_argument("--show-character", action=argparse.BooleanOptionalAction, default=None, help="Enable/disable character animation (--show-character / --no-show-character)")
     parser.add_argument("--character-config", default="", help="Path to character configuration JSON")
     parser.add_argument("--phoneme-map", default="", help="Path to phoneme-to-mouth mapping JSON")
     parser.add_argument("--alignment-json", default="", help="Path to Gentle alignment JSON with phonemes")

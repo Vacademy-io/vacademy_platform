@@ -62,6 +62,7 @@ class RenderJobRequest(BaseModel):
     avatar_video_url: Optional[str] = Field(None, description="S3 URL to avatar_video.mp4")
     callback_url: Optional[str] = Field(None, description="URL to POST on completion")
     show_captions: bool = Field(default=True)
+    show_branding: bool = Field(default=True)
     audio_delay: float = Field(default=0.0)
     width: int = Field(default=1920, description="Video width (1920 for landscape, 1080 for portrait)")
     height: int = Field(default=1080, description="Video height (1080 for landscape, 1920 for portrait)")
@@ -108,6 +109,7 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
             branding_meta_url=request.branding_meta_url,
             avatar_video_url=request.avatar_video_url,
             show_captions=request.show_captions,
+            show_branding=request.show_branding,
             audio_delay=request.audio_delay,
             on_progress=lambda p: _update_progress(job_id, p),
             width=request.width,

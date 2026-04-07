@@ -90,6 +90,7 @@ svg path, svg line, svg polyline { stroke: #1a1a1a; stroke-width: 3;
 </div>
 ```
 **DESIGN RULES**: ALL text uses Caveat font. Boxes rotate ±0.5deg (hand-placed feel). NO gradients, NO box-shadows, NO rounded corners. SVG arrows use round caps. Highlights are wavy red underlines.
+**ENTRANCE/EXIT ANIMATIONS**: Use GSAP to animate elements appearing as if hand-drawn — fade in with slight rotation wobble: `gsap.from('.card', {opacity:0, rotation:-3, y:30, duration:0.8, stagger:0.2, ease:'back.out(1.2)'})`. Exit is not needed (shot cuts handle it).
 """,
     },
 
@@ -164,6 +165,7 @@ svg path, svg line { stroke: #0284c7; }
 </div>
 ```
 **DESIGN RULES**: Clean white background. Accent bar (80×8px sky blue) above every title. Cards have top-border accent stripe. Tags use rounded pill badges. NO decorative illustrations.
+**ENTRANCE/EXIT ANIMATIONS**: Use GSAP to slide cards up with a clean fade: `gsap.from('.card', {opacity:0, y:40, duration:0.6, stagger:0.15, ease:'power2.out'})`. Accent bars animate width from 0: `gsap.from('.accent-bar', {width:0, duration:0.4, ease:'power2.out'})`.
 """,
     },
 
@@ -250,6 +252,7 @@ svg path, svg line { stroke: #d4a843; }
 </div>
 ```
 **DESIGN RULES**: Dark #0d0d0d background. Playfair Display for ALL headings (serif, italic for quotes). Inter light-weight (300) for body + uppercase eyebrows with letter-spacing. Gold #d4a843 for all accents, borders, and decorative lines. Horizontal gradient divider line is a signature element. Very restrained — zero bright colors except gold.
+**ENTRANCE/EXIT ANIMATIONS**: Use GSAP for elegant, measured reveals: `gsap.from('h1,.hero-title', {opacity:0, y:20, duration:1.0, ease:'power1.out'})` then `gsap.from('.card,.content', {opacity:0, y:30, duration:0.8, stagger:0.25, delay:0.3, ease:'power1.out'})`. Gold divider animates width: `gsap.from('.divider', {scaleX:0, duration:0.6, ease:'power2.inOut'})`.
 """,
     },
 
@@ -332,6 +335,7 @@ svg path { stroke: #ea580c; fill: none; }
 </div>
 ```
 **DESIGN RULES**: Warm gradient background (#fff8f0→#fef3e2). Cards are pure white with large box-shadow and staggered vertical offsets (pop-up book depth). Top accent stripe on each card changes color per card. Use emoji icons at 64-80px size. Rounded corners (border-radius: 20px) throughout. Poppins ExtraBold (800) for titles.
+**ENTRANCE/EXIT ANIMATIONS**: Use GSAP for playful pop-up reveals: `gsap.from('.card,.l1,.l2,.l3', {opacity:0, y:60, scale:0.9, duration:0.7, stagger:0.2, ease:'back.out(1.5)'})`. Emoji icons bounce in: `gsap.from('.icon,h2 span:first-child', {scale:0, duration:0.5, stagger:0.15, delay:0.4, ease:'elastic.out(1,0.4)'})`.
 """,
     },
 
@@ -414,6 +418,7 @@ svg path, svg line { stroke: #39ff14; filter: drop-shadow(0 0 6px #39ff14); }
 </div>
 ```
 **DESIGN RULES**: Very dark #050510 background. Orbitron font for headings (futuristic). Share Tech Mono for body/data. Neon green #39ff14 for accent text + glow text-shadow. Gradient border line (green→magenta→cyan) at top of each card. NO soft shadows — only glow (text-shadow/filter:drop-shadow).
+**ENTRANCE/EXIT ANIMATIONS**: Use GSAP for glitchy neon flicker entrance: `gsap.from('.card', {opacity:0, x:-20, duration:0.4, stagger:0.1, ease:'power3.out'})` followed by glow pulse: `gsap.fromTo('.glow-green,.glow-pink', {textShadow:'0 0 0px #39ff14'}, {textShadow:'0 0 40px #39ff14', duration:0.6, stagger:0.1, ease:'power2.in'})`. Scanline flickers on entrance.
 """,
     },
 
@@ -504,6 +509,7 @@ svg path, svg line { stroke: #f0ece0; stroke-linecap: round; stroke-linejoin: ro
 </div>
 ```
 **DESIGN RULES**: Dark green background (#1a3a2a). Caveat font (handwriting/chalk style). Main text is off-white (#f0ece0). Sub-headings and highlights in yellow chalk (#ffcc44). All borders are DASHED to simulate chalk lines. SVG lines use stroke-dasharray for chalky appearance. Outer frame border gives the chalkboard-within-a-chalkboard feel.
+**ENTRANCE/EXIT ANIMATIONS**: Use GSAP to simulate chalk being written: `gsap.from('h1,h2', {opacity:0, duration:0.6, ease:'none'})` then content fades in line by line: `gsap.from('li,.box,p', {opacity:0, x:-15, duration:0.5, stagger:0.2, ease:'power1.out'})`. Dashed borders draw in: `gsap.from('.box,.frame', {borderColor:'transparent', duration:0.4, stagger:0.15})`.
 """,
     },
 
@@ -611,6 +617,7 @@ svg text    { fill: #e8f4ff; font-family: 'Courier Prime', monospace; }
 </div>
 ```
 **DESIGN RULES**: Navy #0a1628 background with CSS grid lines (60px, 7% opacity). Courier Prime + Share Tech Mono fonts only. ALL labels uppercase with letter-spacing. Boxes use border-only style (no fills except 6% opacity). SVG elements use dashed strokes. Orange #ff9933 only for callout annotations/arrows. Include a drawing-reference metadata block (DWG number, revision) for authenticity.
+**ENTRANCE/EXIT ANIMATIONS**: Use GSAP for precise technical reveals: `gsap.from('.spec,.card', {opacity:0, y:20, duration:0.5, stagger:0.15, ease:'power2.out'})`. Labels type in: `gsap.from('.label,h3', {opacity:0, duration:0.3, stagger:0.1, ease:'none'})`. Grid lines fade in first: `gsap.from('body', {backgroundImage:'none', duration:0.3})`.
 """,
     },
 
@@ -692,6 +699,7 @@ svg path, svg line { stroke: #374151; stroke-width: 1.5; }
 </div>
 ```
 **DESIGN RULES**: Off-white #fafafa background. Inter font ONLY — light (300) for body, bold (700) for headings, semibold (600) for labels. Wide padding (100px). Horizontal rule dividers (1px solid #e5e7eb) instead of card boxes. Numbered lists with muted gray sequence numbers. ZERO box-shadows, gradients, rounded corners, or decorative elements. Maximum whitespace.
+**ENTRANCE/EXIT ANIMATIONS**: Use GSAP for minimal, zen-like entrance — content simply fades in: `gsap.from('h1,h2', {opacity:0, y:10, duration:0.8, ease:'power1.out'})` then `gsap.from('.item,p,li', {opacity:0, duration:0.6, stagger:0.12, delay:0.2, ease:'power1.out'})`. NO scale, NO rotation, NO bouncing — pure opacity transitions only.
 """,
     },
 ]

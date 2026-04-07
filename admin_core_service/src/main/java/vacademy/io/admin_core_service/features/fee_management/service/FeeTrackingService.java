@@ -377,160 +377,54 @@ public class FeeTrackingService {
             }).collect(Collectors.toList());
         }
 
+        @Autowired
+        private CollectionDashboardRepository collectionDashboardRepository;
+
         @Transactional(readOnly = true)
         public CollectionDashboardResponseDTO getCollectionDashboard(CollectionDashboardRequestDTO request) {
                 String instituteId = request.getInstituteId();
-                boolean hasSession = StringUtils.hasText(request.getSessionId());
-                String sessionId = hasSession ? request.getSessionId() : null;
+                String sessionId = StringUtils.hasText(request.getSessionId()) ? request.getSessionId() : null;
 
-                List<String> feeTypes = (request.getFeeTypes() != null)
-                                ? request.getFeeTypes().stream().filter(StringUtils::hasText)
+                List<String> feeTypeIds = (request.getFeeTypeIds() != null)
+                                ? request.getFeeTypeIds().stream().filter(StringUtils::hasText)
                                                 .collect(Collectors.toList())
                                 : Collections.emptyList();
-                boolean hasFeeTypes = !feeTypes.isEmpty();
+                boolean hasFeeTypes = !feeTypeIds.isEmpty();
 
-                // Shared SQL fragments
-                String sessionClause = hasSession ? buildSessionClause() : "";
-                String feeTypeClause = hasFeeTypes ? buildFeeTypeClause(feeTypes) : "";
+                Object[] sr = collectionDashboardRepository.getCollectionSummary(
+                                instituteId, sessionId, hasFeeTypes, feeTypeIds);
 
-                // ── Query 1: Overall summary ──────────────────────────────────────────
-                String summarySql = "SELECT " +
-                                "  COALESCE(SUM(sfp.amount_expected - COALESCE(sfp.discount_amount,0)),0), " +
-                                "  COALESCE(SUM(CASE WHEN sfp.due_date <= CURRENT_DATE " +
-                                "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) ELSE 0 END),0), " +
-                                "  COALESCE(SUM(sfp.amount_paid),0), " +
-                                "  COALESCE(SUM(CASE " +
-                                "    WHEN sfp.due_date <= CURRENT_DATE " +
-                                "      AND sfp.status NOT IN ('WAIVED') " +
-                                "      AND sfp.amount_paid < (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) " +
-                                "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) - sfp.amount_paid " +
-                                "    ELSE 0 END),0) " +
-                                "FROM student_fee_payment sfp " +
-                                "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
-                                "WHERE cpo.institute_id = :instituteId " +
-                                "  AND sfp.status NOT IN ('CANCELLED','DROPPED') " +
-                                sessionClause + feeTypeClause;
+                List<Object[]> classRows = collectionDashboardRepository.getClassWiseBreakdown(
+                                instituteId, sessionId, hasFeeTypes, feeTypeIds);
 
-                jakarta.persistence.Query summaryQ = entityManager.createNativeQuery(summarySql);
-                bindParams(summaryQ, instituteId, hasSession, sessionId, feeTypes);
-                Object[] sr = (Object[]) summaryQ.getSingleResult();
+                List<Object[]> modeRows = collectionDashboardRepository.getPaymentModeBreakdown(
+                                instituteId, sessionId, hasFeeTypes, feeTypeIds);
 
-                BigDecimal projectedRevenue = toBD(sr[0]);
-                BigDecimal tillNowExpected = toBD(sr[1]);
-                BigDecimal tillNowCollected = toBD(sr[2]);
-                BigDecimal totalOverdue = toBD(sr[3]);
-                BigDecimal totalDue = projectedRevenue.subtract(tillNowCollected);
-                double collectionRate = calcRate(tillNowCollected, tillNowExpected);
+                List<CollectionDashboardResponseDTO.ClassWiseBreakdownDTO> classWiseBreakdown = classRows.stream()
+                                .map(row -> CollectionDashboardResponseDTO.ClassWiseBreakdownDTO.builder()
+                                                .cpoId((String) row[0])
+                                                .cpoName((String) row[1])
+                                                .projectedRevenue(toBD(row[2]))
+                                                .expectedToDate(toBD(row[3]))
+                                                .collectedToDate(toBD(row[4]))
+                                                .overdue(toBD(row[5]))
+                                                .build())
+                                .collect(Collectors.toList());
 
-                CollectionDashboardResponseDTO.SummaryDTO summary = CollectionDashboardResponseDTO.SummaryDTO.builder()
-                                .projectedRevenue(projectedRevenue)
-                                .tillNowExpected(tillNowExpected)
-                                .tillNowCollected(tillNowCollected)
-                                .totalOverdue(totalOverdue)
-                                .totalDue(totalDue)
-                                .collectionRate(collectionRate)
-                                .build();
-
-                CollectionDashboardResponseDTO.PipelineDTO pipeline = CollectionDashboardResponseDTO.PipelineDTO
-                                .builder()
-                                .projectedRevenue(projectedRevenue)
-                                .expectedToDate(tillNowExpected)
-                                .collectedToDate(tillNowCollected)
-                                .totalOverdue(totalOverdue)
-                                .totalDue(totalDue)
-                                .build();
-
-                // ── Query 2: Class-wise breakdown ─────────────────────────────────────
-                String classWiseSql = "SELECT " +
-                                "  cpo.name, " +
-                                "  COALESCE(SUM(sfp.amount_expected - COALESCE(sfp.discount_amount,0)),0), " +
-                                "  COALESCE(SUM(CASE WHEN sfp.due_date <= CURRENT_DATE " +
-                                "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) ELSE 0 END),0), " +
-                                "  COALESCE(SUM(sfp.amount_paid),0), " +
-                                "  COALESCE(SUM(CASE " +
-                                "    WHEN sfp.due_date <= CURRENT_DATE " +
-                                "      AND sfp.status NOT IN ('WAIVED') " +
-                                "      AND sfp.amount_paid < (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) " +
-                                "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) - sfp.amount_paid " +
-                                "    ELSE 0 END),0) " +
-                                "FROM student_fee_payment sfp " +
-                                "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
-                                "WHERE cpo.institute_id = :instituteId " +
-                                "  AND sfp.status NOT IN ('CANCELLED','DROPPED') " +
-                                sessionClause + feeTypeClause +
-                                "GROUP BY cpo.id, cpo.name ORDER BY cpo.name";
-
-                jakarta.persistence.Query classQ = entityManager.createNativeQuery(classWiseSql);
-                bindParams(classQ, instituteId, hasSession, sessionId, feeTypes);
-                @SuppressWarnings("unchecked")
-                List<Object[]> classRows = classQ.getResultList();
-
-                List<CollectionDashboardResponseDTO.ClassWiseCollectionDTO> classWiseDetails = classRows.stream()
-                                .map(row -> {
-                                        BigDecimal cProj = toBD(row[1]);
-                                        BigDecimal cExpDate = toBD(row[2]);
-                                        BigDecimal cCollected = toBD(row[3]);
-                                        BigDecimal cOverdue = toBD(row[4]);
-                                        return CollectionDashboardResponseDTO.ClassWiseCollectionDTO.builder()
-                                                        .className((String) row[0])
-                                                        .projectedRevenue(cProj)
-                                                        .expectedToDate(cExpDate)
-                                                        .collectedToDate(cCollected)
-                                                        .collectionRate(calcRate(cCollected, cExpDate))
-                                                        .totalOverdue(cOverdue)
-                                                        .build();
-                                }).collect(Collectors.toList());
-
-                // ── Query 3: Payment mode insights ────────────────────────────────────
-                String modeSql = "SELECT pl.vendor, COALESCE(SUM(sal.amount_allocated),0) " +
-                                "FROM student_fee_allocation_ledger sal " +
-                                "JOIN payment_log pl ON sal.payment_log_id = pl.id " +
-                                "JOIN student_fee_payment sfp ON sal.student_fee_payment_id = sfp.id " +
-                                "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
-                                "WHERE cpo.institute_id = :instituteId " +
-                                "  AND sal.transaction_type NOT IN ('REFUND','BOUNCE_REVERSAL') " +
-                                "  AND pl.payment_status = 'PAID' " +
-                                sessionClause + feeTypeClause +
-                                "GROUP BY pl.vendor";
-
-                jakarta.persistence.Query modeQ = entityManager.createNativeQuery(modeSql);
-                bindParams(modeQ, instituteId, hasSession, sessionId, feeTypes);
-                @SuppressWarnings("unchecked")
-                List<Object[]> modeRows = modeQ.getResultList();
-
-                // Aggregate by human-readable label (multiple vendors → same label)
-                Map<String, BigDecimal> labelTotals = new LinkedHashMap<>();
-                BigDecimal modeGrandTotal = BigDecimal.ZERO;
-                for (Object[] row : modeRows) {
-                        String vendor = row[0] != null ? row[0].toString() : "UNKNOWN";
-                        BigDecimal amt = toBD(row[1]);
-                        String label = vendorToLabel(vendor);
-                        labelTotals.merge(label, amt, BigDecimal::add);
-                        modeGrandTotal = modeGrandTotal.add(amt);
-                }
-                final BigDecimal totalMode = modeGrandTotal;
-                List<CollectionDashboardResponseDTO.PaymentModeInsightDTO> paymentModeInsights = labelTotals.entrySet()
-                                .stream()
-                                .map(e -> {
-                                        double pct = totalMode.compareTo(BigDecimal.ZERO) > 0
-                                                        ? e.getValue().divide(totalMode, 4,
-                                                                        java.math.RoundingMode.HALF_UP)
-                                                                        .multiply(new BigDecimal("100")).doubleValue()
-                                                        : 0.0;
-                                        return CollectionDashboardResponseDTO.PaymentModeInsightDTO.builder()
-                                                        .mode(e.getKey())
-                                                        .percentage(pct)
-                                                        .color(labelToColor(e.getKey()))
-                                                        .build();
-                                })
-                                .sorted((a, b) -> Double.compare(b.getPercentage(), a.getPercentage()))
+                List<CollectionDashboardResponseDTO.PaymentModeBreakdownDTO> paymentModeBreakdown = modeRows.stream()
+                                .map(row -> CollectionDashboardResponseDTO.PaymentModeBreakdownDTO.builder()
+                                                .vendor(row[0] != null ? row[0].toString() : "UNKNOWN")
+                                                .amount(toBD(row[1]))
+                                                .build())
                                 .collect(Collectors.toList());
 
                 return CollectionDashboardResponseDTO.builder()
-                                .summary(summary)
-                                .pipeline(pipeline)
-                                .classWiseDetails(classWiseDetails)
-                                .paymentModeInsights(paymentModeInsights)
+                                .projectedRevenue(toBD(sr[0]))
+                                .expectedToDate(toBD(sr[1]))
+                                .collectedToDate(toBD(sr[2]))
+                                .totalOverdue(toBD(sr[3]))
+                                .classWiseBreakdown(classWiseBreakdown)
+                                .paymentModeBreakdown(paymentModeBreakdown)
                                 .build();
         }
 
@@ -542,74 +436,6 @@ public class FeeTrackingService {
                 return new BigDecimal(val.toString());
         }
 
-        /** Collection rate capped floor at 0, expressed as a percentage (0-100+). */
-        private double calcRate(BigDecimal collected, BigDecimal expected) {
-                if (expected == null || expected.compareTo(BigDecimal.ZERO) == 0)
-                        return 0.0;
-                return collected.divide(expected, 4, java.math.RoundingMode.HALF_UP)
-                                .multiply(new BigDecimal("100")).doubleValue();
-        }
-
-        /** Subquery clause to scope results to a single package session via cpo_id. */
-        private String buildSessionClause() {
-                return "  AND sfp.cpo_id IN (" +
-                                "SELECT psl.cpo_id FROM package_session_learner_invitation_to_payment_option psl " +
-                                "WHERE psl.package_session_id = :sessionId) ";
-        }
-
-        /**
-         * Builds an IN clause for feeTypes using indexed named params (:ft0, :ft1,
-         * ...).
-         */
-        private String buildFeeTypeClause(List<String> feeTypes) {
-                StringBuilder clause = new StringBuilder("  AND sfp.fee_type_id IN (");
-                for (int i = 0; i < feeTypes.size(); i++) {
-                        if (i > 0)
-                                clause.append(",");
-                        clause.append(":ft").append(i);
-                }
-                return clause.append(") ").toString();
-        }
-
-        /** Binds all common parameters to a native EntityManager query. */
-        private void bindParams(jakarta.persistence.Query q, String instituteId,
-                        boolean hasSession, String sessionId, List<String> feeTypes) {
-                q.setParameter("instituteId", instituteId);
-                if (hasSession)
-                        q.setParameter("sessionId", sessionId);
-                for (int i = 0; i < feeTypes.size(); i++) {
-                        q.setParameter("ft" + i, feeTypes.get(i));
-                }
-        }
-
-        private String vendorToLabel(String vendor) {
-                switch (vendor.toUpperCase()) {
-                        case "RAZORPAY":
-                        case "CASHFREE":
-                        case "STRIPE":
-                                return "Online Portal";
-                        case "OFFLINE":
-                        case "MANUAL":
-                                return "Cash";
-                        case "EWAY":
-                                return "Bank Transfer";
-                        default:
-                                return "Other";
-                }
-        }
-
-        private String labelToColor(String label) {
-                switch (label) {
-                        case "Online Portal":
-                                return "#10b981";
-                        case "Bank Transfer":
-                                return "#f59e0b";
-                        case "Cash":
-                                return "#6366f1";
-                        default:
-                                return "#94a3b8";
-                }
-        }
 
         @Autowired
         private InvoiceRepository invoiceRepository;

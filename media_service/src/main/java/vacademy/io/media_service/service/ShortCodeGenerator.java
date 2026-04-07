@@ -19,10 +19,18 @@ public class ShortCodeGenerator {
      * Entry point. Swap the method call here to change strategy globally.
      */
     public static String generateShortCode(String hint) {
-        return randomBase32(DEFAULT_LENGTH);
+        return bookNameSlug(hint);
         // Other strategies ready to use:
-        // return bookNameSlug(hint);
+        // return randomBase32(DEFAULT_LENGTH);
         // return randomBase62(DEFAULT_LENGTH);
+    }
+
+    /**
+     * Append a random suffix to a slug for collision resolution.
+     * Example: "compiler-design" → "compiler-design-a3k7"
+     */
+    public static String appendRandomSuffix(String slug) {
+        return slug + "-" + randomBase32(4).toLowerCase();
     }
 
     /**

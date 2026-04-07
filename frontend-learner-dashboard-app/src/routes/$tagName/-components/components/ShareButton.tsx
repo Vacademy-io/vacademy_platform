@@ -10,6 +10,7 @@ interface ShareButtonProps {
     packageSessionId: string;
     destinationUrl: string;
     instituteId: string;
+    title?: string; // Book title — used as hint for slug-based short codes
     className?: string;
     // Controls icon size and button padding for catalogue vs details page
     size?: "sm" | "md";
@@ -19,6 +20,7 @@ export const ShareButton: React.FC<ShareButtonProps> = ({
     packageSessionId,
     destinationUrl,
     instituteId,
+    title,
     className = "",
     size = "sm",
 }) => {
@@ -36,7 +38,7 @@ export const ShareButton: React.FC<ShareButtonProps> = ({
                 sourceId: packageSessionId,
                 destinationUrl,
                 instituteId,
-                shortCode: null, // hint unused by Base32 strategy
+                shortCode: title || null, // used as hint for slug-based short code
             });
             setShortUrl(res.data.absoluteUrl);
         } catch {

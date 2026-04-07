@@ -478,8 +478,8 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
         readOnly: false,
         viewMode: "edit",
         codeSamples: {
-          python: DEFAULT_CODE_SAMPLES.python,
-          javascript: DEFAULT_CODE_SAMPLES.javascript,
+          python: "",
+          javascript: "",
         },
       });
       return;
@@ -492,9 +492,9 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
         (data.language as keyof typeof DEFAULT_CODE_SAMPLES) ?? "python";
 
       // Priority logic for code content:
-      // 1. New allLanguagesData structure (if exists and has content)
+      // 1. New allLanguagesData structure (if exists)
       // 2. Legacy code field (for backward compatibility)
-      // 3. Default samples
+      // 3. Empty string (show blank editor, not dummy samples)
       const getCodeForLanguage = (
         lang: keyof typeof DEFAULT_CODE_SAMPLES,
         allLanguagesData?: {
@@ -505,22 +505,17 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
         isCurrentLanguage?: boolean
       ) => {
         // First priority: New allLanguagesData structure
-        if (
-          allLanguagesData &&
-          allLanguagesData[lang] &&
-          allLanguagesData[lang].code &&
-          allLanguagesData[lang].code.trim()
-        ) {
+        if (allLanguagesData?.[lang]?.code != null) {
           return allLanguagesData[lang].code;
         }
 
         // Second priority: Legacy code field (only for current language)
-        if (isCurrentLanguage && legacyCode && legacyCode.trim()) {
+        if (isCurrentLanguage && legacyCode != null) {
           return legacyCode;
         }
 
-        // Fallback: Default samples
-        return DEFAULT_CODE_SAMPLES[lang];
+        // Fallback: empty string (slide has data but no code yet)
+        return "";
       };
 
       const newState = {
@@ -550,15 +545,15 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
       handleDocumentLoad();
     } catch (error) {
       console.error("[CodeEditor] Error parsing published_data:", error);
-      // Fallback to defaults only if parsing completely fails
+      // Fallback to empty editor if parsing completely fails
       setEditorState({
         currentLanguage: "python",
         theme: "dark",
         readOnly: false,
         viewMode: "edit",
         codeSamples: {
-          python: DEFAULT_CODE_SAMPLES.python,
-          javascript: DEFAULT_CODE_SAMPLES.javascript,
+          python: "",
+          javascript: "",
         },
       });
     }

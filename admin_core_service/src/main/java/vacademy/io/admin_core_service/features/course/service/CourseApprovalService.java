@@ -727,7 +727,7 @@ public class CourseApprovalService {
             tempSubject = subjectRepository.save(tempSubject);
 
             // Create subject-package session mapping
-            SubjectPackageSession tempMapping = new SubjectPackageSession(tempSubject, tempPackageSession, null);
+            SubjectPackageSession tempMapping = new SubjectPackageSession(tempSubject, tempPackageSession, 0);
             subjectPackageSessionRepository.save(tempMapping);
 
             // Copy modules for this subject using existing mechanism
@@ -760,7 +760,7 @@ public class CourseApprovalService {
             tempModule = moduleRepository.save(tempModule);
 
             // Create subject-module mapping
-            SubjectModuleMapping tempSubjectModuleMapping = new SubjectModuleMapping(tempSubject, tempModule);
+            SubjectModuleMapping tempSubjectModuleMapping = new SubjectModuleMapping(tempSubject, tempModule, 0);
             subjectModuleMappingRepository.save(tempSubjectModuleMapping);
 
             // Copy chapters for this module
@@ -1081,7 +1081,7 @@ public class CourseApprovalService {
                     
                     if (existingMapping.isEmpty()) {
                         // Create the missing mapping
-                        SubjectPackageSession newMapping = new SubjectPackageSession(originalSubject, originalSession, null);
+                        SubjectPackageSession newMapping = new SubjectPackageSession(originalSubject, originalSession, 0);
                         subjectPackageSessionRepository.save(newMapping);
                         log.info("Created missing subject-session mapping for subject {} in session {}", 
                                 originalSubject.getSubjectName(), originalSession.getId());
@@ -1216,9 +1216,9 @@ public class CourseApprovalService {
         newSubject = subjectRepository.save(newSubject);
         
         // Create subject-package session mapping
-        SubjectPackageSession mapping = new SubjectPackageSession(newSubject, originalSession, null);
+        SubjectPackageSession mapping = new SubjectPackageSession(newSubject, originalSession, 0);
         subjectPackageSessionRepository.save(mapping);
-        
+
         // Copy all modules, chapters, and slides from temp subject to new subject
         copyModulesFromTempToNewSubject(tempSubject, newSubject, tempSession, originalSession);
         
@@ -1244,13 +1244,13 @@ public class CourseApprovalService {
             newModule = moduleRepository.save(newModule);
 
             // Create subject-module mapping for the new subject
-            SubjectModuleMapping newMapping = new SubjectModuleMapping(newSubject, newModule);
+            SubjectModuleMapping newMapping = new SubjectModuleMapping(newSubject, newModule, 0);
             subjectModuleMappingRepository.save(newMapping);
 
             // Copy all chapters from temp module to new module
             copyChaptersFromTempToNewModule(tempModule, newModule, tempSession, originalSession);
         }
-        
+
         log.info("Copied {} modules from temp subject {} to new subject {}", 
                 tempModuleMappings.size(), tempSubject.getId(), newSubject.getId());
     }
@@ -1265,9 +1265,9 @@ public class CourseApprovalService {
         newModule = moduleRepository.save(newModule);
         
         // Create subject-module mapping
-        SubjectModuleMapping mapping = new SubjectModuleMapping(originalSubject, newModule);
+        SubjectModuleMapping mapping = new SubjectModuleMapping(originalSubject, newModule, 0);
         subjectModuleMappingRepository.save(mapping);
-        
+
         // Copy all chapters from temp module to new module
         copyChaptersFromTempToNewModule(tempModule, newModule, tempSession, originalSession);
         

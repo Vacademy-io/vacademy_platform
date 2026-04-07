@@ -32,6 +32,7 @@ export interface Module {
 export interface ModulesWithChapters {
   module: Module;
   percentage_completed: number;
+  module_order: number | null;
   chapters: Chapter[];
 }
 

@@ -57,7 +57,7 @@ export function NodeConfigPanel() {
                 {nodeType === 'SEND_MESSAGE' && <SendMessageConfig config={config} onChange={handleConfigChange} />}
                 {nodeType === 'SEND_TEMPLATE' && <SendTemplateConfig config={config} onChange={handleConfigChange} />}
                 {nodeType === 'SEND_INTERACTIVE' && <SendInteractiveConfig config={config} onChange={handleConfigChange} />}
-                {nodeType === 'CONDITION' && <ConditionConfig config={config} onChange={handleConfigChange} />}
+                {nodeType === 'CONDITION' && <ConditionConfig config={config} onChange={handleConfigChange} nodeId={selectedNodeId!} />}
                 {nodeType === 'DELAY' && <DelayConfig config={config} onChange={handleConfigChange} />}
                 {nodeType === 'WORKFLOW_ACTION' && <WorkflowConfig config={config} onChange={handleConfigChange} />}
                 {nodeType === 'HTTP_WEBHOOK' && <WebhookConfig config={config} onChange={handleConfigChange} />}
@@ -444,19 +444,35 @@ function SendInteractiveConfig({ config, onChange }: { config: Record<string, un
                                 <button onClick={() => onChange('sections', sections.filter((_, j) => j !== si))} className="ml-1 text-red-400 hover:text-red-600"><Trash size={14} /></button>
                             </div>
                             {section.rows.map((row, ri) => (
-                                <div key={ri} className="flex items-center gap-1 mt-1 ml-2">
-                                    <input type="text" value={row.title} onChange={(e) => {
+                                <div key={ri} className="mt-1 ml-2 space-y-0.5">
+                                    <div className="flex items-center gap-1">
+                                        <input type="text" value={row.title} onChange={(e) => {
+                                            const updatedSections = [...sections];
+                                            const updatedRows = [...section.rows];
+                                            updatedRows[ri] = { ...row, title: e.target.value };
+                                            updatedSections[si] = { ...section, rows: updatedRows };
+                                            onChange('sections', updatedSections);
+                                        }} className="flex-1 px-2 py-0.5 text-xs border rounded" placeholder="Row Title" />
+                                        <button onClick={() => {
+                                            const updatedSections = [...sections];
+                                            updatedSections[si] = { ...section, rows: section.rows.filter((_, j) => j !== ri) };
+                                            onChange('sections', updatedSections);
+                                        }} className="text-red-400"><Trash size={12} /></button>
+                                    </div>
+                                    <input type="text" value={row.id} onChange={(e) => {
                                         const updatedSections = [...sections];
                                         const updatedRows = [...section.rows];
-                                        updatedRows[ri] = { ...row, title: e.target.value };
+                                        updatedRows[ri] = { ...row, id: e.target.value };
                                         updatedSections[si] = { ...section, rows: updatedRows };
                                         onChange('sections', updatedSections);
-                                    }} className="flex-1 px-2 py-0.5 text-xs border rounded" placeholder="Row Title" />
-                                    <button onClick={() => {
+                                    }} className="w-full px-2 py-0.5 text-xs border rounded text-gray-500 bg-gray-50" placeholder="Row ID (for conditions)" />
+                                    <input type="text" value={row.description || ''} onChange={(e) => {
                                         const updatedSections = [...sections];
-                                        updatedSections[si] = { ...section, rows: section.rows.filter((_, j) => j !== ri) };
+                                        const updatedRows = [...section.rows];
+                                        updatedRows[ri] = { ...row, description: e.target.value };
+                                        updatedSections[si] = { ...section, rows: updatedRows };
                                         onChange('sections', updatedSections);
-                                    }} className="text-red-400"><Trash size={12} /></button>
+                                    }} className="w-full px-2 py-0.5 text-xs border rounded text-gray-400" placeholder="Description (optional)" />
                                 </div>
                             ))}
                             <button onClick={() => {
@@ -481,8 +497,50 @@ function SendInteractiveConfig({ config, onChange }: { config: Record<string, un
 }
 
 // ==================== CONDITION ====================
-function ConditionConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (keyOrBatch: string | Record<string, unknown>, value?: unknown) => void }) {
+function ConditionConfig({ config, onChange, nodeId }: { config: Record<string, unknown>; onChange: (keyOrBatch: string | Record<string, unknown>, value?: unknown) => void; nodeId: string }) {
     const branches = (config.branches as Array<{ id: string; label: string; matchType: string; matchValue: string; isDefault?: boolean }>) || [];
+    const nodes = useChatbotFlowStore((s) => s.nodes);
+    const edges = useChatbotFlowStore((s) => s.edges);
+
+    // Find the upstream SEND_INTERACTIVE node (parent that connects to this node)
+    const upstreamInteractive = (() => {
+        const incomingEdge = edges.find((e) => e.target === nodeId);
+        if (!incomingEdge) return null;
+        const parentNode = nodes.find((n) => n.id === incomingEdge.source);
+        if (!parentNode || parentNode.data.nodeType !== 'SEND_INTERACTIVE') return null;
+        return parentNode.data.config as Record<string, unknown>;
+    })();
+
+    // Extract buttons or list rows from upstream interactive
+    const interactiveOptions: Array<{ id: string; title: string }> = (() => {
+        if (!upstreamInteractive) return [];
+        const type = upstreamInteractive.interactiveType as string;
+        if (type === 'button') {
+            return (upstreamInteractive.buttons as Array<{ id: string; title: string }>) || [];
+        }
+        if (type === 'list') {
+            const sections = (upstreamInteractive.sections as Array<{ rows: Array<{ id: string; title: string }> }>) || [];
+            return sections.flatMap((s) => s.rows || []);
+        }
+        return [];
+    })();
+
+    const importFromInteractive = () => {
+        if (!upstreamInteractive || interactiveOptions.length === 0) return;
+        const type = upstreamInteractive.interactiveType as string;
+        const matchType = type === 'list' ? 'list_id' : 'button_id';
+        const conditionType = type === 'list' ? 'LIST_REPLY' : 'BUTTON_REPLY';
+        const newBranches = interactiveOptions.map((opt) => ({
+            id: `branch_${opt.id}`,
+            label: opt.title,
+            matchType,
+            matchValue: opt.id,
+            isDefault: false,
+        }));
+        // Add a default fallback branch
+        newBranches.push({ id: `branch_default_${Date.now()}`, label: 'Default', matchType: 'contains', matchValue: '', isDefault: true });
+        onChange({ branches: newBranches, conditionType });
+    };
 
     const addBranch = () => {
         const newBranch = { id: `branch_${Date.now()}`, label: '', matchType: 'contains', matchValue: '', isDefault: false };
@@ -520,6 +578,12 @@ function ConditionConfig({ config, onChange }: { config: Record<string, unknown>
                 <option value="BUTTON_REPLY">Interactive Button Reply</option>
                 <option value="LIST_REPLY">List Selection Reply</option>
             </select>
+
+            {interactiveOptions.length > 0 && (
+                <button onClick={importFromInteractive} className="mt-2 w-full px-2 py-1.5 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded hover:bg-blue-100">
+                    Import {interactiveOptions.length} options from connected Interactive node
+                </button>
+            )}
 
             <div className="space-y-2 mt-2">
                 {branches.map((branch, i) => (

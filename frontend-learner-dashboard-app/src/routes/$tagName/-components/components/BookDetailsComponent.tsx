@@ -5,6 +5,7 @@ import { useCartStore } from "../../-stores/cart-store";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
+import { ShareButton } from "./ShareButton";
 
 interface BookDetailsProps {
     fields?: {
@@ -25,10 +26,12 @@ interface BookDetailsProps {
     showPayment?: boolean;
     showAddToCart?: boolean;
     courseData?: any; // The real data fetched from CourseDetailsPage
+    instituteId?: string;
 }
 
 export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
-    courseData
+    courseData,
+    instituteId = "",
 }) => {
     // If courseData is missing, we can't do much (it usually comes from the parent page fetching it)
     if (!courseData) return null;
@@ -158,6 +161,18 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                             <span className="text-gray-600 uppercase tracking-wider">Out of Stock</span>
                                         </>
                                     )}
+                                </div>
+                            )}
+
+                            {/* Share Button - top-right corner */}
+                            {courseData.packageSessionId && (
+                                <div className="absolute top-2 right-2 z-20">
+                                    <ShareButton
+                                        packageSessionId={courseData.packageSessionId}
+                                        destinationUrl={window.location.href}
+                                        instituteId={instituteId}
+                                        size="md"
+                                    />
                                 </div>
                             )}
 

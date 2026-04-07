@@ -43,27 +43,7 @@ public class ShortLinkService {
 
         ShortLink saved = shortLinkRepository.save(shortLink);
 
-        String host = defaultShortLinkBaseUrl;
-        if (instituteId != null && !instituteId.isBlank()) {
-            Optional<InstituteShortLinkDomain> domainOpt = shortLinkDomainRepository.findByInstituteId(instituteId);
-            if (domainOpt.isPresent() && domainOpt.get().getBaseUrl() != null
-                    && !domainOpt.get().getBaseUrl().isBlank()) {
-                String domain = domainOpt.get().getBaseUrl().trim();
-
-                // If the user just specified the domain (e.g. aanandham.uk or vacademy.io)
-                // Add the fixed u. subdomain and scheme.
-                if (!domain.startsWith("http")) {
-                    host = "https://u." + domain;
-                } else {
-                    host = domain;
-                }
-            }
-        }
-
-        if (host.endsWith("/")) {
-            host = host.substring(0, host.length() - 1);
-        }
-        saved.setAbsoluteUrl(host + "/s/" + saved.getShortName());
+        saved.setAbsoluteUrl(resolveBaseUrl(instituteId) + "/s/" + saved.getShortName());
 
         return saved;
     }
@@ -97,6 +77,46 @@ public class ShortLinkService {
         ShortLink shortLink = shortLinkOpt.get();
         shortLink.setDestinationUrl(newDestinationUrl);
         return shortLinkRepository.save(shortLink);
+    }
+
+    @Transactional
+    public ShortLink getOrCreateShortLink(String source, String sourceId, String destinationUrl, String instituteId, String hint) {
+        Optional<ShortLink> existing = shortLinkRepository.findBySourceAndSourceId(source, sourceId);
+        if (existing.isPresent()) {
+            ShortLink link = existing.get();
+            // Recompute absoluteUrl since it's @Transient (not persisted)
+            link.setAbsoluteUrl(resolveBaseUrl(instituteId) + "/s/" + link.getShortName());
+            return link;
+        }
+
+        // Generate unique short code with collision retry
+        String shortCode = null;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String candidate = ShortCodeGenerator.generateShortCode(hint);
+            if (shortLinkRepository.findByShortName(candidate).isEmpty()) {
+                shortCode = candidate;
+                break;
+            }
+        }
+        if (shortCode == null) {
+            // Fallback: use UUID prefix to guarantee uniqueness
+            shortCode = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        }
+
+        return createShortLink(shortCode, destinationUrl, source, sourceId, instituteId);
+    }
+
+    private String resolveBaseUrl(String instituteId) {
+        String host = defaultShortLinkBaseUrl;
+        if (instituteId != null && !instituteId.isBlank()) {
+            Optional<InstituteShortLinkDomain> domainOpt = shortLinkDomainRepository.findByInstituteId(instituteId);
+            if (domainOpt.isPresent() && domainOpt.get().getBaseUrl() != null
+                    && !domainOpt.get().getBaseUrl().isBlank()) {
+                String domain = domainOpt.get().getBaseUrl().trim();
+                host = domain.startsWith("http") ? domain : "https://u." + domain;
+            }
+        }
+        return host.endsWith("/") ? host.substring(0, host.length() - 1) : host;
     }
 
     @Transactional

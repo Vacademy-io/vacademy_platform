@@ -41,6 +41,12 @@ public class ChatbotFlowSession {
     @Builder.Default
     private String status = "ACTIVE";
 
+    @Column(name = "channel_type", length = 50)
+    private String channelType;
+
+    @Column(name = "business_channel_id", length = 100)
+    private String businessChannelId;
+
     @Column(name = "context", columnDefinition = "TEXT")
     private String context;
 

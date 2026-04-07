@@ -190,12 +190,24 @@ public class AudienceController {
 
     /**
      * Get aggregated lead profile for a specific user.
+     * Builds the profile on-demand if it doesn't exist yet (e.g. batch hasn't run).
      * GET /admin-core-service/v1/audience/user-lead-profile?userId=...&instituteId=...
      */
     @GetMapping("/user-lead-profile")
     public ResponseEntity<?> getUserLeadProfile(
             @RequestParam String userId,
             @RequestParam String instituteId) {
+        // Try existing profile first
+        var existing = userLeadProfileService.getProfileDTO(userId, instituteId);
+        if (existing.isPresent()) {
+            return ResponseEntity.ok(existing.get());
+        }
+        // Build on-demand — creates a profile if the user has any audience responses
+        try {
+            userLeadProfileService.buildOrUpdateProfile(userId, instituteId);
+        } catch (Exception ignored) {
+            // No audience data for this user — that's fine
+        }
         return userLeadProfileService.getProfileDTO(userId, instituteId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -210,6 +222,32 @@ public class AudienceController {
             @RequestParam String userId,
             @RequestParam String instituteId) {
         userLeadProfileService.markConverted(userId, instituteId);
+        return ResponseEntity.ok(userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
+    }
+
+    /**
+     * Update lead conversion status (LEAD, CONVERTED, LOST).
+     * POST /admin-core-service/v1/audience/user-lead-profile/update-status?userId=...&instituteId=...&status=...
+     */
+    @PostMapping("/user-lead-profile/update-status")
+    public ResponseEntity<UserLeadProfileDTO> updateLeadStatus(
+            @RequestParam String userId,
+            @RequestParam String instituteId,
+            @RequestParam String status) {
+        userLeadProfileService.updateConversionStatus(userId, instituteId, status);
+        return ResponseEntity.ok(userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
+    }
+
+    /**
+     * Manually set lead tier (HOT, WARM, COLD) by overriding the score.
+     * POST /admin-core-service/v1/audience/user-lead-profile/update-tier?userId=...&instituteId=...&tier=HOT
+     */
+    @PostMapping("/user-lead-profile/update-tier")
+    public ResponseEntity<UserLeadProfileDTO> updateLeadTier(
+            @RequestParam String userId,
+            @RequestParam String instituteId,
+            @RequestParam String tier) {
+        userLeadProfileService.updateLeadTier(userId, instituteId, tier);
         return ResponseEntity.ok(userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
     }
 

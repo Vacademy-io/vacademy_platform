@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     GET_USER_LEAD_PROFILE,
-    MARK_LEAD_CONVERTED,
+    UPDATE_LEAD_STATUS,
+    UPDATE_LEAD_TIER,
     GET_USER_AUDIENCES,
     GET_CROSS_STAGE_TIMELINE,
     CREATE_TIMELINE_EVENT,
@@ -20,7 +21,6 @@ import {
     CalendarCheck,
     Lightning,
     CheckCircle,
-    Prohibit,
     NotePencil,
     Phone,
     Buildings,
@@ -100,11 +100,28 @@ async function fetchUserLeadProfile(userId: string, instituteId: string): Promis
     return response.data;
 }
 
-async function markConverted(userId: string, instituteId: string): Promise<UserLeadProfile> {
+async function updateLeadStatus(
+    userId: string,
+    instituteId: string,
+    status: string
+): Promise<UserLeadProfile> {
     const response = await authenticatedAxiosInstance({
         method: 'POST',
-        url: MARK_LEAD_CONVERTED,
-        params: { userId, instituteId },
+        url: UPDATE_LEAD_STATUS,
+        params: { userId, instituteId, status },
+    });
+    return response.data;
+}
+
+async function updateLeadTier(
+    userId: string,
+    instituteId: string,
+    tier: string
+): Promise<UserLeadProfile> {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: UPDATE_LEAD_TIER,
+        params: { userId, instituteId, tier },
     });
     return response.data;
 }
@@ -639,15 +656,22 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
         retry: 1,
     });
 
-    const { mutate: convertLead, isPending: converting } = useMutation({
-        mutationFn: () => markConverted(userId, instituteId),
-        onSuccess: () => {
-            toast.success('Lead marked as Converted');
+    const { mutate: changeStatus, isPending: changingStatus } = useMutation({
+        mutationFn: (status: string) => updateLeadStatus(userId, instituteId, status),
+        onSuccess: (_data, status) => {
+            toast.success(`Lead marked as ${status}`);
             queryClient.invalidateQueries({ queryKey });
         },
-        onError: () => {
-            toast.error('Failed to update lead status');
+        onError: () => toast.error('Failed to update lead status'),
+    });
+
+    const { mutate: changeTier, isPending: changingTier } = useMutation({
+        mutationFn: (tier: string) => updateLeadTier(userId, instituteId, tier),
+        onSuccess: (_data, tier) => {
+            toast.success(`Lead tier set to ${tier}`);
+            queryClient.invalidateQueries({ queryKey });
         },
+        onError: () => toast.error('Failed to update lead tier'),
     });
 
     if (isLoading) {
@@ -682,17 +706,53 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
 
     return (
         <div className="flex flex-col gap-5">
-            {/* ── Score card ── */}
-            <div className="flex items-center justify-between rounded-xl border border-neutral-100 bg-gradient-to-r from-neutral-50 to-white p-4">
-                <div>
-                    <p className="mb-1 text-xs text-muted-foreground">Lead Interest Score</p>
-                    <div className="flex items-center gap-2">
+            {/* ── Score + Tier control ── */}
+            <div className="rounded-xl border border-neutral-100 bg-gradient-to-r from-neutral-50 to-white p-4">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="mb-1 text-xs text-muted-foreground">Lead Interest Score</p>
                         <LeadScoreBadge score={profile.best_score} size="md" />
                     </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${sClass}`}>
+                        {sLabel}
+                    </span>
                 </div>
-                <span className={`rounded-full px-3 py-1 text-xs font-medium ${sClass}`}>
-                    {sLabel}
-                </span>
+                <div className="mt-3 border-t border-neutral-100 pt-3">
+                    <p className="mb-1.5 text-xs text-muted-foreground">Set Tier</p>
+                    <div className="flex gap-1.5">
+                        {(['HOT', 'WARM', 'COLD'] as const).map((tier) => {
+                            const isActive =
+                                profile.lead_tier === tier ||
+                                (!profile.lead_tier &&
+                                    ((tier === 'HOT' && profile.best_score >= 80) ||
+                                        (tier === 'WARM' &&
+                                            profile.best_score >= 50 &&
+                                            profile.best_score < 80) ||
+                                        (tier === 'COLD' && profile.best_score < 50)));
+                            const colors = {
+                                HOT: isActive
+                                    ? 'bg-red-100 text-red-700 ring-1 ring-red-300'
+                                    : 'bg-neutral-50 text-neutral-500 hover:bg-red-50',
+                                WARM: isActive
+                                    ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300'
+                                    : 'bg-neutral-50 text-neutral-500 hover:bg-amber-50',
+                                COLD: isActive
+                                    ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300'
+                                    : 'bg-neutral-50 text-neutral-500 hover:bg-blue-50',
+                            };
+                            return (
+                                <button
+                                    key={tier}
+                                    onClick={() => changeTier(tier)}
+                                    disabled={changingTier}
+                                    className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${colors[tier]}`}
+                                >
+                                    {tier}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
 
             {/* ── Stat grid ── */}
@@ -743,32 +803,52 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 </div>
             </div>
 
-            {/* ── Actions ── */}
-            {!isConverted && (
-                <MyButton
-                    buttonType="secondary"
-                    scale="small"
-                    onClick={() => convertLead()}
-                    disable={converting}
-                >
-                    <CheckCircle size={16} />
-                    {converting ? 'Marking…' : 'Mark as Converted'}
-                </MyButton>
-            )}
-
-            {isConverted && (
-                <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                    <CheckCircle size={16} weight="fill" />
-                    This lead has been converted. Score updates are frozen.
+            {/* ── Status control ── */}
+            <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+                <p className="mb-1.5 text-xs text-muted-foreground">Lead Status</p>
+                <div className="flex gap-1.5">
+                    {(
+                        [
+                            {
+                                value: 'LEAD',
+                                label: 'Lead',
+                                active: 'bg-blue-100 text-blue-700 ring-1 ring-blue-300',
+                                hover: 'hover:bg-blue-50',
+                            },
+                            {
+                                value: 'CONVERTED',
+                                label: 'Converted',
+                                active: 'bg-green-100 text-green-700 ring-1 ring-green-300',
+                                hover: 'hover:bg-green-50',
+                            },
+                            {
+                                value: 'LOST',
+                                label: 'Lost',
+                                active: 'bg-red-100 text-red-700 ring-1 ring-red-300',
+                                hover: 'hover:bg-red-50',
+                            },
+                        ] as const
+                    ).map((s) => (
+                        <button
+                            key={s.value}
+                            onClick={() => changeStatus(s.value)}
+                            disabled={changingStatus}
+                            className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
+                                profile.conversion_status === s.value
+                                    ? s.active
+                                    : `bg-neutral-50 text-neutral-500 ${s.hover}`
+                            }`}
+                        >
+                            {s.label}
+                        </button>
+                    ))}
                 </div>
-            )}
-
-            {profile.conversion_status === 'LOST' && (
-                <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    <Prohibit size={16} weight="fill" />
-                    Marked as lost.
-                </div>
-            )}
+                {isConverted && (
+                    <p className="mt-2 text-[11px] text-green-600">
+                        Score updates are frozen while converted.
+                    </p>
+                )}
+            </div>
 
             {/* ── Linked Campaigns ── */}
             <AudienceListSection userId={userId} />

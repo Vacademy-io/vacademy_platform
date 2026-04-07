@@ -53,6 +53,9 @@ importers:
       '@capawesome/capacitor-app-update':
         specifier: ^7.0.1
         version: 7.0.1(@capacitor/core@7.4.2)
+      '@capgo/capacitor-updater':
+        specifier: ^8.45.1
+        version: 8.45.1(@capacitor/core@7.4.2)
       '@cashfreepayments/cashfree-js':
         specifier: ^1.0.6
         version: 1.0.6
@@ -852,6 +855,11 @@ packages:
     resolution: {integrity: sha512-VEzAa8vdG8BvW8pjjinmUeiEfzDlZ2XBfAIBE0o0Gib63+FTZg8d0tAu0nUoV/s/1oIOM7Fk+PokN5GpQrY8sQ==}
     peerDependencies:
       '@capacitor/core': '>=7.0.0'
+
+  '@capgo/capacitor-updater@8.45.1':
+    resolution: {integrity: sha512-dKErfDUd100/ZlJiE/L8sEjiDf5106zm3w8+a4zXa/HoqDGhwyHW+/RG9TQJVqqXoZ0SDquuVMJyzWAIHAuZsw==}
+    peerDependencies:
+      '@capacitor/core': ^8.0.0
 
   '@cashfreepayments/cashfree-js@1.0.6':
     resolution: {integrity: sha512-9I+Ziv3o3BObvgdPksOV/wd5BG/nlCYhZe5sqk1ryGG2orScBxsCDGHrQdHjGGmYysWQgCLSsNQT/r4N01GUJA==}
@@ -8653,6 +8661,10 @@ snapshots:
       '@capacitor/core': 7.4.2
 
   '@capawesome/capacitor-app-update@7.0.1(@capacitor/core@7.4.2)':
+    dependencies:
+      '@capacitor/core': 7.4.2
+
+  '@capgo/capacitor-updater@8.45.1(@capacitor/core@7.4.2)':
     dependencies:
       '@capacitor/core': 7.4.2
 

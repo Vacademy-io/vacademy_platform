@@ -218,6 +218,8 @@ public class ChatbotFlowEngine {
                         .flowId(best.flow().getId())
                         .instituteId(instituteId)
                         .userPhone(userPhone)
+                        .channelType(channelType)
+                        .businessChannelId(businessChannelId)
                         .currentNodeId(best.triggerNode().getId())
                         .status(ChatbotSessionStatus.ACTIVE.name())
                         .context(toJson(new HashMap<>()))
@@ -382,10 +384,14 @@ public class ChatbotFlowEngine {
                         return;
                     }
                     if (result.isScheduleDelay()) {
+                        // Store the DELAY node's own ID — resumeAfterDelay calls
+                        // advanceToNextNodes(storedId) which finds outgoing edges
+                        // from this node and executes the target. Storing nextNodeId
+                        // here would SKIP the target and jump two nodes ahead.
                         ChatbotDelayTask delayTask = ChatbotDelayTask.builder()
                                 .sessionId(session.getId())
                                 .flowId(session.getFlowId())
-                                .nextNodeId(nextNodeId)
+                                .nextNodeId(nextNodeId)  // This IS the delay node (set at line 365)
                                 .fireAt(result.getDelayUntil())
                                 .status("PENDING")
                                 .build();
@@ -428,6 +434,8 @@ public class ChatbotFlowEngine {
                 .instituteId(session.getInstituteId())
                 .phoneNumber(session.getUserPhone())
                 .userId(session.getUserId())
+                .channelType(session.getChannelType())
+                .businessChannelId(session.getBusinessChannelId())
                 .sessionVariables(parseJson(session.getContext()))
                 .build();
 

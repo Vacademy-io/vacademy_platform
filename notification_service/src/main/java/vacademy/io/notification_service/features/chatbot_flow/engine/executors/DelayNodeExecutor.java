@@ -39,6 +39,12 @@ public class DelayNodeExecutor implements ChatbotNodeExecutor {
                 ? ((Number) config.get("delayValue")).intValue() : 0;
         String delayUnit = (String) config.getOrDefault("delayUnit", "MINUTES");
 
+        if (delayValue <= 0) {
+            log.warn("Delay value must be > 0, got: {}", delayValue);
+            // Treat as no-op: succeed immediately without scheduling a delay
+            return NodeExecutionResult.builder().success(true).build();
+        }
+
         long delayMs = switch (delayUnit.toUpperCase()) {
             case "SECONDS" -> delayValue * 1000L;
             case "MINUTES" -> delayValue * 60_000L;

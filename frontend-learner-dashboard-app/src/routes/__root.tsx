@@ -15,6 +15,12 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { toast } from "sonner";
 import { useUpdate } from "@/stores/useUpdate";
+import { useOtaUpdate } from "@/stores/useOtaUpdate";
+import {
+  checkForOtaUpdate,
+  downloadAndApplyUpdate,
+  notifyUpdateSuccess,
+} from "@/services/ota-update";
 import { Preferences } from "@capacitor/preferences";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
@@ -34,6 +40,7 @@ import { ChatbotPanel } from "@/components/chatbot/ChatbotPanel";
 import { ChatbotProvider } from "@/components/chatbot/ChatbotContext";
 import { getChatbotSettings } from "@/services/chatbot-settings";
 import { ChatbotFloatingButton } from "@/components/chatbot/ChatbotFloatingButton";
+import { OtaUpdateBanner } from "@/components/ota-update/OtaUpdateBanner";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -189,6 +196,7 @@ const isPublicRoute = (pathname: string): boolean => {
 
 const RootComponent = () => {
   const { setUpdateAvailable } = useUpdate();
+  const { setOtaUpdate, setOtaDownloading } = useOtaUpdate();
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
   const [isChatbotEnabled, setIsChatbotEnabled] = useState(false);
@@ -231,6 +239,55 @@ const RootComponent = () => {
     };
 
     checkForUpdate();
+
+    // OTA live update: confirm current bundle is healthy, then check for updates
+    const checkOtaUpdate = async () => {
+      const platform = Capacitor.getPlatform();
+      if (platform !== "android" && platform !== "ios") return;
+
+      try {
+        // Signal that this bundle loaded successfully (prevents auto-rollback)
+        await notifyUpdateSuccess();
+      } catch (e) {
+        console.error("OTA notifyAppReady failed:", e);
+      }
+
+      try {
+        const result = await checkForOtaUpdate();
+        if (result.update_available && result.bundle_download_url) {
+          setOtaUpdate({
+            otaUpdateAvailable: true,
+            otaVersion: result.version ?? null,
+            otaDownloadUrl: result.bundle_download_url,
+            otaChecksum: result.checksum ?? null,
+            otaForceUpdate: result.force_update ?? false,
+            otaReleaseNotes: result.release_notes ?? null,
+          });
+
+          if (result.force_update) {
+            try {
+              setOtaDownloading(true);
+              await downloadAndApplyUpdate(
+                result.bundle_download_url,
+                result.version!,
+                result.checksum!,
+              );
+              // set() reloads the app — this line only runs if it doesn't
+              setOtaDownloading(false);
+            } catch (downloadErr) {
+              console.error("OTA force update download failed:", downloadErr);
+              setOtaDownloading(false);
+            }
+          } else {
+            toast.info(`Update ${result.version} available`);
+          }
+        }
+      } catch (e) {
+        console.error("OTA update check failed:", e);
+      }
+    };
+    checkOtaUpdate();
+
     setPrimaryColorFromStorage();
 
     // Fetch chatbot settings and enable floating button if enabled in settings
@@ -521,6 +578,7 @@ const RootComponent = () => {
 
   return (
     <ChatbotProvider>
+      <OtaUpdateBanner />
       <Outlet />
       {!hideChatbot && <ChatbotPanel />}
       {!hideChatbot && isChatbotEnabled && <ChatbotFloatingButton />}

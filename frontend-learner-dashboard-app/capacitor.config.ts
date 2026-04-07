@@ -11,6 +11,9 @@ const config: CapacitorConfig = {
   // appName: "SSDC Horizon",
   webDir: "dist",
   plugins: {
+    CapacitorUpdater: {
+      autoUpdate: false,
+    },
     PrivacyScreen: {
       enable: true,
       preventScreenshots: true,

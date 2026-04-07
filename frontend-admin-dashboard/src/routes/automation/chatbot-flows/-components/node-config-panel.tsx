@@ -713,6 +713,18 @@ function AiResponseConfig({ config, onChange }: { config: Record<string, unknown
 
             <FieldLabel>Fallback Message (on error/max turns)</FieldLabel>
             <input type="text" value={(config.fallbackMessage as string) || ''} onChange={(e) => onChange('fallbackMessage', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded" placeholder="Let me connect you with a human agent." />
+
+            <SectionLabel>Interactive Responses</SectionLabel>
+            <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={(config.enableInteractive as boolean) || false} onChange={(e) => onChange('enableInteractive', e.target.checked)} className="rounded" />
+                <span className="text-sm">Allow AI to send reply buttons and list menus</span>
+            </label>
+            {config.enableInteractive && (
+                <div className="p-2 bg-teal-50 border border-teal-200 rounded text-xs text-teal-700 mt-1">
+                    The AI can now include reply buttons (max 3) or list menus when presenting choices.
+                    Falls back to plain text if the format is invalid or 24hr session expired.
+                </div>
+            )}
         </>
     );
 }

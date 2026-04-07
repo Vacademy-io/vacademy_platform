@@ -124,6 +124,59 @@ public class UserLeadProfileService {
     }
 
     /**
+     * Update the conversion status of a lead profile.
+     * Valid statuses: LEAD, CONVERTED, LOST.
+     * Setting to CONVERTED freezes score updates; setting back to LEAD unfreezes them.
+     */
+    @Transactional
+    public UserLeadProfile updateConversionStatus(String userId, String instituteId, String status) {
+        UserLeadProfile profile = userLeadProfileRepository
+                .findByUserIdAndInstituteId(userId, instituteId)
+                .orElseGet(() -> UserLeadProfile.builder()
+                        .userId(userId)
+                        .instituteId(instituteId)
+                        .build());
+
+        profile.setConversionStatus(status);
+        profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+
+        if ("CONVERTED".equals(status)) {
+            profile.setConvertedAt(new Timestamp(System.currentTimeMillis()));
+        } else {
+            profile.setConvertedAt(null);
+        }
+
+        return userLeadProfileRepository.save(profile);
+    }
+
+    /**
+     * Manually set the lead tier (HOT, WARM, COLD) by overriding the best_score.
+     * HOT → score 90, WARM → score 60, COLD → score 20.
+     */
+    @Transactional
+    public UserLeadProfile updateLeadTier(String userId, String instituteId, String tier) {
+        UserLeadProfile profile = userLeadProfileRepository
+                .findByUserIdAndInstituteId(userId, instituteId)
+                .orElseGet(() -> UserLeadProfile.builder()
+                        .userId(userId)
+                        .instituteId(instituteId)
+                        .build());
+
+        int score;
+        switch (tier.toUpperCase()) {
+            case "HOT":  score = 90; break;
+            case "WARM": score = 60; break;
+            default:     score = 20; break;
+        }
+        profile.setBestScore(score);
+        profile.setLeadTier(tier.toUpperCase());
+        profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+        profile.setLastCalculatedAt(new Timestamp(System.currentTimeMillis()));
+
+        return userLeadProfileRepository.save(profile);
+    }
+
+    /**
      * Fetch the lead profile DTO for a single user.
      */
     public Optional<UserLeadProfileDTO> getProfileDTO(String userId, String instituteId) {

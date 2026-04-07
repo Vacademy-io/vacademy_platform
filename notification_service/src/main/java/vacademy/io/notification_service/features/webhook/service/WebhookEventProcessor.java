@@ -20,6 +20,7 @@ import vacademy.io.notification_service.features.webhook.dto.UnifiedWebhookEvent
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Central service that processes UnifiedWebhookEvent.
@@ -43,6 +44,9 @@ public class WebhookEventProcessor {
     private static final String WHATSAPP_INCOMING_MESSAGE = "WHATSAPP_MESSAGE_INCOMING";
     private static final String WHATSAPP_VERIFICATION = "WHATSAPP_VERIFICATION";
 
+    // Dedup: WATI sends to both /{channelId} and /{channelId}/incoming
+    private final ConcurrentHashMap<String, Long> processedMessageIds = new ConcurrentHashMap<>();
+
     /**
      * Process a unified webhook event from any vendor.
      * 1. Logs the event to notification_log table (with businessChannelId)
@@ -51,6 +55,19 @@ public class WebhookEventProcessor {
      * @param event Unified webhook event
      */
     public void processEvent(UnifiedWebhookEvent event) {
+        // Dedup: skip if same messageId was processed in last 30 seconds
+        String msgId = event.getExternalMessageId();
+        if (msgId != null) {
+            Long prev = processedMessageIds.putIfAbsent(msgId, System.currentTimeMillis());
+            if (prev != null) {
+                log.info("Skipping duplicate webhook: messageId={}", msgId);
+                return;
+            }
+            // Evict old entries (>60s) to prevent memory leak
+            long cutoff = System.currentTimeMillis() - 60_000;
+            processedMessageIds.entrySet().removeIf(e -> e.getValue() < cutoff);
+        }
+
         log.info("Processing webhook event: vendor={}, type={}, messageId={}, phone={}, businessChannelId={}",
                 event.getVendor(),
                 event.getEventType(),

@@ -233,13 +233,12 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            log.info("WATI API response: url={}, status={}, body={}", url, response.getStatusCode(), response.getBody());
             if (!response.getStatusCode().is2xxSuccessful()) {
-                log.error("WATI API error: url={}, status={}, body={}", url, response.getStatusCode(), response.getBody());
                 throw new RuntimeException("WATI API returned " + response.getStatusCode());
             }
-            log.debug("WATI message sent successfully: url={}", url);
         } catch (Exception e) {
-            log.error("Failed to send message via WATI: {}", e.getMessage());
+            log.error("Failed to send message via WATI: url={}, error={}", url, e.getMessage());
             throw e;
         }
     }

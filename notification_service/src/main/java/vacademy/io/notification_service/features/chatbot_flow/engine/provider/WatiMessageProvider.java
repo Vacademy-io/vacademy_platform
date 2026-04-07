@@ -199,9 +199,17 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
         if (config == null) throw new RuntimeException("WATI config not found for institute: " + instituteId);
 
         String formattedPhone = phone.replaceAll("[^0-9]", "");
-        String url = config.apiUrl + "/api/v1/sendSessionMessage/" + formattedPhone;
+        // WATI sendSessionMessage: messageText is a QUERY PARAMETER, not JSON body
+        String encodedText;
+        try {
+            encodedText = java.net.URLEncoder.encode(text, "UTF-8");
+        } catch (Exception e) {
+            encodedText = text;
+        }
+        String url = config.apiUrl + "/api/v1/sendSessionMessage/" + formattedPhone
+                + "?messageText=" + encodedText;
 
-        sendRequest(config, url, Map.of("messageText", text));
+        sendRequest(config, url, Map.of());
     }
 
     @Override

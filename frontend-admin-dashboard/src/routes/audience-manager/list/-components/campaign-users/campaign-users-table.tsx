@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { MyTable } from '@/components/design-system/table';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import EmptyInvitePage from '@/assets/svgs/empty-invite-page.svg';
@@ -180,6 +180,17 @@ export const CampaignUsersTable = ({
         return map;
     }, [customFields]);
 
+    const handleDeleteLead = useCallback(async (responseId: string) => {
+        if (!confirm('Delete this lead? This action cannot be undone.')) return;
+        try {
+            await deleteAudienceLead(responseId);
+            toast.success('Lead deleted');
+            queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
+        } catch {
+            toast.error('Failed to delete lead');
+        }
+    }, [campaignId, queryClient]);
+
     const columns = useMemo(() => {
         const allCustomFieldsArray = allFieldIdsFromAllUsers.map((fieldId) => ({
             id: fieldId,
@@ -194,7 +205,7 @@ export const CampaignUsersTable = ({
         const fieldIdsToUse = allCustomFieldsArray.length > 0 ? allCustomFieldsArray : customFields;
         const generatedColumns = generateDynamicColumns(fieldIdsToUse, customFieldMap, handleDeleteLead);
         return generatedColumns;
-    }, [customFields, allFieldIdsFromAllUsers, customFieldMap]);
+    }, [customFields, allFieldIdsFromAllUsers, customFieldMap, handleDeleteLead]);
 
     const tableKey = useMemo(() => {
         const fieldIdsKey =
@@ -290,17 +301,6 @@ export const CampaignUsersTable = ({
             last: usersResponse.last,
         };
     }, [usersResponse, allFieldIdsFromAllUsers, customFieldMap, page, pageSize]);
-
-    const handleDeleteLead = async (responseId: string) => {
-        if (!confirm('Delete this lead? This action cannot be undone.')) return;
-        try {
-            await deleteAudienceLead(responseId);
-            toast.success('Lead deleted');
-            queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
-        } catch {
-            toast.error('Failed to delete lead');
-        }
-    };
 
     const handlePageChange = (newPage: number) => {
         setPage(newPage);

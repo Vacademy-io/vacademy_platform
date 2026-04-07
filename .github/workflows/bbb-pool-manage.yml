@@ -21,9 +21,9 @@ on:
         required: false
         default: '1'
 
-# Per-server concurrency — allows S1 and S2 to run in parallel
+# Per-server concurrency at workflow level to prevent multiple duplicate runs
 concurrency:
-  group: bbb-pool-${{ inputs.server_slug }}
+  group: bbb-workflow-${{ inputs.server_slug }}
   cancel-in-progress: false
 
 env:

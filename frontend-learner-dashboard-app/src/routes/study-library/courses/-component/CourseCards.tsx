@@ -254,12 +254,17 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 </div>
 
                 {/* Description */}
-                <div
-                    className="text-sm text-muted-foreground line-clamp-2 leading-relaxed flex-grow"
-                    dangerouslySetInnerHTML={{
-                        __html: description || "",
-                    }}
-                />
+                <p className="text-sm text-muted-foreground line-clamp-4 leading-relaxed flex-grow">
+                    {(() => {
+                        const plainText = (description || "")
+                            .replace(/<[^>]*>/g, " ")
+                            .replace(/\s+/g, " ")
+                            .trim();
+                        return plainText.length > 200
+                            ? plainText.slice(0, 200) + "…"
+                            : plainText;
+                    })()}
+                </p>
 
                 {/* Instructor */}
                 {instructors.length > 0 && (
@@ -332,12 +337,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     </div>
 
                     <div className="flex items-center justify-end gap-3 text-xs text-muted-foreground">
-                        {studentCount !== undefined && (
-                            <div className="flex items-center gap-1">
-                                <Users size={14} />
-                                <span>{studentCount}</span>
-                            </div>
-                        )}
                         {readTimeInMinutes && (
                             <div className="flex items-center gap-1">
                                 <Clock size={14} />

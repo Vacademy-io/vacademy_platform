@@ -2453,17 +2453,40 @@ export const SlideMaterial = ({
                                     <PublishDialog
                                         isOpen={isPublishDialogOpen}
                                         setIsOpen={setIsPublishDialogOpen}
-                                        handlePublishUnpublishSlide={() => {
+                                        handlePublishUnpublishSlide={async () => {
                                             if (
                                                 activeItem?.document_slide?.type === 'PRESENTATION'
                                             ) {
                                                 publishExcalidrawPresentation();
                                                 setIsPublishDialogOpen(false);
                                             } else {
+                                                // For DOC slides, get fresh editor HTML so
+                                                // the latest content (including videos) is published
+                                                let itemToPublish = activeItem;
+                                                if (
+                                                    activeItem?.source_type === 'DOCUMENT' &&
+                                                    activeItem?.document_slide?.type === 'DOC'
+                                                ) {
+                                                    let currentHtml = getCurrentEditorHTMLContent();
+                                                    if (containsBase64Images(currentHtml)) {
+                                                        const { processedHtml } =
+                                                            await processHtmlImages(currentHtml);
+                                                        currentHtml = processedHtml;
+                                                    }
+                                                    itemToPublish = {
+                                                        ...activeItem,
+                                                        document_slide: {
+                                                            ...activeItem.document_slide!,
+                                                            data: currentHtml,
+                                                            total_pages:
+                                                                estimatePageCount(currentHtml),
+                                                        },
+                                                    };
+                                                }
                                                 handlePublishSlide(
                                                     setIsPublishDialogOpen,
                                                     false,
-                                                    activeItem,
+                                                    itemToPublish,
                                                     addUpdateDocumentSlide,
                                                     addUpdateVideoSlide,
                                                     updateQuestionOrder,
@@ -2473,7 +2496,8 @@ export const SlideMaterial = ({
                                                     addUpdateScormSlide,
                                                     SaveDraft,
                                                     playerRef
-                                                );                                            }
+                                                );
+                                            }
                                         }}
                                     />
                                 )}

@@ -200,16 +200,14 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
 
         String formattedPhone = phone.replaceAll("[^0-9]", "");
         // WATI sendSessionMessage: messageText is a QUERY PARAMETER, not JSON body
-        String encodedText;
-        try {
-            encodedText = java.net.URLEncoder.encode(text, "UTF-8");
-        } catch (Exception e) {
-            encodedText = text;
-        }
-        String url = config.apiUrl + "/api/v1/sendSessionMessage/" + formattedPhone
-                + "?messageText=" + encodedText;
+        // Use UriComponentsBuilder to handle encoding properly (avoids double-encoding)
+        String url = org.springframework.web.util.UriComponentsBuilder
+                .fromHttpUrl(config.apiUrl + "/api/v1/sendSessionMessage/" + formattedPhone)
+                .queryParam("messageText", text)
+                .build()
+                .toUriString();
 
-        sendRequest(config, url, Map.of());
+        sendRequestWithRawUrl(config, url, Map.of());
     }
 
     @Override
@@ -246,6 +244,42 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
                 throw new RuntimeException("WATI API returned " + response.getStatusCode());
             }
             // WATI returns HTTP 200 even on failure — check "result" field
+            if (response.getBody() != null) {
+                try {
+                    JsonNode respJson = objectMapper.readTree(response.getBody());
+                    if (!respJson.path("result").asBoolean(true)) {
+                        String info = respJson.path("info").asText("unknown error");
+                        throw new RuntimeException("WATI API result=false: " + info);
+                    }
+                } catch (RuntimeException re) {
+                    throw re;
+                } catch (Exception parseEx) {
+                    log.warn("Could not parse WATI response body: {}", parseEx.getMessage());
+                }
+            }
+        } catch (RuntimeException e) {
+            log.error("Failed to send message via WATI: url={}, error={}", url, e.getMessage());
+            throw e;
+        }
+    }
+
+    /**
+     * Like sendRequest but takes a pre-encoded URL string (as URI) to prevent
+     * RestTemplate from double-encoding query parameters.
+     */
+    private void sendRequestWithRawUrl(WatiConfig config, String url, Map<String, Object> payload) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Authorization", "Bearer " + config.apiKey);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+        try {
+            java.net.URI uri = java.net.URI.create(url);
+            ResponseEntity<String> response = restTemplate.postForEntity(uri, request, String.class);
+            log.info("WATI API response: status={}, body={}", response.getStatusCode(), response.getBody());
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("WATI API returned " + response.getStatusCode());
+            }
             if (response.getBody() != null) {
                 try {
                     JsonNode respJson = objectMapper.readTree(response.getBody());

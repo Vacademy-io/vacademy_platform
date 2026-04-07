@@ -136,8 +136,26 @@ public class WatiWebhookHandler implements VendorWebhookHandler {
             }
         }
 
-        // All incoming messages are REPLY - action routing determines next steps
-        UnifiedWebhookEvent.EventType eventType = UnifiedWebhookEvent.EventType.REPLY;
+        // Check if this is an outgoing message (our own send confirmation)
+        // WATI sends webhooks for outgoing messages with owner=true and eventType like
+        // sessionMessageSent, sessionMessageSent_v2, sentMessageDELIVERED, sentMessageREAD etc.
+        boolean isOwner = root.path("owner").asBoolean(false);
+        String watiEventType = root.path("eventType").asText("");
+
+        UnifiedWebhookEvent.EventType eventType;
+        if (isOwner || watiEventType.startsWith("sessionMessageSent")
+                || watiEventType.startsWith("sentMessage")) {
+            // Outgoing message status — map to appropriate status event, NOT a reply
+            if (watiEventType.contains("DELIVERED")) {
+                eventType = UnifiedWebhookEvent.EventType.DELIVERED;
+            } else if (watiEventType.contains("READ")) {
+                eventType = UnifiedWebhookEvent.EventType.READ;
+            } else {
+                eventType = UnifiedWebhookEvent.EventType.SENT;
+            }
+        } else {
+            eventType = UnifiedWebhookEvent.EventType.REPLY;
+        }
 
         return UnifiedWebhookEvent.builder()
                 .vendor(getVendorName())

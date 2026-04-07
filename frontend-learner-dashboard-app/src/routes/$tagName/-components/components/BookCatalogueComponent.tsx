@@ -632,6 +632,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                             packageSessionId={book.packageSessionId}
                             destinationUrl={`${window.location.origin}/${tagName}/${book.id}?packageSessionId=${book.packageSessionId}${book.enrollInviteId ? `&enrollInviteId=${book.enrollInviteId}` : ""}${book.level ? `&level=${book.level}` : ""}`}
                             instituteId={instituteId}
+                            title={book.title}
                             size="sm"
                           />
                         </div>

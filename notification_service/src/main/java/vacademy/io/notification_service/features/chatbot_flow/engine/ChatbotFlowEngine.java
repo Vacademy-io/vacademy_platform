@@ -101,21 +101,21 @@ public class ChatbotFlowEngine {
                         }
                     }
 
-                    // Condition didn't match any branch. Check if input matches
-                    // a DIFFERENT flow's trigger (not the current flow's own catch-all).
+                    // Node execution failed or condition didn't match any branch.
+                    // Check if input matches ANY flow's trigger (including current flow).
+                    // If it matches, restart — the user is clearly trying to start over.
                     String matchedFlowId = findMatchingTriggerFlowId(instituteId, channelType,
                             userText, messageType, buttonId, buttonPayload, listReplyId);
 
-                    if (matchedFlowId != null && !matchedFlowId.equals(session.getFlowId())) {
-                        log.info("Input matches a different flow's trigger (flowId={}) "
-                                + "while on {} node — restarting",
-                                matchedFlowId, currentNode.getNodeType());
+                    if (matchedFlowId != null) {
+                        log.info("Input matches trigger for flow={} while stuck on {} node "
+                                + "— restarting session", matchedFlowId, currentNode.getNodeType());
                         completeSession(session);
-                        // Fall through to trigger matching below to start the new flow
+                        // Fall through to trigger matching below to start a new flow
                     } else {
-                        // No other flow matches — stay on current node waiting for valid input
-                        log.info("No specific trigger matched for other flow — staying on "
-                                + "current CONDITION node: sessionId={}", session.getId());
+                        // No trigger matches — stay on current node waiting for valid input
+                        log.info("No trigger matched — staying on current {} node: sessionId={}",
+                                currentNode.getNodeType(), session.getId());
                         return true;
                     }
                 } else {

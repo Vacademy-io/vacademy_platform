@@ -97,10 +97,28 @@ export const fetchStudentDues = async (userId: string): Promise<StudentFeeDueDTO
 
 // ─── Allocate Selected Payment ─────────────────────────────────────────────
 
+export interface ReceiptLineItem {
+    fee_type_name: string | null;
+    cpo_name: string | null;
+    due_date: string | null;
+    amount_expected: number;
+    amount_paid: number;
+    balance: number;
+    status: string;
+}
+
 export interface AllocatePaymentResponse {
     invoice_id?: string;
     receipt_number?: string;
+    receipt_date?: string;
     download_url?: string;
+    payment_mode?: string;
+    transaction_id?: string;
+    line_items?: ReceiptLineItem[];
+    total_expected?: number;
+    total_paid?: number;
+    balance_due?: number;
+    amount_paid_now?: number;
 }
 
 export const allocateSelectedPayment = async (

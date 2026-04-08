@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilte
 import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardRequestDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardResponseDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.InvoiceReceiptDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.ReceiptDetailsDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentRowDTO;
@@ -674,6 +675,81 @@ public class FeeTrackingService {
                                 .remarks(entity.getRemarks())
                                 .createdAt(entity.getCreatedAt())
                                 .build();
+        }
+
+        @Transactional(readOnly = true)
+        public ReceiptDetailsDTO buildReceiptDetails(String invoiceId) {
+            Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+            if (invoice == null) return null;
+
+            List<InvoiceLineItem> lineItems = invoiceLineItemRepository.findByInvoiceId(invoiceId);
+
+            List<String> sourceIds = lineItems.stream()
+                    .map(InvoiceLineItem::getSourceId)
+                    .filter(s -> s != null && !s.isBlank())
+                    .collect(Collectors.toList());
+
+            Map<String, StudentFeePayment> paymentMap = studentFeePaymentRepository.findAllById(sourceIds)
+                    .stream().collect(Collectors.toMap(StudentFeePayment::getId, Function.identity(), (a, b) -> a));
+
+            List<StudentFeePayment> bills = new ArrayList<>(paymentMap.values());
+            Map<String, FeeMeta> metaMap = bills.isEmpty() ? Collections.emptyMap() : buildFeeMetaMap(bills);
+
+            // Parse payment mode and transaction ID from ledger remarks
+            String paymentMode = null;
+            String transactionId = null;
+            if (!sourceIds.isEmpty()) {
+                List<StudentFeeAllocationLedger> ledgers =
+                        studentFeeAllocationLedgerRepository.findByStudentFeePaymentId(sourceIds.get(0));
+                if (!ledgers.isEmpty() && ledgers.get(0).getRemarks() != null) {
+                    String[] parts = ledgers.get(0).getRemarks().split(" \\| ");
+                    for (String part : parts) {
+                        if (part.startsWith("Mode: ")) paymentMode = part.replace("Mode: ", "").trim();
+                        if (part.startsWith("Txn ID: ")) transactionId = part.replace("Txn ID: ", "").trim();
+                    }
+                }
+            }
+
+            // Build line item DTOs with fresh post-payment amounts
+            List<ReceiptDetailsDTO.ReceiptLineItemDTO> lineDTOs = new ArrayList<>();
+            for (String sourceId : sourceIds) {
+                StudentFeePayment sfp = paymentMap.get(sourceId);
+                if (sfp == null) continue;
+                FeeMeta meta = metaMap.get(sfp.getId());
+                BigDecimal expected = sfp.getAmountExpected() != null ? sfp.getAmountExpected() : BigDecimal.ZERO;
+                BigDecimal paid = sfp.getAmountPaid() != null ? sfp.getAmountPaid() : BigDecimal.ZERO;
+                BigDecimal discount = sfp.getDiscountAmount() != null ? sfp.getDiscountAmount() : BigDecimal.ZERO;
+                BigDecimal balance = expected.subtract(paid).subtract(discount).max(BigDecimal.ZERO);
+                lineDTOs.add(ReceiptDetailsDTO.ReceiptLineItemDTO.builder()
+                        .feeTypeName(meta != null ? meta.feeTypeName() : null)
+                        .cpoName(meta != null ? meta.cpoName() : null)
+                        .dueDate(sfp.getDueDate())
+                        .amountExpected(expected)
+                        .amountPaid(paid)
+                        .balance(balance)
+                        .status(sfp.getStatus())
+                        .build());
+            }
+
+            // Sort by due date
+            lineDTOs.sort(Comparator.comparing(
+                    ReceiptDetailsDTO.ReceiptLineItemDTO::getDueDate,
+                    Comparator.nullsLast(Comparator.naturalOrder())));
+
+            InvoiceDataFields dataFields = extractInvoiceDataFields(invoice.getInvoiceDataJson());
+
+            return ReceiptDetailsDTO.builder()
+                    .invoiceId(invoice.getId())
+                    .receiptNumber(invoice.getInvoiceNumber())
+                    .receiptDate(invoice.getInvoiceDate())
+                    .paymentMode(paymentMode)
+                    .transactionId(transactionId)
+                    .lineItems(lineDTOs)
+                    .totalExpected(dataFields.totalExpected())
+                    .totalPaid(dataFields.totalPaid())
+                    .balanceDue(dataFields.balanceDue())
+                    .amountPaidNow(dataFields.amountPaidNow())
+                    .build();
         }
 
         private Map<String, FeeMeta> buildFeeMetaMap(List<StudentFeePayment> bills) {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { StudentFeePaymentRowDTO, StudentFeeDueDTO } from '@/types/manage-finances';
+import { AllocatePaymentResponse } from '@/services/manage-finances';
 import { StudentSearchStep } from './StudentSearchStep';
 import { InstallmentSelectionStep } from './InstallmentSelectionStep';
 import { PaymentDetailsStep } from './PaymentDetailsStep';
@@ -19,8 +20,7 @@ export function PayInstallmentsMain() {
     const [selectedStudent, setSelectedStudent] = useState<StudentFeePaymentRowDTO | null>(null);
     const [selectedDues, setSelectedDues] = useState<StudentFeeDueDTO[]>([]);
     const [paidAmount, setPaidAmount] = useState<number>(0);
-    const [receiptUrl, setReceiptUrl] = useState<string | undefined>();
-    const [receiptNumber, setReceiptNumber] = useState<string | undefined>();
+    const [receipt, setReceipt] = useState<AllocatePaymentResponse | undefined>();
 
     const handleSelectStudent = (student: StudentFeePaymentRowDTO) => {
         setSelectedStudent(student);
@@ -32,10 +32,9 @@ export function PayInstallmentsMain() {
         setStep('payment');
     };
 
-    const handlePaymentSuccess = (amount: number, url?: string, number?: string) => {
+    const handlePaymentSuccess = (amount: number, receiptData?: AllocatePaymentResponse) => {
         setPaidAmount(amount);
-        setReceiptUrl(url);
-        setReceiptNumber(number);
+        setReceipt(receiptData);
         setStep('success');
     };
 
@@ -47,8 +46,7 @@ export function PayInstallmentsMain() {
         setSelectedStudent(null);
         setSelectedDues([]);
         setPaidAmount(0);
-        setReceiptUrl(undefined);
-        setReceiptNumber(undefined);
+        setReceipt(undefined);
         setStep('search');
     };
 
@@ -107,9 +105,7 @@ export function PayInstallmentsMain() {
             {step === 'success' && selectedStudent && (
                 <PaymentSuccessStep
                     studentName={selectedStudent.student_name}
-                    amount={paidAmount}
-                    receiptUrl={receiptUrl}
-                    receiptNumber={receiptNumber}
+                    receipt={receipt}
                     onPayAnother={handleReset}
                 />
             )}

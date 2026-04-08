@@ -32,7 +32,7 @@ interface PaymentDetailsStepProps {
     student: StudentFeePaymentRowDTO;
     selectedDues: StudentFeeDueDTO[];
     onBack: () => void;
-    onSuccess: (amount: number, receiptUrl?: string, receiptNumber?: string) => void;
+    onSuccess: (amount: number, receipt?: AllocatePaymentResponse) => void;
 }
 
 export function PaymentDetailsStep({
@@ -84,7 +84,7 @@ export function PaymentDetailsStep({
             queryClient.invalidateQueries({
                 queryKey: getStudentDuesQueryKey(student.student_id),
             });
-            onSuccess(parsedAmount, data?.download_url, data?.receipt_number);
+            onSuccess(parsedAmount, data);
         },
         onError: (err: any) => {
             toast.error(err?.response?.data?.ex || err?.message || 'Payment failed');

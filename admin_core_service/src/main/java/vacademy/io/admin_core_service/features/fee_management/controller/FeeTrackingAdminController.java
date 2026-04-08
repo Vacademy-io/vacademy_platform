@@ -11,6 +11,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.ReceiptDetailsDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.SelectiveAllocationRequest;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
@@ -180,17 +181,18 @@ public class FeeTrackingAdminController {
                 userId, request.getInstituteId(), request.getStudentFeePaymentIds(),
                 request.getAmount(), request.getRemarks());
 
-        Map<String, String> response = new java.util.HashMap<>();
-        if (invoiceId != null) {
+        if (invoiceId == null) {
+            return ResponseEntity.ok(new java.util.HashMap<>());
+        }
+
+        ReceiptDetailsDTO receipt = feeTrackingService.buildReceiptDetails(invoiceId);
+        if (receipt != null) {
             Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
             if (invoice != null && invoice.getPdfFileId() != null) {
-                String downloadUrl = mediaService.getFilePublicUrlById(invoice.getPdfFileId());
-                response.put("invoice_id", invoiceId);
-                response.put("receipt_number", invoice.getInvoiceNumber());
-                response.put("download_url", downloadUrl != null ? downloadUrl : "");
+                receipt.setDownloadUrl(mediaService.getFilePublicUrlById(invoice.getPdfFileId()));
             }
         }
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(receipt);
     }
 
     /**

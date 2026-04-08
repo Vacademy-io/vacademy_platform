@@ -36,32 +36,19 @@ const generateKeyFromName = (name: string): string =>
         .replace(/^_+|_+$/g, '');
 
 /**
- * Get default campaign fields (fallback when no settings are available)
- * Returns empty array - all fields should be configured in settings
- * If no fields are configured, the form will start with an empty custom fields list
- */
-const getDefaultCampaignFields = (): CampaignFormCustomField[] => {
-    // Return empty array - all fields should come from settings
-    // Users can add fields manually or configure them in settings
-    return [];
-};
-
-/**
  * Get dynamic campaign fields from settings cache
  * This reads from localStorage cache which is updated when settings are saved
- * 
+ *
  * @returns Array of campaign custom fields configured in settings with Campaign visibility
- *          Returns empty array if no settings found (no fallback fields)
+ *          Returns empty array if no settings found
  */
 export const getCampaignCustomFields = (): CampaignFormCustomField[] => {
     try {
         // Get fields defined under "Campaign" location from settings cache
         const customFields = getFieldsForLocation('Campaign') || [];
 
-        // If no fields defined in settings → return empty array
         if (!customFields.length) {
-            console.log('📋 [getCampaignCustomFields] No fields in settings, returning empty array');
-            return getDefaultCampaignFields();
+            return [];
         }
 
         // Transform settings fields into form-compatible format
@@ -75,11 +62,10 @@ export const getCampaignCustomFields = (): CampaignFormCustomField[] => {
                 isRequired: field.required || false,
                 key: fieldKey,
                 order: index,
-                _id: field.id, // Store actual field ID from settings for API payload
+                _id: field.id,
                 status: 'ACTIVE',
             };
 
-            // Add options if it's a dropdown field
             if (field.type === 'dropdown' && field.options && field.options.length > 0) {
                 transformed.options = field.options.map((opt, i) => ({
                     id: `${index}_opt_${i}`,
@@ -91,12 +77,10 @@ export const getCampaignCustomFields = (): CampaignFormCustomField[] => {
             return transformed;
         });
 
-        console.log('📋 [getCampaignCustomFields] Loaded', transformedFields.length, 'fields from settings');
         return transformedFields;
     } catch (err) {
         console.error('❌ Error in getCampaignCustomFields:', err);
-        // Fallback to defaults on error
-        return getDefaultCampaignFields();
+        return [];
     }
 };
 

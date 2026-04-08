@@ -125,7 +125,7 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
                         + "- Only use interactive elements when presenting clear choices. For conversational replies, just respond with plain text (NO JSON wrapping).\n"
                         + "- Button/row IDs should be short, descriptive, lowercase with underscores.\n"
                         + "- NEVER wrap plain text responses in JSON.\n"
-                        + "- Output ONLY the raw JSON object. Do NOT add ```json, markdown fences, or any prefix/suffix.\n";
+                        + "- When using interactive JSON, your ENTIRE response must be ONLY the JSON object — no text before or after it. Do NOT add ```json, markdown fences, or any prefix/suffix. The \"text\" field inside the JSON is your message.\n";
             }
 
             String systemPrompt = userSystemPrompt + whatsappContext;
@@ -208,21 +208,16 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
             return msg;
         }
 
-        // Strip markdown code fences and "json" prefix that LLMs often add
-        String cleaned = msg.trim();
-        if (cleaned.startsWith("```json")) cleaned = cleaned.substring(7);
-        else if (cleaned.startsWith("```")) cleaned = cleaned.substring(3);
-        if (cleaned.endsWith("```")) cleaned = cleaned.substring(0, cleaned.length() - 3);
-        cleaned = cleaned.trim();
-        if (cleaned.startsWith("json")) cleaned = cleaned.substring(4).trim();
-
-        if (!cleaned.startsWith("{")) {
+        // Try to extract JSON from the response — LLMs may add text before/after JSON,
+        // markdown fences, or "json" prefix
+        String jsonStr = extractJsonObject(msg);
+        if (jsonStr == null) {
             sendTextToUser(ctx, msg);
             return msg;
         }
 
         try {
-            Map<String, Object> parsed = objectMapper.readValue(cleaned, new TypeReference<>() {});
+            Map<String, Object> parsed = objectMapper.readValue(jsonStr, new TypeReference<>() {});
             String text = (String) parsed.get("text");
             Map<String, Object> interactiveData = (Map<String, Object>) parsed.get("interactive");
 
@@ -260,6 +255,36 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
         }
     }
 
+    /**
+     * Extract a JSON object from an AI response that may contain extra text.
+     * Handles: pure JSON, markdown fences, "json" prefix, or text + JSON mixed.
+     * Returns null if no valid JSON object with "text" key is found.
+     */
+    private String extractJsonObject(String msg) {
+        if (msg == null) return null;
+        String trimmed = msg.trim();
+
+        // Strip markdown code fences
+        if (trimmed.startsWith("```json")) trimmed = trimmed.substring(7);
+        else if (trimmed.startsWith("```")) trimmed = trimmed.substring(3);
+        if (trimmed.endsWith("```")) trimmed = trimmed.substring(0, trimmed.length() - 3);
+        trimmed = trimmed.trim();
+        if (trimmed.startsWith("json")) trimmed = trimmed.substring(4).trim();
+
+        // If it starts with { now, use it directly
+        if (trimmed.startsWith("{")) return trimmed;
+
+        // LLM may have mixed text + JSON — find the first { that starts a JSON block
+        int firstBrace = msg.indexOf('{');
+        if (firstBrace < 0) return null;
+        String candidate = msg.substring(firstBrace);
+        // Quick validation: must contain "text" key to be our interactive format
+        if (candidate.contains("\"text\"") && candidate.contains("\"interactive\"")) {
+            return candidate;
+        }
+        return null;
+    }
+
     private List<Map<String, Object>> sanitizeButtons(List<Map<String, Object>> buttons) {
         if (buttons == null || buttons.isEmpty()) return List.of();
         List<Map<String, Object>> result = new ArrayList<>();
@@ -268,7 +293,7 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
             String title = btn.getOrDefault("title", "").toString();
             if (title.length() > 20) btn.put("title", title.substring(0, 20));
             String id = btn.getOrDefault("id", "btn_" + i).toString();
-            if (id.isBlank()) btn.put("id", "btn_" + i);
+            if (id.isBlank()) id = "btn_" + i;
             btn.put("id", id);
             result.add(btn);
         }

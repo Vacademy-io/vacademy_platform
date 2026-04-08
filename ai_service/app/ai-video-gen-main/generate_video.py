@@ -1268,6 +1268,11 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
               host.style.top = (e.y | 0) + 'px';
               host.style.width = (e.w | 0) + 'px';
               host.style.height = (e.h | 0) + 'px';
+              // Full-viewport entries get page background so no bleed-through
+              const vw = window.innerWidth, vh = window.innerHeight;
+              if (e.x === 0 && e.y === 0 && e.w >= vw && e.h >= vh) {
+                host.style.background = getComputedStyle(document.body).backgroundColor || '#ffffff';
+              }
             };
           }
 

@@ -42,6 +42,7 @@ public class EnrollmentPolicyJsonDTOs {
         private String trigger; // ON_EXPIRY_DATE_REACHED, DURING_WAITING_PERIOD, BEFORE_EXPIRY
         private Integer sendEveryNDays;
         private Integer maxSends;
+        private Integer startAfterDay; // For DURING_WAITING_PERIOD - start sending after N days past expiry
         private Integer daysBeforeExpiry; // For BEFORE_EXPIRY
         private NotificationDetailsDTO notificationConfig;
     }

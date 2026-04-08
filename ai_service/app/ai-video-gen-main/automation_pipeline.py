@@ -1343,6 +1343,7 @@ class VideoGenerationPipeline:
                 _seg_audio_dur = 0.0
                 _seg_audio_path = tts_outputs.get("audio_path")
                 if _seg_audio_path and Path(_seg_audio_path).exists():
+                    # Try ffprobe first, then fall back to mutagen (pure Python)
                     try:
                         _probe_res = subprocess.run(
                             ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
@@ -1350,9 +1351,15 @@ class VideoGenerationPipeline:
                             capture_output=True, text=True, timeout=10,
                         )
                         _seg_audio_dur = float(_probe_res.stdout.strip())
-                        print(f"   ℹ️  Actual audio duration: {_seg_audio_dur:.1f}s")
                     except Exception:
-                        pass
+                        # ffprobe not available — use mutagen (pure Python)
+                        try:
+                            from mutagen.mp3 import MP3
+                            _seg_audio_dur = MP3(str(_seg_audio_path)).info.length
+                        except Exception:
+                            pass
+                    if _seg_audio_dur > 0:
+                        print(f"   ℹ️  Actual audio duration: {_seg_audio_dur:.1f}s")
 
                 # Configurable max segments to limit LLM expense
                 # Default: max 12 segments (covers ~8 minutes of video at ~40s each)
@@ -2545,6 +2552,7 @@ class VideoGenerationPipeline:
                         "model": "bulbul:v3",
                         "speech_sample_rate": 24000,
                         "enable_preprocessing": True,
+                        "output_audio_codec": "mp3",
                     }
                     resp = await client.post(
                         "https://api.sarvam.ai/text-to-speech",
@@ -2568,27 +2576,11 @@ class VideoGenerationPipeline:
         if not wav_bytes:
             raise RuntimeError("Sarvam TTS returned empty audio")
 
-        print(f"    ✅ Sarvam TTS complete ({len(wav_bytes)} bytes WAV)")
+        print(f"    ✅ Sarvam TTS complete ({len(wav_bytes)} bytes MP3)")
 
-        # Convert WAV → MP3 using pydub (or write raw and use ffmpeg)
-        try:
-            from pydub import AudioSegment
-            import io
-            audio_segment = AudioSegment.from_wav(io.BytesIO(wav_bytes))
-            audio_segment.export(str(audio_path), format="mp3")
-            print(f"    ✅ Converted WAV → MP3: {audio_path}")
-        except ImportError:
-            # Fallback: save as WAV, use ffmpeg to convert
-            wav_path = run_dir / "narration_sarvam.wav"
-            wav_path.write_bytes(wav_bytes)
-            import subprocess
-            subprocess.run(
-                ["ffmpeg", "-y", "-i", str(wav_path), "-codec:a", "libmp3lame",
-                 "-q:a", "2", str(audio_path)],
-                check=True, capture_output=True,
-            )
-            wav_path.unlink(missing_ok=True)
-            print(f"    ✅ Converted WAV → MP3 via ffmpeg: {audio_path}")
+        # Sarvam returns MP3 directly (output_audio_codec: "mp3"), write to file
+        with open(audio_path, "wb") as f:
+            f.write(wav_bytes)
 
         # Sarvam does not return word-level timestamps.
         # Use Whisper forced alignment to get word timings.

@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install system dependencies for Playwright (Chromium) manually
 # Using libgtk-3-0 to pull in most GUI dependencies including atk/atspi
 RUN apt-get update && apt-get install -y \
+    ffmpeg \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \

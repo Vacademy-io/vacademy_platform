@@ -346,6 +346,11 @@ public class FeeTrackingService {
         }
 
         @Transactional(readOnly = true)
+        public List<String> getStudentIdsWithoutInstallments(String instituteId) {
+                return studentFeePaymentRepository.findStudentIdsWithoutInstallmentsByInstituteId(instituteId);
+        }
+
+        @Transactional(readOnly = true)
         public List<vacademy.io.admin_core_service.features.fee_management.dto.InstallmentDetailsDTO> getPaymentDetails(String studentId, String cpoId) {
             List<StudentFeePayment> payments = studentFeePaymentRepository.findByUserId(studentId).stream()
                     .filter(p -> Objects.equals(p.getCpoId(), cpoId))

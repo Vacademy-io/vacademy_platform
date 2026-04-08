@@ -240,6 +240,17 @@ public class FeeTrackingAdminController {
         return ResponseEntity.ok(feeTrackingService.getCollectionDashboard(request));
     }
 
+    /**
+     * Lightweight endpoint: returns student IDs in an institute with no fee-payment
+     * (installment/bill) rows.
+     */
+    @GetMapping("/students/without-installments")
+    public ResponseEntity<List<String>> getStudentIdsWithoutInstallments(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(feeTrackingService.getStudentIdsWithoutInstallments(instituteId));
+    }
+
     @GetMapping("/payment-details")
     public ResponseEntity<List<vacademy.io.admin_core_service.features.fee_management.dto.InstallmentDetailsDTO>> getPaymentDetails(
             @RequestParam("studentId") String studentId,

@@ -3215,20 +3215,34 @@ class VideoGenerationPipeline:
                     temperature=0.5,
                     max_tokens=self._tier_config.get("director_max_tokens", 8000),
                 )
+                print(f"   ℹ️  Director raw response length: {len(raw)} chars")
                 director_plan = _extract_json_blob(raw)
+                print(f"   ℹ️  Director parsed keys: {list(director_plan.keys()) if isinstance(director_plan, dict) else type(director_plan).__name__}")
                 break
             except (ValueError, Exception) as e:
                 last_error = e
                 print(f"   ⚠️ Director attempt {attempt + 1}/{max_attempts} failed: {e}")
+                # Log first 500 chars of raw response if available for debugging
+                if 'raw' in dir():
+                    print(f"   ℹ️  Raw response preview: {raw[:500] if raw else '(empty)'}...")
                 time.sleep(2)
         else:
             print(f"   ❌ Director failed after {max_attempts} attempts — falling back to segment flow")
+            if last_error:
+                print(f"   ❌ Last error: {last_error}")
             return None
 
         # Validate the director plan
         shots = director_plan.get("shots", [])
         if not shots:
-            print("   ⚠️ Director returned empty shots list — falling back")
+            print(f"   ⚠️ Director returned empty shots list — falling back")
+            print(f"   ℹ️  Director plan contents: {json.dumps(director_plan, indent=2)[:1000]}")
+            # Save for debugging
+            try:
+                (run_dir / "director_debug.json").write_text(json.dumps({"raw": raw, "parsed": director_plan}, indent=2))
+                print(f"   ℹ️  Debug saved to {run_dir / 'director_debug.json'}")
+            except Exception:
+                pass
             return None
 
         # Validate shot types

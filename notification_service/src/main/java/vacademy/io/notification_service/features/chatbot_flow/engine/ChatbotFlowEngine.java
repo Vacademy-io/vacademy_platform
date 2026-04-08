@@ -83,25 +83,31 @@ public class ChatbotFlowEngine {
                             // Always merge output variables (e.g., AI conversation history)
                             mergeSessionContext(session, condResult.getOutputVariables());
 
-                            if (condResult.isWaitForInput()) {
-                                // Node wants to stay in conversation mode (AI_RESPONSE)
+                            if (condResult.isWaitForInput()
+                                    && ChatbotNodeType.AI_RESPONSE.name().equals(currentNode.getNodeType())) {
+                                // AI_RESPONSE wants to stay in conversation mode
                                 // History is already saved via mergeSessionContext above
                                 session.setLastActivityAt(new Timestamp(System.currentTimeMillis()));
                                 sessionRepository.save(session);
                                 return true;
                             }
 
-                            // Condition matched a branch — advance to next node
-                            log.info("Node matched branch in active session — resuming flow: "
-                                    + "sessionId={}, branchId={}",
-                                    session.getId(), condResult.getSelectedBranchId());
-                            advanceToNextNodes(session, currentNode.getId(),
-                                    condResult.getSelectedBranchId(), context, 0);
-                            return true;
+                            if (!condResult.isWaitForInput()) {
+                                // Node matched a branch or exited — advance to next node
+                                log.info("Node matched in active session — resuming flow: "
+                                        + "sessionId={}, branchId={}",
+                                        session.getId(), condResult.getSelectedBranchId());
+                                advanceToNextNodes(session, currentNode.getId(),
+                                        condResult.getSelectedBranchId(), context, 0);
+                                return true;
+                            }
+
+                            // CONDITION returned waitForInput=true (no branch matched)
+                            // Fall through to trigger-restart check below
                         }
                     }
 
-                    // Node execution failed or condition didn't match any branch.
+                    // Node execution failed or CONDITION didn't match any branch.
                     // Check if input matches ANY flow's trigger (including current flow).
                     // If it matches, restart — the user is clearly trying to start over.
                     String matchedFlowId = findMatchingTriggerFlowId(instituteId, channelType,

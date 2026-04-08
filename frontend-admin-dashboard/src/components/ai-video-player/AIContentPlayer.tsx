@@ -154,7 +154,11 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const isPlayingRef = useRef(false); // Ref to avoid stale closure issues
     const contentIframeRef = useRef<HTMLIFrameElement>(null); // Ref to the primary content iframe (for print)
 
-    const scaleCalculator = useMemo(() => new ScaleCalculator(width, height), [width, height]);
+    // Effective dimensions: prefer meta.dimensions from the loaded timeline, fall back to props
+    const effectiveWidth = meta.dimensions?.width || width;
+    const effectiveHeight = meta.dimensions?.height || height;
+
+    const scaleCalculator = useMemo(() => new ScaleCalculator(effectiveWidth, effectiveHeight), [effectiveWidth, effectiveHeight]);
 
     // Computed values
     const contentType = meta.content_type;
@@ -757,13 +761,15 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
             if (requestFS) {
                 const promise = requestFS.call(player);
                 if (promise && promise.then) {
+                    const orientationLock = effectiveHeight > effectiveWidth ? 'portrait' : 'landscape';
                     promise.then(() => {
                         setIsFullscreen(true);
-                        try { (screen.orientation as any)?.lock?.('landscape').catch(() => {}); } catch {}
+                        try { (screen.orientation as any)?.lock?.(orientationLock).catch(() => {}); } catch {}
                     }).catch(console.error);
                 } else {
+                    const orientationLock = effectiveHeight > effectiveWidth ? 'portrait' : 'landscape';
                     setIsFullscreen(true);
-                    try { (screen.orientation as any)?.lock?.('landscape').catch(() => {}); } catch {}
+                    try { (screen.orientation as any)?.lock?.(orientationLock).catch(() => {}); } catch {}
                 }
             } else {
                 // Fallback for browsers that don't support fullscreen API on divs (like iOS Safari)
@@ -1157,7 +1163,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     width: '100%',
                     height: isFullscreen ? '100%' : 'auto',
                     maxWidth: '100%',
-                    aspectRatio: isFullscreen ? 'auto' : `${width}/${height}`,
+                    aspectRatio: isFullscreen ? 'auto' : `${effectiveWidth}/${effectiveHeight}`,
                     maxHeight: '100%',
                     borderRadius: isFullscreen ? '0' : '8px',
                     overflow: 'hidden',
@@ -1206,7 +1212,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                         width: '100%',
                         height: '100%',
                         minHeight: isFullscreen ? '0px' : isCompact ? '0px' : '300px',
-                        aspectRatio: isFullscreen ? 'auto' : `${width}/${height}`,
+                        aspectRatio: isFullscreen ? 'auto' : `${effectiveWidth}/${effectiveHeight}`,
                         background: '#ffffff',
                         position: 'relative',
                         overflow: 'hidden',
@@ -1215,15 +1221,15 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     {activeEntries.length > 0 ? (
                         <div
                             style={{
-                                width: `${width}px`,
-                                height: `${height}px`,
+                                width: `${effectiveWidth}px`,
+                                height: `${effectiveHeight}px`,
                                 transform: `scale(${scale})`,
                                 transformOrigin: 'center center',
                                 position: 'absolute',
                                 top: '50%',
                                 left: '50%',
-                                marginTop: `-${height / 2}px`,
-                                marginLeft: `-${width / 2}px`,
+                                marginTop: `-${effectiveHeight / 2}px`,
+                                marginLeft: `-${effectiveWidth / 2}px`,
                             }}
                             className="frame-wrapper"
                         >

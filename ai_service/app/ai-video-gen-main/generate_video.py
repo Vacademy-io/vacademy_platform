@@ -2356,7 +2356,7 @@ def render_video_from_json(
                 print(f"DEBUG: Processing frame {frame_index}/{total_frames} (t={t:.2f}s)")
 
             # Sync GSAP animation to exact time t
-            page.evaluate(f"gsap.globalTimeline.totalTime({t}); void 0;")
+            page.evaluate(f"try {{ gsap.globalTimeline.totalTime({t}); }} catch(e) {{ console.warn('GSAP seek error at t={t}:', e.message); }}")
 
             # Sync stock <video> elements to correct time within their shot.
             # Videos are inside shadow DOMs with autoplay+muted+loop.

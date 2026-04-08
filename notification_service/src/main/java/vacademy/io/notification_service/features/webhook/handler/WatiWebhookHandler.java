@@ -82,7 +82,8 @@ public class WatiWebhookHandler implements VendorWebhookHandler {
                 .eventType(eventType)
                 .externalMessageId(messageId)
                 .phoneNumber(whatsappNumber)
-                .timestamp(timestampMs > 0 ? Instant.ofEpochMilli(timestampMs) : Instant.now())
+                // WATI timestamps are epoch SECONDS (10 digits), not milliseconds
+                .timestamp(timestampMs > 0 ? Instant.ofEpochSecond(timestampMs) : Instant.now())
                 .rawPayload(rawPayload);
 
         if (eventType == UnifiedWebhookEvent.EventType.FAILED) {
@@ -100,7 +101,8 @@ public class WatiWebhookHandler implements VendorWebhookHandler {
 
     private UnifiedWebhookEvent parseIncomingMessage(JsonNode root, Map<String, Object> rawPayload) {
         String whatsappNumber = normalizePhoneNumber(root.path("waId").asText());
-        String messageText = root.path("text").asText();
+        // text can be JSON null → asText() returns "null" string, so use asText(null) + null check
+        String messageText = root.path("text").isNull() ? null : root.path("text").asText(null);
         long timestampMs = root.path("timestamp").asLong();
         String senderName = root.path("senderName").asText(null);
         String messageId = root.path("id").asText(null);
@@ -112,24 +114,28 @@ public class WatiWebhookHandler implements VendorWebhookHandler {
         String listReplyId = null;
 
         JsonNode interactiveReply = root.path("interactiveButtonReply");
-        if (!interactiveReply.isMissingNode() && interactiveReply.isObject()) {
+        if (!interactiveReply.isMissingNode() && !interactiveReply.isNull() && interactiveReply.isObject()) {
             buttonId = interactiveReply.path("id").asText(null);
-            // Use button title as message text if text is empty
             if (messageText == null || messageText.isBlank()) {
                 messageText = interactiveReply.path("title").asText("");
             }
         }
 
         JsonNode listReply = root.path("listReply");
-        if (!listReply.isMissingNode() && listReply.isObject()) {
-            listReplyId = listReply.path("id").asText(null);
+        if (!listReply.isMissingNode() && !listReply.isNull() && listReply.isObject()) {
+            String listId = listReply.path("id").asText(null);
+            String listTitle = listReply.path("title").asText(null);
+            String listDesc = listReply.path("description").asText(null);
+            log.info("WATI listReply: id={}, title={}, description={}", listId, listTitle, listDesc);
+            // WATI list rows may not have IDs — use title as fallback ID for condition matching
+            listReplyId = (listId != null && !listId.isBlank()) ? listId : listTitle;
             if (messageText == null || messageText.isBlank()) {
-                messageText = listReply.path("title").asText("");
+                messageText = listTitle != null ? listTitle : "";
             }
         }
 
         JsonNode btnReply = root.path("buttonReply");
-        if (!btnReply.isMissingNode() && btnReply.isObject()) {
+        if (!btnReply.isMissingNode() && !btnReply.isNull() && btnReply.isObject()) {
             buttonPayload = btnReply.path("id").asText(null);
             if (messageText == null || messageText.isBlank()) {
                 messageText = btnReply.path("text").asText("");
@@ -169,7 +175,8 @@ public class WatiWebhookHandler implements VendorWebhookHandler {
                 .buttonPayload(buttonPayload)
                 .listReplyId(listReplyId)
                 .senderName(senderName)
-                .timestamp(timestampMs > 0 ? Instant.ofEpochMilli(timestampMs) : Instant.now())
+                // WATI timestamps are epoch SECONDS (10 digits), not milliseconds
+                .timestamp(timestampMs > 0 ? Instant.ofEpochSecond(timestampMs) : Instant.now())
                 .rawPayload(rawPayload)
                 .build();
     }

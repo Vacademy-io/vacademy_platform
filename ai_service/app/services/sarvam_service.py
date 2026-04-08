@@ -35,7 +35,7 @@ STT_WS_URL = "wss://api.sarvam.ai/speech-to-text/streaming"  # placeholder
 TTS_WS_URL = "wss://api.sarvam.ai/text-to-speech/streaming"  # placeholder
 
 REST_TIMEOUT_SECONDS = 30
-TTS_MAX_CHUNK_CHARS = 2500
+TTS_MAX_CHUNK_CHARS = 500
 STT_MAX_AUDIO_SECONDS = 30
 
 

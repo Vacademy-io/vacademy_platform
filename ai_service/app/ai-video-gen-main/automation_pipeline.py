@@ -2508,8 +2508,8 @@ class VideoGenerationPipeline:
                 "Set it in the environment or .env file."
             )
 
-        # Split text into chunks of ≤2500 chars (Sarvam API limit)
-        max_chunk = 2500
+        # Split text into chunks of ≤500 chars (Sarvam API limit per input string)
+        max_chunk = 500
         chunks = []
         remaining = script_text
         while remaining:

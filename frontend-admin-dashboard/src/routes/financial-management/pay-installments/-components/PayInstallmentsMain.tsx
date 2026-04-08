@@ -19,6 +19,8 @@ export function PayInstallmentsMain() {
     const [selectedStudent, setSelectedStudent] = useState<StudentFeePaymentRowDTO | null>(null);
     const [selectedDues, setSelectedDues] = useState<StudentFeeDueDTO[]>([]);
     const [paidAmount, setPaidAmount] = useState<number>(0);
+    const [receiptUrl, setReceiptUrl] = useState<string | undefined>();
+    const [receiptNumber, setReceiptNumber] = useState<string | undefined>();
 
     const handleSelectStudent = (student: StudentFeePaymentRowDTO) => {
         setSelectedStudent(student);
@@ -30,8 +32,10 @@ export function PayInstallmentsMain() {
         setStep('payment');
     };
 
-    const handlePaymentSuccess = (amount: number) => {
+    const handlePaymentSuccess = (amount: number, url?: string, number?: string) => {
         setPaidAmount(amount);
+        setReceiptUrl(url);
+        setReceiptNumber(number);
         setStep('success');
     };
 
@@ -43,6 +47,8 @@ export function PayInstallmentsMain() {
         setSelectedStudent(null);
         setSelectedDues([]);
         setPaidAmount(0);
+        setReceiptUrl(undefined);
+        setReceiptNumber(undefined);
         setStep('search');
     };
 
@@ -102,6 +108,8 @@ export function PayInstallmentsMain() {
                 <PaymentSuccessStep
                     studentName={selectedStudent.student_name}
                     amount={paidAmount}
+                    receiptUrl={receiptUrl}
+                    receiptNumber={receiptNumber}
                     onPayAnother={handleReset}
                 />
             )}

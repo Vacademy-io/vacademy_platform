@@ -49,7 +49,7 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60 flex items-start justify-between">
                         <div>
                             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Receipt No</p>
-                            <p className="text-base font-bold text-gray-800 mt-0.5">{receipt.receipt_number}</p>
+                            <p className="text-base font-normal text-gray-800 mt-0.5">{receipt.receipt_number}</p>
                         </div>
                         <div className="text-right">
                             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Date</p>
@@ -63,18 +63,18 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                     <div className="px-6 py-3 border-b border-gray-100 flex flex-wrap gap-x-8 gap-y-1 text-sm">
                         <div>
                             <span className="text-gray-400 text-xs uppercase tracking-wide font-semibold">Student: </span>
-                            <span className="font-semibold text-gray-700">{studentName}</span>
+                            <span className="font-extrabold text-lg text-gray-800">{studentName}</span>
                         </div>
                         {receipt.payment_mode && (
                             <div>
                                 <span className="text-gray-400 text-xs uppercase tracking-wide font-semibold">Mode: </span>
-                                <span className="font-semibold text-gray-700">{receipt.payment_mode}</span>
+                                <span className="font-extrabold text-lg text-gray-800">{receipt.payment_mode}</span>
                             </div>
                         )}
                         {receipt.transaction_id && (
                             <div>
                                 <span className="text-gray-400 text-xs uppercase tracking-wide font-semibold">Txn ID: </span>
-                                <span className="font-semibold text-gray-700">{receipt.transaction_id}</span>
+                                <span className="font-extrabold text-lg text-gray-800">{receipt.transaction_id}</span>
                             </div>
                         )}
                     </div>

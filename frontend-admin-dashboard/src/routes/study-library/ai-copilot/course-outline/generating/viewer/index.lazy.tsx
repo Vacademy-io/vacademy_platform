@@ -1779,15 +1779,7 @@ function RouteComponent() {
     // Save slides to localStorage whenever they change
     useEffect(() => {
         if (slides.length > 0) {
-            try {
-                localStorage.setItem('generatedSlides', JSON.stringify(slides));
-            } catch (e) {
-                if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-                    console.warn('localStorage quota exceeded for generatedSlides');
-                } else {
-                    console.error('Error saving generatedSlides to localStorage:', e);
-                }
-            }
+            localStorage.setItem('generatedSlides', JSON.stringify(slides));
         }
     }, [slides]);
 

@@ -223,17 +223,41 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
     }
 
     /**
-     * Check if notification should be sent for this day
+     * Check if notification should be sent for this day.
+     * Supports startAfterDay (to delay start) and maxSends (to limit total sends).
      */
     private boolean shouldSendNotification(NotificationPolicyDTO notification, long daysPastExpiry) {
         if (NotificationTriggerType.ON_EXPIRY_DATE_REACHED.equals(notification.getTrigger())) {
             return daysPastExpiry == 0;
         }
         if (NotificationTriggerType.DURING_WAITING_PERIOD.equals(notification.getTrigger())) {
-            return notification.getSendEveryNDays() != null
-                    && notification.getSendEveryNDays() > 0
-                    && daysPastExpiry > 0
-                    && daysPastExpiry % notification.getSendEveryNDays() == 0;
+            if (notification.getSendEveryNDays() == null || notification.getSendEveryNDays() <= 0) {
+                return false;
+            }
+
+            int startAfter = notification.getStartAfterDay() != null ? notification.getStartAfterDay() : 0;
+
+            // Must be past the start day
+            if (daysPastExpiry <= startAfter) {
+                return false;
+            }
+
+            long effectiveDay = daysPastExpiry - startAfter;
+
+            // Check if this is a send day based on interval
+            if (effectiveDay % notification.getSendEveryNDays() != 0) {
+                return false;
+            }
+
+            // Check maxSends limit
+            if (notification.getMaxSends() != null && notification.getMaxSends() > 0) {
+                long sendCount = effectiveDay / notification.getSendEveryNDays();
+                if (sendCount > notification.getMaxSends()) {
+                    return false;
+                }
+            }
+
+            return true;
         }
         return false;
     }
@@ -698,6 +722,7 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
                         .daysBefore(policy.getDaysBefore())
                         .sendEveryNDays(policy.getSendEveryNDays())
                         .maxSends(policy.getMaxSends())
+                        .startAfterDay(policy.getStartAfterDay())
                         .notifications(List.of(channelNotification))
                         .build();
 
@@ -721,20 +746,7 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
         }
 
         return policy.getNotifications().stream()
-                .filter(p -> {
-                    // Handle ON_EXPIRY_DATE_REACHED trigger (exactly on expiry date)
-                    if (NotificationTriggerType.ON_EXPIRY_DATE_REACHED.equals(p.getTrigger())) {
-                        return daysPastExpiry == 0;
-                    }
-                    // Handle DURING_WAITING_PERIOD trigger
-                    if (NotificationTriggerType.DURING_WAITING_PERIOD.equals(p.getTrigger())) {
-                        return p.getSendEveryNDays() != null && p.getSendEveryNDays() > 0
-                                && daysPastExpiry > 0
-                                && daysPastExpiry % p.getSendEveryNDays() == 0;
-                    }
-                    return false;
-                })
-                // TODO: Add logic to check maxSends against a notification log
+                .filter(p -> shouldSendNotification(p, daysPastExpiry))
                 .toList();
     }
 

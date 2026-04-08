@@ -31,6 +31,9 @@ public class NotificationPolicyDTO {
     /** For DURING_WAITING_PERIOD - max number of notifications */
     Integer maxSends;
 
+    /** For DURING_WAITING_PERIOD - start sending after N days past expiry */
+    Integer startAfterDay;
+
     /** Old field name - kept for backward compatibility with processors */
     List<ChannelNotificationDTO> notifications;
 

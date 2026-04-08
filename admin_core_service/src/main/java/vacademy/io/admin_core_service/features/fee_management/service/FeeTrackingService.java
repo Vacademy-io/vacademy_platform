@@ -454,7 +454,6 @@ public class FeeTrackingService {
                 Map<String, FeeMeta> billIdToMeta = buildFeeMetaMap(allBills);
 
                 return allBills.stream()
-                                .filter(bill -> !"PAID".equals(bill.getStatus()))
                                 .map(bill -> mapToPaymentDTO(bill, billIdToMeta.get(bill.getId())))
                                 .collect(Collectors.toList());
         }

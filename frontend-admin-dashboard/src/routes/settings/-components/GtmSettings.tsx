@@ -35,7 +35,7 @@ const fetchGtmSettings = async (): Promise<GtmSettingsData> => {
         url: GET_INSITITUTE_SETTINGS,
         params: { instituteId, settingKey: SETTING_KEY },
     });
-    return response.data?.data?.[SETTING_KEY]?.data ?? DEFAULT_GTM_SETTINGS;
+    return response.data?.data ?? DEFAULT_GTM_SETTINGS;
 };
 
 const saveGtmSettings = async (data: GtmSettingsData): Promise<void> => {

@@ -194,19 +194,29 @@ export const useSlideStore = create<SlideStore>((set, get) => {
             });
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('slides'); // Clear out old presentation
-                localStorage.setItem(
-                    'slides',
-                    JSON.stringify(newInitialSlides.map(serializeSlideForStorage))
-                );
+                try {
+                    localStorage.setItem(
+                        'slides',
+                        JSON.stringify(newInitialSlides.map(serializeSlideForStorage))
+                    );
+                } catch (e) {
+                    console.warn('Failed to save slides to localStorage (Quota exceeded?).', e);
+                    toast.error('Local storage is full. Changes may not be saved locally.', { id: 'quota-error' });
+                }
             }
         },
 
         setSlides: (newSlides, skipSave = false) => {
             if (!skipSave && typeof window !== 'undefined') {
-                localStorage.setItem(
-                    'slides',
-                    JSON.stringify(newSlides.map(serializeSlideForStorage))
-                );
+                try {
+                    localStorage.setItem(
+                        'slides',
+                        JSON.stringify(newSlides.map(serializeSlideForStorage))
+                    );
+                } catch (e) {
+                    console.warn('Failed to save slides to localStorage', e);
+                    toast.error('Local storage is full. Changes may not be saved locally.', { id: 'quota-error' });
+                }
             }
             set({ slides: newSlides });
         },
@@ -344,10 +354,15 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                 );
 
                 if (typeof window !== 'undefined') {
-                    localStorage.setItem(
-                        'slides',
-                        JSON.stringify(newSlidesArray.map(serializeSlideForStorage))
-                    );
+                    try {
+                        localStorage.setItem(
+                            'slides',
+                            JSON.stringify(newSlidesArray.map(serializeSlideForStorage))
+                        );
+                    } catch (e) {
+                        console.warn('Failed to save slides to localStorage', e);
+                        toast.error('Local storage is full. Changes may not be saved locally.', { id: 'quota-error' });
+                    }
                 }
 
                 // Mark this slide as dirty so savePresentation knows to re-upload it
@@ -453,10 +468,15 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                 );
 
                 if (typeof window !== 'undefined') {
-                    localStorage.setItem(
-                        'slides',
-                        JSON.stringify(newSlidesArray.map(serializeSlideForStorage))
-                    );
+                    try {
+                        localStorage.setItem(
+                            'slides',
+                            JSON.stringify(newSlidesArray.map(serializeSlideForStorage))
+                        );
+                    } catch (e) {
+                        console.warn('Failed to save slides to localStorage', e);
+                        toast.error('Local storage is full. Changes may not be saved locally.', { id: 'quota-error' });
+                    }
                 }
 
                 const newDirtyIds = new Set(state.dirtySlideIds);
@@ -498,10 +518,15 @@ export const useSlideStore = create<SlideStore>((set, get) => {
             }
 
             if (typeof window !== 'undefined') {
-                localStorage.setItem(
-                    'slides',
-                    JSON.stringify(newSlides.map(serializeSlideForStorage))
-                );
+                try {
+                    localStorage.setItem(
+                        'slides',
+                        JSON.stringify(newSlides.map(serializeSlideForStorage))
+                    );
+                } catch (e) {
+                    console.warn('Failed to save slides to localStorage', e);
+                    toast.error('Local storage is full. Changes may not be saved locally.', { id: 'quota-error' });
+                }
             }
 
             return { slides: newSlides, currentSlideId: newCurrentSlideId };

@@ -74,17 +74,27 @@ public class ChatbotFlowEngine {
                             userText, businessChannelId, messageType, buttonId, buttonPayload,
                             listReplyId, session);
 
-                    // Try executing the condition node with the user's input
+                    // Try executing the node with the user's input
                     ChatbotNodeExecutor executor = findExecutor(currentNode.getNodeType());
                     if (executor != null) {
                         NodeExecutionResult condResult = executor.execute(currentNode, session,
                                 userText, context);
-                        if (condResult.isSuccess() && !condResult.isWaitForInput()) {
-                            // Condition matched a branch — resume normally within this flow
-                            log.info("CONDITION node matched branch in active session — resuming flow: "
+                        if (condResult.isSuccess()) {
+                            // Always merge output variables (e.g., AI conversation history)
+                            mergeSessionContext(session, condResult.getOutputVariables());
+
+                            if (condResult.isWaitForInput()) {
+                                // Node wants to stay in conversation mode (AI_RESPONSE)
+                                // History is already saved via mergeSessionContext above
+                                session.setLastActivityAt(new Timestamp(System.currentTimeMillis()));
+                                sessionRepository.save(session);
+                                return true;
+                            }
+
+                            // Condition matched a branch — advance to next node
+                            log.info("Node matched branch in active session — resuming flow: "
                                     + "sessionId={}, branchId={}",
                                     session.getId(), condResult.getSelectedBranchId());
-                            mergeSessionContext(session, condResult.getOutputVariables());
                             advanceToNextNodes(session, currentNode.getId(),
                                     condResult.getSelectedBranchId(), context, 0);
                             return true;

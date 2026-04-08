@@ -210,11 +210,6 @@ public class AuthManager {
 
             String accessToken = jwtService.generateToken(user, user.getRoles().stream().toList(), userPermissions);
 
-            // Register the new session (noop for institutes without limit configured)
-            userSessionService.createSession(
-                    user.getId(), resolvedInstituteId,
-                    accessToken, authRequestDTO.getDeviceType());
-
             return JwtResponseDto.builder()
                     .accessToken(accessToken)
                     .refreshToken(refreshToken.getToken()).build();

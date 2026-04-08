@@ -224,7 +224,7 @@ public class FeeLedgerAllocationService {
     }
 
     @Transactional
-    public void allocatePaymentForSelectedInstallments(String userId, String instituteId,
+    public String allocatePaymentForSelectedInstallments(String userId, String instituteId,
             List<String> studentFeePaymentIds,
             BigDecimal amount, String remarks) {
         if (studentFeePaymentIds == null || studentFeePaymentIds.isEmpty()) {
@@ -308,7 +308,7 @@ public class FeeLedgerAllocationService {
         }
 
         if (!paidInstallmentIds.isEmpty()) {
-            schoolFeeReceiptService.generateAndSendReceipt(
+            return schoolFeeReceiptService.generateAndSendReceipt(
                     userId,
                     paymentLog.getId(),
                     instituteId,
@@ -317,6 +317,7 @@ public class FeeLedgerAllocationService {
                     "Cash",
                     paidInstallmentIds);
         }
+        return null;
     }
 
     /**

@@ -136,30 +136,17 @@ export const AddCourseForm = ({
         // @ts-expect-error
         initialCourseData ? transformCourseData(initialCourseData) : {}
     );
-    const lastLoadedCourseIdRef = useRef<string | undefined>(
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        initialCourseData?.courseData?.id
-    );
-
     const [isOpen, setIsOpen] = useState(!isEdit);
     const [isCreating, setIsCreating] = useState(false);
 
-    // When editing, ensure the internal step-2 state is refreshed whenever the
-    // user opens Edit Course on a different course. Previously, the state was
-    // initialised only once, so the dialog could show data for a previously
-    // visited course.
+    // When editing, refresh form data whenever initialCourseData changes
+    // (e.g. after a successful update or switching to a different course).
     useEffect(() => {
         if (!isEdit || !initialCourseData) return;
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        const currentCourseId: string | undefined = initialCourseData.courseData?.id;
-        if (!currentCourseId || lastLoadedCourseIdRef.current === currentCourseId) {
-            return;
-        }
 
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
         const transformed = transformCourseData(initialCourseData) as CourseFormData;
-        lastLoadedCourseIdRef.current = currentCourseId;
         setFormData(transformed);
         oldFormData.current = transformed;
         setStep(1);
@@ -513,7 +500,7 @@ export const AddCourseForm = ({
             <DialogContent className="z-[10000] flex !h-[97%] !max-h-[97%] w-[97%] flex-col overflow-hidden p-0">
                 <div className="flex h-full flex-col">
                     <h1 className="bg-primary-50 p-4 font-semibold text-primary-500">
-                        Create {getTerminology(ContentTerms.Course, SystemTerms.Course)} - Step{' '}
+                        {isEdit ? 'Edit' : 'Create'} {getTerminology(ContentTerms.Course, SystemTerms.Course)} - Step{' '}
                         {step} of 2
                     </h1>
                     {step === 1 ? (

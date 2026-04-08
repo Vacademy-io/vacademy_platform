@@ -41,16 +41,11 @@ class VideoGenerationService:
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info("[VideoGenService] Initializing video generation service")
-        
         self.repository = repository or AiVideoRepository()
         self.s3_service = s3_service or S3Service()
         
         # Path to ai-video-gen-main directory
         self.video_gen_root = Path(__file__).parent.parent / "ai-video-gen-main"
-        
-        logger.info(f"[VideoGenService] Looking for ai-video-gen-main at: {self.video_gen_root}")
-        logger.info(f"[VideoGenService] Path exists: {self.video_gen_root.exists()}")
         
         # Ensure the video generation code exists
         if not self.video_gen_root.exists():
@@ -61,7 +56,6 @@ class VideoGenerationService:
             )
         
         # Pre-download NLTK data if needed (prevents blocking during video generation)
-        logger.info("[VideoGenService] Pre-downloading NLTK data...")
         try:
             import nltk
             import ssl
@@ -76,11 +70,8 @@ class VideoGenerationService:
             # Download required NLTK data silently
             nltk.download('averaged_perceptron_tagger', quiet=True)
             nltk.download('cmudict', quiet=True)
-            logger.info("[VideoGenService] NLTK data pre-downloaded successfully")
         except Exception as e:
             logger.warning(f"[VideoGenService] Failed to pre-download NLTK data: {e}. Will download on first use.")
-        
-        logger.info("[VideoGenService] Video generation service initialized successfully")
     
     async def generate_till_stage(
         self,

@@ -2142,15 +2142,21 @@ class VideoGenerationPipeline:
 
         # --- Sarvam AI TTS Path (premium, Indian languages) ---
         if provider_key == "sarvam":
-            return self._synthesize_voice_sarvam(
-                script_text=script_text,
-                run_dir=run_dir,
-                response_json=response_json,
-                audio_path=audio_path,
-                language=language,
-                voice_gender=gender_key,
-                voice_id=voice_id,
-            )
+            try:
+                return self._synthesize_voice_sarvam(
+                    script_text=script_text,
+                    run_dir=run_dir,
+                    response_json=response_json,
+                    audio_path=audio_path,
+                    language=language,
+                    voice_gender=gender_key,
+                    voice_id=voice_id,
+                )
+            except Exception as sarvam_err:
+                print(f"    ⚠️  Sarvam TTS failed: {sarvam_err}")
+                print(f"    🔄 Falling back to Edge TTS...")
+                provider_key = "edge"
+                # Fall through to Edge TTS path below
 
         # --- Voice Selection Logic (Edge / Google) ---
         # Fallback to English if language not found
@@ -2545,7 +2551,10 @@ class VideoGenerationPipeline:
                         headers=headers,
                         json=body,
                     )
-                    resp.raise_for_status()
+                    if resp.status_code != 200:
+                        error_body = resp.text[:500] if resp.text else "(empty)"
+                        print(f"    ❌ Sarvam API error {resp.status_code}: {error_body}")
+                        resp.raise_for_status()
                     data = resp.json()
                     audios = data.get("audios", [])
                     if audios:

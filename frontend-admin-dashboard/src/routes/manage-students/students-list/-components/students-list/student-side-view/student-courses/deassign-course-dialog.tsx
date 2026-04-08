@@ -9,6 +9,8 @@ import type {
     BulkDeassignResponse,
 } from '@/routes/manage-students/students-list/-types/bulk-assign-types';
 import type { PackageDetailDTO } from '@/routes/manage-students/students-list/-services/getLearnerPackages';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 type DeassignStep = 'CONFIG' | 'PREVIEW' | 'RESULTS';
 
@@ -419,7 +421,7 @@ export const DeassignCourseDialog = ({
 
     return (
         <MyDialog
-            heading="Remove from Courses"
+            heading={`Remove from ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`}
             open={open}
             onOpenChange={handleOpenChange}
             dialogWidth="max-w-lg"

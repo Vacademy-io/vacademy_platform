@@ -16,6 +16,8 @@ import { useEffect, useState } from 'react';
 import { getChaptersByModuleId } from '@/utils/helpers/study-library-helpers.ts/get-list-from-stores/getChaptersByModuleId';
 import { useDialogStore } from '@/routes/study-library/courses/-stores/slide-add-dialogs-store';
 import { useNavigate, useRouter } from '@tanstack/react-router';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 // Form validation schema
 const formSchema = z.object({
@@ -158,14 +160,14 @@ export const CreateStudyDocForm = () => {
     const formData = [
         {
             fieldName: 'course' as const,
-            label: 'Course',
-            placeholder: 'Select Course',
+            label: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            placeholder: `Select ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`,
             list: courseList,
         },
         {
             fieldName: 'session' as const,
-            label: 'Session',
-            placeholder: 'Select Session',
+            label: getTerminology(ContentTerms.Session, SystemTerms.Session),
+            placeholder: `Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`,
             list: sessionList,
         },
         {
@@ -176,20 +178,20 @@ export const CreateStudyDocForm = () => {
         },
         {
             fieldName: 'subject' as const,
-            label: 'Subject',
-            placeholder: 'Select Subject',
+            label: getTerminology(ContentTerms.Subject, SystemTerms.Subject),
+            placeholder: `Select ${getTerminology(ContentTerms.Subject, SystemTerms.Subject)}`,
             list: formattedSubjectList,
         },
         {
             fieldName: 'module' as const,
-            label: 'Module',
-            placeholder: 'Select Module',
+            label: getTerminology(ContentTerms.Module, SystemTerms.Module),
+            placeholder: `Select ${getTerminology(ContentTerms.Module, SystemTerms.Module)}`,
             list: formattedModuleList || [],
         },
         {
             fieldName: 'chapter' as const,
-            label: 'Chapter',
-            placeholder: 'Select Chapter',
+            label: getTerminology(ContentTerms.Chapter, SystemTerms.Chapter),
+            placeholder: `Select ${getTerminology(ContentTerms.Chapter, SystemTerms.Chapter)}`,
             list: formattedChapterList || [],
         },
     ];

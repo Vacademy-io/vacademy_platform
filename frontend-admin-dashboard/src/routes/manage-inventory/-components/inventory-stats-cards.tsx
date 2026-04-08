@@ -8,15 +8,18 @@ import {
     Users,
 } from 'lucide-react';
 import { useInventoryStats } from '../-hooks/use-inventory-data';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const InventoryStatsCards = () => {
     const { data: stats, isLoading } = useInventoryStats();
 
+    const batchPlural = getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch);
     const statCards = [
         {
-            title: 'Total Sessions',
+            title: `Total ${batchPlural}`,
             value: stats?.total_sessions ?? 0,
-            subtitle: 'Package sessions',
+            subtitle: `Package ${batchPlural.toLowerCase()}`,
             icon: Users,
             gradient: 'from-blue-500 to-cyan-500',
             bgGradient: 'from-blue-500/10 to-cyan-500/10',

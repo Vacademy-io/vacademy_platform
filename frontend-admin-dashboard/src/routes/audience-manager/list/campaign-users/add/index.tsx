@@ -12,6 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner';
 import { submitAudienceLead, SubmitLeadRequest } from '../../-services/submit-audience-lead';
 import { useQueryClient } from '@tanstack/react-query';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const addResponseSearchSchema = z.object({
     campaignId: z.string().min(1, 'Campaign ID is required'),
@@ -257,13 +259,13 @@ export function AddResponsePage() {
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Add Response - {search.campaignName || 'Campaign'}</title>
+                <title>{`Add Response - ${search.campaignName || getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)}`}</title>
                 <meta name="description" content="Add a response on behalf of a respondent." />
             </Helmet>
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
                 <Button variant="ghost" size="sm" onClick={handleBack} className="w-fit">
                     <ArrowLeft className="mr-2 size-4" />
-                    Back to Campaign Users
+                    {`Back to ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)} Users`}
                 </Button>
 
                 <Card>

@@ -19,6 +19,7 @@
         "test": "vitest",
         "test:ui": "vitest --ui",
         "lint": "eslint src --max-warnings=0",
+        "lint:naming": "node scripts/lint-naming-terms.cjs",
         "typecheck": "tsc --project tsconfig.json --noEmit",
         "precommit": "pnpm run typecheck && pnpm run lint && pnpm run build",
         "prepare": "husky",

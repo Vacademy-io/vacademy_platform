@@ -11,6 +11,8 @@ import {
     useBatchesSummary,
 } from '../-hooks/use-inventory-data';
 import { InventoryFilters, ViewMode, PackageSessionInventory } from '../-types/inventory-types';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const PAGE_SIZE = 20;
 
@@ -90,10 +92,10 @@ const ManageInventoryPage = () => {
                     </div>
                     <div>
                         <h1 className="bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-3xl font-bold text-transparent dark:from-white dark:to-gray-400">
-                            Manage Inventory
+                            {`Manage ${getTerminology(OtherTerms.Inventory, SystemTerms.Inventory)}`}
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Manage seats and capacity for your package sessions
+                            {`Manage seats and capacity for your ${getTerminologyPlural(ContentTerms.Package, SystemTerms.Package).toLowerCase()} ${getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()}`}
                         </p>
                     </div>
                 </div>

@@ -63,6 +63,7 @@ import {
   getPaymentVendor,
   PaymentVendor,
 } from "./-utils/payment-vendor-helper";
+import { injectGtm, pushEnrollmentSuccess } from "./-utils/gtm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CourseStructureDetails as CatalogCourseStructureDetails } from "@/routes/$tagName/-components/CourseStructureDetails";
 
@@ -211,6 +212,31 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   const { data: inviteData, isLoading } = useSuspenseQuery(
     handleGetEnrollInviteData({ instituteId, inviteCode })
   );
+
+  // Inject GTM if the institute has configured a container ID
+  useEffect(() => {
+    const gtmId = inviteData?.gtm_container_id;
+    if (gtmId) injectGtm(gtmId);
+  }, [inviteData?.gtm_container_id]);
+
+  // Fire enrollment_success dataLayer event when reaching the success step
+  const hasFiredEnrollmentEvent = useRef(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (
+      currentStep === 5 &&
+      !hasFiredEnrollmentEvent.current &&
+      inviteData?.gtm_container_id
+    ) {
+      hasFiredEnrollmentEvent.current = true;
+      pushEnrollmentSuccess({
+        courseName: courseData.course || "",
+        paymentType,
+        currency: enrollmentData.selectedPayment?.currency,
+        amount: enrollmentData.selectedPayment?.amount,
+      });
+    }
+  }, [currentStep]);
 
   // Fetch custom fields from institute if not available in inviteData
   const hasCustomFieldsInInvite =

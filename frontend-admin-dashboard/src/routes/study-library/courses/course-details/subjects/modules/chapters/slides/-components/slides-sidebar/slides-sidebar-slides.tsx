@@ -30,6 +30,8 @@ import {
 } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useLearnerViewStore } from '../../-stores/learner-view-store';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface FormValues {
     slides: Slide[];
@@ -451,9 +453,9 @@ export const ChapterSidebarSlides = ({
                 <div className="mb-3 flex size-12 animate-pulse items-center justify-center rounded-full bg-neutral-100">
                     <File className="size-6 text-neutral-400" />
                 </div>
-                <h3 className="mb-1 text-base font-medium text-neutral-600">No slides yet</h3>
+                <h3 className="mb-1 text-base font-medium text-neutral-600">{`No ${getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide).toLowerCase()} yet`}</h3>
                 <p className="max-w-xs text-xs leading-relaxed text-neutral-400">
-                    Add your first slide to get started
+                    {`Add your first ${getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide).toLowerCase()} to get started`}
                 </p>
             </div>
         );

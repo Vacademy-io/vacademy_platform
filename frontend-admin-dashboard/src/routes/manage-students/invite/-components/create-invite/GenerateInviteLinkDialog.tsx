@@ -54,6 +54,8 @@ import PreviewInviteLink from './PreviewInviteLink';
 import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
 import createInviteLink from '../../-utils/createInviteLink';
 import { Copy } from '@phosphor-icons/react';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const GenerateInviteLinkDialog = ({
     showSummaryDialog,
@@ -741,7 +743,7 @@ const GenerateInviteLinkDialog = ({
                 <DialogHeader>
                     <div className="flex items-center justify-between">
                         <DialogTitle className="font-bold">
-                            {isEditInviteLink ? 'Update Invite Link' : 'Create Invite Link'}
+                            {isEditInviteLink ? `Update ${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link` : `Create ${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link`}
                         </DialogTitle>
                         {/* Preview Invite Link Dialog */}
                         <PreviewInviteLink
@@ -861,9 +863,9 @@ const GenerateInviteLinkDialog = ({
                                 {isEditInviteLink ? 'Updating...' : 'Creating...'}
                             </div>
                         ) : isEditInviteLink ? (
-                            'Update Invite Link'
+                            `Update ${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link`
                         ) : (
-                            'Create Invite Link'
+                            `Create ${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link`
                         )}
                     </MyButton>
                 </div>

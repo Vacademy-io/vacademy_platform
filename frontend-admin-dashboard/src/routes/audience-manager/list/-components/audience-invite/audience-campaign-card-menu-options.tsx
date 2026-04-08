@@ -29,6 +29,8 @@ import { EmbedCodeDialog } from '../embed-code-dialog/EmbedCodeDialog';
 import { LeadBulkImportDialog } from '../campaign-users/LeadBulkImportDialog';
 import { SendMessageDialog } from '../campaign-users/SendMessageDialog';
 import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface AudienceCampaignCardMenuOptionsProps {
     campaign: CampaignItem;
@@ -176,7 +178,7 @@ export const AudienceCampaignCardMenuOptions = ({
             <AlertDialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
+                        <AlertDialogTitle>{`Delete ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)}`}</AlertDialogTitle>
                         <AlertDialogDescription>
                             Are you sure you want to delete the campaign &quot;
                             {campaign.campaign_name}&quot;? This action cannot be undone.

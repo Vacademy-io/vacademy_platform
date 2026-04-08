@@ -14,8 +14,15 @@ export const useNamingSettings = () => {
         return setting?.customValue || defaultValue;
     };
 
+    const getTerminologyPlural = (key: string, defaultValue: string): string => {
+        const settings = getValue();
+        const setting = settings.find((s: NamingSettingsType) => s.key === key);
+        return setting?.customPluralValue || defaultValue;
+    };
+
     return {
         getTerminology,
+        getTerminologyPlural,
         settings: getValue(),
     };
 };

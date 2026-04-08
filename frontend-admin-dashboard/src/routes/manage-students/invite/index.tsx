@@ -4,6 +4,8 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { Invite } from './-components/invite';
 import { InviteFormProvider } from './-context/useInviteFormContext';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const Route = createFileRoute('/manage-students/invite/')({
     component: RouteComponent,
@@ -13,7 +15,7 @@ function RouteComponent() {
     const { setNavHeading } = useNavHeadingStore();
 
     useEffect(() => {
-        setNavHeading('Invite Link');
+        setNavHeading(`${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link`);
     }, []);
 
     return (

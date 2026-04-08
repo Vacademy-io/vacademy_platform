@@ -6,6 +6,8 @@ import { DashboardLoader, ErrorBoundary } from '@/components/core/dashboard-load
 import RootErrorComponent from '@/components/core/deafult-error';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Package } from '@phosphor-icons/react';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { usePackageFilters } from '../-hooks/usePackageFilters';
 import { usePackageTable, useBatchesSummary } from '../-hooks/usePackageTable';
 import { PackageFilters } from './package-filters';
@@ -22,7 +24,7 @@ export function PackageManagementSection() {
     const tableRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Package Management</h1>);
+        setNavHeading(<h1 className="text-lg">{getTerminology(ContentTerms.Package, SystemTerms.Package)} Management</h1>);
     }, [setNavHeading]);
 
     useEffect(() => {
@@ -77,9 +79,9 @@ export function PackageManagementSection() {
             <div className="mb-3 rounded-full bg-gradient-to-br from-neutral-100 to-neutral-200 p-3 shadow-inner">
                 <Package className="size-12 opacity-50" />
             </div>
-            <h3 className="mb-2 text-base font-semibold text-neutral-700">No Packages Found</h3>
+            <h3 className="mb-2 text-base font-semibold text-neutral-700">No {getTerminologyPlural(ContentTerms.Package, SystemTerms.Package)} Found</h3>
             <p className="mb-4 max-w-md text-xs leading-relaxed text-neutral-500">
-                No packages match your current filters. Try adjusting your search criteria.
+                No {getTerminologyPlural(ContentTerms.Package, SystemTerms.Package).toLowerCase()} match your current filters. Try adjusting your search criteria.
             </p>
             <button
                 onClick={handleClearFilters}
@@ -116,7 +118,7 @@ export function PackageManagementSection() {
                         <div className="flex w-full flex-col items-center gap-2 py-6">
                             <DashboardLoader />
                             <p className="animate-pulse text-xs text-neutral-500">
-                                Loading packages...
+                                Loading {getTerminologyPlural(ContentTerms.Package, SystemTerms.Package).toLowerCase()}...
                             </p>
                         </div>
                     ) : !packageData || packageData.content.length === 0 ? (
@@ -158,7 +160,7 @@ export function PackageManagementSection() {
                                         packageData.page_size * (packageData.page_number + 1),
                                         packageData.total_elements
                                     )}{' '}
-                                    of {packageData.total_elements} packages
+                                    of {packageData.total_elements} {getTerminologyPlural(ContentTerms.Package, SystemTerms.Package).toLowerCase()}
                                 </div>
                                 <div className="flex justify-center lg:justify-end">
                                     <MyPagination

@@ -31,6 +31,7 @@ public class EnrollInviteDTO {
     private String shortUrl;
     private String subOrgId;
     private SubOrgInfoDTO subOrg;
+    private String gtmContainerId;
 
     @Data
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

@@ -19,7 +19,13 @@ export interface NamingSettingsRequest {
     Student: string;
     LiveSession: string;
     Batch: string;
+    Package?: string;
     PopularTag?: string;
+    AudienceList?: string;
+    Invite?: string;
+    Inventory?: string;
+    // Plural variants are sent as {key}_plural
+    [key: string]: string | undefined;
 }
 
 export const createNamingSettings = async (nameRequest: NamingSettingsRequest): Promise<void> => {

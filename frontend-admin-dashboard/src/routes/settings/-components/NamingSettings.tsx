@@ -22,6 +22,7 @@ import {
     CONTENT_TERMS,
     defaultNamingSettings,
     NamingSettingsType,
+    OTHER_TERMS,
     ROLE_TERMS,
     systemValueDescription,
 } from '../-constants/terms';
@@ -31,13 +32,22 @@ export enum ContentTerms {
     Course = 'Course',
     Level = 'Level',
     Session = 'Session',
-    Subjects = 'Subjects',
-    Modules = 'Modules',
-    Chapters = 'Chapters',
-    Slides = 'Slides',
+    Subject = 'Subject',
+    Module = 'Module',
+    Chapter = 'Chapter',
+    Slide = 'Slide',
     LiveSession = 'LiveSession',
     Batch = 'Batch',
+    Package = 'Package',
     PopularTag = 'PopularTag',
+    /** @deprecated Use ContentTerms.Subject instead */
+    Subjects = 'Subject',
+    /** @deprecated Use ContentTerms.Module instead */
+    Modules = 'Module',
+    /** @deprecated Use ContentTerms.Chapter instead */
+    Chapters = 'Chapter',
+    /** @deprecated Use ContentTerms.Slide instead */
+    Slides = 'Slide',
 }
 
 export enum RoleTerms {
@@ -48,16 +58,24 @@ export enum RoleTerms {
     Evaluator = 'Evaluator',
     Learner = 'Learner',
 }
+
+export enum OtherTerms {
+    AudienceList = 'AudienceList',
+    Invite = 'Invite',
+    Inventory = 'Inventory',
+}
+
 export enum SystemTerms {
     Course = 'Course',
     Level = 'Level',
     Session = 'Session',
-    Subjects = 'Subject',
-    Modules = 'Module',
-    Chapters = 'Chapter',
-    Slides = 'Slide',
+    Subject = 'Subject',
+    Module = 'Module',
+    Chapter = 'Chapter',
+    Slide = 'Slide',
     LiveSession = 'Live Session',
     Batch = 'Batch',
+    Package = 'Package',
     Admin = 'Admin',
     Teacher = 'Teacher',
     CourseCreator = 'Course Creator',
@@ -65,6 +83,17 @@ export enum SystemTerms {
     Evaluator = 'Evaluator',
     Learner = 'Learner',
     PopularTag = 'Popular',
+    AudienceList = 'Audience List',
+    Invite = 'Invite',
+    Inventory = 'Inventory',
+    /** @deprecated Use SystemTerms.Subject instead */
+    Subjects = 'Subject',
+    /** @deprecated Use SystemTerms.Module instead */
+    Modules = 'Module',
+    /** @deprecated Use SystemTerms.Chapter instead */
+    Chapters = 'Chapter',
+    /** @deprecated Use SystemTerms.Slide instead */
+    Slides = 'Slide',
 }
 
 const createNameRequest = (settings: NamingSettingsType[]): NamingSettingsRequest => {
@@ -78,10 +107,12 @@ const createNameRequest = (settings: NamingSettingsType[]): NamingSettingsReques
         if (item.key === 'Learner') backendKey = 'Student';
 
         (request as Record<string, string>)[backendKey] = item.customValue;
+        (request as Record<string, string>)[`${backendKey}_plural`] = item.customPluralValue;
 
         // Also keep original key just in case backend supports both or dynamic
         if (backendKey !== item.key) {
             (request as Record<string, string>)[item.key] = item.customValue;
+            (request as Record<string, string>)[`${item.key}_plural`] = item.customPluralValue;
         }
     });
     return request as unknown as NamingSettingsRequest;
@@ -113,12 +144,14 @@ export default function NamingSettings() {
                     // Map backend array to UI array
                     const settingsArray: NamingSettingsType[] = defaultNamingSettings.map((defaultItem) => {
                         let customValue = defaultItem.systemValue;
+                        let customPluralValue = defaultItem.systemPluralValue;
 
                         // Helper to find item in backend array
                         const findInBackend = (key: string) => backendSettings.find(i => i.key === key);
 
                         // 1. Try exact match
                         let foundItem = findInBackend(defaultItem.key);
+                        let foundPluralItem = findInBackend(`${defaultItem.key}_plural`);
 
                         // 2. If not found, try plural/alias mappings
                         if (!foundItem) {
@@ -129,14 +162,26 @@ export default function NamingSettings() {
                             else if (defaultItem.key === 'Learner') foundItem = findInBackend('Student') || findInBackend('Learner');
                         }
 
+                        if (!foundPluralItem) {
+                            if (defaultItem.key === 'Subject') foundPluralItem = findInBackend('Subjects_plural');
+                            else if (defaultItem.key === 'Module') foundPluralItem = findInBackend('Modules_plural');
+                            else if (defaultItem.key === 'Chapter') foundPluralItem = findInBackend('Chapters_plural');
+                            else if (defaultItem.key === 'Slide') foundPluralItem = findInBackend('Slides_plural');
+                            else if (defaultItem.key === 'Learner') foundPluralItem = findInBackend('Student_plural');
+                        }
+
                         // 3. If found, use its custom value
                         if (foundItem) {
                             customValue = foundItem.customValue;
                         }
+                        if (foundPluralItem) {
+                            customPluralValue = foundPluralItem.customValue;
+                        }
 
                         return {
                             ...defaultItem,
-                            customValue: customValue,
+                            customValue,
+                            customPluralValue,
                         };
                     });
 
@@ -172,12 +217,24 @@ export default function NamingSettings() {
         setHasChanges(true);
     };
 
+    const handlePluralValueChange = (key: string, newValue: string) => {
+        if (!settings) return;
+
+        const updatedSettings = settings.map((item) =>
+            item.key === key ? { ...item, customPluralValue: newValue } : item
+        );
+
+        setSettings(updatedSettings);
+        setHasChanges(true);
+    };
+
     const resetToDefault = (key: string) => {
         if (!settings) return;
 
         const item = settings.find((item) => item.key === key);
         if (item) {
             handleCustomValueChange(key, item.systemValue);
+            handlePluralValueChange(key, item.systemPluralValue);
         }
     };
 
@@ -187,6 +244,7 @@ export default function NamingSettings() {
         const updatedSettings = settings.map((item) => ({
             ...item,
             customValue: item.systemValue,
+            customPluralValue: item.systemPluralValue,
         }));
 
         setSettings(updatedSettings);
@@ -224,9 +282,11 @@ export default function NamingSettings() {
     const contentTerms = terminologyData.filter((item) =>
         (CONTENT_TERMS as readonly string[]).includes(item.key)
     );
-    console.log('contentTerms', contentTerms, terminologyData);
     const roleTerms = terminologyData.filter((item) =>
         (ROLE_TERMS as readonly string[]).includes(item.key)
+    );
+    const otherTerms = terminologyData.filter((item) =>
+        (OTHER_TERMS as readonly string[]).includes(item.key)
     );
 
     return (
@@ -270,125 +330,85 @@ export default function NamingSettings() {
             )}
 
             <div className="grid gap-6">
-                {/* Content & Structure Terms */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Content & Structure</CardTitle>
-                        <CardDescription>
-                            Customize terms related to course content and structure
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {contentTerms.map((item) => (
-                            <div
-                                key={item.key}
-                                className="grid grid-cols-1 items-center gap-4 rounded-lg border p-4 md:grid-cols-3"
-                            >
-                                <div className="space-y-1">
-                                    <Label className="text-sm font-medium">
-                                        {item.systemValue}
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Badge
-                                            variant="secondary"
-                                            className="text-xs text-muted-foreground"
-                                        >
-                                            {
-                                                systemValueDescription[
-                                                item.key as keyof typeof systemValueDescription
-                                                ]
+                {/* Reusable term row renderer */}
+                {[
+                    { title: 'Content & Structure', description: 'Customize terms related to course content and structure', terms: contentTerms },
+                    { title: 'User Roles', description: 'Customize terms for different user roles in your institute', terms: roleTerms },
+                    { title: 'Other', description: 'Customize terms for other features', terms: otherTerms },
+                ].map((section) => (
+                    <Card key={section.title}>
+                        <CardHeader>
+                            <CardTitle>{section.title}</CardTitle>
+                            <CardDescription>{section.description}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {section.terms.map((item) => (
+                                <div
+                                    key={item.key}
+                                    className="grid grid-cols-1 items-center gap-4 rounded-lg border p-4 md:grid-cols-[1fr_1fr_1fr_auto]"
+                                >
+                                    <div className="space-y-1">
+                                        <Label className="text-sm font-medium">
+                                            {item.systemValue}
+                                        </Label>
+                                        <div className="flex items-center gap-2">
+                                            <Badge
+                                                variant="secondary"
+                                                className="text-xs text-muted-foreground"
+                                            >
+                                                {
+                                                    systemValueDescription[
+                                                    item.key as keyof typeof systemValueDescription
+                                                    ]
+                                                }
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor={`custom-${item.key}`} className="text-sm">
+                                            Singular
+                                        </Label>
+                                        <Input
+                                            id={`custom-${item.key}`}
+                                            value={item.customValue}
+                                            onChange={(e) =>
+                                                handleCustomValueChange(item.key, e.target.value)
                                             }
-                                        </Badge>
+                                            placeholder={item.systemValue}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor={`plural-${item.key}`} className="text-sm">
+                                            Plural
+                                        </Label>
+                                        <Input
+                                            id={`plural-${item.key}`}
+                                            value={item.customPluralValue}
+                                            onChange={(e) =>
+                                                handlePluralValueChange(item.key, e.target.value)
+                                            }
+                                            placeholder={item.systemPluralValue}
+                                        />
+                                    </div>
+                                    <div className="flex justify-end pt-6">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => resetToDefault(item.key)}
+                                            disabled={
+                                                item.customValue === item.systemValue &&
+                                                item.customPluralValue === item.systemPluralValue
+                                            }
+                                        >
+                                            <RotateCcw className="mr-1 size-3" />
+                                            Reset
+                                        </Button>
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor={`custom-${item.key}`} className="text-sm">
-                                        Custom Name
-                                    </Label>
-                                    <Input
-                                        id={`custom-${item.key}`}
-                                        value={item.customValue}
-                                        onChange={(e) =>
-                                            handleCustomValueChange(item.key, e.target.value)
-                                        }
-                                        placeholder={item.systemValue}
-                                    />
-                                </div>
-                                <div className="flex justify-end">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => resetToDefault(item.key)}
-                                        disabled={item.customValue === item.systemValue}
-                                    >
-                                        <RotateCcw className="mr-1 size-3" />
-                                        Reset
-                                    </Button>
-                                </div>
-                            </div>
-                        ))}
-                    </CardContent>
-                </Card>
-
-                {/* User Roles */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>User Roles</CardTitle>
-                        <CardDescription>
-                            Customize terms for different user roles in your institute
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {roleTerms.map((item) => (
-                            <div
-                                key={item.key}
-                                className="grid grid-cols-1 items-center gap-4 rounded-lg border p-4 md:grid-cols-3"
-                            >
-                                <div className="space-y-1">
-                                    <Label className="text-sm font-medium">
-                                        {item.systemValue}
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Badge
-                                            variant="secondary"
-                                            className="text-xs text-muted-foreground"
-                                        >
-                                            {
-                                                systemValueDescription[
-                                                item.key as keyof typeof systemValueDescription
-                                                ]
-                                            }
-                                        </Badge>
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor={`custom-${item.key}`} className="text-sm">
-                                        Custom Name
-                                    </Label>
-                                    <Input
-                                        id={`custom-${item.key}`}
-                                        value={item.customValue}
-                                        onChange={(e) =>
-                                            handleCustomValueChange(item.key, e.target.value)
-                                        }
-                                        placeholder={item.systemValue}
-                                    />
-                                </div>
-                                <div className="flex justify-end">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => resetToDefault(item.key)}
-                                        disabled={item.customValue === item.systemValue}
-                                    >
-                                        <RotateCcw className="mr-1 size-3" />
-                                        Reset
-                                    </Button>
-                                </div>
-                            </div>
-                        ))}
-                    </CardContent>
-                </Card>
+                            ))}
+                        </CardContent>
+                    </Card>
+                ))}
             </div>
 
             <Separator />

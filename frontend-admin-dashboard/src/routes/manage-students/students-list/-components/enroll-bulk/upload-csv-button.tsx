@@ -30,7 +30,7 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { MyDialog } from '@/components/design-system/dialog';
 import { useBulkDialog } from '../../-context/bulk-dialog-context';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 
 interface FileState {
     file: File | null;
@@ -454,7 +454,7 @@ export const UploadCSVButton = ({
                             layoutVariant="default"
                             onClick={() => handleNotificationConfirm(true)}
                         >
-                            Notify {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}s
+                            Notify {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}
                         </MyButton>
                     </div>
                 }

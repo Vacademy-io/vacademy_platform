@@ -9,7 +9,7 @@ import { getInstituteId } from '@/constants/helper';
 import { MyButton } from '@/components/design-system/button';
 import { WarningCircle } from '@phosphor-icons/react';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 
 const AssessmentGlobalLevelRevaluateAssessment = () => {
     const [openDialog, setOpenDialog] = useState(false);
@@ -75,7 +75,7 @@ const AssessmentGlobalLevelRevaluateAssessment = () => {
                 </DialogTrigger>
                 <DialogContent className="flex flex-col p-0">
                     <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">
-                        Revaluate All {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}s
+                        Revaluate All {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}
                     </h1>
                     <div className="flex flex-col gap-2 p-4">
                         <div className="flex items-center text-danger-600">

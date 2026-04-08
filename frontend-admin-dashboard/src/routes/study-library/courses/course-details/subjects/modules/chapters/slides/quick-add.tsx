@@ -45,6 +45,8 @@ import {
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
@@ -1024,7 +1026,7 @@ export function QuickAddView({ search }: { search: ChapterSearchParamsForQuickAd
                         onClick={onAddAll}
                         disabled={staged.length === 0}
                     >
-                        Publish All Slides
+                        {`Publish All ${getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide)}`}
                     </MyButton>
                 </div>
             </div>

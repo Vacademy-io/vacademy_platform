@@ -12,7 +12,7 @@ import { CsvValidationResults } from '../csv-validation/csv-validation-results';
 import { Download, Users, ArrowRight } from '@phosphor-icons/react';
 import { ColumnDef } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface StudentDataStepProps {
@@ -105,7 +105,7 @@ export const StudentDataStep = ({ session, onSessionUpdate, onNextStep }: Studen
                         </div>
                         <div>
                             <h2 className="text-lg font-semibold text-neutral-700">
-                                Selected {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}s (
+                                Selected {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)} (
                                 {session.selectedStudents.length})
                             </h2>
                             <p className="text-sm text-neutral-500">

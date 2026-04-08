@@ -40,7 +40,7 @@ export default function EnrollLearnersWidget({
                         <UserPlus size={18} className="text-primary-500" weight="duotone" />
                         <div>
                             <CardTitle className="text-sm font-semibold">
-                                Enroll {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}s
+                                Enroll {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}
                             </CardTitle>
                             <CardDescription className="mt-1 text-xs text-neutral-600">
                                 Manage{' '}
@@ -54,7 +54,7 @@ export default function EnrollLearnersWidget({
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Badge variant="secondary" className="text-xs">
-                            {learnerCount} {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}s
+                            {learnerCount} {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}
                         </Badge>
                         <Badge variant="secondary" className="text-xs">
                             {batchCount}{' '}
@@ -74,7 +74,7 @@ export default function EnrollLearnersWidget({
                         onClick={handleInviteStudents}
                     >
                         <Plus size={16} />
-                        Invite New {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}s
+                        Invite New {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}
                     </MyButton>
 
                     <MyButton
@@ -86,7 +86,7 @@ export default function EnrollLearnersWidget({
                         onClick={handleManageStudents}
                     >
                         <Users size={16} />
-                        Manage {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}s List
+                        Manage {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)} List
                     </MyButton>
 
                     <MyButton

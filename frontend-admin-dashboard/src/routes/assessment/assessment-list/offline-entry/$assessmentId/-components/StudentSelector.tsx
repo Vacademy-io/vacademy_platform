@@ -8,6 +8,8 @@ import { useBatchNames } from '@/routes/assessment/assessment-list/assessment-de
 import { MyPagination } from '@/components/design-system/pagination';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export interface StudentRow {
     id: string;
@@ -180,7 +182,7 @@ export const StudentSelector = ({
                         <thead className="border-b bg-gray-50 text-xs font-medium uppercase text-gray-500">
                             <tr>
                                 <th className="px-4 py-3">Student Name</th>
-                                <th className="px-4 py-3">Batch</th>
+                                <th className="px-4 py-3">{getTerminology(ContentTerms.Batch, SystemTerms.Batch)}</th>
                                 <th className="px-4 py-3">Status</th>
                                 <th className="px-4 py-3">Score</th>
                             </tr>

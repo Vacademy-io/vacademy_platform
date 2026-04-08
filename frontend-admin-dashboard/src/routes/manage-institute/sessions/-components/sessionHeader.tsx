@@ -7,7 +7,7 @@ import { MyButton } from '@/components/design-system/button';
 import { Plus } from '@phosphor-icons/react';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { NoCourseDialog } from '@/components/common/students/no-course-dialog';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export default function SessionHeader() {
@@ -91,7 +91,7 @@ export default function SessionHeader() {
                 <div className="text-sm sm:text-base">
                     Effortlessly organize, upload, and track educational resources in one place.
                     Provide{' '}
-                    {getTerminology(RoleTerms.Learner, SystemTerms.Learner).toLocaleLowerCase()}s
+                    {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLocaleLowerCase()}
                     with easy access to the materials they need to succeed, ensuring a seamless
                     learning experience.
                 </div>

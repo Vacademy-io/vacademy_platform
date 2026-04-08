@@ -14,6 +14,8 @@ import { getModuleFlags } from '@/components/common/layout-container/sidebar/hel
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { DropdownItemType } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface SubjectCardProps {
     subject: SubjectType;
@@ -111,7 +113,7 @@ export const SubjectCard = ({ subject, onDelete, onEdit, currentSession }: Subje
 
             <MyDialog
                 trigger={<></>}
-                heading="Edit Subject"
+                heading={`Edit ${getTerminology(ContentTerms.Subject, SystemTerms.Subject)}`}
                 dialogWidth="w-[400px]"
                 open={isEditDialogOpen}
                 onOpenChange={setIsEditDialogOpen}

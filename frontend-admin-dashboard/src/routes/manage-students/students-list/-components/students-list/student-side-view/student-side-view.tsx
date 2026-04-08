@@ -27,9 +27,9 @@ import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ErrorBoundary } from '@/components/core/dashboard-loader';
 import { useStudentSidebar } from '../../../-context/selected-student-sidebar-context';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { cn } from '@/lib/utils';
-import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { isUserAdmin } from '@/utils/userDetails';
 import {
     getDisplaySettingsWithFallback,
@@ -262,7 +262,7 @@ export const StudentSidebar = ({
                                             onClick={() => setCategory('courses')}
                                         >
                                             <span className="relative">
-                                                Courses
+                                                {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
                                                 {category === 'courses' && (
                                                     <div className="absolute -bottom-1 left-1/2 size-1 -translate-x-1/2 animate-bounce rounded-full bg-primary-500"></div>
                                                 )}

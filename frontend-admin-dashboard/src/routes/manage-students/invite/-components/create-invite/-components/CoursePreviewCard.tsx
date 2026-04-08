@@ -72,7 +72,7 @@ const CoursePreviewCard = ({
                                         <MyInput
                                             id="course-name"
                                             required={true}
-                                            label="Course"
+                                            label={getTerminology(ContentTerms.Course, SystemTerms.Course)}
                                             inputType="text"
                                             inputPlaceholder="Enter course name"
                                             className="w-full"

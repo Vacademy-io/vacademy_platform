@@ -16,6 +16,7 @@ import WhiteLabelSettings from '../-components/WhiteLabelSettings';
 import AssessmentSettings from '../-components/AssessmentSettings';
 import WhatsAppSettings from '../-components/WhatsAppSettings/WhatsAppSettings';
 import LeadSettings from '../-components/LeadSettings';
+import GtmSettings from '../-components/GtmSettings';
 
 export const getAvailableSettingsTabs = () => {
     return [
@@ -103,6 +104,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.LeadSettings,
             value: 'Lead Settings',
             component: LeadSettings,
+        },
+        {
+            tab: SettingsTabs.GtmSettings,
+            value: 'GTM Settings',
+            component: GtmSettings,
         },
     ];
 };

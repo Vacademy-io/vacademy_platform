@@ -6,6 +6,8 @@ import { MyDropdown } from '@/components/design-system/dropdown';
 import { MyLabel } from '@/components/design-system/my-label';
 import IntervalSelector from './IntervalSelector';
 import { Switch } from '@/components/ui/switch';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface TitleGeneratorSectionProps {
     data: PlanningFormData;
@@ -139,7 +141,7 @@ export default function TitleGeneratorSection({
             {/* Batch Selection - Only show if not hidden (hidden in course details dialogs) */}
             {!hideCourseSelector && (
                 <div className="space-y-2">
-                    <MyLabel required>Batch</MyLabel>
+                    <MyLabel required>{getTerminology(ContentTerms.Batch, SystemTerms.Batch)}</MyLabel>
                     <MyDropdown
                         currentValue={currentPackageSession?.label}
                         handleChange={(value) => onChange({ packageSessionId: value })}

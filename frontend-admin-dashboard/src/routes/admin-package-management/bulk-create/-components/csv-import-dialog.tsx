@@ -43,6 +43,8 @@ import {
     BATCH_CSV_FIELDS,
     BatchConfig,
 } from '../-types/bulk-create-types';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface CsvImportDialogProps {
     open: boolean;
@@ -389,7 +391,7 @@ export function CsvImportDialog({
                         {/* Add Combination Form */}
                         <div className="flex items-end gap-2">
                             <div className="flex-1 space-y-1">
-                                <Label className="text-xs">Level</Label>
+                                <Label className="text-xs">{getTerminology(ContentTerms.Level, SystemTerms.Level)}</Label>
                                 <Select value={pendingLevelId} onValueChange={setPendingLevelId}>
                                     <SelectTrigger className="h-9">
                                         <SelectValue placeholder="Select Level" />
@@ -404,7 +406,7 @@ export function CsvImportDialog({
                                 </Select>
                             </div>
                             <div className="flex-1 space-y-1">
-                                <Label className="text-xs">Session</Label>
+                                <Label className="text-xs">{getTerminology(ContentTerms.Session, SystemTerms.Session)}</Label>
                                 <Select
                                     value={pendingSessionId}
                                     onValueChange={setPendingSessionId}

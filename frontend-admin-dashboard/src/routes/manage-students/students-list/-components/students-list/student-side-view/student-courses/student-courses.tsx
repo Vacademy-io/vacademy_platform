@@ -14,7 +14,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_LEVELS_BY_INSTITUTE } from '@/constants/urls';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useNavigate } from '@tanstack/react-router';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const ITEMS_PER_PAGE = 20;
@@ -141,7 +141,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                     scale="small"
                     onClick={() => setAssignOpen(true)}
                 >
-                    + Assign to Course
+                    + Assign to {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                 </MyButton>
                 <MyButton
                     buttonType="secondary"
@@ -149,7 +149,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                     onClick={() => setDeassignOpen(true)}
                     disable={allActiveCourses.length === 0}
                 >
-                    Remove from Course
+                    Remove from {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                 </MyButton>
             </div>
 
@@ -185,9 +185,9 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
 
             {/* In Progress Courses */}
             <CourseSection
-                title="In Progress Courses"
+                title={`In Progress ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`}
                 courses={progressCourses?.content || []}
-                emptyMessage="No courses in progress"
+                emptyMessage={`No ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()} in progress`}
                 onCourseClick={handleCourseClick}
                 getSessionName={(course) => {
                     if (!course.package_session_id) return null;
@@ -223,9 +223,9 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
 
             {/* Completed Courses */}
             <CourseSection
-                title="Completed Courses"
+                title={`Completed ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`}
                 courses={completedCourses?.content || []}
-                emptyMessage="No completed courses"
+                emptyMessage={`No completed ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}`}
                 onCourseClick={handleCourseClick}
                 getSessionName={(course) => {
                     if (!course.package_session_id) return null;
@@ -251,9 +251,9 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
 
             {/* Past Courses */}
             <CourseSection
-                title="Past Courses"
+                title={`Past ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`}
                 courses={pastCourses?.content || []}
-                emptyMessage="No past courses"
+                emptyMessage={`No past ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}`}
                 onCourseClick={handleCourseClick}
                 getSessionName={(course) => {
                     if (!course.package_session_id) return null;

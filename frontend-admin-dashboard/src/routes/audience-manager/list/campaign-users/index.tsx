@@ -8,6 +8,8 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const CAMPAIGN_USERS_ROUTE = '/audience-manager/list/campaign-users/' as const;
 
@@ -31,7 +33,7 @@ export function CampaignUsersPage() {
     console.log('CampaignUsersPage - search params:', search);
 
     useEffect(() => {
-        setNavHeading('Campaign Users');
+        setNavHeading(`${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)} Users`);
     }, []);
 
     const handleBack = () => {
@@ -44,8 +46,8 @@ export function CampaignUsersPage() {
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Campaign Users</title>
-                <meta name="description" content="View users enrolled in the campaign." />
+                <title>{`${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)} Users`}</title>
+                <meta name="description" content={`View users enrolled in the ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList).toLowerCase()}.`} />
             </Helmet>
             <div className="flex w-full flex-col gap-6">
                 <Button
@@ -55,7 +57,7 @@ export function CampaignUsersPage() {
                     className="w-fit"
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back to Campaigns
+                    {`Back to ${getTerminologyPlural(OtherTerms.AudienceList, SystemTerms.AudienceList)}`}
                 </Button>
                 {search.campaignId ? (
                     <CampaignUsersTable

@@ -24,6 +24,8 @@ import { Sidebar, SidebarContent, SidebarHeader, useSidebar } from '@/components
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Calendar } from '@/components/ui/calendar';
 import { format, subDays, subMonths, subYears, startOfDay } from 'date-fns';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getStudentAttendanceReport, StudentSchedule } from '../live-session/-services/utils';
 import { useGetAttendance } from './-services/attendance';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -1089,7 +1091,7 @@ function RouteComponent() {
 
                                 {/* Batch */}
                                 <BatchDropdown
-                                    label="Batch"
+                                    label={getTerminology(ContentTerms.Batch, SystemTerms.Batch)}
                                     value={selectedBatchLabel}
                                     options={batchOptions}
                                     onSelect={(batchId) => setSelectedBatchId(batchId)}
@@ -1179,7 +1181,7 @@ function RouteComponent() {
                                                 </MyDropdown>
                                             </th>
                                             <th className="px-4 py-6">Username</th>
-                                            <th className="px-4 py-6">Batch</th>
+                                            <th className="px-4 py-6">{getTerminology(ContentTerms.Batch, SystemTerms.Batch)}</th>
                                             <th className="px-4 py-6">Mobile Number</th>
                                             <th className="px-4 py-6">Email</th>
                                             <th className="px-4 py-6">

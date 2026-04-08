@@ -13,7 +13,7 @@ import { MyButton } from '@/components/design-system/button';
 import { TrashSimple, Funnel, X, Package, ListBullets } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { MyPagination } from '@/components/design-system/pagination';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { Eye, EyeSlash } from '@phosphor-icons/react';
 import {
@@ -180,7 +180,7 @@ const CourseListPage = ({
                 </>
             )}
             <div className={`${sessions.length > 1 ? 'mt-4' : ''} mb-1 text-sm font-semibold`}>
-                {getTerminology(ContentTerms.Level, SystemTerms.Level)}s
+                {getTerminologyPlural(ContentTerms.Level, SystemTerms.Level)}
             </div>
             <div className="flex flex-col gap-2">
                 {levels.map((level: { id: string; name: string }) => (
@@ -230,7 +230,7 @@ const CourseListPage = ({
             {Array.isArray(accessControlUsers) && accessControlUsers.length > 0 && (
                 <>
                     <div className="mb-1 mt-4 text-sm font-semibold">
-                        {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s
+                        {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
                     </div>
                     <div className="flex flex-col gap-2">
                         {(accessControlUsers as UserRolesDataEntry[]).map(

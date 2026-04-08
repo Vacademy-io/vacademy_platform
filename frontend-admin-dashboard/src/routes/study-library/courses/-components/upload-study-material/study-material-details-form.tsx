@@ -10,6 +10,8 @@ import { ModulesWithChapters } from '@/stores/study-library/use-modules-with-cha
 import { useEffect, useMemo, useState } from 'react';
 import { getChaptersByModuleId } from '@/utils/helpers/study-library-helpers.ts/get-list-from-stores/getChaptersByModuleId';
 import { useModulesWithChaptersQuery } from '@/routes/study-library/courses/-services/getModulesWithChapters';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export type AvailableFields =
     | 'course'
@@ -219,12 +221,12 @@ export const StudyMaterialDetailsForm = ({
     // Get label and placeholder for each field
     const getFieldConfig = (fieldName: AvailableFields) => {
         const config = {
-            course: { label: 'Course', placeholder: 'Select Course' },
-            session: { label: 'Session', placeholder: 'Select Session' },
+            course: { label: getTerminology(ContentTerms.Course, SystemTerms.Course), placeholder: `Select ${getTerminology(ContentTerms.Course, SystemTerms.Course)}` },
+            session: { label: getTerminology(ContentTerms.Session, SystemTerms.Session), placeholder: `Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}` },
             level: { label: 'Year/Class', placeholder: 'Select Year/Class' },
-            subject: { label: 'Subject', placeholder: 'Select Subject' },
-            module: { label: 'Module', placeholder: 'Select Module' },
-            chapter: { label: 'Chapter', placeholder: 'Select Chapter' },
+            subject: { label: getTerminology(ContentTerms.Subject, SystemTerms.Subject), placeholder: `Select ${getTerminology(ContentTerms.Subject, SystemTerms.Subject)}` },
+            module: { label: getTerminology(ContentTerms.Module, SystemTerms.Module), placeholder: `Select ${getTerminology(ContentTerms.Module, SystemTerms.Module)}` },
+            chapter: { label: getTerminology(ContentTerms.Chapter, SystemTerms.Chapter), placeholder: `Select ${getTerminology(ContentTerms.Chapter, SystemTerms.Chapter)}` },
             file_type: { label: 'File Type', placeholder: 'Select File Type' },
         };
 

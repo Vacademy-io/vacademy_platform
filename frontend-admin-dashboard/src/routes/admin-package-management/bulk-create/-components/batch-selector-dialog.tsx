@@ -23,6 +23,8 @@ import { BatchConfig, LevelOption, SessionOption, PaymentType } from '../-types/
 import { toast } from 'sonner';
 import { currencyOptions } from '@/routes/settings/-constants/payments';
 import { getCurrencySymbol } from '@/routes/settings/-components/Payment/utils/utils';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface BatchSelectorDialogProps {
     open: boolean;
@@ -169,7 +171,7 @@ export function BatchSelectorDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
                 <DialogHeader>
-                    <DialogTitle>Add Batch</DialogTitle>
+                    <DialogTitle>Add {getTerminology(ContentTerms.Batch, SystemTerms.Batch)}</DialogTitle>
                     <DialogDescription>
                         Configure level, session, payment, and inventory for this batch.
                     </DialogDescription>
@@ -178,7 +180,7 @@ export function BatchSelectorDialog({
                 <div className="space-y-4 py-4">
                     {/* Level Selection */}
                     <div className="space-y-2">
-                        <Label className="text-sm">Level</Label>
+                        <Label className="text-sm">{getTerminology(ContentTerms.Level, SystemTerms.Level)}</Label>
                         <Tabs defaultValue="existing" className="w-full">
                             <TabsList className="grid w-full grid-cols-2">
                                 <TabsTrigger value="existing" className="text-xs">
@@ -225,7 +227,7 @@ export function BatchSelectorDialog({
 
                     {/* Session Selection */}
                     <div className="space-y-2">
-                        <Label className="text-sm">Session</Label>
+                        <Label className="text-sm">{getTerminology(ContentTerms.Session, SystemTerms.Session)}</Label>
                         <Tabs defaultValue="existing" className="w-full">
                             <TabsList className="grid w-full grid-cols-2">
                                 <TabsTrigger value="existing" className="text-xs">

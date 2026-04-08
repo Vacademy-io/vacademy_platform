@@ -37,7 +37,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 
 interface AttemptData {
     id: string;
@@ -183,7 +183,7 @@ export function StudentSelectionDialog({
                 <DialogContent className="w-[60vw]">
                     <DialogHeader className="mb-2">
                         <DialogTitle className="font-bold">
-                            Select {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}s for
+                            Select {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)} for
                             Evaluation
                         </DialogTitle>
                     </DialogHeader>

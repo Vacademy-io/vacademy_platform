@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 import { BatchesSummaryResponse } from '../-types/package-types';
 import { ColumnFilter, FilterOption } from '../-hooks/usePackageFilters';
 import { Link } from '@tanstack/react-router';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface PackageFiltersProps {
     summaryData: BatchesSummaryResponse | undefined;
@@ -169,7 +171,7 @@ export const PackageFilters = ({
 
                     <div className="flex flex-wrap gap-3">
                         <FilterChips
-                            label="Session"
+                            label={getTerminology(ContentTerms.Session, SystemTerms.Session)}
                             filterList={sessionOptions}
                             selectedFilters={localFilters['session'] || []}
                             clearFilters={clearFilters}
@@ -178,7 +180,7 @@ export const PackageFilters = ({
                         />
 
                         <FilterChips
-                            label="Level"
+                            label={getTerminology(ContentTerms.Level, SystemTerms.Level)}
                             filterList={levelOptions}
                             selectedFilters={localFilters['level'] || []}
                             clearFilters={clearFilters}
@@ -187,7 +189,7 @@ export const PackageFilters = ({
                         />
 
                         <FilterChips
-                            label="Package"
+                            label={getTerminology(ContentTerms.Package, SystemTerms.Package)}
                             filterList={packageOptions}
                             selectedFilters={localFilters['package'] || []}
                             clearFilters={clearFilters}

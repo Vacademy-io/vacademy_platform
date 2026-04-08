@@ -32,7 +32,7 @@ import {
     SidebarStateType,
     SidebarItemsType,
 } from '../../../../types/layout-container/layout-container-types';
-import { SidebarItemsData } from './utils';
+import { getSidebarItemsData } from './utils';
 import './scrollbarStyle.css';
 import { useSuspenseQuery, useQuery } from '@tanstack/react-query';
 import { useInstituteQuery, getSubOrgInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
@@ -121,7 +121,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         const findCategory = (): 'CRM' | 'LMS' | 'AI' | null => {
             if (isVoltSubdomain) return 'LMS';
 
-            for (const item of SidebarItemsData) {
+            for (const item of getSidebarItemsData()) {
                 if (item.id === 'settings') continue; // Skip settings — handled above
                 const isActive = item.to ? currentRoute.startsWith(item.to) : false;
                 if (isActive) return item.category || 'CRM';
@@ -172,7 +172,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     const finalSidebarItems = (() => {
         const base = isVoltSubdomain
             ? voltSidebarData
-            : filterMenuItems(SidebarItemsData, data?.id || '', isTabVisible, isSubItemVisible);
+            : filterMenuItems(getSidebarItemsData(), data?.id || '', isTabVisible, isSubItemVisible);
         if (!roleDisplay) return base;
 
         const tabVis = new Map(roleDisplay.sidebar.map((t) => [t.id, t]));

@@ -49,6 +49,8 @@ import { useSessionDetailsStore } from '../../-store/useSessionDetailsStore';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { format } from 'date-fns';
 import { toZonedTime, format as formatTZ } from 'date-fns-tz';
 import { TIMEZONE_OPTIONS, STREAMING_OPTIONS, WAITING_ROOM_OPTIONS } from '../-constants/options';
@@ -1589,11 +1591,11 @@ export default function ScheduleStep1() {
                     )}
                 />
                 <SelectField
-                    label="Subject"
+                    label={getTerminology(ContentTerms.Subject, SystemTerms.Subject)}
                     name="subject"
                     labelStyle="text-sm font-medium"
                     options={[
-                        { value: 'none', label: 'Select Subject', _id: -1 },
+                        { value: 'none', label: `Select ${getTerminology(ContentTerms.Subject, SystemTerms.Subject)}`, _id: -1 },
                         ...SubjectFilterData.map((option, index) => ({
                             value: option.name,
                             label: option.name,

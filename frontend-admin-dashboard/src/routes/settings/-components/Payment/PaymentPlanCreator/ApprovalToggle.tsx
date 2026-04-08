@@ -3,7 +3,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { PaymentPlanType } from '@/types/payment';
 import { isApprovalToggleDisabled, getApprovalToggleMessage, FreePlanInfo } from '../utils/utils';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '../../NamingSettings';
 
 interface ApprovalToggleProps {
@@ -32,7 +32,7 @@ export const ApprovalToggle: React.FC<ApprovalToggleProps> = ({
                     }`}
                 >
                     Enroll{' '}
-                    {getTerminology(RoleTerms.Learner, SystemTerms.Learner).toLocaleLowerCase()}s on
+                    {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLocaleLowerCase()} on
                     approval
                 </Label>
                 <Switch

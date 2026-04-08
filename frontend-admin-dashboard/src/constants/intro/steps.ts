@@ -1,4 +1,6 @@
 import { Step } from '@/hooks/use-intro';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const dashboardSteps: Step[] = [
     {
@@ -208,32 +210,32 @@ const assignYearStep: Step[] = [
 const addSubjectStep: Step[] = [
     {
         element: '#add-subject',
-        title: 'Add Subject',
-        intro: 'Select and assign subjects under the chosen Year/Class/Level to structure the study library efficiently.',
+        title: `Add ${getTerminology(ContentTerms.Subject, SystemTerms.Subject)}`,
+        intro: `Select and assign ${getTerminologyPlural(ContentTerms.Subject, SystemTerms.Subject).toLowerCase()} under the chosen Year/Class/Level to structure the study library efficiently.`,
     },
 ];
 
 const addModulesStep: Step[] = [
     {
         element: '#add-modules',
-        title: 'Add Modules',
-        intro: 'Create and organize modules within the selected subject to streamline study materials and enhance course structure.',
+        title: `Add ${getTerminologyPlural(ContentTerms.Module, SystemTerms.Module)}`,
+        intro: `Create and organize ${getTerminologyPlural(ContentTerms.Module, SystemTerms.Module).toLowerCase()} within the selected ${getTerminology(ContentTerms.Subject, SystemTerms.Subject).toLowerCase()} to streamline study materials and enhance course structure.`,
     },
 ];
 
 const addChaptersStep: Step[] = [
     {
         element: '#add-chapters',
-        title: 'Add Chapters',
-        intro: 'Break down modules into chapters to structure the study material effectively and provide a clear learning path for students.',
+        title: `Add ${getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter)}`,
+        intro: `Break down ${getTerminologyPlural(ContentTerms.Module, SystemTerms.Module).toLowerCase()} into ${getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter).toLowerCase()} to structure the study material effectively and provide a clear learning path for students.`,
     },
 ];
 
 const addSlidesStep: Step[] = [
     {
         element: '#add-slides',
-        title: 'Add Slides',
-        intro: 'Enhance chapters by adding slides in various formats like videos, PDFs, or documents to create a comprehensive learning experience.',
+        title: `Add ${getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide)}`,
+        intro: `Enhance ${getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter).toLowerCase()} by adding ${getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide).toLowerCase()} in various formats like videos, PDFs, or documents to create a comprehensive learning experience.`,
         position: 'right',
     },
 ];

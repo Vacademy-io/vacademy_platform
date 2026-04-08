@@ -16,6 +16,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { ModelSelector } from '../../-components/ModelSelector';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 type PlanLectureFormProps = {
     handleSubmitSuccess: (data: PlanLectureAIFormSchema) => void;
@@ -100,7 +102,7 @@ const PlanLectureForm = ({ handleSubmitSuccess, keyContext, loader }: PlanLectur
                                             inputPlaceholder="for example, 8th standard"
                                             className="w-full"
                                             required={true}
-                                            label="Level"
+                                            label={getTerminology(ContentTerms.Level, SystemTerms.Level)}
                                         />
                                     </FormControl>
                                 </FormItem>

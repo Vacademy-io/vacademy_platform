@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { StudentFeePaymentRowDTO, StudentFeeDueDTO } from '@/types/manage-finances';
-import { allocateSelectedPayment, getStudentDuesQueryKey } from '@/services/manage-finances';
+import { allocateSelectedPayment, AllocatePaymentResponse, getStudentDuesQueryKey } from '@/services/manage-finances';
 import { getInstituteId } from '@/constants/helper';
 import { ConfirmPaymentDialog } from './ConfirmPaymentDialog';
 
@@ -32,7 +32,7 @@ interface PaymentDetailsStepProps {
     student: StudentFeePaymentRowDTO;
     selectedDues: StudentFeeDueDTO[];
     onBack: () => void;
-    onSuccess: (amount: number) => void;
+    onSuccess: (amount: number, receiptUrl?: string, receiptNumber?: string) => void;
 }
 
 export function PaymentDetailsStep({
@@ -62,7 +62,7 @@ export function PaymentDetailsStep({
 
     const parsedAmount = parseFloat(amount) || 0;
 
-    const mutation = useMutation({
+    const mutation = useMutation<AllocatePaymentResponse, unknown>({
         mutationFn: () => {
             const instituteId = getInstituteId();
             if (!instituteId) throw new Error('Institute ID not found');
@@ -79,12 +79,12 @@ export function PaymentDetailsStep({
                 remarks: remarkParts.join(' | '),
             });
         },
-        onSuccess: () => {
+        onSuccess: (data) => {
             toast.success('Payment submitted successfully');
             queryClient.invalidateQueries({
                 queryKey: getStudentDuesQueryKey(student.student_id),
             });
-            onSuccess(parsedAmount);
+            onSuccess(parsedAmount, data?.download_url, data?.receipt_number);
         },
         onError: (err: any) => {
             toast.error(err?.response?.data?.ex || err?.message || 'Payment failed');

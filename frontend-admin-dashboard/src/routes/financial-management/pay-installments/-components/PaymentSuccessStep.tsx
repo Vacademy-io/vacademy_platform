@@ -1,4 +1,4 @@
-import { CheckCircle } from '@phosphor-icons/react';
+import { CheckCircle, DownloadSimple } from '@phosphor-icons/react';
 
 const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
@@ -6,12 +6,16 @@ const formatCurrency = (amount: number) =>
 interface PaymentSuccessStepProps {
     studentName: string;
     amount: number;
+    receiptUrl?: string;
+    receiptNumber?: string;
     onPayAnother: () => void;
 }
 
 export function PaymentSuccessStep({
     studentName,
     amount,
+    receiptUrl,
+    receiptNumber,
     onPayAnother,
 }: PaymentSuccessStepProps) {
     return (
@@ -25,11 +29,29 @@ export function PaymentSuccessStep({
                 been recorded for{' '}
                 <span className="font-semibold text-gray-700">{studentName}</span>.
             </p>
-            <p className="mt-1 text-sm text-gray-400">
-                The receipt will be generated and sent automatically.
-            </p>
 
-            <div className="mt-8">
+            {receiptUrl ? (
+                <p className="mt-1 text-sm text-emerald-600 font-medium">
+                    Receipt {receiptNumber ? `#${receiptNumber} ` : ''}generated successfully.
+                </p>
+            ) : (
+                <p className="mt-1 text-sm text-gray-400">
+                    The receipt will be generated and sent automatically.
+                </p>
+            )}
+
+            <div className="mt-8 flex items-center justify-center gap-3">
+                {receiptUrl && (
+                    <a
+                        href={receiptUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
+                    >
+                        <DownloadSimple size={16} weight="bold" />
+                        Download Receipt
+                    </a>
+                )}
                 <button
                     onClick={onPayAnother}
                     className="px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"

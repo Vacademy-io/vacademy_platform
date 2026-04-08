@@ -28,6 +28,8 @@ import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerA
 import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackingService;
 import vacademy.io.admin_core_service.features.fee_management.service.StudentFeeDiscountService;
 import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
+import vacademy.io.admin_core_service.features.invoice.entity.InvoiceLineItem;
+import vacademy.io.admin_core_service.features.invoice.repository.InvoiceLineItemRepository;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -54,6 +56,9 @@ public class FeeTrackingAdminController {
 
     @Autowired
     private InvoiceRepository invoiceRepository;
+
+    @Autowired
+    private InvoiceLineItemRepository invoiceLineItemRepository;
 
     @Autowired
     private MediaService mediaService;
@@ -156,7 +161,7 @@ public class FeeTrackingAdminController {
      * The admin picks specific installments and the amount to pay on each.
      */
     @PostMapping("/{userId}/allocate-selected")
-    public ResponseEntity<Void> allocatePaymentForSelectedInstallments(
+    public ResponseEntity<?> allocatePaymentForSelectedInstallments(
             @PathVariable("userId") String userId,
             @RequestBody SelectiveAllocationRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -171,10 +176,21 @@ public class FeeTrackingAdminController {
             return ResponseEntity.badRequest().build();
         }
 
-        feeLedgerAllocationService.allocatePaymentForSelectedInstallments(
+        String invoiceId = feeLedgerAllocationService.allocatePaymentForSelectedInstallments(
                 userId, request.getInstituteId(), request.getStudentFeePaymentIds(),
                 request.getAmount(), request.getRemarks());
-        return ResponseEntity.noContent().build();
+
+        Map<String, String> response = new java.util.HashMap<>();
+        if (invoiceId != null) {
+            Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+            if (invoice != null && invoice.getPdfFileId() != null) {
+                String downloadUrl = mediaService.getFilePublicUrlById(invoice.getPdfFileId());
+                response.put("invoice_id", invoiceId);
+                response.put("receipt_number", invoice.getInvoiceNumber());
+                response.put("download_url", downloadUrl != null ? downloadUrl : "");
+            }
+        }
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -344,6 +360,38 @@ public class FeeTrackingAdminController {
                 "download_url", signedUrl,
                 "invoice_number", invoice.getInvoiceNumber(),
                 "file_name", "receipt_" + invoice.getInvoiceNumber() + ".pdf"
+        ));
+    }
+
+    /**
+     * Get receipt download URL for a specific paid installment.
+     * Looks up the InvoiceLineItem where source_id = installmentId,
+     * then returns the PDF download URL for the parent invoice.
+     */
+    @GetMapping("/installment/{installmentId}/receipt-url")
+    public ResponseEntity<?> getReceiptUrlForInstallment(
+            @PathVariable("installmentId") String installmentId) {
+        List<InvoiceLineItem> lineItems = invoiceLineItemRepository.findBySourceId(installmentId);
+        if (lineItems.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Invoice invoice = lineItems.get(0).getInvoice();
+        if (invoice == null || !StringUtils.hasText(invoice.getPdfFileId())) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "No receipt PDF found for this installment"));
+        }
+
+        String downloadUrl = mediaService.getFilePublicUrlById(invoice.getPdfFileId());
+        if (!StringUtils.hasText(downloadUrl)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to generate download URL"));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "invoice_id", invoice.getId(),
+                "receipt_number", invoice.getInvoiceNumber(),
+                "download_url", downloadUrl
         ));
     }
 

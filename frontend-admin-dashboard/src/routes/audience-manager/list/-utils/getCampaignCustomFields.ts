@@ -36,15 +36,13 @@ const generateKeyFromName = (name: string): string =>
         .replace(/^_+|_+$/g, '');
 
 /**
- * Get default campaign fields (fallback when no settings are available)
- * Returns empty array - all fields should be configured in settings
- * If no fields are configured, the form will start with an empty custom fields list
+ * Default institute fields — always present as fallback
  */
-const getDefaultCampaignFields = (): CampaignFormCustomField[] => {
-    // Return empty array - all fields should come from settings
-    // Users can add fields manually or configure them in settings
-    return [];
-};
+const DEFAULT_FIELDS: CampaignFormCustomField[] = [
+    { id: 'def_0', type: 'text', name: 'Full Name', isRequired: true, key: 'full_name', order: 0 },
+    { id: 'def_1', type: 'text', name: 'Email', isRequired: true, key: 'email', order: 1 },
+    { id: 'def_2', type: 'text', name: 'Phone Number', isRequired: true, key: 'phone_number', order: 2 },
+];
 
 /**
  * Get dynamic campaign fields from settings cache
@@ -58,10 +56,10 @@ export const getCampaignCustomFields = (): CampaignFormCustomField[] => {
         // Get fields defined under "Campaign" location from settings cache
         const customFields = getFieldsForLocation('Campaign') || [];
 
-        // If no fields defined in settings → return empty array
+        // If no fields defined in settings → return defaults only
         if (!customFields.length) {
-            console.log('📋 [getCampaignCustomFields] No fields in settings, returning empty array');
-            return getDefaultCampaignFields();
+            console.log('📋 [getCampaignCustomFields] No fields in settings, returning defaults');
+            return DEFAULT_FIELDS.map((f, i) => ({ ...f, id: String(i), order: i, oldKey: true }));
         }
 
         // Transform settings fields into form-compatible format
@@ -91,12 +89,24 @@ export const getCampaignCustomFields = (): CampaignFormCustomField[] => {
             return transformed;
         });
 
+        // Ensure default fields (Full Name, Email, Phone) are always present
+        const existingKeys = new Set(transformedFields.map((f) => f.key.toLowerCase()));
+        for (const def of DEFAULT_FIELDS) {
+            if (!existingKeys.has(def.key)) {
+                transformedFields.push({
+                    ...def,
+                    id: String(transformedFields.length),
+                    order: transformedFields.length,
+                });
+            }
+        }
+
         console.log('📋 [getCampaignCustomFields] Loaded', transformedFields.length, 'fields from settings');
         return transformedFields;
     } catch (err) {
         console.error('❌ Error in getCampaignCustomFields:', err);
         // Fallback to defaults on error
-        return getDefaultCampaignFields();
+        return DEFAULT_FIELDS.map((f, i) => ({ ...f, id: String(i), order: i }));
     }
 };
 

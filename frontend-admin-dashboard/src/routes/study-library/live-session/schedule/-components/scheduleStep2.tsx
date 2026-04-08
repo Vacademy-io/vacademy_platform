@@ -25,6 +25,7 @@ import QRCode from 'react-qr-code';
 import { handleDownloadQRCode } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { Checkbox } from '@/components/ui/checkbox';
 import { addCustomFiledSchema, addParticipantsSchema } from '../-schema/schema';
+import { getFieldsForLocation } from '@/lib/custom-fields/utils';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { Switch } from '@/components/ui/switch';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -403,13 +404,35 @@ export default function ScheduleStep2() {
             return;
         }
         if (accessType === AccessType.PUBLIC) {
-            form.setValue('fields', [
+            // Load from settings + ensure defaults are present
+            const defaults = [
                 { label: 'Full Name', required: true, isDefault: true, type: InputType.TEXT },
                 { label: 'Email', required: true, isDefault: true, type: InputType.TEXT },
-                { label: 'Mobile Number', required: false, isDefault: false, type: InputType.TEXT },
-                { label: 'State', required: true, isDefault: false, type: InputType.TEXT },
-                { label: 'City/Village', required: true, isDefault: false, type: InputType.TEXT },
-            ]);
+                { label: 'Phone Number', required: true, isDefault: true, type: InputType.TEXT },
+            ];
+            const settingsFields = getFieldsForLocation('Live Session Registration Form');
+            let allFields;
+            if (settingsFields.length > 0) {
+                allFields = settingsFields.map((f) => ({
+                    label: f.name,
+                    required: f.required,
+                    isDefault: !f.canBeDeleted,
+                    type: f.type === 'dropdown' ? InputType.DROPDOWN : InputType.TEXT,
+                    ...(f.type === 'dropdown' && f.options ? {
+                        options: f.options.map((opt) => ({ label: opt, name: opt })),
+                    } : {}),
+                }));
+                // Ensure defaults are present
+                const existingLabels = new Set(allFields.map((f: any) => f.label.toLowerCase()));
+                for (const def of defaults) {
+                    if (!existingLabels.has(def.label.toLowerCase())) {
+                        allFields.push(def);
+                    }
+                }
+            } else {
+                allFields = defaults;
+            }
+            form.setValue('fields', allFields);
             form.setValue(
                 'joinLink',
                 `${learnerBaseUrl}/register/live-class?sessionId=${sessionId}`

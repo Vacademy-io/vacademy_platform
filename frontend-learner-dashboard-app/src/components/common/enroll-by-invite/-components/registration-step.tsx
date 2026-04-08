@@ -26,6 +26,12 @@ import {
   parseDropdownOptions,
 } from "../-utils/custom-field-helpers";
 import { capitalise } from "@/utils/custom-field";
+
+const getPlaceholder = (name: string) => {
+  const lower = name.toLowerCase().trim();
+  if (lower === "name") return "Full Name";
+  return capitalise(name);
+};
 import {
   getCountryCode,
   findCountryFieldKey,
@@ -574,7 +580,7 @@ const RegistrationStep = ({
                             <FormControl>
                               <MyInput
                                 inputType="email"
-                                inputPlaceholder={value.name}
+                                inputPlaceholder={getPlaceholder(value.name)}
                                 input={field.value}
                                 onChangeFunction={field.onChange}
                                 required={value.is_mandatory}
@@ -698,7 +704,7 @@ const RegistrationStep = ({
                           <FormControl>
                             <MyInput
                               inputType={getInputType(value.type, renderType)}
-                              inputPlaceholder={value.name}
+                              inputPlaceholder={getPlaceholder(value.name)}
                               input={field.value}
                               onChangeFunction={field.onChange}
                               required={value.is_mandatory}

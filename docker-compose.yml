@@ -13,6 +13,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-multi-postgres-db.sh:/docker-entrypoint-initdb.d/init-multi-postgres-db.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - vacademy-network
 
@@ -20,6 +26,12 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - vacademy-network
 
@@ -32,7 +44,14 @@ services:
       - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - vacademy-network
 
@@ -60,8 +79,16 @@ services:
       - OAUTH_GITHUB_CLIENT_ID=${OAUTH_GITHUB_CLIENT_ID:-dummy_github_client_id}
       - OAUTH_GITHUB_CLIENT_SECRET=${OAUTH_GITHUB_CLIENT_SECRET:-dummy_github_client_secret}
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8071/auth-service/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - vacademy-network
 
@@ -83,8 +110,16 @@ services:
       - assessment.server.baseurl=${ASSESSMENT_SERVER_BASE_URL:-http://localhost}
       - cloud.front.url=${CLOUD_FRONT_URL:-http://localhost/media/}
     depends_on:
-      - postgres
-      - auth-service
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8072/admin-core-service/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - vacademy-network
 
@@ -105,8 +140,16 @@ services:
       - notification.server.baseurl=${NOTIFICATION_SERVER_BASE_URL:-http://localhost}
       - cloud.front.url=${CLOUD_FRONT_URL:-http://localhost/media/}
     depends_on:
-      - postgres
-      - auth-service
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8073/community-service/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - vacademy-network
 
@@ -129,8 +172,16 @@ services:
       - cloud.front.url=${CLOUD_FRONT_URL:-http://localhost/media/}
       - scheduling.time.frame=${SCHEDULING_TIME_FRAME:-5}
     depends_on:
-      - postgres
-      - auth-service
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8074/assessment-service/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - vacademy-network
 
@@ -161,8 +212,16 @@ services:
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-dummy_youtube_key}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-dummy_deepseek_key}
     depends_on:
-      - postgres
-      - auth-service
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8075/media-service/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - vacademy-network
 
@@ -190,8 +249,16 @@ services:
       # WhatsApp Configuration
       - whatsapp.access-token=${WHATSAPP_ACCESS_TOKEN:-dummy_whatsapp_token}
     depends_on:
-      - postgres
-      - auth-service
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8076/notification-service/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - vacademy-network
 
@@ -203,12 +270,24 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - auth-service
-      - admin-core-service
-      - community-service
-      - assessment-service
-      - media-service
-      - notification-service
+      auth-service:
+        condition: service_healthy
+      admin-core-service:
+        condition: service_healthy
+      community-service:
+        condition: service_healthy
+      assessment-service:
+        condition: service_healthy
+      media-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     networks:
       - vacademy-network
 
@@ -217,4 +296,4 @@ volumes:
 
 networks:
   vacademy-network:
-    driver: bridge 
+    driver: bridge

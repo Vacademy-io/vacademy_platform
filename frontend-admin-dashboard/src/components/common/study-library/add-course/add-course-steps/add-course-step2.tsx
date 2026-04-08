@@ -326,11 +326,15 @@ export const AddCourseStep2 = ({
 
     // Determine initial values based on course settings
     const getInitialHasLevels = () => {
+        // When editing, respect the existing course data over settings
+        if (isEdit && initialData?.hasLevels) return initialData.hasLevels;
         if (courseSettings?.courseStructure?.enableLevels === false) return 'no';
         return initialData?.hasLevels || 'yes';
     };
 
     const getInitialHasSessions = () => {
+        // When editing, respect the existing course data over settings
+        if (isEdit && initialData?.hasSessions) return initialData.hasSessions;
         if (courseSettings?.courseStructure?.enableSessions === false) return 'no';
         if (instituteId === CODE_CIRCLE_INSTITUTE_ID) return 'no';
         return initialData?.hasSessions || 'yes';
@@ -1312,16 +1316,18 @@ export const AddCourseStep2 = ({
         form.setValue('publishToCatalogue', publishToCatalogue);
     }, [hasLevels, hasSessions, sessions, instructors, publishToCatalogue, form]);
 
-    // Effect to handle course settings changes
+    // Effect to handle course settings changes (only for new courses, not edits)
     useEffect(() => {
-        if (courseSettings?.courseStructure?.enableSessions === false && hasSessions === 'yes') {
-            setHasSessions('no');
+        if (!isEdit) {
+            if (courseSettings?.courseStructure?.enableSessions === false && hasSessions === 'yes') {
+                setHasSessions('no');
+            }
+            if (courseSettings?.courseStructure?.enableLevels === false && hasLevels === 'yes') {
+                setHasLevels('no');
+            }
         }
-        if (courseSettings?.courseStructure?.enableLevels === false && hasLevels === 'yes') {
-            setHasLevels('no');
-        }
-        // Auto-set course depth when fixCourseDepth is true
-        if (courseSettings?.courseStructure?.fixCourseDepth) {
+        // Auto-set course depth when fixCourseDepth is true (only for new courses)
+        if (courseSettings?.courseStructure?.fixCourseDepth && !isEdit) {
             const defaultDepth = courseSettings.courseStructure.defaultDepth || 3;
             form.setValue('levelStructure', defaultDepth);
         }

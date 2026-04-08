@@ -288,7 +288,7 @@ export const useContentGeneration = (
                     return slide;
                 });
 
-                localStorage.setItem('generatedSlides', JSON.stringify(updatedSlides));
+                try { localStorage.setItem('generatedSlides', JSON.stringify(updatedSlides)); } catch (e) { console.warn('localStorage quota exceeded for generatedSlides'); }
                 localStorage.setItem('isGeneratingContent', 'true');
 
                 return updatedSlides;
@@ -679,7 +679,7 @@ export const useContentGeneration = (
                                         aiVideoData: aiVideoData ?? parsed[slideIndex].aiVideoData,
                                     };
 
-                                    localStorage.setItem('generatedSlides', JSON.stringify(parsed));
+                                    try { localStorage.setItem('generatedSlides', JSON.stringify(parsed)); } catch (e) { console.warn('localStorage quota exceeded for generatedSlides'); }
                                     console.log(
                                         `✅ [${update.path}] Updated localStorage for slide: ${mappedSlide!.id}`
                                     );
@@ -873,7 +873,7 @@ export const useContentGeneration = (
                                 return slide;
                             });
 
-                            localStorage.setItem('generatedSlides', JSON.stringify(updatedSlides));
+                            try { localStorage.setItem('generatedSlides', JSON.stringify(updatedSlides)); } catch (e) { console.warn('localStorage quota exceeded for generatedSlides'); }
                             console.log(
                                 `✅ [${update.path}] Updated React state for slide: ${slideToUpdate.id}`
                             );

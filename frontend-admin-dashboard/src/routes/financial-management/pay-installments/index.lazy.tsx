@@ -25,7 +25,7 @@ function PayInstallmentsPage() {
             <Helmet>
                 <title>Pay Installments</title>
             </Helmet>
-            <div className="flex flex-col gap-6 p-6 animate-in fade-in duration-300 w-full max-w-[1400px] mx-auto">
+            <div className="flex flex-col gap-6 p-6 animate-in fade-in duration-300 w-full max-w-[1400px] mx-auto flex-1 min-h-0 h-full">
                 <PayInstallmentsMain />
             </div>
         </>

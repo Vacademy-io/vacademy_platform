@@ -90,9 +90,18 @@ export const getCampaignCustomFields = (): CampaignFormCustomField[] => {
         });
 
         // Ensure default fields (Full Name, Email, Phone) are always present
+        // Match by key OR name to avoid duplicates (settings may use "name"/"phone" vs "full_name"/"phone_number")
         const existingKeys = new Set(transformedFields.map((f) => f.key.toLowerCase()));
+        const existingNames = new Set(transformedFields.map((f) => f.name.toLowerCase()));
+        const KEY_ALIASES: Record<string, string[]> = {
+            full_name: ['name', 'full_name', 'fullname'],
+            email: ['email'],
+            phone_number: ['phone', 'phone_number', 'mobile', 'mobile_number'],
+        };
         for (const def of DEFAULT_FIELDS) {
-            if (!existingKeys.has(def.key)) {
+            const aliases = KEY_ALIASES[def.key] || [def.key];
+            const alreadyExists = aliases.some((a) => existingKeys.has(a)) || existingNames.has(def.name.toLowerCase());
+            if (!alreadyExists) {
                 transformedFields.push({
                     ...def,
                     id: String(transformedFields.length),

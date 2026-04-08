@@ -75,10 +75,18 @@ function getInitialAssessmentCustomFields() {
         order: i,
         ...(f.type === 'dropdown' && f.options ? { options: f.options.map((opt, oi) => ({ id: `${i}_opt_${oi}`, value: opt })) } : {}),
     }));
-    // Ensure defaults are present
+    // Ensure defaults are present (match by aliases to avoid duplicates)
     const existingKeys = new Set(fields.map((f) => f.key));
+    const existingNames = new Set(fields.map((f) => f.name.toLowerCase()));
+    const KEY_ALIASES: Record<string, string[]> = {
+        full_name: ['name', 'full_name', 'fullname'],
+        email: ['email'],
+        phone_number: ['phone', 'phone_number', 'mobile', 'mobile_number'],
+    };
     for (const def of defaults) {
-        if (!existingKeys.has(def.key)) {
+        const aliases = KEY_ALIASES[def.key] || [def.key];
+        const alreadyExists = aliases.some((a) => existingKeys.has(a)) || existingNames.has(def.name.toLowerCase());
+        if (!alreadyExists) {
             fields.push({ ...def, id: String(fields.length), order: fields.length });
         }
     }

@@ -124,7 +124,8 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
                         + "- The \"text\" field must be a complete, meaningful standalone message.\n"
                         + "- Only use interactive elements when presenting clear choices. For conversational replies, just respond with plain text (NO JSON wrapping).\n"
                         + "- Button/row IDs should be short, descriptive, lowercase with underscores.\n"
-                        + "- NEVER wrap plain text responses in JSON.\n";
+                        + "- NEVER wrap plain text responses in JSON.\n"
+                        + "- Output ONLY the raw JSON object. Do NOT add ```json, markdown fences, or any prefix/suffix.\n";
             }
 
             String systemPrompt = userSystemPrompt + whatsappContext;
@@ -202,13 +203,26 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
      */
     @SuppressWarnings("unchecked")
     private String parseAndSendAiResponse(FlowExecutionContext ctx, String msg, boolean interactive) {
-        if (!interactive || msg == null || !msg.trim().startsWith("{")) {
+        if (!interactive || msg == null) {
+            sendTextToUser(ctx, msg);
+            return msg;
+        }
+
+        // Strip markdown code fences and "json" prefix that LLMs often add
+        String cleaned = msg.trim();
+        if (cleaned.startsWith("```json")) cleaned = cleaned.substring(7);
+        else if (cleaned.startsWith("```")) cleaned = cleaned.substring(3);
+        if (cleaned.endsWith("```")) cleaned = cleaned.substring(0, cleaned.length() - 3);
+        cleaned = cleaned.trim();
+        if (cleaned.startsWith("json")) cleaned = cleaned.substring(4).trim();
+
+        if (!cleaned.startsWith("{")) {
             sendTextToUser(ctx, msg);
             return msg;
         }
 
         try {
-            Map<String, Object> parsed = objectMapper.readValue(msg.trim(), new TypeReference<>() {});
+            Map<String, Object> parsed = objectMapper.readValue(cleaned, new TypeReference<>() {});
             String text = (String) parsed.get("text");
             Map<String, Object> interactiveData = (Map<String, Object>) parsed.get("interactive");
 

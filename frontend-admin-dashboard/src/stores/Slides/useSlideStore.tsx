@@ -69,30 +69,6 @@ const CONTROLLED_APPSTATE_PROPS: (keyof PartialAppState)[] = [
 ];
 
 // Helper to serialize a slide for localStorage (converts collaborators Map to Array)
-const saveSlidesToLocalStorage = (slides: Slide[]) => {
-    if (typeof window === 'undefined') return;
-    try {
-        localStorage.setItem(
-            'slides',
-            JSON.stringify(slides.map(serializeSlideForStorage))
-        );
-    } catch (e) {
-        if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-            console.warn(
-                'localStorage quota exceeded for slides. Data is safe in memory but will not persist across page reloads. Consider saving your presentation to the server.'
-            );
-            // Try to clear the stale entry so future smaller saves can succeed
-            try {
-                localStorage.removeItem('slides');
-            } catch {
-                // ignore
-            }
-        } else {
-            console.error('Error saving slides to localStorage:', e);
-        }
-    }
-};
-
 const serializeSlideForStorage = (slide: Slide): any => {
     if (slide.type === SlideTypeEnum.Quiz || slide.type === SlideTypeEnum.Feedback) {
         return slide; // Quiz/Feedback slides don't have Excalidraw appState
@@ -218,13 +194,19 @@ export const useSlideStore = create<SlideStore>((set, get) => {
             });
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('slides'); // Clear out old presentation
-                saveSlidesToLocalStorage(newInitialSlides);
+                localStorage.setItem(
+                    'slides',
+                    JSON.stringify(newInitialSlides.map(serializeSlideForStorage))
+                );
             }
         },
 
         setSlides: (newSlides, skipSave = false) => {
-            if (!skipSave) {
-                saveSlidesToLocalStorage(newSlides);
+            if (!skipSave && typeof window !== 'undefined') {
+                localStorage.setItem(
+                    'slides',
+                    JSON.stringify(newSlides.map(serializeSlideForStorage))
+                );
             }
             set({ slides: newSlides });
         },
@@ -361,7 +343,12 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                     index === slideIndex ? updatedSlide : s
                 );
 
-                saveSlidesToLocalStorage(newSlidesArray);
+                if (typeof window !== 'undefined') {
+                    localStorage.setItem(
+                        'slides',
+                        JSON.stringify(newSlidesArray.map(serializeSlideForStorage))
+                    );
+                }
 
                 // Mark this slide as dirty so savePresentation knows to re-upload it
                 const newDirtyIds = new Set(state.dirtySlideIds);
@@ -465,13 +452,18 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                     index === slideIndex ? updatedSlide : s
                 );
 
-                saveSlidesToLocalStorage(newSlidesArray);
+                if (typeof window !== 'undefined') {
+                    localStorage.setItem(
+                        'slides',
+                        JSON.stringify(newSlidesArray.map(serializeSlideForStorage))
+                    );
+                }
 
                 const newDirtyIds = new Set(state.dirtySlideIds);
                 newDirtyIds.add(id);
                 return { slides: newSlidesArray, dirtySlideIds: newDirtyIds };
             }),
-
+            
         updateSlideIds: (idUpdates) => set((state) => {
             const newSlides = state.slides.map(slide => {
                 const update = idUpdates.find(u => u.tempId === slide.id);
@@ -505,7 +497,12 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                 newCurrentSlideId = currentSlideUpdate.newId;
             }
 
-            saveSlidesToLocalStorage(newSlides);
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(
+                    'slides',
+                    JSON.stringify(newSlides.map(serializeSlideForStorage))
+                );
+            }
 
             return { slides: newSlides, currentSlideId: newCurrentSlideId };
         }),

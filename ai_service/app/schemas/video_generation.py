@@ -74,8 +74,12 @@ class VideoGenerationRequest(BaseModel):
         description="Voice gender for TTS (VIDEO/STORYBOOK): 'male' or 'female'. Default is 'female'."
     )
     tts_provider: str = Field(
-        default="edge",
-        description="TTS Provider: 'edge' (Microsoft Edge TTS, default) or 'google' (Google Cloud TTS)."
+        default="standard",
+        description="TTS tier: 'standard' (Microsoft Edge TTS, free) or 'premium' (Google Cloud / Sarvam AI). Premium auto-routes: Indian languages → Sarvam AI, global languages → Google Cloud TTS."
+    )
+    voice_id: Optional[str] = Field(
+        default=None,
+        description="Specific voice ID for premium TTS. For Sarvam (Indian): e.g. 'ritu', 'shubh', 'priya'. For Google: e.g. 'en-US-Journey-F'. If not provided, a default voice is chosen based on language and gender."
     )
     generate_avatar: bool = Field(
         default=False,
@@ -106,7 +110,8 @@ class VideoGenerationRequest(BaseModel):
                 "target_audience": "Class 3 (Ages 7-8)",
                 "target_duration": "5 minutes",
                 "voice_gender": "female",
-                "tts_provider": "edge",
+                "tts_provider": "standard",
+                "voice_id": None,
                 "avatar_image_url": None,
                 "orientation": "landscape",
                 "reference_files": [

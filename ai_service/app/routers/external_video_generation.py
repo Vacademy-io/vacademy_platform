@@ -194,6 +194,7 @@ async def generate_video_external(
                         target_duration=p.target_duration,
                         voice_gender=p.voice_gender,
                         tts_provider=p.tts_provider,
+                        voice_id=p.voice_id,
                         content_type=p.content_type,
                         db_session=bg_session,
                         model=p.model or "",  # Empty = let service pick based on quality_tier
@@ -659,3 +660,180 @@ async def render_callback(
         return {"status": "ok", "note": "failure recorded"}
     else:
         return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# TTS Voice Catalog
+# ---------------------------------------------------------------------------
+
+# Sarvam AI voices (bulbul:v3) — all voices work across all supported languages
+_SARVAM_VOICES = {
+    "male": [
+        {"id": "shubh", "name": "Shubh"}, {"id": "aditya", "name": "Aditya"},
+        {"id": "rahul", "name": "Rahul"}, {"id": "rohan", "name": "Rohan"},
+        {"id": "amit", "name": "Amit"}, {"id": "dev", "name": "Dev"},
+        {"id": "ratan", "name": "Ratan"}, {"id": "varun", "name": "Varun"},
+        {"id": "manan", "name": "Manan"}, {"id": "sumit", "name": "Sumit"},
+        {"id": "kabir", "name": "Kabir"}, {"id": "aayan", "name": "Aayan"},
+        {"id": "ashutosh", "name": "Ashutosh"}, {"id": "advait", "name": "Advait"},
+        {"id": "anand", "name": "Anand"}, {"id": "tarun", "name": "Tarun"},
+        {"id": "sunny", "name": "Sunny"}, {"id": "mani", "name": "Mani"},
+        {"id": "gokul", "name": "Gokul"}, {"id": "vijay", "name": "Vijay"},
+        {"id": "mohit", "name": "Mohit"}, {"id": "rehan", "name": "Rehan"},
+        {"id": "soham", "name": "Soham"},
+    ],
+    "female": [
+        {"id": "ritu", "name": "Ritu"}, {"id": "priya", "name": "Priya"},
+        {"id": "neha", "name": "Neha"}, {"id": "pooja", "name": "Pooja"},
+        {"id": "simran", "name": "Simran"}, {"id": "kavya", "name": "Kavya"},
+        {"id": "ishita", "name": "Ishita"}, {"id": "shreya", "name": "Shreya"},
+        {"id": "roopa", "name": "Roopa"}, {"id": "amelia", "name": "Amelia"},
+        {"id": "sophia", "name": "Sophia"}, {"id": "tanya", "name": "Tanya"},
+        {"id": "shruti", "name": "Shruti"}, {"id": "suhani", "name": "Suhani"},
+        {"id": "kavitha", "name": "Kavitha"}, {"id": "rupali", "name": "Rupali"},
+    ],
+}
+
+# Google Cloud TTS voices (curated per language+gender for premium tier)
+_GOOGLE_VOICES = {
+    "english (us)": {
+        "female": [
+            {"id": "en-US-Journey-F", "name": "Journey (Natural)"},
+            {"id": "en-US-Neural2-F", "name": "Neural2"},
+        ],
+        "male": [
+            {"id": "en-US-Journey-D", "name": "Journey (Natural)"},
+            {"id": "en-US-Neural2-D", "name": "Neural2"},
+        ],
+    },
+    "english (uk)": {
+        "female": [
+            {"id": "en-GB-Neural2-A", "name": "Neural2"},
+            {"id": "en-GB-Wavenet-A", "name": "WaveNet"},
+        ],
+        "male": [
+            {"id": "en-GB-Neural2-B", "name": "Neural2"},
+            {"id": "en-GB-Wavenet-B", "name": "WaveNet"},
+        ],
+    },
+    "spanish": {
+        "female": [{"id": "es-ES-Neural2-A", "name": "Neural2"}],
+        "male": [{"id": "es-ES-Neural2-B", "name": "Neural2"}],
+    },
+    "french": {
+        "female": [{"id": "fr-FR-Neural2-A", "name": "Neural2"}],
+        "male": [{"id": "fr-FR-Neural2-B", "name": "Neural2"}],
+    },
+    "german": {
+        "female": [{"id": "de-DE-Neural2-A", "name": "Neural2"}],
+        "male": [{"id": "de-DE-Neural2-B", "name": "Neural2"}],
+    },
+    "japanese": {
+        "female": [{"id": "ja-JP-Neural2-B", "name": "Neural2"}],
+        "male": [{"id": "ja-JP-Neural2-C", "name": "Neural2"}],
+    },
+    "chinese": {
+        "female": [{"id": "zh-CN-Neural2-C", "name": "Neural2"}],
+        "male": [{"id": "zh-CN-Neural2-D", "name": "Neural2"}],
+    },
+}
+
+# Edge TTS voices (one per language+gender, standard tier)
+_EDGE_VOICES = {
+    "english (us)": {"female": "en-US-AriaNeural", "male": "en-US-ChristopherNeural"},
+    "english (uk)": {"female": "en-GB-SoniaNeural", "male": "en-GB-RyanNeural"},
+    "english (india)": {"female": "en-IN-NeerjaNeural", "male": "en-IN-PrabhatNeural"},
+    "hindi": {"female": "hi-IN-SwaraNeural", "male": "hi-IN-MadhurNeural"},
+    "bengali": {"female": "bn-IN-TanishaaNeural", "male": "bn-IN-BashkarNeural"},
+    "tamil": {"female": "ta-IN-PallaviNeural", "male": "ta-IN-ValluvarNeural"},
+    "telugu": {"female": "te-IN-ShrutiNeural", "male": "te-IN-MohanNeural"},
+    "marathi": {"female": "mr-IN-AarohiNeural", "male": "mr-IN-ManoharNeural"},
+    "kannada": {"female": "kn-IN-SapnaNeural", "male": "kn-IN-GaganNeural"},
+    "gujarati": {"female": "gu-IN-DhwaniNeural", "male": "gu-IN-NiranjanNeural"},
+    "malayalam": {"female": "ml-IN-SobhanaNeural", "male": "ml-IN-MidhunNeural"},
+    "spanish": {"female": "es-ES-ElviraNeural", "male": "es-ES-AlvaroNeural"},
+    "french": {"female": "fr-FR-DeniseNeural", "male": "fr-FR-HenriNeural"},
+    "german": {"female": "de-DE-KatjaNeural", "male": "de-DE-ConradNeural"},
+    "japanese": {"female": "ja-JP-NanamiNeural", "male": "ja-JP-KeitaNeural"},
+    "chinese": {"female": "zh-CN-XiaoxiaoNeural", "male": "zh-CN-YunxiNeural"},
+}
+
+_INDIAN_LANGUAGES = {
+    "hindi", "bengali", "tamil", "telugu", "marathi", "kannada",
+    "gujarati", "malayalam", "punjabi", "odia", "english (india)",
+}
+
+# Placeholder base URL for pre-recorded voice samples
+_SAMPLE_BASE_URL = "https://assets.vacademy.io/tts-samples"
+
+
+@router.get(
+    "/tts/voices",
+    summary="List available TTS voices for a language, gender, and tier",
+)
+async def list_tts_voices(
+    language: str = "English (US)",
+    gender: str = "female",
+    tier: str = "standard",
+):
+    """
+    Returns available TTS voices for the given combination.
+
+    - **standard** tier: Single Edge TTS voice per language+gender (free).
+    - **premium** tier: Multiple voices — Sarvam AI for Indian languages,
+      Google Cloud TTS for global languages.
+
+    Each voice includes a `sample_url` for audio preview (placeholder until
+    samples are generated).
+    """
+    lang_key = language.lower().strip()
+    gender_key = gender.lower().strip()
+    if gender_key not in ("male", "female"):
+        gender_key = "female"
+
+    if tier == "premium":
+        if lang_key in _INDIAN_LANGUAGES:
+            # Sarvam voices — same set for all Indian languages
+            raw_voices = _SARVAM_VOICES.get(gender_key, [])
+            voices = [
+                {
+                    "id": v["id"],
+                    "name": v["name"],
+                    "provider": "sarvam",
+                    "sample_url": f"{_SAMPLE_BASE_URL}/sarvam/{v['id']}.mp3",
+                }
+                for v in raw_voices
+            ]
+            return {"tier": "premium", "provider": "sarvam", "language": language, "gender": gender_key, "voices": voices}
+        else:
+            # Google voices
+            lang_voices = _GOOGLE_VOICES.get(lang_key, {})
+            raw_voices = lang_voices.get(gender_key, [])
+            voices = [
+                {
+                    "id": v["id"],
+                    "name": v["name"],
+                    "provider": "google",
+                    "sample_url": f"{_SAMPLE_BASE_URL}/google/{v['id']}.mp3",
+                }
+                for v in raw_voices
+            ]
+            return {"tier": "premium", "provider": "google", "language": language, "gender": gender_key, "voices": voices}
+    else:
+        # Standard — single Edge TTS voice
+        edge_lang = _EDGE_VOICES.get(lang_key, _EDGE_VOICES.get("english (us)", {}))
+        voice_name = edge_lang.get(gender_key, "en-US-AriaNeural")
+        return {
+            "tier": "standard",
+            "provider": "edge",
+            "language": language,
+            "gender": gender_key,
+            "voices": [
+                {
+                    "id": voice_name,
+                    "name": voice_name.replace("Neural", "").split("-")[-1],
+                    "provider": "edge",
+                    "sample_url": f"{_SAMPLE_BASE_URL}/edge/{voice_name}.mp3",
+                }
+            ],
+        }

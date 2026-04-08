@@ -4,7 +4,28 @@ export type VideoStage = 'PENDING' | 'SCRIPT' | 'TTS' | 'WORDS' | 'HTML' | 'REND
 export type VideoStatusType = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'STALLED';
 
 export type VoiceGender = 'female' | 'male';
-export type TtsProvider = 'edge' | 'google';
+export type TtsProvider = 'standard' | 'premium';
+
+/**
+ * A single TTS voice option returned by the /tts/voices API
+ */
+export interface TtsVoice {
+    id: string;
+    name: string;
+    provider: 'edge' | 'google' | 'sarvam';
+    sample_url: string;
+}
+
+/**
+ * Response from GET /tts/voices
+ */
+export interface TtsVoicesResponse {
+    tier: string;
+    provider: string;
+    language: string;
+    gender: string;
+    voices: TtsVoice[];
+}
 
 /**
  * All supported content types from the API
@@ -130,6 +151,7 @@ export interface GenerateVideoRequest {
     language: string;
     voice_gender: VoiceGender;
     tts_provider: TtsProvider;
+    voice_id?: string; // Specific voice for premium TTS (Sarvam/Google voice name)
     captions_enabled: boolean;
     html_quality: 'classic' | 'advanced';
     target_audience: string;
@@ -288,8 +310,8 @@ export const VOICE_GENDERS = [
 ] as const;
 
 export const TTS_PROVIDERS = [
-    { value: 'edge', label: 'Standard (Free)' },
-    { value: 'google', label: 'Premium (Google Cloud)' },
+    { value: 'standard' as TtsProvider, label: 'Standard', description: 'Microsoft Edge TTS (Free)' },
+    { value: 'premium' as TtsProvider, label: 'Premium', description: 'Google Cloud / Sarvam AI (2x credits)' },
 ] as const;
 
 export const TARGET_AUDIENCES = [
@@ -316,7 +338,8 @@ export const DEFAULT_OPTIONS: Omit<GenerateVideoRequest, 'prompt'> = {
     content_type: 'VIDEO',
     language: 'English (US)',
     voice_gender: 'female',
-    tts_provider: 'edge',
+    tts_provider: 'standard',
+    voice_id: undefined,
     captions_enabled: true,
     html_quality: 'advanced',
     target_audience: 'Class 5 (Ages 10-11)',
@@ -328,6 +351,22 @@ export const DEFAULT_OPTIONS: Omit<GenerateVideoRequest, 'prompt'> = {
 
 export function generateVideoId(): string {
     return `vid_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * Fetch available TTS voices from the API for a given language, gender, and tier.
+ */
+export async function fetchTtsVoices(
+    language: string,
+    gender: VoiceGender,
+    tier: TtsProvider,
+): Promise<TtsVoicesResponse> {
+    const params = new URLSearchParams({ language, gender, tier });
+    const resp = await fetch(
+        `${AI_SERVICE_BASE_URL}/external/video/v1/tts/voices?${params}`,
+    );
+    if (!resp.ok) throw new Error(`Failed to fetch TTS voices: ${resp.status}`);
+    return resp.json();
 }
 
 /**
@@ -719,7 +758,7 @@ export async function getRemoteHistory(apiKey: string, limit: number = 20): Prom
             language: item.language,
             // Defaults for missing fields
             voice_gender: 'female',
-            tts_provider: 'edge',
+            tts_provider: 'standard',
             captions_enabled: true,
             html_quality: 'advanced',
             target_audience: 'General/Adult',

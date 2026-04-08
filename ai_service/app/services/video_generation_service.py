@@ -95,7 +95,8 @@ class VideoGenerationService:
         target_audience: str = "General/Adult",
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
-        tts_provider: str = "edge",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
         content_type: str = "VIDEO",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
@@ -120,6 +121,7 @@ class VideoGenerationService:
             content_type: Type of content (VIDEO, QUIZ, STORYBOOK, etc.)
             quality_tier: Quality tier (free, standard, premium, ultra)
             orientation: Video orientation ('landscape' or 'portrait')
+            voice_id: Specific voice ID for premium TTS
 
         Yields:
             SSE events with progress updates
@@ -215,6 +217,7 @@ class VideoGenerationService:
                     target_duration=target_duration,
                     voice_gender=voice_gender,
                     tts_provider=tts_provider,
+                    voice_id=voice_id,
                     content_type=content_type,
                     db_session=db_session,
                     institute_id=institute_id,
@@ -291,7 +294,8 @@ class VideoGenerationService:
         target_audience: str = "General/Adult",
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
-        tts_provider: str = "edge",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
         content_type: str = "VIDEO",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
@@ -653,6 +657,7 @@ class VideoGenerationService:
                     target_duration=target_duration,
                     voice_gender=voice_gender,
                     tts_provider=tts_provider,
+                    voice_id=voice_id,
                     branding_config=branding_config,
                     style_config=style_config,
                     content_type=content_type,
@@ -714,22 +719,33 @@ class VideoGenerationService:
                                 logger.info(f"[VideoGenService] Deducted credits for {_image_count} images in stage {stage_pipeline_name}")
 
                             # Deduct separately for TTS characters
+                            # Use premium pricing (2x) for premium/google/sarvam providers
                             _tts_chars = usage.get("tts_character_count", 0)
+                            _is_premium_tts = tts_provider in ("premium", "google", "sarvam")
                             if _tts_chars > 0:
+                                _tts_model = "edge-tts"
+                                if _is_premium_tts:
+                                    # Resolve actual provider: premium + Indian lang → sarvam, else google
+                                    _INDIAN = {"hindi", "bengali", "tamil", "telugu", "marathi", "kannada",
+                                               "gujarati", "malayalam", "punjabi", "odia", "english (india)"}
+                                    _resolved = tts_provider
+                                    if tts_provider == "premium":
+                                        _resolved = "sarvam" if language.lower().strip() in _INDIAN else "google"
+                                    _tts_model = "sarvam-bulbul-v3" if _resolved == "sarvam" else "google-cloud-tts"
                                 token_service.record_usage_and_deduct_credits(
                                     api_provider=ApiProvider.GOOGLE_TTS,
                                     prompt_tokens=0,
                                     completion_tokens=0,
                                     total_tokens=0,
-                                    request_type=RequestType.TTS,
+                                    request_type=RequestType.TTS_PREMIUM if _is_premium_tts else RequestType.TTS,
                                     institute_id=institute_id,
                                     user_id=user_id,
-                                    model="google-cloud-tts",
+                                    model=_tts_model,
                                     character_count=_tts_chars,
-                                    metadata={"video_id": video_id, "stage": stage_pipeline_name},
+                                    metadata={"video_id": video_id, "stage": stage_pipeline_name, "tts_provider": tts_provider},
                                     batch_id=video_id,
                                 )
-                                logger.info(f"[VideoGenService] Deducted TTS credits for {_tts_chars} chars in stage {stage_pipeline_name}")
+                                logger.info(f"[VideoGenService] Deducted {'premium ' if _is_premium_tts else ''}TTS credits for {_tts_chars} chars in stage {stage_pipeline_name}")
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
                 

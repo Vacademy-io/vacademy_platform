@@ -1,6 +1,7 @@
 import { CheckCircle, DownloadSimple } from '@phosphor-icons/react';
 import dayjs from 'dayjs';
 import { AllocatePaymentResponse, ReceiptLineItem } from '@/services/manage-finances';
+import { useTheme } from '@/providers/theme/theme-provider';
 
 const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
@@ -19,6 +20,7 @@ interface PaymentSuccessStepProps {
 }
 
 export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: PaymentSuccessStepProps) {
+    const { getPrimaryColorCode } = useTheme();
     const hasReceipt = receipt && receipt.invoice_id;
 
     return (
@@ -157,7 +159,7 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                         href={receipt.download_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-black text-white text-sm font-semibold rounded-lg hover:bg-gray-800 transition-colors"
                     >
                         <DownloadSimple size={15} weight="bold" />
                         Download Receipt
@@ -165,7 +167,8 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                 )}
                 <button
                     onClick={onPayAnother}
-                    className="px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                    style={{ backgroundColor: getPrimaryColorCode() }}
+                    className="px-5 py-2.5 text-white text-sm font-semibold rounded-lg transition-colors"
                 >
                     Pay for Another Student
                 </button>

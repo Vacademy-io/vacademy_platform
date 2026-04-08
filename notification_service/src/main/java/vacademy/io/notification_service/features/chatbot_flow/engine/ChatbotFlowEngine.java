@@ -262,7 +262,9 @@ public class ChatbotFlowEngine {
         String currentNodeId = session.getCurrentNodeId();
         ChatbotFlowNode currentNode = nodeRepository.findById(currentNodeId).orElse(null);
         if (currentNode == null) {
-            log.error("Current node not found: {}, completing session", currentNodeId);
+            log.error("Current node not found: nodeId={}, sessionId={}, flowId={} — "
+                    + "likely flow was edited while session was active. Completing session.",
+                    currentNodeId, session.getId(), session.getFlowId());
             completeSession(session);
             return;
         }

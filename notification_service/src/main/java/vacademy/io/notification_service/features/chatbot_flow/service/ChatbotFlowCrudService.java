@@ -15,9 +15,12 @@ import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlow
 import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlowNode;
 import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotFlowStatus;
 import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotNodeType;
+import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlowSession;
+import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotSessionStatus;
 import vacademy.io.notification_service.features.chatbot_flow.repository.ChatbotFlowEdgeRepository;
 import vacademy.io.notification_service.features.chatbot_flow.repository.ChatbotFlowNodeRepository;
 import vacademy.io.notification_service.features.chatbot_flow.repository.ChatbotFlowRepository;
+import vacademy.io.notification_service.features.chatbot_flow.repository.ChatbotFlowSessionRepository;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -30,6 +33,7 @@ public class ChatbotFlowCrudService {
     private final ChatbotFlowRepository flowRepository;
     private final ChatbotFlowNodeRepository nodeRepository;
     private final ChatbotFlowEdgeRepository edgeRepository;
+    private final ChatbotFlowSessionRepository sessionRepository;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -128,6 +132,20 @@ public class ChatbotFlowCrudService {
                 .orElseThrow(() -> new VacademyException("Flow not found: " + flowId));
         flow.setStatus(ChatbotFlowStatus.INACTIVE.name());
         flowRepository.save(flow);
+
+        // Complete all active sessions — nodes will be deleted on next save,
+        // so sessions pointing to old node IDs would cause "node not found" errors
+        List<ChatbotFlowSession> activeSessions = sessionRepository
+                .findByFlowIdAndStatus(flowId, ChatbotSessionStatus.ACTIVE.name());
+        for (ChatbotFlowSession session : activeSessions) {
+            session.setStatus(ChatbotSessionStatus.COMPLETED.name());
+            session.setCompletedAt(new java.sql.Timestamp(System.currentTimeMillis()));
+        }
+        if (!activeSessions.isEmpty()) {
+            sessionRepository.saveAll(activeSessions);
+            log.info("Completed {} active sessions for deactivated flow {}", activeSessions.size(), flowId);
+        }
+
         return getFlow(flowId);
     }
 

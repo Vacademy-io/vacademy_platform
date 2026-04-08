@@ -134,40 +134,40 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
     }
 
     private void sendInteractiveButtons(WatiConfig config, String phone, Map<String, Object> payload) {
-        // WATI interactive buttons format
+        // WATI interactive buttons format (flat, not Meta Cloud API format)
+        // Docs: https://docs.wati.io/reference/post_api-v1-sendinteractivebuttonsmessage
         Map<String, Object> watiPayload = new LinkedHashMap<>();
 
-        // Header
+        // Header: WATI expects {type: "Text", text: "..."} object
         @SuppressWarnings("unchecked")
         Map<String, Object> header = (Map<String, Object>) payload.get("header");
         if (header != null) {
             String headerType = (String) header.getOrDefault("type", "Text");
             String headerText = (String) header.getOrDefault("text", "");
             watiPayload.put("header", Map.of("type", headerType, "text", headerText));
+        } else {
+            // Default text header if body is present
+            watiPayload.put("header", Map.of("type", "Text", "text", ""));
         }
 
-        // Body
+        // Body: WATI expects plain string, not {text: "..."}
         String body = (String) payload.getOrDefault("body", "");
-        watiPayload.put("body", Map.of("text", body));
+        watiPayload.put("body", body);
 
-        // Footer
+        // Footer: WATI expects plain string
         String footer = (String) payload.get("footer");
         if (footer != null) {
-            watiPayload.put("footer", Map.of("text", footer));
+            watiPayload.put("footer", footer);
         }
 
-        // Buttons (max 3)
+        // Buttons: WATI expects [{text: "Button Label"}] (max 3, max 20 chars each)
+        // NOT the Meta format [{type:"reply", reply:{id, title}}]
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> buttons = (List<Map<String, Object>>) payload.getOrDefault("buttons", List.of());
-        List<Map<String, Object>> watiButtons = new ArrayList<>();
+        List<Map<String, String>> watiButtons = new ArrayList<>();
         for (Map<String, Object> btn : buttons) {
-            watiButtons.add(Map.of(
-                    "type", "reply",
-                    "reply", Map.of(
-                            "id", btn.getOrDefault("id", ""),
-                            "title", btn.getOrDefault("title", "")
-                    )
-            ));
+            String text = (String) btn.getOrDefault("title", btn.getOrDefault("text", ""));
+            watiButtons.add(Map.of("text", text));
         }
         watiPayload.put("buttons", watiButtons);
 
@@ -175,7 +175,10 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
         sendRequest(config, url, watiPayload);
     }
 
+    @SuppressWarnings("unchecked")
     private void sendInteractiveList(WatiConfig config, String phone, Map<String, Object> payload) {
+        // WATI interactive list format (flat strings, no nested objects)
+        // Docs: https://docs.wati.io/reference/post_api-v1-sendinteractivelistmessage
         Map<String, Object> watiPayload = new LinkedHashMap<>();
 
         String header = (String) payload.getOrDefault("header", "");
@@ -187,7 +190,30 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
         watiPayload.put("body", body);
         if (footer != null) watiPayload.put("footer", footer);
         watiPayload.put("buttonText", buttonText);
-        watiPayload.put("sections", payload.getOrDefault("sections", List.of()));
+
+        // Sanitize sections: WATI rows only have "title" and "description" (no "id")
+        List<Map<String, Object>> sections = (List<Map<String, Object>>)
+                payload.getOrDefault("sections", List.of());
+        List<Map<String, Object>> watiSections = new ArrayList<>();
+        for (Map<String, Object> section : sections) {
+            Map<String, Object> watiSection = new LinkedHashMap<>();
+            watiSection.put("title", section.getOrDefault("title", ""));
+            List<Map<String, Object>> rows = (List<Map<String, Object>>)
+                    section.getOrDefault("rows", List.of());
+            List<Map<String, String>> watiRows = new ArrayList<>();
+            for (Map<String, Object> row : rows) {
+                Map<String, String> watiRow = new LinkedHashMap<>();
+                watiRow.put("title", String.valueOf(row.getOrDefault("title", "")));
+                Object desc = row.get("description");
+                if (desc != null && !desc.toString().isBlank()) {
+                    watiRow.put("description", desc.toString());
+                }
+                watiRows.add(watiRow);
+            }
+            watiSection.put("rows", watiRows);
+            watiSections.add(watiSection);
+        }
+        watiPayload.put("sections", watiSections);
 
         String url = config.apiUrl + "/api/v1/sendInteractiveListMessage?whatsappNumber=" + phone;
         sendRequest(config, url, watiPayload);
@@ -243,13 +269,20 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
             if (!response.getStatusCode().is2xxSuccessful()) {
                 throw new RuntimeException("WATI API returned " + response.getStatusCode());
             }
-            // WATI returns HTTP 200 even on failure — check "result" field
+            // WATI returns HTTP 200 even on failure — check "result" and "ok" fields
             if (response.getBody() != null) {
                 try {
                     JsonNode respJson = objectMapper.readTree(response.getBody());
-                    if (!respJson.path("result").asBoolean(true)) {
+                    // Some WATI endpoints use "result", others use "ok"
+                    boolean hasResult = respJson.has("result");
+                    boolean hasOk = respJson.has("ok");
+                    if (hasResult && !respJson.path("result").asBoolean(true)) {
                         String info = respJson.path("info").asText("unknown error");
                         throw new RuntimeException("WATI API result=false: " + info);
+                    }
+                    if (hasOk && !respJson.path("ok").asBoolean(true)) {
+                        String errors = respJson.path("errors").toString();
+                        throw new RuntimeException("WATI API ok=false: " + errors);
                     }
                 } catch (RuntimeException re) {
                     throw re;
@@ -283,9 +316,15 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
             if (response.getBody() != null) {
                 try {
                     JsonNode respJson = objectMapper.readTree(response.getBody());
-                    if (!respJson.path("result").asBoolean(true)) {
+                    boolean hasResult = respJson.has("result");
+                    boolean hasOk = respJson.has("ok");
+                    if (hasResult && !respJson.path("result").asBoolean(true)) {
                         String info = respJson.path("info").asText("unknown error");
                         throw new RuntimeException("WATI API result=false: " + info);
+                    }
+                    if (hasOk && !respJson.path("ok").asBoolean(true)) {
+                        String errors = respJson.path("errors").toString();
+                        throw new RuntimeException("WATI API ok=false: " + errors);
                     }
                 } catch (RuntimeException re) {
                     throw re;

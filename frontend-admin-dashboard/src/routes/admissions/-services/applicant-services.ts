@@ -355,22 +355,35 @@ export interface InitiateManualPaymentRequest {
     amount: number;
     currency: string;
     email: string;
+    payment_type?: string;
     manual_request: {
         file_id?: string | null;
         transaction_id: string;
     };
 }
 
+export interface AppFeeReceiptData {
+    invoice_id?: string;
+    receipt_number?: string;
+    receipt_date?: string;
+    download_url?: string;
+    payment_mode?: string;
+    transaction_id?: string;
+    amount_paid?: number;
+    fee_description?: string;
+}
+
 export const initiateManualPayment = async (
     applicantId: string,
     paymentOptionId: string,
     request: InitiateManualPaymentRequest
-): Promise<void> => {
-    await authenticatedAxiosInstance.post(
+): Promise<AppFeeReceiptData | null> => {
+    const response = await authenticatedAxiosInstance.post(
         `${BASE_URL}/admin-core-service/v1/applicant/${applicantId}/payment/initiate`,
         request,
         { params: { paymentOptionId } }
     );
+    return response.data?.response_data?.receipt ?? null;
 };
 
 // Query keys for React Query

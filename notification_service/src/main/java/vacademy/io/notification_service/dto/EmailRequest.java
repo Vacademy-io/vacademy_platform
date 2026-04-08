@@ -5,6 +5,7 @@ public class EmailRequest {
     private String to;
     private String subject;
     private String text;
+    private String userId;
 
     public String getTo() {
         return to;
@@ -28,5 +29,13 @@ public class EmailRequest {
 
     public void setText(String text) {
         this.text = text;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 }

@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.features.chatbot_flow.entity.NotificationTemplate;
 import vacademy.io.notification_service.features.chatbot_flow.repository.NotificationTemplateRepository;
+import vacademy.io.notification_service.features.announcements.service.UserAnnouncementPreferenceService;
 import vacademy.io.notification_service.features.firebase_notifications.service.PushNotificationService;
 import vacademy.io.notification_service.features.send.dto.SendBatchSummaryDTO;
 import vacademy.io.notification_service.features.send.dto.UnifiedSendRequest;
@@ -31,6 +32,7 @@ public class UnifiedSendService implements SendChannelRouter {
     private final ObjectMapper objectMapper;
     private final BatchProcessorService batchProcessorService;
     private final NotificationTemplateRepository notificationTemplateRepository;
+    private final UserAnnouncementPreferenceService userAnnouncementPreferenceService;
 
     private static final int SYNC_THRESHOLD = 100;
 
@@ -95,6 +97,24 @@ public class UnifiedSendService implements SendChannelRouter {
                         .phone(r.getPhone()).success(false)
                         .status("FAILED").error("Missing phone number").build());
                 continue;
+            }
+
+            // Check if user has unsubscribed from WhatsApp
+            if (r.getUserId() != null) {
+                try {
+                    if (userAnnouncementPreferenceService.isWhatsAppUnsubscribed(
+                            r.getUserId(), request.getInstituteId(), phone)) {
+                        log.info("Skipping WhatsApp to user {} ({}): unsubscribed", r.getUserId(), phone);
+                        results.add(UnifiedSendResponse.RecipientResult.builder()
+                                .phone(phone).success(false)
+                                .status("SKIPPED_UNSUBSCRIBED")
+                                .error("User unsubscribed from WhatsApp notifications")
+                                .build());
+                        continue;
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to check WhatsApp unsubscribe preference for user {}: {}", r.getUserId(), ex.getMessage());
+                }
             }
 
             Map<String, String> vars = r.getVariables() != null ? r.getVariables() : Map.of();
@@ -300,6 +320,20 @@ public class UnifiedSendService implements SendChannelRouter {
             }
         }
 
+        // Resolve emailType and fromAddress ONCE before the loop (same for all recipients in a batch)
+        String emailType = opts.getEmailType() != null ? opts.getEmailType() : "UTILITY_EMAIL";
+        String fromForUnsubCheck = null;
+        if (request.getInstituteId() != null) {
+            try {
+                fromForUnsubCheck = opts.getFromEmail();
+                if (fromForUnsubCheck == null || fromForUnsubCheck.isBlank()) {
+                    fromForUnsubCheck = emailService.resolveFromEmailAddress(request.getInstituteId(), emailType);
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to resolve from address for unsubscribe check: {}", ex.getMessage());
+            }
+        }
+
         // Optional rate limiting for bulk sends (e.g., announcements)
         com.google.common.util.concurrent.RateLimiter rateLimiter = null;
         if (opts.getRateLimitPerSecond() != null && opts.getRateLimitPerSecond() > 0) {
@@ -334,7 +368,28 @@ public class UnifiedSendService implements SendChannelRouter {
                     }
                 }
 
-                String emailType = opts.getEmailType() != null ? opts.getEmailType() : "UTILITY_EMAIL";
+                // Check if user has unsubscribed from this email sender.
+                // Only check when we have a valid UUID userId (not null, not an email address).
+                // Callers that pass email-as-userId or null userId will skip this check;
+                // the downstream EmailService.isEmailBlocked() still catches bounced emails.
+                String userId = r.getUserId();
+                if (userId != null && !userId.contains("@") && request.getInstituteId() != null && fromForUnsubCheck != null) {
+                    try {
+                        if (userAnnouncementPreferenceService.isEmailSenderUnsubscribed(
+                                userId, request.getInstituteId(), emailType, fromForUnsubCheck)) {
+                            log.info("Skipping email to user {} ({}): unsubscribed from {} ({})",
+                                    userId, email, fromForUnsubCheck, emailType);
+                            results.add(UnifiedSendResponse.RecipientResult.builder()
+                                    .email(email).success(false)
+                                    .status("SKIPPED_UNSUBSCRIBED")
+                                    .error("User unsubscribed from emails sent by " + fromForUnsubCheck + " (" + emailType + ")")
+                                    .build());
+                            continue;
+                        }
+                    } catch (Exception ex) {
+                        log.warn("Failed to check unsubscribe preference for user {}: {}", userId, ex.getMessage());
+                    }
+                }
 
                 // Check for attachments
                 if (r.getAttachments() != null && !r.getAttachments().isEmpty()) {

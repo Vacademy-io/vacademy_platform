@@ -280,7 +280,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                     <SplitScreenSlide
                         splitScreenData={splitScreenData as any}
                         slideType="SPLIT_CODE"
-                        isEditable={activeItem.status !== 'PUBLISHED'}
+                        isEditable={true}
                         currentSlideId={activeItem.id}
                         onDataChange={(updatedSplitData) => {
                             console.log('Code editor data changed:', updatedSplitData);

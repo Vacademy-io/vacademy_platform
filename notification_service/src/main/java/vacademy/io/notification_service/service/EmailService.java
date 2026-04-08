@@ -727,6 +727,20 @@ public class EmailService {
     }
 
     /**
+     * Resolve the from email address that would be used for a given institute and email type.
+     * Useful for checking unsubscribe preferences before sending.
+     */
+    public String resolveFromEmailAddress(String instituteId, String emailType) {
+        try {
+            AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId, emailType);
+            return config.getValue();
+        } catch (Exception e) {
+            logger.warn("Failed to resolve from address for institute {} emailType {}: {}", instituteId, emailType, e.getMessage());
+            return from;
+        }
+    }
+
+    /**
      * Resolve all available email senders for an institute (type + from address).
      */
     public List<EmailSenderInfo> listInstituteEmailSenders(String instituteId) {

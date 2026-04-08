@@ -248,7 +248,9 @@ public class SendEmailNodeHandler implements NodeHandler {
 
                         AttachmentUsersDTO userDTO = new AttachmentUsersDTO();
                         userDTO.setChannelId(recipient);
-                        userDTO.setUserId(recipient);
+                        // Use actual userId if available, fall back to recipient email
+                        String attachUserIdStr = (String) request.get("userId");
+                        userDTO.setUserId(attachUserIdStr != null ? attachUserIdStr : recipient);
                         userDTO.setPlaceholders(placeholders); // Add placeholders
 
                         AttachmentUsersDTO.AttachmentDTO attachment = new AttachmentUsersDTO.AttachmentDTO();
@@ -276,7 +278,9 @@ public class SendEmailNodeHandler implements NodeHandler {
 
                         NotificationToUserDTO userDTO = new NotificationToUserDTO();
                         userDTO.setChannelId(recipient);
-                        userDTO.setUserId(recipient);
+                        // Use actual userId if available, fall back to recipient email
+                        String regularUserIdStr = (String) request.get("userId");
+                        userDTO.setUserId(regularUserIdStr != null ? regularUserIdStr : recipient);
                         userDTO.setPlaceholders(placeholders != null ? placeholders : Map.of("email", recipient));
 
                         batchDTO.getUsers().add(userDTO);
@@ -641,6 +645,15 @@ public class SendEmailNodeHandler implements NodeHandler {
             request.put("attachmentName", emailData.get("attachmentName"));
             request.put("attachmentBase64", emailData.get("attachmentBase64"));
 
+            // Extract actual userId from item context for unsubscribe check
+            Object itemObj = itemContext.get("item");
+            if (itemObj instanceof Map) {
+                String extractedId = extractUserId((Map<String, Object>) itemObj);
+                if (extractedId != null) {
+                    request.put("userId", extractedId);
+                }
+            }
+
             Map<String, String> finalVars = new HashMap<>();
             finalVars.put("recipient", recipientEmail); // Add recipient as a default placeholder
 
@@ -764,6 +777,12 @@ public class SendEmailNodeHandler implements NodeHandler {
             Map<String, Object> request = new HashMap<>();
             request.put("type", type);
             request.put("recipient", emailAddress);
+
+            // Extract actual userId from user details for unsubscribe check
+            String extractedUserId = extractUserId(userDetails);
+            if (extractedUserId != null) {
+                request.put("userId", extractedUserId);
+            }
 
             // Check for templateName
             if (emailDataMap.containsKey("templateName")) {
@@ -927,5 +946,31 @@ public class SendEmailNodeHandler implements NodeHandler {
         }
 
         return null; // No valid email found
+    }
+
+    /**
+     * Extract actual user UUID from user details map.
+     * Looks for common field names that store the user ID.
+     */
+    private String extractUserId(Map<String, Object> userDetailsMap) {
+        if (userDetailsMap == null) {
+            return null;
+        }
+
+        String[] possibleFields = {
+                "user_id", "userId", "id", "learner_id", "learnerId"
+        };
+
+        for (String field : possibleFields) {
+            Object value = userDetailsMap.get(field);
+            if (value != null) {
+                String id = String.valueOf(value).trim();
+                if (!id.isBlank() && !id.contains("@")) {
+                    return id;
+                }
+            }
+        }
+
+        return null;
     }
 }

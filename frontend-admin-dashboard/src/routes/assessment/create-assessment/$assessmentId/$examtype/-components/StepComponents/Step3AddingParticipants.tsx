@@ -57,15 +57,17 @@ import { getFieldsForLocation } from '@/lib/custom-fields/utils';
 type TestAccessFormType = z.infer<typeof testAccessSchema>;
 
 function getInitialAssessmentCustomFields() {
-    const defaults = [
-        { id: '0', type: 'textfield', name: 'Full Name', oldKey: true, isRequired: true, key: 'full_name', order: 0 },
-        { id: '1', type: 'textfield', name: 'Email', oldKey: true, isRequired: true, key: 'email', order: 1 },
-        { id: '2', type: 'textfield', name: 'Phone Number', oldKey: true, isRequired: true, key: 'phone_number', order: 2 },
-    ];
     const settingsFields = getFieldsForLocation('Assessment Registration Form');
-    if (!settingsFields.length) return defaults;
+    if (!settingsFields.length) {
+        // Fallback to hardcoded defaults only if settings has nothing
+        return [
+            { id: '0', type: 'textfield', name: 'Full Name', oldKey: true, isRequired: true, key: 'full_name', order: 0 },
+            { id: '1', type: 'textfield', name: 'Email', oldKey: true, isRequired: true, key: 'email', order: 1 },
+            { id: '2', type: 'textfield', name: 'Phone Number', oldKey: true, isRequired: true, key: 'phone_number', order: 2 },
+        ];
+    }
 
-    const fields = settingsFields.map((f, i) => ({
+    return settingsFields.map((f, i) => ({
         id: String(i),
         type: f.type === 'dropdown' ? 'dropdown' : 'textfield',
         name: f.name,
@@ -75,22 +77,6 @@ function getInitialAssessmentCustomFields() {
         order: i,
         ...(f.type === 'dropdown' && f.options ? { options: f.options.map((opt, oi) => ({ id: `${i}_opt_${oi}`, value: opt })) } : {}),
     }));
-    // Ensure defaults are present (match by aliases to avoid duplicates)
-    const existingKeys = new Set(fields.map((f) => f.key));
-    const existingNames = new Set(fields.map((f) => f.name.toLowerCase()));
-    const KEY_ALIASES: Record<string, string[]> = {
-        full_name: ['name', 'full_name', 'fullname'],
-        email: ['email'],
-        phone_number: ['phone', 'phone_number', 'mobile', 'mobile_number'],
-    };
-    for (const def of defaults) {
-        const aliases = KEY_ALIASES[def.key] || [def.key];
-        const alreadyExists = aliases.some((a) => existingKeys.has(a)) || existingNames.has(def.name.toLowerCase());
-        if (!alreadyExists) {
-            fields.push({ ...def, id: String(fields.length), order: fields.length });
-        }
-    }
-    return fields;
 }
 
 const Step3AddingParticipants: React.FC<StepContentProps> = ({

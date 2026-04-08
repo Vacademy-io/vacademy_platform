@@ -404,12 +404,7 @@ export default function ScheduleStep2() {
             return;
         }
         if (accessType === AccessType.PUBLIC) {
-            // Load from settings + ensure defaults are present
-            const defaults = [
-                { label: 'Full Name', required: true, isDefault: true, type: InputType.TEXT },
-                { label: 'Email', required: true, isDefault: true, type: InputType.TEXT },
-                { label: 'Phone Number', required: true, isDefault: true, type: InputType.TEXT },
-            ];
+            // Load from settings, fallback to hardcoded defaults
             const settingsFields = getFieldsForLocation('Live Session Registration Form');
             let allFields;
             if (settingsFields.length > 0) {
@@ -422,22 +417,14 @@ export default function ScheduleStep2() {
                         options: f.options.map((opt) => ({ label: opt, name: opt })),
                     } : {}),
                 }));
-                // Ensure defaults are present (match by aliases to avoid duplicates)
-                const existingLabels = new Set(allFields.map((f: any) => f.label.toLowerCase()));
-                const NAME_ALIASES: Record<string, string[]> = {
-                    'full name': ['name', 'full name', 'fullname'],
-                    'email': ['email'],
-                    'phone number': ['phone', 'phone number', 'mobile', 'mobile number'],
-                };
-                for (const def of defaults) {
-                    const aliases = NAME_ALIASES[def.label.toLowerCase()] || [def.label.toLowerCase()];
-                    const alreadyExists = aliases.some((a) => existingLabels.has(a));
-                    if (!alreadyExists) {
-                        allFields.push(def);
-                    }
-                }
             } else {
-                allFields = defaults;
+                allFields = [
+                    { label: 'Full Name', required: true, isDefault: true, type: InputType.TEXT },
+                    { label: 'Email', required: true, isDefault: true, type: InputType.TEXT },
+                    { label: 'Mobile Number', required: false, isDefault: false, type: InputType.TEXT },
+                    { label: 'State', required: true, isDefault: false, type: InputType.TEXT },
+                    { label: 'City/Village', required: true, isDefault: false, type: InputType.TEXT },
+                ];
             }
             form.setValue('fields', allFields);
             form.setValue(

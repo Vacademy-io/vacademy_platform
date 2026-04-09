@@ -124,6 +124,38 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
             const sanitizedHtmlInput = stripAwsQueryParamsFromUrls(stableDocUrl);
             const parsed = parser.parseFromString(sanitizedHtmlInput, 'text/html');
 
+            // Convert <video> tags with YouTube URLs to proper <iframe> embeds
+            const videoNodes = Array.from(parsed.getElementsByTagName('video'));
+            videoNodes.forEach((node) => {
+              const src = node.getAttribute('src') || '';
+              const ytMatch = src.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([^?&#]+)/);
+              if (ytMatch) {
+                const iframe = parsed.createElement('iframe');
+                iframe.setAttribute('src', `https://www.youtube.com/embed/${ytMatch[1]}`);
+                iframe.setAttribute('width', node.getAttribute('width') || '650');
+                iframe.setAttribute('height', node.getAttribute('height') || '400');
+                iframe.setAttribute('frameborder', '0');
+                iframe.setAttribute('allowfullscreen', 'true');
+                iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+                if (node.parentElement && node.parentElement.tagName === 'DIV') {
+                  node.parentElement.replaceChild(iframe, node);
+                } else {
+                  node.replaceWith(iframe);
+                }
+              }
+            });
+
+            // Fix Google Slides/Docs iframe URLs from /edit to /embed
+            const allIframes = Array.from(parsed.getElementsByTagName('iframe'));
+            allIframes.forEach((node) => {
+              const src = node.getAttribute('src') || '';
+              if (src.includes('docs.google.com/presentation') && src.includes('/edit')) {
+                node.setAttribute('src', src.replace(/\/edit[^"]*/, '/embed?start=false&loop=false&delayms=3000'));
+              }
+              node.setAttribute('allowfullscreen', 'true');
+              node.setAttribute('allow', 'fullscreen; popups; popups-to-escape-sandbox');
+            });
+
             // Make embeds responsive
             const iframeNodes = Array.from(parsed.getElementsByTagName('iframe'));
             iframeNodes.forEach((node) => {

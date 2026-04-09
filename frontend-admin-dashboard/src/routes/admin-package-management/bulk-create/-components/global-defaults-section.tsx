@@ -26,6 +26,8 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { BatchSelectorDialog } from './batch-selector-dialog';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface GlobalDefaultsSectionProps {
     globalDefaults: GlobalDefaults;
@@ -36,8 +38,8 @@ interface GlobalDefaultsSectionProps {
     onAddSession: (name: string) => Promise<SessionOption>;
 }
 
-const COURSE_TYPES: { value: CourseType; label: string }[] = [
-    { value: 'COURSE', label: 'Course' },
+const getCourseTypes = (): { value: CourseType; label: string }[] => [
+    { value: 'COURSE', label: getTerminology(ContentTerms.Course, SystemTerms.Course) },
     { value: 'MEMBERSHIP', label: 'Membership' },
     { value: 'PRODUCT', label: 'Product' },
     { value: 'SERVICE', label: 'Service' },
@@ -90,8 +92,8 @@ export function GlobalDefaultsSection({
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs">
                                 <p className="text-xs">
-                                    These defaults will be applied to all courses unless overridden
-                                    at the course level.
+                                    These defaults will be applied to all {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()} unless overridden
+                                    at the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()} level.
                                 </p>
                             </TooltipContent>
                         </Tooltip>
@@ -113,7 +115,7 @@ export function GlobalDefaultsSection({
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {/* Course Type */}
                     <div className="space-y-1.5">
-                        <Label className="text-xs text-neutral-600">Default Course Type</Label>
+                        <Label className="text-xs text-neutral-600">Default {getTerminology(ContentTerms.Course, SystemTerms.Course)} Type</Label>
                         <Select
                             value={globalDefaults.course_type}
                             onValueChange={(value: CourseType) => onUpdate({ course_type: value })}
@@ -122,7 +124,7 @@ export function GlobalDefaultsSection({
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {COURSE_TYPES.map((type) => (
+                                {getCourseTypes().map((type) => (
                                     <SelectItem key={type.value} value={type.value}>
                                         {type.label}
                                     </SelectItem>
@@ -221,7 +223,7 @@ export function GlobalDefaultsSection({
                     {/* Default Batches */}
                     <div className="space-y-1.5 md:col-span-2 lg:col-span-3">
                         <div className="flex items-center justify-between">
-                            <Label className="text-xs text-neutral-600">Default Batches</Label>
+                            <Label className="text-xs text-neutral-600">Default {getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)}</Label>
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -229,13 +231,13 @@ export function GlobalDefaultsSection({
                                 onClick={() => setShowBatchDialog(true)}
                             >
                                 <Plus className="mr-1 size-3" />
-                                Add Batch
+                                Add {getTerminology(ContentTerms.Batch, SystemTerms.Batch)}
                             </Button>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             {globalDefaults.batches.length === 0 ? (
                                 <span className="text-xs text-neutral-400">
-                                    No default batches (will use DEFAULT level/session)
+                                    No default {getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()} (will use DEFAULT {getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()}/{getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()})
                                 </span>
                             ) : (
                                 globalDefaults.batches.map((batch, index) => (

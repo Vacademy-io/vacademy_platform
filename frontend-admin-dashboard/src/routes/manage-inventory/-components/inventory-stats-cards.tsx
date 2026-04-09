@@ -19,7 +19,7 @@ export const InventoryStatsCards = () => {
         {
             title: `Total ${batchPlural}`,
             value: stats?.total_sessions ?? 0,
-            subtitle: `Package ${batchPlural.toLowerCase()}`,
+            subtitle: `${batchPlural.toLowerCase()}`,
             icon: Users,
             gradient: 'from-blue-500 to-cyan-500',
             bgGradient: 'from-blue-500/10 to-cyan-500/10',

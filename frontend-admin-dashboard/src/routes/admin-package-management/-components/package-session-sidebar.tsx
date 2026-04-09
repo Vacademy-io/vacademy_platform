@@ -79,7 +79,7 @@ import { handleGetPaymentDetails } from '@/routes/manage-students/invite/-compon
 import { extractBatchesFromInviteDetails } from '@/routes/manage-students/invite/-utils/enrollInviteTransformers';
 import { LoadingSpinner } from '@/components/ai-course-builder/LoadingSpinner';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
-import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface PackageSessionSidebarProps {
     selectedPackage: {
@@ -916,7 +916,7 @@ const ContentTab = ({
             <CourseContentDialog
                 open={open}
                 onOpenChange={setOpen}
-                courseName={packageDto.package_name || 'Course'}
+                courseName={packageDto.package_name || getTerminology(ContentTerms.Package, SystemTerms.Package)}
                 defaultTab="content"
                 initialData={{
                     why_learn_html: packageDto.why_learn_html,
@@ -1029,7 +1029,7 @@ const MediaTab = ({
             <CourseContentDialog
                 open={open}
                 onOpenChange={setOpen}
-                courseName={packageDto.package_name || 'Course'}
+                courseName={packageDto.package_name || getTerminology(ContentTerms.Package, SystemTerms.Package)}
                 defaultTab="media"
                 initialData={{
                     why_learn_html: packageDto.why_learn_html,

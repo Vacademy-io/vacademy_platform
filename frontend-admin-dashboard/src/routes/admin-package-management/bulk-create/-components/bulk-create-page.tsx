@@ -14,6 +14,8 @@ import { createLevel, createSession } from '../-services/bulk-create-service';
 import { LevelOption, SessionOption } from '../-types/bulk-create-types';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export function BulkCreatePage() {
     const { setNavHeading } = useNavHeadingStore();
@@ -56,7 +58,7 @@ export function BulkCreatePage() {
                         Back
                     </Button>
                 </Link>
-                <h1 className="text-lg font-semibold">Bulk Create Courses</h1>
+                <h1 className="text-lg font-semibold">Bulk Create {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}</h1>
             </div>
         );
     }, [setNavHeading]);
@@ -114,10 +116,10 @@ export function BulkCreatePage() {
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
                 <div>
                     <h2 className="text-base font-semibold text-neutral-800">
-                        Create Multiple Courses
+                        Create Multiple {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
                     </h2>
                     <p className="text-sm text-neutral-500">
-                        Add courses quickly with global defaults and individual customization
+                        Add {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()} quickly with global defaults and individual customization
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -174,7 +176,7 @@ export function BulkCreatePage() {
                     <div className="flex items-center gap-2">
                         <CheckCircle className="size-5 text-green-600" weight="fill" />
                         <h4 className="text-sm font-medium text-green-800">
-                            Successfully created {submitResult.success_count} course(s)!
+                            Successfully created {submitResult.success_count} {getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()}(s)!
                         </h4>
                     </div>
                     <p className="mt-1 text-sm text-green-600">
@@ -182,7 +184,7 @@ export function BulkCreatePage() {
                             to="/admin-package-management"
                             className="underline hover:text-green-700"
                         >
-                            View in Package Management →
+                            View in {getTerminology(ContentTerms.Package, SystemTerms.Package)} Management →
                         </Link>
                     </p>
                 </div>
@@ -218,7 +220,7 @@ export function BulkCreatePage() {
             {/* Footer Actions */}
             <div className="sticky bottom-4 flex justify-end gap-2 rounded-lg border border-neutral-200 bg-white/95 p-4 shadow-lg backdrop-blur">
                 <span className="mr-auto text-sm text-neutral-500">
-                    {courseCount} course{courseCount !== 1 ? 's' : ''} to create
+                    {courseCount} {courseCount !== 1 ? getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase() : getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()} to create
                 </span>
                 <Button variant="outline" asChild>
                     <Link to="/admin-package-management">Cancel</Link>

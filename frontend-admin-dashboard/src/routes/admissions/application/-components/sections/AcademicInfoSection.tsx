@@ -10,6 +10,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { MAX_LENGTH } from '@/utils/form-validation';
 
 interface SectionProps {
     formData: Partial<Registration>;
@@ -63,7 +64,7 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
 
                 <div>
                     <label className="mb-1 block text-sm font-medium text-neutral-700">
-                        Previous School Name <span className="text-red-500">*</span>
+                        Previous School Name
                     </label>
                     <input
                         type="text"
@@ -71,13 +72,14 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
                         placeholder="Enter previous school name"
                         value={formData.previousSchoolName || ''}
                         onChange={(e) => updateFormData({ previousSchoolName: e.target.value })}
+                        maxLength={MAX_LENGTH.SCHOOL_NAME}
                     />
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                     <div>
                         <Label className="mb-1 block text-sm font-medium text-neutral-700">
-                            Previous School Board <span className="text-red-500">*</span>
+                            Previous School Board
                         </Label>
                         <Select
                             value={formData.previousSchoolBoard || ''}
@@ -101,7 +103,7 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
                     </div>
                     <div>
                         <Label className="mb-1 block text-sm font-medium text-neutral-700">
-                            Last Class Attended <span className="text-red-500">*</span>
+                            Last Class Attended
                         </Label>
                         <Select
                             value={formData.lastClassAttended || ''}
@@ -151,6 +153,7 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
                             placeholder="E.g., 85% or A1 Grade or 9 CGPA"
                             value={formData.lastExamResult || ''}
                             onChange={(e) => updateFormData({ lastExamResult: e.target.value })}
+                            maxLength={MAX_LENGTH.GENERAL}
                         />
                     </div>
                     <div>
@@ -163,6 +166,7 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
                             placeholder="E.g., English, Hindi, Maths, Science, Social Science"
                             value={formData.subjectsStudied || ''}
                             onChange={(e) => updateFormData({ subjectsStudied: e.target.value })}
+                            maxLength={MAX_LENGTH.ADDRESS}
                         />
                     </div>
                 </div>
@@ -186,6 +190,7 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
                             placeholder="Enter TC number"
                             value={formData.tcNumber || ''}
                             onChange={(e) => updateFormData({ tcNumber: e.target.value })}
+                            maxLength={MAX_LENGTH.APPLICATION_NUMBER}
                         />
                     </div>
                     <div>

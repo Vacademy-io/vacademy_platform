@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { AdmissionFormData } from '../AdmissionFormWizard';
 import { BatchForSessionType } from '@/schemas/student/student-list/institute-schema';
+import { MAX_LENGTH } from '@/utils/form-validation';
+import AadhaarInput from '@/components/design-system/aadhaar-input';
+import PhoneNumberInput from '@/components/design-system/phone-number-input';
 
 interface PackageSessionOption {
     id: string;
@@ -14,6 +17,7 @@ interface Props {
     packageSessionOptions: PackageSessionOption[];
     allBatches: BatchForSessionType[];
     onFormDataUpdate: (updates: Partial<AdmissionFormData>) => void;
+    errors?: Record<string, string>;
 }
 
 export default function Step1StudentDetails({
@@ -22,6 +26,7 @@ export default function Step1StudentDetails({
     packageSessionOptions,
     allBatches,
     onFormDataUpdate,
+    errors = {},
 }: Props) {
     // Track selected parent class separately so section dropdown stays stable
     const [selectedParentId, setSelectedParentId] = React.useState<string>(() => {
@@ -69,6 +74,13 @@ export default function Step1StudentDetails({
         });
     };
 
+    const inputClass = (field?: string) =>
+        `rounded-md border px-3 py-2 text-sm outline-none transition-shadow focus:ring-1 ${
+            field && errors[field]
+                ? 'border-red-400 focus:border-red-500 focus:ring-red-300'
+                : 'border-gray-300 focus:border-primary focus:ring-primary'
+        }`;
+
     return (
         <div className="grid grid-cols-1 gap-6 duration-200 animate-in fade-in zoom-in-95 md:grid-cols-2 lg:grid-cols-3">
             <div className="col-span-full border-b border-gray-100 pb-2">
@@ -83,9 +95,13 @@ export default function Step1StudentDetails({
                     name="studentFirstName"
                     value={formData.studentFirstName}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    maxLength={MAX_LENGTH.NAME}
+                    className={inputClass('studentFirstName')}
                     placeholder="Enter First Name"
                 />
+                {errors.studentFirstName && (
+                    <span className="text-xs text-red-500">{errors.studentFirstName}</span>
+                )}
             </div>
             <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700">Middle Name</label>
@@ -93,7 +109,8 @@ export default function Step1StudentDetails({
                     name="studentMiddleName"
                     value={formData.studentMiddleName}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    maxLength={MAX_LENGTH.NAME}
+                    className={inputClass()}
                     placeholder="Enter Middle Name"
                 />
             </div>
@@ -105,9 +122,13 @@ export default function Step1StudentDetails({
                     name="studentLastName"
                     value={formData.studentLastName}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    maxLength={MAX_LENGTH.NAME}
+                    className={inputClass('studentLastName')}
                     placeholder="Enter Last Name"
                 />
+                {errors.studentLastName && (
+                    <span className="text-xs text-red-500">{errors.studentLastName}</span>
+                )}
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -116,7 +137,7 @@ export default function Step1StudentDetails({
                     name="gender"
                     value={formData.gender}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    className={inputClass()}
                 >
                     <option value="">Select Gender</option>
                     <option value="MALE">Male</option>
@@ -131,7 +152,8 @@ export default function Step1StudentDetails({
                     name="applicationNumber"
                     value={formData.applicationNumber}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    maxLength={MAX_LENGTH.APPLICATION_NUMBER}
+                    className={inputClass()}
                     placeholder="Auto Generated / Editable"
                 />
             </div>
@@ -143,7 +165,7 @@ export default function Step1StudentDetails({
                 <select
                     value={selectedParentId}
                     onChange={(e) => handleClassChange(e.target.value)}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    className={inputClass('destinationPackageSessionId')}
                 >
                     <option value="">Select Class</option>
                     {packageSessionOptions.map((opt) => (
@@ -152,6 +174,11 @@ export default function Step1StudentDetails({
                         </option>
                     ))}
                 </select>
+                {errors.destinationPackageSessionId && (
+                    <span className="text-xs text-red-500">
+                        {errors.destinationPackageSessionId}
+                    </span>
+                )}
             </div>
 
             {sectionOptions.length > 0 && (
@@ -166,7 +193,7 @@ export default function Step1StudentDetails({
                                 : ''
                         }
                         onChange={(e) => handleSectionChange(e.target.value)}
-                        className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                        className={inputClass()}
                     >
                         <option value="">Select Section</option>
                         {sectionOptions.map((opt) => (
@@ -185,7 +212,7 @@ export default function Step1StudentDetails({
                     name="dateOfAdmission"
                     value={formData.dateOfAdmission}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    className={inputClass()}
                 />
             </div>
 
@@ -198,20 +225,20 @@ export default function Step1StudentDetails({
                     name="dateOfBirth"
                     value={formData.dateOfBirth}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    className={inputClass('dateOfBirth')}
                 />
+                {errors.dateOfBirth && (
+                    <span className="text-xs text-red-500">{errors.dateOfBirth}</span>
+                )}
             </div>
 
-            <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-gray-700">Residential Phone No</label>
-                <input
-                    name="residentialPhone"
-                    value={formData.residentialPhone}
-                    onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
-                    placeholder="Enter Phone Number"
-                />
-            </div>
+            <PhoneNumberInput
+                name="residentialPhone"
+                value={formData.residentialPhone}
+                onChange={(name, value) => onFormDataUpdate({ [name]: value })}
+                label="Residential Phone No"
+                error={errors.residentialPhone}
+            />
 
             <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700">Student Type</label>
@@ -219,7 +246,7 @@ export default function Step1StudentDetails({
                     name="studentType"
                     value={formData.studentType}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    className={inputClass()}
                 >
                     <option value="">Select Type</option>
                     <option value="Regular">Regular</option>
@@ -233,7 +260,7 @@ export default function Step1StudentDetails({
                     name="admissionType"
                     value={formData.admissionType}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    className={inputClass()}
                 >
                     <option value="">Select Type</option>
                     <option value="Day Scholar">Day Scholar</option>
@@ -247,7 +274,7 @@ export default function Step1StudentDetails({
                     name="transport"
                     value={formData.transport}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    className={inputClass()}
                 >
                     <option value="No">No</option>
                     <option value="Yes">Yes</option>
@@ -260,7 +287,7 @@ export default function Step1StudentDetails({
                     name="aadhaarType"
                     value={formData.aadhaarType}
                     onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
+                    className={inputClass()}
                 >
                     <option value="">Select Type</option>
                     <option value="Standard">Standard</option>
@@ -268,16 +295,12 @@ export default function Step1StudentDetails({
                 </select>
             </div>
 
-            <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-gray-700">Aadhaar Number</label>
-                <input
-                    name="aadhaarNumber"
-                    value={formData.aadhaarNumber}
-                    onChange={handleChange}
-                    className="focus:border-primary focus:ring-primary rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-shadow focus:ring-1"
-                    placeholder="XXXX-XXXX-XXXX"
-                />
-            </div>
+            <AadhaarInput
+                name="aadhaarNumber"
+                value={formData.aadhaarNumber}
+                onChange={(name, value) => onFormDataUpdate({ [name]: value })}
+                error={errors.aadhaarNumber}
+            />
         </div>
     );
 }

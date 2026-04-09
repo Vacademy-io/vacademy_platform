@@ -5,7 +5,8 @@ interface AdmissionFormPrintTemplateProps {
     formData: AdmissionFormData;
     instituteName: string;
     instituteLogo: string;
-    admissionId: string;
+    trackingLabel: string;
+    trackingId: string;
 }
 
 const THEME = {
@@ -92,7 +93,7 @@ function FieldRow({
 }
 
 const AdmissionFormPrintTemplate = React.forwardRef<HTMLDivElement, AdmissionFormPrintTemplateProps>(
-    ({ formData, instituteName, instituteLogo, admissionId }, ref) => {
+    ({ formData, instituteName, instituteLogo, trackingLabel, trackingId }, ref) => {
         const today = new Date().toLocaleDateString('en-IN', {
             day: '2-digit',
             month: 'short',
@@ -173,7 +174,9 @@ const AdmissionFormPrintTemplate = React.forwardRef<HTMLDivElement, AdmissionFor
                             Admission Form
                         </div>
                         <div style={{ fontSize: '8px', color: THEME.labelColor, marginTop: '4px' }}>
-                            <span><strong>Application No:</strong> {admissionId}</span>
+                            {trackingLabel && trackingId && (
+                                <span><strong>{trackingLabel}:</strong> {trackingId}</span>
+                            )}
                             <span style={{ marginLeft: '16px' }}><strong>Date:</strong> {today}</span>
                         </div>
                     </div>

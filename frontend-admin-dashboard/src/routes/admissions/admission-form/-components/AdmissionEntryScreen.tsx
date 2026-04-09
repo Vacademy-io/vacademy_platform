@@ -29,6 +29,7 @@ export interface StudentSearchResult {
     parentGender?: 'father' | 'mother';
     enquiryId?: string | null;
     applicationId?: string | null;
+    enquiryTrackingId?: string | null;
 }
 
 interface Props {
@@ -224,6 +225,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             destinationPackageSessionId: '',
             enquiryId: enquiryData.enquiry_id || null,
             applicationId: null,
+            enquiryTrackingId: enquiryData.tracking_id || null,
         };
 
         // Auto-fill parent relation from enquiry data; show popup only if unknown

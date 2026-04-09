@@ -132,6 +132,8 @@ export default function AdmissionFormWizard() {
     const [admissionId, setAdmissionId] = useState('');
     const [admissionSubmitResult, setAdmissionSubmitResult] =
         useState<AdmissionSubmitResult | null>(null);
+    const [enquiryTrackingId, setEnquiryTrackingId] = useState<string | null>(null);
+    const [admissionTrackingId, setAdmissionTrackingId] = useState<string | null>(null);
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id || '';
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -247,10 +249,10 @@ export default function AdmissionFormWizard() {
             'Admission',
             formData.studentFirstName,
             formData.studentLastName,
-            admissionId,
+            admissionTrackingId || enquiryTrackingId,
         ].filter(Boolean);
         return parts.join('_').replace(/\s+/g, '-') + '.pdf';
-    }, [formData.studentFirstName, formData.studentLastName, admissionId]);
+    }, [formData.studentFirstName, formData.studentLastName, admissionTrackingId, enquiryTrackingId]);
 
     const targetRef = useRef<HTMLDivElement>(null);
     const printTemplateRef = useRef<HTMLDivElement>(null);
@@ -407,6 +409,9 @@ export default function AdmissionFormWizard() {
                 enquiryId: data.enquiryId ?? null,
                 applicationId: data.applicationId ?? null,
             }));
+            if (data.enquiryTrackingId) {
+                setEnquiryTrackingId(data.enquiryTrackingId);
+            }
         } else if (sessionId) {
             setFormData((prev) => ({ ...prev, sessionId }));
         }
@@ -512,6 +517,7 @@ export default function AdmissionFormWizard() {
             if (response.status >= 200 && response.status < 300) {
                 const data = response.data as AdmissionSubmitResult;
                 setAdmissionSubmitResult(data);
+                setAdmissionTrackingId(data.tracking_id || null);
                 toast.success(`Admission submitted successfully! ID: ${admissionId}`);
                 setCurrentStep(6);
             } else {
@@ -691,7 +697,8 @@ export default function AdmissionFormWizard() {
                         formData={formData}
                         instituteName={instituteName}
                         instituteLogo={logoBase64}
-                        admissionId={admissionId}
+                        trackingLabel={admissionTrackingId ? 'Admission Tracking ID' : enquiryTrackingId ? 'Enquiry Tracking ID' : ''}
+                        trackingId={admissionTrackingId || enquiryTrackingId || ''}
                     />
                 </div>
             </div>

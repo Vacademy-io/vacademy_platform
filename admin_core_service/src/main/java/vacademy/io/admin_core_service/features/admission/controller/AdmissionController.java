@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.admission.dto.AdmissionRequestDTO;
 import vacademy.io.admin_core_service.features.admission.dto.AdmissionResponseDetailDTO;
@@ -39,7 +40,7 @@ public class AdmissionController {
      */
     @PostMapping("/submit")
     public ResponseEntity<AdmissionResponseDTO> submitAdmissionForm(
-            @RequestBody AdmissionRequestDTO request,
+            @Valid @RequestBody AdmissionRequestDTO request,
             @RequestAttribute(name = "user", required = false) CustomUserDetails userDetails) {
 
         logger.info("Admission form submission received. InstituteId: {}, Source: {}",

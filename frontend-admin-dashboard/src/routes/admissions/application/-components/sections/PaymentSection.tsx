@@ -308,7 +308,7 @@ export const PaymentSection: React.FC<SectionProps> = ({
                         <div className="flex items-center justify-between text-sm">
                             <span className="text-gray-500">Student</span>
                             <span className="font-extrabold text-lg text-gray-800">
-                                {formData.firstName} {formData.lastName}
+                                {formData.studentName || 'N/A'}
                             </span>
                         </div>
                         <div className="flex items-center justify-between text-sm">

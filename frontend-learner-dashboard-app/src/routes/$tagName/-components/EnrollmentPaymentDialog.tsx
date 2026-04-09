@@ -569,20 +569,14 @@ export const EnrollmentPaymentDialog: React.FC<
                       enableSearch={true}
                       value={phone}
                       onChange={(value) => handlePhoneChange(value)}
-                      inputClass={`w-full px-3 py-2 border rounded-r-md focus:outline-none focus:ring-2 ${phoneError
-                        ? "border-red-500 focus:ring-red-500"
-                        : "border-gray-300 focus:ring-blue-500"
-                        }`}
-                      buttonClass="!rounded-l-md !border-r-0 !border-gray-300"
+                      inputClass="!w-full h-10 !rounded-md !border-input"
+                      buttonClass="!rounded-l-md !border-input"
                       containerClass="!w-full"
                       placeholder="Enter your phone number"
                       countryCodeEditable={false}
-                      enableAreaCodes={true}
+                      enableAreaCodes={false}
                       disableCountryGuess={false}
-                      preferredCountries={["in", "us", "gb", "au"]}
-                      inputProps={{
-                        maxLength: 15,
-                      }}
+                      preferredCountries={["in", "us", "gb", "au", "ae"]}
                     />
                     {phoneError && (
                       <p className="text-red-500 text-sm mt-1">{phoneError}</p>

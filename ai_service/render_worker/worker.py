@@ -124,7 +124,7 @@ class RenderWorker:
             # ── Parallel frame rendering ──
             # Split frames across N parallel Playwright processes for speed.
             # Each process renders a subset of frames, then we assemble with FFmpeg.
-            NUM_WORKERS = int(os.environ.get("RENDER_PARALLEL_WORKERS", "2"))
+            NUM_WORKERS = int(os.environ.get("RENDER_PARALLEL_WORKERS", "4"))
             FPS = fps if fps and fps in (15, 20, 25) else 20
             output_path = work_dir / "output.mp4"
             frames_dir = work_dir / ".render_frames"
@@ -300,20 +300,25 @@ class RenderWorker:
                 except Exception:
                     pass
 
-            rendered_frames = sorted(frames_dir.glob("frame_*.png"))
-            logger.info(f"Total rendered frames: {len(rendered_frames)}")
+            rendered_frames = sorted(frames_dir.glob("frame_*.jpg"))
+            # Diagnostic: detect if frames were written as .png instead of .jpg (format mismatch)
+            stale_png_count = len(list(frames_dir.glob("frame_*.png")))
+            if stale_png_count > 0 and len(rendered_frames) == 0:
+                logger.error(f"FRAME FORMAT MISMATCH: Found {stale_png_count} .png frames but expected .jpg. "
+                             f"generate_video.py may be out of sync with worker.py.")
+            logger.info(f"Total rendered frames: {len(rendered_frames)} (.jpg), stale .png: {stale_png_count}")
 
             if on_progress:
                 on_progress(75)
 
             # ── Assemble with FFmpeg ──
             logger.info("Assembling video with FFmpeg...")
-            # Frames are rendered at 2x device_scale_factor for quality.
-            # Downscale to target resolution in FFmpeg for correct output size.
+            # Frames rendered at native resolution (1080p/1920p).
+            # Downscale to target resolution if different.
             ffmpeg_cmd = [
                 "ffmpeg", "-y",
                 "-framerate", str(FPS),
-                "-i", str(frames_dir / "frame_%06d.png"),
+                "-i", str(frames_dir / "frame_%06d.jpg"),
                 "-i", str(audio_path),
                 "-filter_complex",
                 f"[0:v]scale={output_width}:{output_height}:flags=lanczos[scaled];[1:a]adelay={int(audio_delay * 1000)}|{int(audio_delay * 1000)}[delayed_audio]",

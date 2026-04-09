@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.audience.controller;
 
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -53,7 +54,7 @@ public class PublicAudienceController {
 
     @PostMapping("/lead/submit-with-enquiry")
     public ResponseEntity<SubmitLeadWithEnquiryResponseDTO> submitLeadWithEnquiry(
-            @RequestBody SubmitLeadWithEnquiryRequestDTO requestDTO) {
+            @Valid @RequestBody SubmitLeadWithEnquiryRequestDTO requestDTO) {
         SubmitLeadWithEnquiryResponseDTO response = audienceService.submitLeadWithEnquiry(requestDTO);
         return ResponseEntity.ok(response);
     }

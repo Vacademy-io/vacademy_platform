@@ -132,7 +132,8 @@ export default function AdmissionFormWizard() {
     const [admissionId, setAdmissionId] = useState('');
     const [admissionSubmitResult, setAdmissionSubmitResult] =
         useState<AdmissionSubmitResult | null>(null);
-    const [enquiryTrackingId, setEnquiryTrackingId] = useState<string | null>(null);
+    const [sourceTrackingId, setSourceTrackingId] = useState<string | null>(null);
+    const [sourceTrackingLabel, setSourceTrackingLabel] = useState<string>('');
     const [admissionTrackingId, setAdmissionTrackingId] = useState<string | null>(null);
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id || '';
@@ -249,10 +250,10 @@ export default function AdmissionFormWizard() {
             'Admission',
             formData.studentFirstName,
             formData.studentLastName,
-            admissionTrackingId || enquiryTrackingId,
+            admissionTrackingId || sourceTrackingId,
         ].filter(Boolean);
         return parts.join('_').replace(/\s+/g, '-') + '.pdf';
-    }, [formData.studentFirstName, formData.studentLastName, admissionTrackingId, enquiryTrackingId]);
+    }, [formData.studentFirstName, formData.studentLastName, admissionTrackingId, sourceTrackingId]);
 
     const targetRef = useRef<HTMLDivElement>(null);
     const printTemplateRef = useRef<HTMLDivElement>(null);
@@ -410,7 +411,10 @@ export default function AdmissionFormWizard() {
                 applicationId: data.applicationId ?? null,
             }));
             if (data.enquiryTrackingId) {
-                setEnquiryTrackingId(data.enquiryTrackingId);
+                setSourceTrackingId(data.enquiryTrackingId);
+                setSourceTrackingLabel(
+                    data.sourceType === 'APPLICATION' ? 'Application Tracking ID' : 'Enquiry Tracking ID'
+                );
             }
         } else if (sessionId) {
             setFormData((prev) => ({ ...prev, sessionId }));
@@ -697,8 +701,8 @@ export default function AdmissionFormWizard() {
                         formData={formData}
                         instituteName={instituteName}
                         instituteLogo={logoBase64}
-                        trackingLabel={admissionTrackingId ? 'Admission Tracking ID' : enquiryTrackingId ? 'Enquiry Tracking ID' : ''}
-                        trackingId={admissionTrackingId || enquiryTrackingId || ''}
+                        trackingLabel={admissionTrackingId ? 'Admission Tracking ID' : sourceTrackingLabel}
+                        trackingId={admissionTrackingId || sourceTrackingId || ''}
                     />
                 </div>
             </div>

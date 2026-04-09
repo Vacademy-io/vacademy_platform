@@ -299,6 +299,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 destinationPackageSessionId: item.destination_package_session_id || '',
                 enquiryId: null,
                 applicationId: resolvedApplicantId,
+                enquiryTrackingId: item.tracking_id || null,
             };
 
             setShowApplicationModal(false);

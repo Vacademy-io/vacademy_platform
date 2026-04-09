@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.applicant.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -43,11 +44,13 @@ public class ApplyRequestDTO {
     /**
      * Source type (e.g., LEVEL, INSTITUTE, CAMPAIGN)
      */
+    @Size(max = 255, message = "Source must not exceed 255 characters")
     private String source;
 
     /**
      * Source ID (e.g., class_5, campaign_id, etc.)
      */
+    @Size(max = 255, message = "Source ID must not exceed 255 characters")
     private String sourceId;
 
     /**
@@ -72,5 +75,6 @@ public class ApplyRequestDTO {
      * Workflow Type (e.g., APPLICATION, ADMISSION)
      * Defaults to APPLICATION if null
      */
+    @Size(max = 50, message = "Workflow type must not exceed 50 characters")
     private String workflowType;
 }

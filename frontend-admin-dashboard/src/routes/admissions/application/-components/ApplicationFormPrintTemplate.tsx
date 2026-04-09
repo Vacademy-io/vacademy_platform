@@ -5,7 +5,8 @@ interface ApplicationFormPrintTemplateProps {
     formData: Partial<Registration>;
     instituteName: string;
     instituteLogo: string;
-    registrationId: string;
+    trackingLabel: string;
+    trackingId: string;
 }
 
 const THEME = {
@@ -94,7 +95,7 @@ function FieldRow({
 const ApplicationFormPrintTemplate = React.forwardRef<
     HTMLDivElement,
     ApplicationFormPrintTemplateProps
->(({ formData, instituteName, instituteLogo, registrationId }, ref) => {
+>(({ formData, instituteName, instituteLogo, trackingLabel, trackingId }, ref) => {
     const today = new Date().toLocaleDateString('en-IN', {
         day: '2-digit',
         month: 'short',
@@ -183,7 +184,11 @@ const ApplicationFormPrintTemplate = React.forwardRef<
                     </div>
                     <div style={{ fontSize: '8px', color: THEME.labelColor, marginTop: '4px' }}>
                         <span>
-                            <strong>Registration No:</strong> {registrationId}
+                            {trackingLabel && trackingId && (
+                                <>
+                                    <strong>{trackingLabel}:</strong> {trackingId}
+                                </>
+                            )}
                         </span>
                         <span style={{ marginLeft: '16px' }}>
                             <strong>Date:</strong> {today}

@@ -145,6 +145,8 @@ export function RegistrationFormPage() {
     // Get sessionId from URL search params
     const [sessionId, setSessionId] = useState('');
     const [enquiryId, setEnquiryId] = useState<string | null>(null);
+    const [enquiryTrackingId, setEnquiryTrackingId] = useState<string | null>(null);
+    const [applicationTrackingId, setApplicationTrackingId] = useState<string | null>(null);
     const [showParentGenderModal, setShowParentGenderModal] = useState(false);
     const [pendingEnquiryData, setPendingEnquiryData] = useState<any>(null);
 
@@ -190,9 +192,9 @@ export function RegistrationFormPage() {
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
     const getPdfFilename = useCallback(() => {
-        const parts = ['Application', formData.studentName, formData.id].filter(Boolean);
+        const parts = ['Application', formData.studentName, applicationTrackingId || enquiryTrackingId].filter(Boolean);
         return parts.join('_').replace(/\s+/g, '-') + '.pdf';
-    }, [formData.studentName, formData.id]);
+    }, [formData.studentName, applicationTrackingId, enquiryTrackingId]);
 
     const handleDownloadPdf = useCallback(async () => {
         if (!pdfTargetRef.current) {
@@ -277,6 +279,7 @@ export function RegistrationFormPage() {
                 const enquiryData = JSON.parse(decodeURIComponent(enquiryDataParam));
                 console.log('Parsed enquiry data:', enquiryData);
                 setEnquiryId(enquiryData.enquiry_id);
+                setEnquiryTrackingId(enquiryData.tracking_id || null);
                 prefillFormFromEnquiry(enquiryData);
             } catch (error) {
                 console.error('Failed to parse enquiry data:', error);
@@ -683,6 +686,7 @@ export function RegistrationFormPage() {
             const response = await applyForAdmission(payload);
             console.log('Registration submitted successfully:', response);
             setApplicantId(response?.applicant_id);
+            setApplicationTrackingId(response?.tracking_id || null);
 
             // Generate payment link using the paymentOptionId fetched at page load
             if (paymentOptionId) {
@@ -1016,7 +1020,8 @@ export function RegistrationFormPage() {
                         formData={formData}
                         instituteName={instituteName}
                         instituteLogo={logoBase64}
-                        registrationId={formData.id || ''}
+                        trackingLabel={applicationTrackingId ? 'Application Tracking ID' : enquiryTrackingId ? 'Enquiry Tracking ID' : ''}
+                        trackingId={applicationTrackingId || enquiryTrackingId || ''}
                     />
                 </div>
             </div>

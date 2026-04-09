@@ -7,6 +7,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Date;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -32,6 +34,9 @@ public class BulkAssignOptionsDTO {
 
     /** Optional external transaction reference */
     private String transactionId;
+
+    /** Optional payment date for manual/offline payments */
+    private Date paymentDate;
 
     /** true = preview only, no database writes */
     @Builder.Default

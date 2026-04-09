@@ -13,6 +13,7 @@ export interface AssignOptions {
     notify_learners?: boolean;
     send_credentials?: boolean;
     transaction_id?: string;
+    payment_date?: string;
     dry_run?: boolean;
 }
 
@@ -223,6 +224,8 @@ export interface BulkEnrollOptions {
     duplicateHandling: 'SKIP' | 'ERROR' | 'RE_ENROLL';
     notifyLearners: boolean;
     sendCredentials: boolean;
+    transactionId: string;
+    paymentDate: string;
 }
 
 /** Full 4-step wizard state */

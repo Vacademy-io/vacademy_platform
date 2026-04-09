@@ -74,6 +74,8 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
         duplicateHandling: 'SKIP',
         notifyLearners: true,
         sendCredentials: true,
+        transactionId: '',
+        paymentDate: '',
     });
     const [previewResponse, setPreviewResponse] = useState<BulkAssignResponse | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -106,6 +108,8 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                 duplicate_handling: options.duplicateHandling,
                 notify_learners: options.notifyLearners,
                 send_credentials: options.sendCredentials,
+                transaction_id: options.transactionId || undefined,
+                payment_date: options.paymentDate || undefined,
                 dry_run: dryRun,
             },
         };
@@ -145,7 +149,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
         setStep(0);
         setSelectedLearners([]);
         setSelectedPackageSessions(buildInitialSelection());
-        setOptions({ duplicateHandling: 'SKIP', notifyLearners: true, sendCredentials: true });
+        setOptions({ duplicateHandling: 'SKIP', notifyLearners: true, sendCredentials: true, transactionId: '', paymentDate: '' });
         setPreviewResponse(null);
         onOpenChange(false);
     };
@@ -221,6 +225,13 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                             instituteId={INSTITUTE_ID || ''}
                             selectedLearners={selectedLearners}
                             onSelectedLearnersChange={setSelectedLearners}
+                            onPaymentInfoDetected={(info) => {
+                                setOptions((prev) => ({
+                                    ...prev,
+                                    paymentDate: info.paymentDate || prev.paymentDate,
+                                    transactionId: info.transactionId || prev.transactionId,
+                                }));
+                            }}
                         />
                     )}
                     {step === 1 && (

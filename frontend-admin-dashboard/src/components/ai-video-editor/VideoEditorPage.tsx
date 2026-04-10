@@ -108,6 +108,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
 
     const pollCountRef = useRef(0);
     const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isMountedRef = useRef(true); // C5: guard setState after unmount
 
     const canvasW = meta.dimensions?.width ?? 1920;
     const canvasH = meta.dimensions?.height ?? 1080;
@@ -168,8 +169,9 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
             pollCountRef.current = 0;
 
             const poll = async () => {
+                if (!isMountedRef.current) return; // C5
                 if (pollCountRef.current >= RENDER_MAX_POLLS) {
-                    setRenderState('error');
+                    if (isMountedRef.current) setRenderState('error');
                     if (props.videoId) clearRenderJob(props.videoId);
                     return;
                 }
@@ -177,6 +179,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
 
                 try {
                     const status = await getRenderStatus(jobId, props.apiKey!);
+                    if (!isMountedRef.current) return; // C5: guard after await
 
                     if (status.progress != null) {
                         setRenderProgress(Math.round(status.progress));
@@ -199,6 +202,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                     // Still queued/running — schedule next poll
                     pollTimerRef.current = setTimeout(poll, RENDER_POLL_INTERVAL);
                 } catch {
+                    if (!isMountedRef.current) return; // C5
                     // Network hiccup — keep polling
                     pollTimerRef.current = setTimeout(poll, RENDER_POLL_INTERVAL);
                 }
@@ -209,9 +213,11 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
         [props.apiKey, props.videoId]
     );
 
-    // Clear polling timer on unmount
+    // Clear polling timer on unmount; mark component as unmounted (C5)
     useEffect(() => {
+        isMountedRef.current = true;
         return () => {
+            isMountedRef.current = false;
             if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
         };
     }, []);
@@ -256,8 +262,15 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     const canRedo = future.length > 0;
 
     const handleBack = useCallback(() => {
+        // M6: warn about unsaved changes before navigating away
+        if (isDirty) {
+            const ok = window.confirm(
+                'You have unsaved changes. Leave without saving?'
+            );
+            if (!ok) return;
+        }
         navigate({ to: '/video-api-studio' });
-    }, [navigate]);
+    }, [navigate, isDirty]);
 
     const handleSave = useCallback(async () => {
         try {
@@ -531,6 +544,13 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
         return (
             <div className="fixed inset-0 z-50 flex flex-col bg-gray-900">
                 {toolbar}
+                {/* M5: banner when there are unsaved edits not yet reflected in the preview */}
+                {isDirty && (
+                    <div className="flex items-center justify-center gap-2 bg-amber-500 py-1 text-xs font-medium text-white">
+                        <AlertCircle className="size-3.5" />
+                        Preview shows the last saved version — unsaved changes are not reflected.
+                    </div>
+                )}
                 <div className="flex flex-1 items-center justify-center overflow-hidden p-6">
                     <div
                         className="size-full overflow-hidden rounded-xl"

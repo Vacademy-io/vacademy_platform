@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { Upload, Loader2, X, ImageIcon, Film } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -47,8 +48,18 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
     const [entryIndex, setEntryIndex] = useState(0); // for user_driven
 
     const inputRef = useRef<HTMLInputElement>(null);
+    // Track the active blob URL so we can revoke it (C17)
+    const blobUrlRef = useRef<string>('');
+
+    const revokeBlobUrl = useCallback(() => {
+        if (blobUrlRef.current) {
+            URL.revokeObjectURL(blobUrlRef.current);
+            blobUrlRef.current = '';
+        }
+    }, []);
 
     const reset = useCallback(() => {
+        revokeBlobUrl();
         setUploadedSrc('');
         setMediaType('image');
         setPreviewUrl('');
@@ -58,7 +69,7 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
         setObjectFit('contain');
         setEntryIndex(0);
         setUploading(false);
-    }, [totalDuration]);
+    }, [totalDuration, revokeBlobUrl]);
 
     const handleClose = useCallback(() => {
         reset();
@@ -72,8 +83,11 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
 
             const isVideo = file.type.startsWith('video/');
             setMediaType(isVideo ? 'video' : 'image');
-            // Local preview while uploading
+
+            // Revoke previous blob URL before creating a new one (C17)
+            revokeBlobUrl();
             const localUrl = URL.createObjectURL(file);
+            blobUrlRef.current = localUrl;
             setPreviewUrl(localUrl);
             setUploading(true);
 
@@ -91,16 +105,27 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
                     setUploadedSrc(url || '');
                 }
             } catch {
+                // Revoke blob URL on failure (C17) and clear preview
+                revokeBlobUrl();
                 setPreviewUrl('');
+                toast.error('Upload failed. Please try again.');
             } finally {
                 setUploading(false);
+                // Reset file input so the same file can be re-selected (M14)
+                if (inputRef.current) inputRef.current.value = '';
             }
         },
-        [uploadFile, getPublicUrl]
+        [uploadFile, getPublicUrl, revokeBlobUrl]
     );
 
     const handleAdd = useCallback(() => {
         if (!uploadedSrc) return;
+
+        // C19: validate timing before adding
+        if (isTimeDriven && inTime >= outTime) {
+            toast.error('Start time must be less than end time.');
+            return;
+        }
 
         const html = buildMediaOverlayHtml(uploadedSrc, mediaType, objectFit);
         const newId = `user-overlay-${Date.now()}`;
@@ -175,6 +200,7 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
                                     className="absolute right-2 top-2 rounded-full bg-white/80 p-0.5 text-gray-500 hover:text-gray-900"
                                     onClick={(e) => {
                                         e.stopPropagation();
+                                        revokeBlobUrl(); // C17
                                         setPreviewUrl('');
                                         setUploadedSrc('');
                                     }}

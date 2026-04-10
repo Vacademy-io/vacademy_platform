@@ -1382,9 +1382,9 @@ class VideoGenerationService:
                     ],
                     "temperature": 0.7
                 },
-                timeout=30
+                timeout=90  # M27: increased from 30s — LLM cold-start can take 60-90s
             )
-            
+
             if response.status_code != 200:
                 logger.error(f"LLM Error: {response.text}")
                 raise RuntimeError("Failed to regenerate HTML via AI")

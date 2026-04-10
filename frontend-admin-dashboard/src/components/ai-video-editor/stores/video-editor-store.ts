@@ -329,35 +329,33 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 throw new Error('No API key configured — changes were not saved to the server.');
             }
 
-            // Send to backend
-            await Promise.all(
-                toSave.map(async (entry) => {
-                    const frameIndex = entries.indexOf(entry);
-                    const t = entryTransforms[entry.id];
-                    const newHtml =
-                        t && !isIdentity(t) ? injectTransformWrapper(entry.html, t) : entry.html;
+            // Send to backend sequentially to avoid S3 concurrent-write race (C26)
+            for (const entry of toSave) {
+                const frameIndex = entries.indexOf(entry);
+                const t = entryTransforms[entry.id];
+                const newHtml =
+                    t && !isIdentity(t) ? injectTransformWrapper(entry.html, t) : entry.html;
 
-                    const res = await fetch(
-                        `${AI_SERVICE_BASE_URL}/external/video/v1/frame/update`,
-                        {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-Institute-Key': apiKey,
-                            },
-                            body: JSON.stringify({
-                                video_id: videoId,
-                                frame_index: frameIndex,
-                                new_html: newHtml,
-                            }),
-                        }
-                    );
-                    if (!res.ok) {
-                        const text = await res.text().catch(() => res.statusText);
-                        throw new Error(`Frame ${frameIndex}: ${text}`);
+                const res = await fetch(
+                    `${AI_SERVICE_BASE_URL}/external/video/v1/frame/update`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Institute-Key': apiKey,
+                        },
+                        body: JSON.stringify({
+                            video_id: videoId,
+                            frame_index: frameIndex,
+                            new_html: newHtml,
+                        }),
                     }
-                })
-            );
+                );
+                if (!res.ok) {
+                    const text = await res.text().catch(() => res.statusText);
+                    throw new Error(`Frame ${frameIndex}: ${text}`);
+                }
+            }
 
             // Bake transforms into local entry HTML so canvas re-renders correctly
             set((s) => ({

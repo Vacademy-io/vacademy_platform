@@ -46,7 +46,7 @@ const saveTncSettings = async (data: TncSettingsData): Promise<void> => {
 
 export default function TncSettings() {
     const queryClient = useQueryClient();
-    const { user } = useCurrentUser();
+    const { currentUser } = useCurrentUser();
     const { uploadFile, getPublicUrl } = useFileUpload();
     const [settings, setSettings] = useState<TncSettingsData>(DEFAULT_TNC_SETTINGS);
     const [hasChanges, setHasChanges] = useState(false);
@@ -107,7 +107,7 @@ export default function TncSettings() {
             await uploadFile({
                 file,
                 setIsUploading: setIsUploadingMedia,
-                userId: user?.userId || 'admin',
+                userId: currentUser?.userId || 'admin',
                 publicUrl: true,
             }).then((uploadRes: any) => {
                  const fileId = uploadRes.id || uploadRes;
@@ -163,7 +163,7 @@ export default function TncSettings() {
                                      <a href={fileUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline text-sm truncate flex-1">
                                         View T&C Document
                                      </a>
-                                     <MyButton buttonType="secondaryBorder" scale="small" onClick={() => {
+                                     <MyButton buttonType="secondary" scale="small" onClick={() => {
                                          update({ fileMediaId: null });
                                          setFileUrl(null);
                                      }}>

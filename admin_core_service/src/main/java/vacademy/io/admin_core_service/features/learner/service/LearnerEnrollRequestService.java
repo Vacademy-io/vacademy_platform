@@ -704,8 +704,8 @@ public class LearnerEnrollRequestService {
 
     /**
      * Extract sendCredentials flag using two-level policy:
-     * 1. Institute-level setting (short-circuits if NO)
-     * 2. Package-level setting (returns YES if at least one package says YES)
+     * 1. Package-level setting (short-circuits if all packages say NO)
+     * 2. Institute-level setting (returns YES/NO based on institute config)
      *
      * Institute setting JSON structure:
      * {
@@ -739,22 +739,21 @@ public class LearnerEnrollRequestService {
      */
     private boolean getSendCredentialsFlag(String instituteId, List<String> packageSessionIds) {
         try {
-            // LEVEL 1: Check institute-level setting first
-            boolean instituteSendCredentials = checkInstituteSendCredentialsFlag(instituteId);
+            // LEVEL 1: Check package-level setting first
+            boolean packageSendCredentials = checkPackageSendCredentialsFlag(packageSessionIds);
 
-            // If institute says NO, short-circuit and return false immediately
-            if (!instituteSendCredentials) {
-                log.info("Institute {} has sendCredentials=false. Skipping package-level checks.", instituteId);
+            // If package says NO, short-circuit and return false immediately
+            if (!packageSendCredentials) {
+                log.info("All packages have sendCredentials=false. Skipping institute-level checks.");
                 return false;
             }
 
-            // LEVEL 2: Institute says YES, now check package-level settings
-            // If at least one package says YES, return true
-            boolean packageSendCredentials = checkPackageSendCredentialsFlag(packageSessionIds);
+            // LEVEL 2: Package says YES, now check institute-level setting
+            boolean instituteSendCredentials = checkInstituteSendCredentialsFlag(instituteId);
 
             log.info("Final sendCredentials decision for institute {}: {}",
-                    instituteId, packageSendCredentials);
-            return packageSendCredentials;
+                    instituteId, instituteSendCredentials);
+            return instituteSendCredentials;
 
         } catch (Exception e) {
             log.error("Error in getSendCredentialsFlag for institute: {} - defaulting to sendCredentials=true",

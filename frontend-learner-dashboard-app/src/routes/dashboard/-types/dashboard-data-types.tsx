@@ -18,8 +18,8 @@ export type DashbaordResponse = {
   courses: number;
   tests_assigned: number;
   slides: DashboardSlide[];
-  askForTnc?: boolean;
-  tncUrl?: string;
+  ask_for_tnc?: boolean;
+  tnc_url?: string;
 };
 
 

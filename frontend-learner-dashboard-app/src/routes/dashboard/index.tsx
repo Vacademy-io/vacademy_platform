@@ -422,12 +422,12 @@ export function DashboardComponent() {
         />
       </Helmet>
 
-      {/* Render T&C Modal if askForTnc is true */}
-      {data?.askForTnc && data?.tncUrl && (
+      {/* Render T&C Modal if ask_for_tnc is true */}
+      {data?.ask_for_tnc && data?.tnc_url && (
         <TncModal 
-          tncUrl={data.tncUrl} 
+          tncUrl={data.tnc_url} 
           onAccepted={() => {
-            setData(prev => prev ? { ...prev, askForTnc: false } : prev);
+            setData(prev => prev ? { ...prev, ask_for_tnc: false } : prev);
           }} 
         />
       )}

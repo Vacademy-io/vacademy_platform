@@ -82,6 +82,7 @@ import { StreakCounterWidget } from "./-components/play/StreakCounterWidget";
 import { XpDisplayWidget } from "./-components/play/XpDisplayWidget";
 import { XpHeaderPill } from "./-components/play/XpHeaderPill";
 import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWidget";
+import { TncModal } from "@/components/Dashboards/LearnerDashboard/TncModal";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -420,6 +421,16 @@ export function DashboardComponent() {
           content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
         />
       </Helmet>
+
+      {/* Render T&C Modal if askForTnc is true */}
+      {data?.askForTnc && data?.tncUrl && (
+        <TncModal 
+          tncUrl={data.tncUrl} 
+          onAccepted={() => {
+            setData(prev => prev ? { ...prev, askForTnc: false } : prev);
+          }} 
+        />
+      )}
 
       <div className="relative z-10 space-y-4 p-3 sm:p-4 lg:p-6 mx-auto w-full max-w-7xl animate-in fade-in duration-500">
         {/* Header Section */}

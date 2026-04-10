@@ -52,6 +52,23 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
         return () => ro.disconnect();
     }, [canvasW, canvasH, onScaleChange]);
 
+    // ── Pre-process HTML per entry (stable — only recomputes when html/meta changes, NOT on scrub) ──
+    const processedHtmlMap = useMemo(() => {
+        const contentEntries = entries.filter((e) => !e.id?.startsWith('branding-'));
+        return new Map(
+            entries.map((entry) => {
+                if (entry.id?.startsWith('branding-')) {
+                    return [entry.id, entry.html];
+                }
+                const contentIdx = contentEntries.indexOf(entry);
+                return [
+                    entry.id,
+                    processHtmlContent(entry.html, meta.content_type, contentIdx > 0, meta.palette),
+                ];
+            })
+        );
+    }, [entries, meta.content_type, meta.palette]);
+
     // ── Active entries at current scrub time ───────────────────────────────
     const activeEntries = useMemo(() => {
         if (entries.length === 0) return [];
@@ -65,42 +82,18 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
                 })
                 .sort((a, b) => (a.z ?? 0) - (b.z ?? 0));
 
-            const brandingEntries = active.filter((e) => e.id?.startsWith('branding-'));
-            const contentEntries = active.filter((e) => !e.id?.startsWith('branding-'));
-
-            const processedContent = contentEntries.map((entry, idx) => ({
+            return active.map((entry) => ({
                 ...entry,
-                processedHtml: processHtmlContent(
-                    entry.html,
-                    meta.content_type,
-                    idx > 0,
-                    meta.palette
-                ),
+                processedHtml: processedHtmlMap.get(entry.id) ?? entry.html,
             }));
-            const processedBranding = brandingEntries.map((entry) => ({
-                ...entry,
-                processedHtml: entry.html,
-            }));
-
-            return [...processedContent, ...processedBranding];
         }
 
         // user_driven / self_contained: treat currentTime as integer index
-        const idx = Math.min(Math.floor(currentTime), entries.length - 1);
+        const idx = Math.max(0, Math.min(Math.floor(currentTime), entries.length - 1));
         const entry = entries[idx];
         if (!entry) return [];
-        return [
-            {
-                ...entry,
-                processedHtml: processHtmlContent(
-                    entry.html,
-                    meta.content_type,
-                    false,
-                    meta.palette
-                ),
-            },
-        ];
-    }, [entries, currentTime, navigationMode, meta]);
+        return [{ ...entry, processedHtml: processedHtmlMap.get(entry.id) ?? entry.html }];
+    }, [entries, currentTime, navigationMode, processedHtmlMap]);
 
     // ── Click on canvas → select topmost active entry ─────────────────────
     const handleCanvasClick = useCallback(() => {
@@ -189,7 +182,7 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
 
                             return (
                                 <div
-                                    key={`editor-${entry.id}-${i}`}
+                                    key={`editor-${entry.id}`}
                                     style={{
                                         position: 'absolute',
                                         inset: 0,

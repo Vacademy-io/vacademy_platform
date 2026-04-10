@@ -17,6 +17,7 @@ import AssessmentSettings from '../-components/AssessmentSettings';
 import WhatsAppSettings from '../-components/WhatsAppSettings/WhatsAppSettings';
 import LeadSettings from '../-components/LeadSettings';
 import GtmSettings from '../-components/GtmSettings';
+import TncSettings from '../-components/Tnc/TncSettings';
 
 export const getAvailableSettingsTabs = () => {
     return [
@@ -109,6 +110,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.GtmSettings,
             value: 'GTM Settings',
             component: GtmSettings,
+        },
+        {
+            tab: SettingsTabs.Tnc,
+            value: 'Student T&C',
+            component: TncSettings,
         },
     ];
 };

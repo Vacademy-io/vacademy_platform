@@ -1,7 +1,9 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Layers, Type, Sliders, Image, Loader2, Trash2 } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { Layers, Type, Sliders, Image, Loader2, Trash2, Wand2, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useVideoEditorStore, DEFAULT_TRANSFORM } from './stores/video-editor-store';
+import { regenerateFrame } from '@/routes/video-api-studio/-services/video-generation';
+import { toast } from 'sonner';
 import {
     extractTextElements,
     applyTextPatch,
@@ -166,6 +168,12 @@ interface TextItemProps {
 
 function TextItem({ el, canvasW, canvasH, onPatch, onDelete }: TextItemProps) {
     const [open, setOpen] = useState(false);
+    const [localText, setLocalText] = useState(el.text);
+
+    // Sync when el.text changes externally (undo, remake accept, etc.)
+    useEffect(() => {
+        setLocalText(el.text);
+    }, [el.text]);
 
     return (
         <div className="border-b border-gray-100 last:border-0">
@@ -197,10 +205,11 @@ function TextItem({ el, canvasW, canvasH, onPatch, onDelete }: TextItemProps) {
                         <label className="text-[10px] font-medium text-gray-500">Text</label>
                         <textarea
                             rows={3}
-                            defaultValue={el.text}
-                            onBlur={(e) => {
-                                if (e.target.value !== el.text) {
-                                    onPatch(el.index, { text: e.target.value });
+                            value={localText}
+                            onChange={(e) => setLocalText(e.target.value)}
+                            onBlur={() => {
+                                if (localText !== el.text) {
+                                    onPatch(el.index, { text: localText });
                                 }
                             }}
                             className="w-full resize-none rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:border-indigo-400 focus:outline-none"
@@ -324,18 +333,24 @@ function TextTab({ entryId, entryHtml, canvasW, canvasH }: TextTabProps) {
 
     const textElements = useMemo(() => extractTextElements(entryHtml), [entryHtml]);
 
+    // Read fresh HTML from store at call-time to avoid stale closure when
+    // multiple patches are applied in quick succession.
     const handlePatch = useCallback(
         (index: number, patch: Parameters<typeof applyTextPatch>[2]) => {
-            updateEntryHtml(entryId, applyTextPatch(entryHtml, index, patch));
+            const currentHtml =
+                useVideoEditorStore.getState().entries.find((e) => e.id === entryId)?.html ?? '';
+            updateEntryHtml(entryId, applyTextPatch(currentHtml, index, patch));
         },
-        [entryHtml, entryId, updateEntryHtml]
+        [entryId, updateEntryHtml]
     );
 
     const handleDelete = useCallback(
         (index: number) => {
-            updateEntryHtml(entryId, deleteTextElement(entryHtml, index));
+            const currentHtml =
+                useVideoEditorStore.getState().entries.find((e) => e.id === entryId)?.html ?? '';
+            updateEntryHtml(entryId, deleteTextElement(currentHtml, index));
         },
-        [entryHtml, entryId, updateEntryHtml]
+        [entryId, updateEntryHtml]
     );
 
     if (textElements.length === 0) {
@@ -470,16 +485,20 @@ function MediaTab({ entryId, entryHtml }: MediaTabProps) {
 
     const handleReplace = useCallback(
         (index: number, newSrc: string) => {
-            updateEntryHtml(entryId, replaceMediaSrc(entryHtml, index, newSrc));
+            const currentHtml =
+                useVideoEditorStore.getState().entries.find((e) => e.id === entryId)?.html ?? '';
+            updateEntryHtml(entryId, replaceMediaSrc(currentHtml, index, newSrc));
         },
-        [entryHtml, entryId, updateEntryHtml]
+        [entryId, updateEntryHtml]
     );
 
     const handleDelete = useCallback(
         (index: number) => {
-            updateEntryHtml(entryId, deleteMediaElement(entryHtml, index));
+            const currentHtml =
+                useVideoEditorStore.getState().entries.find((e) => e.id === entryId)?.html ?? '';
+            updateEntryHtml(entryId, deleteMediaElement(currentHtml, index));
         },
-        [entryHtml, entryId, updateEntryHtml]
+        [entryId, updateEntryHtml]
     );
 
     if (mediaElements.length === 0) {
@@ -522,8 +541,23 @@ interface PropertiesPanelProps {
  * Works as a right column (landscape) or bottom drawer (portrait).
  */
 export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
-    const { entries, meta, selectedEntryId, deleteEntry } = useVideoEditorStore();
+    const { entries, meta, selectedEntryId, deleteEntry, updateEntryHtml, videoId, apiKey } =
+        useVideoEditorStore();
     const [tab, setTab] = useState<Tab>('transform');
+
+    // ── Remake state ───────────────────────────────────────────────────────
+    const [remakeOpen, setRemakeOpen] = useState(false);
+    const [remakePrompt, setRemakePrompt] = useState('');
+    const [remakeState, setRemakeState] = useState<'idle' | 'loading' | 'preview'>('idle');
+    const [remakeNewHtml, setRemakeNewHtml] = useState<string | null>(null);
+
+    // Reset remake panel whenever a different entry is selected
+    useEffect(() => {
+        setRemakeOpen(false);
+        setRemakeState('idle');
+        setRemakeNewHtml(null);
+        setRemakePrompt('');
+    }, [selectedEntryId]);
 
     const entry = selectedEntryId ? entries.find((e) => e.id === selectedEntryId) : null;
     const canvasW = meta.dimensions?.width ?? 1920;
@@ -556,6 +590,52 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
     const outTime = entry.exitTime ?? entry.end;
     const entryId = entry.id;
 
+    // Timestamp to pass to regenerate: inTime for time_driven, array index otherwise
+    const remakeTimestamp =
+        meta.navigation === 'time_driven' ? inTime ?? 0 : entries.indexOf(entry);
+
+    // Pre-fill prompt from entry_meta if available
+    const entryMeta = (entry as unknown as Record<string, unknown>).entry_meta as
+        | Record<string, unknown>
+        | undefined;
+    const defaultPrompt = (entryMeta?.audio_text as string) ?? (entryMeta?.text as string) ?? '';
+
+    const handleRemakeOpen = () => {
+        if (!remakeOpen) {
+            setRemakePrompt(remakePrompt || defaultPrompt);
+            setRemakeState('idle');
+            setRemakeNewHtml(null);
+        }
+        setRemakeOpen((v) => !v);
+    };
+
+    const handleRemakeGenerate = async () => {
+        if (!remakePrompt.trim() || !videoId || !apiKey) return;
+        setRemakeState('loading');
+        try {
+            const result = await regenerateFrame(videoId, apiKey, remakeTimestamp, remakePrompt);
+            setRemakeNewHtml(result.new_html);
+            setRemakeState('preview');
+        } catch (err) {
+            setRemakeState('idle');
+            toast.error(err instanceof Error ? err.message : 'Regeneration failed');
+        }
+    };
+
+    const handleRemakeAccept = () => {
+        if (remakeNewHtml) {
+            updateEntryHtml(entryId, remakeNewHtml);
+        }
+        setRemakeOpen(false);
+        setRemakeState('idle');
+        setRemakeNewHtml(null);
+    };
+
+    const handleRemakeDiscard = () => {
+        setRemakeState('idle');
+        setRemakeNewHtml(null);
+    };
+
     return (
         <div className={wrapperCls} style={isDrawer ? { maxHeight: 280 } : undefined}>
             {/* Header */}
@@ -574,6 +654,21 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                             <span className="ml-1">#{entries.indexOf(entry) + 1}</span>
                         )}
                     </span>
+                    {/* Remake button — only shown when apiKey is available */}
+                    {apiKey && (
+                        <button
+                            onClick={handleRemakeOpen}
+                            className={[
+                                'shrink-0 transition-colors',
+                                remakeOpen
+                                    ? 'text-indigo-500'
+                                    : 'text-gray-300 hover:text-indigo-500',
+                            ].join(' ')}
+                            title="Remake this shot with AI"
+                        >
+                            <Wand2 className="size-3.5" />
+                        </button>
+                    )}
                     <button
                         onClick={() => deleteEntry(entryId)}
                         className="shrink-0 text-gray-300 transition-colors hover:text-red-500"
@@ -582,6 +677,66 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                         <Trash2 className="size-3.5" />
                     </button>
                 </div>
+
+                {/* Remake panel */}
+                {remakeOpen && (
+                    <div className="mt-2 space-y-2">
+                        <textarea
+                            rows={3}
+                            value={remakePrompt}
+                            onChange={(e) => setRemakePrompt(e.target.value)}
+                            placeholder="Describe what to change… e.g. 'Make the title blue and add a subtitle'"
+                            className="w-full resize-none rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] text-gray-800 placeholder:text-gray-400 focus:border-indigo-400 focus:outline-none"
+                            disabled={remakeState === 'loading'}
+                        />
+
+                        {remakeState === 'preview' ? (
+                            <div className="space-y-1.5">
+                                <p className="text-[10px] text-green-600">
+                                    ✓ New version ready — accept to apply, or discard.
+                                </p>
+                                <div className="flex gap-1.5">
+                                    <Button
+                                        size="sm"
+                                        className="h-6 flex-1 gap-1 bg-green-600 px-2 text-[11px] text-white hover:bg-green-700"
+                                        onClick={handleRemakeAccept}
+                                    >
+                                        <Check className="size-3" />
+                                        Accept
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-6 flex-1 gap-1 border-gray-300 px-2 text-[11px] text-gray-600"
+                                        onClick={handleRemakeDiscard}
+                                    >
+                                        <X className="size-3" />
+                                        Discard
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <Button
+                                size="sm"
+                                className="h-6 w-full gap-1 bg-indigo-600 px-2 text-[11px] text-white hover:bg-indigo-700 disabled:opacity-50"
+                                disabled={!remakePrompt.trim() || remakeState === 'loading'}
+                                onClick={handleRemakeGenerate}
+                            >
+                                {remakeState === 'loading' ? (
+                                    <>
+                                        <Loader2 className="size-3 animate-spin" />
+                                        Generating…
+                                    </>
+                                ) : (
+                                    <>
+                                        <Wand2 className="size-3" />
+                                        Generate
+                                    </>
+                                )}
+                            </Button>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Tab bar */}

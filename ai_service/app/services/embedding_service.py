@@ -67,12 +67,13 @@ class EmbeddingService:
         return results
 
     async def _embed_gemini(self, text: str, api_key: str) -> List[float]:
-        """Generate embedding using Gemini text-embedding-004."""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={api_key}"
+        """Generate embedding using Gemini gemini-embedding-001."""
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={api_key}"
         payload = {
-            "model": "models/text-embedding-004",
+            "model": "models/gemini-embedding-001",
             "content": {"parts": [{"text": text}]},
             "taskType": "RETRIEVAL_DOCUMENT",
+            "outputDimensionality": 768,
         }
         response = await self.http_client.post(url, json=payload)
         response.raise_for_status()
@@ -85,11 +86,12 @@ class EmbeddingService:
 
         if gemini_key:
             try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={gemini_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={gemini_key}"
                 payload = {
-                    "model": "models/text-embedding-004",
+                    "model": "models/gemini-embedding-001",
                     "content": {"parts": [{"text": text}]},
                     "taskType": "RETRIEVAL_QUERY",
+                    "outputDimensionality": 768,
                 }
                 response = await self.http_client.post(url, json=payload)
                 response.raise_for_status()

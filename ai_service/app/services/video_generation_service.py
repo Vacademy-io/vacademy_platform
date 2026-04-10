@@ -1290,26 +1290,44 @@ class VideoGenerationService:
             if not self.s3_service.download_file(timeline_url, timeline_path):
                 raise RuntimeError("Failed to download timeline file")
                 
-            timeline_data = json.loads(timeline_path.read_text(encoding='utf-8'))
-            
-            # 3. Find the target frame
+            raw = json.loads(timeline_path.read_text(encoding='utf-8'))
+
+            # Handle both timeline formats:
+            #   plain array: [{...}, ...]
+            #   wrapped:     {"entries": [...], "meta": {...}}
+            timeline_data = raw["entries"] if isinstance(raw, dict) and "entries" in raw else raw
+
+            # 3. Find the target frame by index (when timestamp is an int index)
+            #    or by time range using inTime/exitTime (or legacy start_time/end_time).
             target_frame = None
             frame_index = -1
-            
-            # Timeline is list of {start_time, end_time, html, ...}
-            # Find frame where start_time <= timestamp < end_time
-            # Or closest frame
-            for idx, frame in enumerate(timeline_data):
-                start = float(frame.get("start_time", 0))
-                end = float(frame.get("end_time", 99999))
-                
-                if start <= timestamp and timestamp < end:
-                    target_frame = frame
-                    frame_index = idx
-                    break
-            
+
+            # Accept both int and float whole numbers as direct frame indices
+            is_index = (
+                isinstance(timestamp, (int, float))
+                and float(timestamp) == float(int(timestamp))
+                and 0 <= int(timestamp) < len(timeline_data)
+            )
+            if is_index:
+                idx = int(timestamp)
+                target_frame = timeline_data[idx]
+                frame_index = idx
+            else:
+                # Find frame where inTime <= timestamp < exitTime
+                for idx, frame in enumerate(timeline_data):
+                    start = float(
+                        frame.get("inTime") or frame.get("start_time") or frame.get("start") or 0
+                    )
+                    end = float(
+                        frame.get("exitTime") or frame.get("end_time") or frame.get("end") or 99999
+                    )
+                    if start <= timestamp < end:
+                        target_frame = frame
+                        frame_index = idx
+                        break
+
             if not target_frame:
-                # If no exact match (e.g. timestamp at very end), take last frame
+                # Fallback to last frame
                 if timeline_data:
                     target_frame = timeline_data[-1]
                     frame_index = len(timeline_data) - 1
@@ -1319,11 +1337,8 @@ class VideoGenerationService:
             original_html = target_frame.get("html", "")
             
             # 4. Call LLM to regenerate HTML
-            # We need an LLM client here. We can use OpenRouter client directly or via pipeline.
-            # For simplicity and speed, let's use the one from config/pipeline settings
             from ..config import get_settings
-            from ..adapters.openrouter_llm_client import OpenRouterOutlineLLMClient
-            
+
             # Construct prompt
             system_prompt = """
             You are an expert HTML/CSS developer for educational videos. 
@@ -1345,18 +1360,6 @@ class VideoGenerationService:
             
             Generate the updated HTML:
             """
-            
-            # Use LLM client
-            # We can reuse the outline client or a simpler one. 
-            # Ideally we should inject this dependency, but for now we instantiate as service method
-            llm_client = OpenRouterOutlineLLMClient() 
-            
-            # Note: OpenRouterOutlineLLMClient expects specific format, let's use a simpler direct call or 
-            # if the client supports chat. The existing client is for outlines.
-            # Let's import requests to call OpenRouter direct for this specific task
-            # OR better, stick to the pattern and use a proper adapter.
-            # Since we are in the service, let's use the pipeline's LLM logic if available, 
-            # or just call the API directly using settings keys.
             
             import requests
             settings = get_settings()
@@ -1387,16 +1390,14 @@ class VideoGenerationService:
                 raise RuntimeError("Failed to regenerate HTML via AI")
                 
             new_html = response.json()["choices"][0]["message"]["content"].strip()
-            
-            # Cleanup markdown block if present
-            if new_html.startswith("```html"):
-                new_html = new_html.replace("```html", "", 1)
-            if new_html.startswith("```"):
-                new_html = new_html.replace("```", "", 1)
-            if new_html.endswith("```"):
-                new_html = new_html[:-3]
-            
-            new_html = new_html.strip()
+
+            # Extract HTML from markdown code fence if the LLM wrapped its response.
+            # Handles both ```html ... ``` and ``` ... ``` anywhere in the response.
+            fence_match = re.search(r'```(?:html)?\s*\n?([\s\S]*?)\n?\s*```', new_html, re.IGNORECASE)
+            if fence_match:
+                new_html = fence_match.group(1).strip()
+            else:
+                new_html = new_html.strip()
             
             return {
                 "video_id": video_id,

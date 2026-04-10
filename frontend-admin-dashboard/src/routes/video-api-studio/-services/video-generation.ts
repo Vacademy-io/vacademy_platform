@@ -768,3 +768,48 @@ export async function getRemoteHistory(apiKey: string, limit: number = 20): Prom
         },
     }));
 }
+
+// ---------------------------------------------------------------------------
+// Frame regeneration
+// ---------------------------------------------------------------------------
+
+export interface RegenerateFrameResponse {
+    video_id: string;
+    frame_index: number;
+    timestamp: number;
+    original_html: string;
+    new_html: string;
+}
+
+/**
+ * Ask the AI to regenerate a single frame's HTML using a user prompt.
+ * Pass the entry's inTime (seconds) as `timestamp` for time_driven videos,
+ * or the entry's array index for user_driven/self_contained.
+ * Returns the new HTML for preview — call frame/update to persist.
+ */
+export async function regenerateFrame(
+    videoId: string,
+    apiKey: string,
+    timestamp: number,
+    userPrompt: string
+): Promise<RegenerateFrameResponse> {
+    const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/frame/regenerate`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Institute-Key': apiKey,
+        },
+        body: JSON.stringify({
+            video_id: videoId,
+            timestamp,
+            user_prompt: userPrompt,
+        }),
+    });
+
+    if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to regenerate frame: ${text}`);
+    }
+
+    return response.json();
+}

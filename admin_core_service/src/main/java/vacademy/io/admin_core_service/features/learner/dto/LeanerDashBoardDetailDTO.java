@@ -15,6 +15,8 @@ public class LeanerDashBoardDetailDTO {
     private Integer courses;
     private Integer testsAssigned;
     private List<LearnerRecentSlides> slides;
+    private Boolean askForTnc;
+    private String tncUrl;
 
     public LeanerDashBoardDetailDTO() {
     }

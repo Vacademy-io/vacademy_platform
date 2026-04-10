@@ -109,6 +109,7 @@ export const enum SettingsTabs {
     WhatsApp = 'whatsapp',
     LeadSettings = 'leadSettings',
     GtmSettings = 'gtmSettings',
+    Tnc = 'tnc',
 }
 
 export const DAYS_IN_MONTH = 30;

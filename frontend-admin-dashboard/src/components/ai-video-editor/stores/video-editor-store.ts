@@ -25,9 +25,19 @@ function isIdentity(t: EntryTransform): boolean {
     return t.x === 0 && t.y === 0 && t.scale === 1 && t.rotation === 0;
 }
 
+const WRAPPER_RE =
+    /^<div style="position:absolute;inset:0;transform:[^"]*;transform-origin:center center;overflow:visible;">([\s\S]*)<\/div>$/;
+
+/** Strip any previously baked transform wrapper so we never double-wrap on re-save. */
+function stripTransformWrapper(html: string): string {
+    const m = html.match(WRAPPER_RE);
+    return m ? m[1] ?? html : html;
+}
+
 function injectTransformWrapper(html: string, t: EntryTransform): string {
+    const inner = stripTransformWrapper(html);
     const transform = `translate(${t.x}px, ${t.y}px) scale(${t.scale}) rotate(${t.rotation}deg)`;
-    return `<div style="position:absolute;inset:0;transform:${transform};transform-origin:center center;overflow:visible;">${html}</div>`;
+    return `<div style="position:absolute;inset:0;transform:${transform};transform-origin:center center;overflow:visible;">${inner}</div>`;
 }
 
 interface HistorySnapshot {
@@ -312,39 +322,42 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         set({ isSaving: true });
 
         try {
-            if (apiKey) {
-                // Send to backend
-                await Promise.all(
-                    toSave.map(async (entry) => {
-                        const frameIndex = entries.indexOf(entry);
-                        const t = entryTransforms[entry.id];
-                        const newHtml =
-                            t && !isIdentity(t)
-                                ? injectTransformWrapper(entry.html, t)
-                                : entry.html;
-
-                        const res = await fetch(
-                            `${AI_SERVICE_BASE_URL}/external/video/v1/frame/update`,
-                            {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-Institute-Key': apiKey,
-                                },
-                                body: JSON.stringify({
-                                    video_id: videoId,
-                                    frame_index: frameIndex,
-                                    new_html: newHtml,
-                                }),
-                            }
-                        );
-                        if (!res.ok) {
-                            const text = await res.text().catch(() => res.statusText);
-                            throw new Error(`Frame ${frameIndex}: ${text}`);
-                        }
-                    })
-                );
+            if (!apiKey) {
+                // No API key — nothing persisted; keep dirty state so the user
+                // knows their changes are still unsaved.
+                set({ isSaving: false });
+                throw new Error('No API key configured — changes were not saved to the server.');
             }
+
+            // Send to backend
+            await Promise.all(
+                toSave.map(async (entry) => {
+                    const frameIndex = entries.indexOf(entry);
+                    const t = entryTransforms[entry.id];
+                    const newHtml =
+                        t && !isIdentity(t) ? injectTransformWrapper(entry.html, t) : entry.html;
+
+                    const res = await fetch(
+                        `${AI_SERVICE_BASE_URL}/external/video/v1/frame/update`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Institute-Key': apiKey,
+                            },
+                            body: JSON.stringify({
+                                video_id: videoId,
+                                frame_index: frameIndex,
+                                new_html: newHtml,
+                            }),
+                        }
+                    );
+                    if (!res.ok) {
+                        const text = await res.text().catch(() => res.statusText);
+                        throw new Error(`Frame ${frameIndex}: ${text}`);
+                    }
+                })
+            );
 
             // Bake transforms into local entry HTML so canvas re-renders correctly
             set((s) => ({

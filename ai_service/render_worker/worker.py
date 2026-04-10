@@ -125,7 +125,7 @@ class RenderWorker:
             # Split frames across N parallel Playwright processes for speed.
             # Each process renders a subset of frames, then we assemble with FFmpeg.
             NUM_WORKERS = int(os.environ.get("RENDER_PARALLEL_WORKERS", "4"))
-            FPS = fps if fps and fps in (15, 20, 25) else 20
+            FPS = fps if fps and fps in (15, 20, 25, 30) else 25
             output_path = work_dir / "output.mp4"
             frames_dir = work_dir / ".render_frames"
             frames_dir.mkdir(parents=True, exist_ok=True)

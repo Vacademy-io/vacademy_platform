@@ -38,7 +38,7 @@ from ..services.s3_service import S3Service
 
 class RenderOptionsBody(BaseModel):
     resolution: Optional[str] = Field(None, description="720p or 1080p")
-    fps: Optional[int] = Field(None, description="15, 20, or 25")
+    fps: Optional[int] = Field(None, description="15, 20, 25, or 30")
     show_captions: Optional[bool] = Field(None)
     show_branding: Optional[bool] = Field(None)
     caption_position: Optional[str] = Field(None, description="top or bottom")
@@ -515,7 +515,7 @@ async def request_video_render(
         _render_height = 1920 if _orientation == "portrait" else 1080
 
     # Build optional render params — explicit None checks so `False` / `0` values are respected
-    _fps = (body.fps if body is not None and body.fps is not None and body.fps in (15, 20, 25) else None)
+    _fps = (body.fps if body is not None and body.fps is not None and body.fps in (15, 20, 25, 30) else None)
     _show_captions = body.show_captions if (body is not None and body.show_captions is not None) else True
     _show_branding = body.show_branding if (body is not None and body.show_branding is not None) else True
     _caption_position = (body.caption_position if body is not None and body.caption_position in ("top", "bottom") else None)
@@ -619,6 +619,26 @@ async def get_render_status(
 
     result = render_svc.check_status(job_id)
     return result
+
+
+@router.delete("/render/{video_id}")
+async def clear_rendered_video(
+    video_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """
+    Clear the rendered video URL for a video so it can be re-rendered.
+
+    Removes `video` from s3_urls and file_ids, and removes `render_job_id`
+    from metadata. The next call to /render/{video_id} will start a fresh
+    render. Useful when the user wants to re-download with different settings.
+    """
+    repo = AiVideoRepository(session=db)
+    updated = repo.clear_video_url(video_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    return {"status": "ok", "video_id": video_id, "message": "Rendered video cleared"}
 
 
 @router.post("/render-callback/{video_id}")

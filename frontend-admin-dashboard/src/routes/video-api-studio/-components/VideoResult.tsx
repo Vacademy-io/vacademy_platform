@@ -14,6 +14,7 @@ import {
     Loader2,
     ExternalLink,
     Pencil,
+    X,
 } from 'lucide-react';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import {
@@ -24,6 +25,7 @@ import {
     requestVideoRender,
     getVideoUrls,
     getRenderStatus,
+    clearRenderedVideo,
     type RenderSettings,
 } from '../-services/video-generation';
 import { LatexRenderer } from './LatexRenderer';
@@ -291,6 +293,27 @@ export function VideoResult({
         [videoId, apiKey, renderState, startRenderPolling]
     );
 
+    // ------------------------------------------------------------------
+    // Clear cached render so the user can re-render with new settings
+    // ------------------------------------------------------------------
+
+    const handleClearRender = useCallback(async () => {
+        if (!apiKey) return;
+        try {
+            await clearRenderedVideo(videoId, apiKey);
+            setVideoDownloadUrl(null);
+            setRenderState('idle');
+            setRenderJobId(null);
+            setRenderProgress(0);
+            setRenderError(null);
+            clearRenderJob(videoId);
+            toast.success('Cached video cleared. You can render again.');
+        } catch (error) {
+            console.error('[VideoResult] Failed to clear render:', error);
+            toast.error(error instanceof Error ? error.message : 'Failed to clear cached video');
+        }
+    }, [videoId, apiKey]);
+
     // Build the shareable URL
     const baseUrl = window.location.origin;
     const shareableUrl = `${baseUrl}/content/${videoId}?timeline=${encodeURIComponent(htmlUrl)}${audioUrl ? `&audio=${encodeURIComponent(audioUrl)}` : ''}${wordsUrl ? `&words=${encodeURIComponent(wordsUrl)}` : ''}`;
@@ -512,16 +535,27 @@ export function VideoResult({
                                 </label>
 
                                 {renderState === 'done' && videoDownloadUrl ? (
-                                    <a
-                                        href={videoDownloadUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex h-9 w-full items-center gap-2 rounded-md border bg-green-50 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-100"
-                                    >
-                                        <Download className="size-4" />
-                                        Download MP4
-                                        <ExternalLink className="ml-auto size-3" />
-                                    </a>
+                                    <div className="flex items-center gap-1.5">
+                                        <a
+                                            href={videoDownloadUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex h-9 flex-1 items-center gap-2 rounded-md border bg-green-50 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-100"
+                                        >
+                                            <Download className="size-4" />
+                                            Download MP4
+                                            <ExternalLink className="ml-auto size-3" />
+                                        </a>
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="size-9 shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                            onClick={handleClearRender}
+                                            title="Clear cached video to re-render"
+                                        >
+                                            <X className="size-4" />
+                                        </Button>
+                                    </div>
                                 ) : renderState === 'rendering' || renderState === 'submitting' ? (
                                     <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
                                         <div className="flex items-center gap-2">

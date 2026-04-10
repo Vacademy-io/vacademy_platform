@@ -616,6 +616,30 @@ export async function getRenderStatus(
     return response.json();
 }
 
+/**
+ * Clear the cached rendered MP4 for a video so it can be re-rendered.
+ * Removes `video` from s3_urls and `render_job_id` from metadata.
+ */
+export async function clearRenderedVideo(
+    videoId: string,
+    apiKey: string
+): Promise<void> {
+    const response = await fetch(
+        `${AI_SERVICE_BASE_URL}/external/video/v1/render/${videoId}`,
+        {
+            method: 'DELETE',
+            headers: {
+                'X-Institute-Key': apiKey,
+            },
+        }
+    );
+
+    if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to clear rendered video: ${text}`);
+    }
+}
+
 export async function getVideoStatus(
     videoId: string,
     apiKey: string

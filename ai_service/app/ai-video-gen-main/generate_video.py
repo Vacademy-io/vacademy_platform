@@ -1280,13 +1280,20 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
               const root = host.shadowRoot;
               const wrapper = root.getElementById('content-wrapper');
               wrapper.innerHTML = e.html;
-              host.style.left = (e.x | 0) + 'px';
-              host.style.top = (e.y | 0) + 'px';
-              host.style.width = (e.w | 0) + 'px';
-              host.style.height = (e.h | 0) + 'px';
-              // Full-viewport entries get page background so no bleed-through
-              const vw = window.innerWidth, vh = window.innerHeight;
-              if (e.x === 0 && e.y === 0 && e.w >= vw && e.h >= vh) {
+              // Match client AIContentPlayer behavior: every entry fills the
+              // full viewport (top:0 left:0 100% 100%) regardless of x/y/w/h.
+              // This ensures the rendered video looks identical to the client.
+              // Branding watermarks are excluded since they need positioning.
+              if (e.id && e.id.startsWith('branding-')) {
+                host.style.left = (e.x | 0) + 'px';
+                host.style.top = (e.y | 0) + 'px';
+                host.style.width = (e.w | 0) + 'px';
+                host.style.height = (e.h | 0) + 'px';
+              } else {
+                host.style.left = '0px';
+                host.style.top = '0px';
+                host.style.width = window.innerWidth + 'px';
+                host.style.height = window.innerHeight + 'px';
                 host.style.background = getComputedStyle(document.body).backgroundColor || '#ffffff';
               }
             };
@@ -2213,43 +2220,23 @@ def render_video_from_json(
                     if (seekPromises.length > 0) await Promise.all(seekPromises);
                     } // end else (hasVideos)
                 }
-                // 7. Rough Notation time-sync
-                if (window.__registeredAnnotations && window.__annotationShowTimes) {
-                    const ct = state.t;
+                // 7. Rough Notation — always force-show all registered annotations
+                // and force their SVGs visible. This matches the snippet-injection
+                // behavior and ensures underlines/highlights persist across frames.
+                if (window.__registeredAnnotations && window.__registeredAnnotations.length > 0) {
                     window.__registeredAnnotations.forEach(a => {
-                        const showTime = window.__annotationShowTimes.get(a);
-                        if (showTime !== undefined && showTime <= ct) {
-                            try { if (!a.isShowing) a.show(); } catch(e) {}
-                        } else {
-                            try { if (a.isShowing) a.hide(); } catch(e) {}
-                            try {
-                                if (a._e && a._e.nextElementSibling && a._e.nextElementSibling.tagName === 'svg') {
-                                    a._e.nextElementSibling.style.setProperty('opacity', '0', 'important');
-                                    a._e.nextElementSibling.style.setProperty('visibility', 'hidden', 'important');
-                                }
-                            } catch(e) {}
-                        }
-                    });
-                    document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="branding-"]').forEach(host => {
-                        const root = host.shadowRoot;
-                        if (!root) return;
-                        root.querySelectorAll('svg.rough-annotation').forEach(svg => {
-                            const parentEl = svg.previousElementSibling;
-                            let shouldShow = true;
-                            if (window.__registeredAnnotations && parentEl) {
-                                for (const a of window.__registeredAnnotations) {
-                                    if (a._e === parentEl) {
-                                        const st = window.__annotationShowTimes.get(a);
-                                        shouldShow = (st !== undefined && st <= ct);
-                                        break;
-                                    }
-                                }
-                            }
-                            svg.style.setProperty('opacity', shouldShow ? '1' : '0', 'important');
-                            svg.style.setProperty('visibility', shouldShow ? 'visible' : 'hidden', 'important');
-                        });
+                        try { if (!a.isShowing) a.show(); } catch(e) {}
                     });
                 }
+                // Force-show all annotation SVGs in shadow DOMs (battles any !important hide rules)
+                document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"], [id^="branding-"]').forEach(host => {
+                    const root = host.shadowRoot;
+                    if (!root) return;
+                    root.querySelectorAll('svg.rough-annotation').forEach(svg => {
+                        svg.style.setProperty('opacity', '1', 'important');
+                        svg.style.setProperty('visibility', 'visible', 'important');
+                    });
+                });
                 // 8. Wait for paint — always at least one RAF to ensure video frames
                 // and DOM mutations are rendered before screenshot capture.
                 // Double-RAF on segment changes for layout/annotation settling.

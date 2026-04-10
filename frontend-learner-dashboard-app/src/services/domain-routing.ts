@@ -37,6 +37,9 @@ export interface DomainRoutingResponse {
   instructorPortalUrl?: string | null;
   // Optional flag to convert username and password to lowercase during login
   convertUsernamePasswordToLowercase?: boolean | null;
+  // Comma-separated ISO 3166-1 alpha-2 country codes (e.g. "in,us,gb,au")
+  // Drives the default selection and ordering of country options in phone inputs.
+  commaSeparatedPreferredCountry?: string | null;
 }
 
 export interface DomainRoutingError {
@@ -54,7 +57,84 @@ export interface CachedInstituteBranding {
 }
 
 const BRANDING_CACHE_KEY = "InstituteBranding";
+const PREFERRED_COUNTRIES_CACHE_KEY = "InstitutePreferredCountries";
 let cachedBrandingMemory: CachedInstituteBranding | null = null;
+let cachedPreferredCountriesMemory: string[] | null = null;
+
+const canUseLocalStorage = (): boolean => {
+  return typeof window !== "undefined" && !!window?.localStorage;
+};
+
+/**
+ * Parses a comma-separated list of country codes into a normalized lowercase array.
+ * Whitespace and empty entries are stripped.
+ */
+const parsePreferredCountries = (
+  raw: string | null | undefined
+): string[] => {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((code) => code.trim().toLowerCase())
+    .filter((code) => code.length > 0);
+};
+
+export const setCachedPreferredCountries = (
+  raw: string | null | undefined
+): void => {
+  const parsed = parsePreferredCountries(raw);
+  cachedPreferredCountriesMemory = parsed;
+
+  if (!canUseLocalStorage()) {
+    return;
+  }
+
+  try {
+    if (parsed.length === 0) {
+      window.localStorage.removeItem(PREFERRED_COUNTRIES_CACHE_KEY);
+    } else {
+      window.localStorage.setItem(
+        PREFERRED_COUNTRIES_CACHE_KEY,
+        JSON.stringify(parsed)
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "[Domain Routing] Failed to persist preferred countries cache:",
+      error
+    );
+  }
+};
+
+export const getCachedPreferredCountries = (): string[] => {
+  if (cachedPreferredCountriesMemory) {
+    return cachedPreferredCountriesMemory;
+  }
+
+  if (!canUseLocalStorage()) {
+    return [];
+  }
+
+  try {
+    const stored = window.localStorage.getItem(PREFERRED_COUNTRIES_CACHE_KEY);
+    if (!stored) {
+      return [];
+    }
+    const parsed = JSON.parse(stored);
+    if (Array.isArray(parsed)) {
+      cachedPreferredCountriesMemory = parsed.filter(
+        (c): c is string => typeof c === "string"
+      );
+      return cachedPreferredCountriesMemory;
+    }
+  } catch (error) {
+    console.warn(
+      "[Domain Routing] Failed to read preferred countries cache:",
+      error
+    );
+  }
+  return [];
+};
 
 export const resolveDomainRouting = async (
   domain: string,
@@ -99,10 +179,6 @@ export const resolveDomainRouting = async (
 export const getCurrentDomainInfo = async () => {
   // Use the platform-aware domain resolution
   return await getDomainAndSubdomain();
-};
-
-const canUseLocalStorage = (): boolean => {
-  return typeof window !== "undefined" && !!window?.localStorage;
 };
 
 const normalizeBranding = (

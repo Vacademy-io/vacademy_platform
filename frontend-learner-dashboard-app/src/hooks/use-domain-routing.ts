@@ -6,6 +6,7 @@ import {
   getCurrentDomainInfo,
   DomainRoutingResponse,
   setCachedInstituteBranding,
+  setCachedPreferredCountries,
 } from "@/services/domain-routing";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
@@ -156,6 +157,9 @@ export const useDomainRouting = () => {
         instituteThemeCode: data.instituteThemeCode,
         homeIconClickRoute: data.homeIconClickRoute ?? null,
       });
+
+      // Cache preferred countries for synchronous access by phone inputs
+      setCachedPreferredCountries(data.commaSeparatedPreferredCountry ?? null);
 
       // Update global state
       setInstituteId(data.instituteId);

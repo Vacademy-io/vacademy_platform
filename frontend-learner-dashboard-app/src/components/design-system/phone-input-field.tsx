@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { useMemo } from "react";
 
 import {
   FormControl,
@@ -12,6 +13,7 @@ import {
 import type { Control } from "react-hook-form";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
+import { getCachedPreferredCountries } from "@/services/domain-routing";
 
 interface PhoneInputFieldProps {
   label: string;
@@ -26,17 +28,31 @@ interface PhoneInputFieldProps {
   onChange?: (value: string) => void;
 }
 
+const DEFAULT_PREFERRED_COUNTRIES = ["us", "gb", "in", "au"];
+
 const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
   label,
   name,
   placeholder,
   control,
   disabled = false,
-  country = "us",
+  country,
   required = false,
   value,
   onChange,
 }) => {
+  // Read institute-configured preferred countries from domain routing cache.
+  // First entry becomes the default selected country; the full list is used
+  // to order options in the country picker dropdown.
+  const { effectiveCountry, preferredCountries } = useMemo(() => {
+    const cached = getCachedPreferredCountries();
+    const list = cached.length > 0 ? cached : DEFAULT_PREFERRED_COUNTRIES;
+    return {
+      effectiveCountry: country ?? list[0] ?? "us",
+      preferredCountries: list,
+    };
+  }, [country]);
+
   return (
     <FormField
       control={control as Control}
@@ -50,7 +66,7 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
           <FormControl>
             <PhoneInput
               {...field}
-              country={country}
+              country={effectiveCountry}
               enableSearch={true}
               placeholder={placeholder}
               onChange={(val) => {
@@ -66,7 +82,7 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
               countryCodeEditable={false}
               enableAreaCodes={false}
               disableCountryGuess={false}
-              preferredCountries={["us", "gb", "in", "au"]}
+              preferredCountries={preferredCountries}
             />
           </FormControl>
           <FormMessage />

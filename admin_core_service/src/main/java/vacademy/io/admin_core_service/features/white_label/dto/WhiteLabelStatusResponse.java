@@ -116,5 +116,9 @@ public class WhiteLabelStatusResponse {
 
         @JsonProperty("mac_app_link")
         private String macAppLink;
+
+        // ── Phone input preferences ───────────────────────────────────────
+        @JsonProperty("comma_separated_preferred_country")
+        private String commaSeparatedPreferredCountry;
     }
 }

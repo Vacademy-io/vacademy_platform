@@ -25,8 +25,15 @@ import {
     Route,
     Link2,
     Upload,
-    Pencil
+    Pencil,
+    Phone
 } from 'lucide-react';
+import PreferredCountriesSelector from './PreferredCountriesSelector';
+import {
+    parsePreferredCountriesString,
+    stringifyPreferredCountries,
+    countryCodeToFlag,
+} from '../-utils/countries';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { WHITE_LABEL_SETUP, WHITE_LABEL_STATUS } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
@@ -86,6 +93,13 @@ interface RoutingConfig {
     app_store_app_link?: string;
     windows_app_link?: string;
     mac_app_link?: string;
+    /**
+     * Comma-separated ISO 3166-1 alpha-2 country codes (e.g. "in,us,gb,au").
+     * The first entry becomes the default country in phone inputs across the
+     * learner and admin dashboards. The full ordered list determines the order
+     * of the country picker dropdown.
+     */
+    comma_separated_preferred_country?: string;
 }
 
 interface RoutingEntry extends RoutingConfig {
@@ -391,6 +405,37 @@ const ConfigFormSection = ({
 
         <Separator />
 
+        {/* Phone Input Preferences */}
+        <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <Phone className="size-4 text-sky-500" />
+                Phone Input Preferences
+            </div>
+            <div className="space-y-1.5">
+                <Label className="text-xs text-slate-500">
+                    Preferred Countries
+                </Label>
+                <PreferredCountriesSelector
+                    value={parsePreferredCountriesString(
+                        config.comma_separated_preferred_country
+                    )}
+                    onChange={(codes) =>
+                        onUpdate(
+                            'comma_separated_preferred_country',
+                            codes.length > 0 ? stringifyPreferredCountries(codes) : undefined
+                        )
+                    }
+                />
+                <p className="text-[11px] text-slate-400">
+                    The first selected country is pre-selected in phone inputs across the
+                    learner and admin portals. The full list determines the order of the
+                    country picker. Use the ↑ / ↓ arrows on each chip to reorder.
+                </p>
+            </div>
+        </div>
+
+        <Separator />
+
         {/* Routes */}
         <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -524,6 +569,8 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                     app_store_app_link: r.app_store_app_link ?? undefined,
                     windows_app_link: r.windows_app_link ?? undefined,
                     mac_app_link: r.mac_app_link ?? undefined,
+                    comma_separated_preferred_country:
+                        r.comma_separated_preferred_country ?? undefined,
                 },
             };
         });
@@ -922,7 +969,12 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
         entry.windows_app_link || entry.mac_app_link ||
         entry.allow_signup != null || entry.allow_google_auth != null ||
         entry.allow_github_auth != null || entry.allow_email_otp_auth != null ||
-        entry.allow_phone_auth != null || entry.allow_username_password_auth != null
+        entry.allow_phone_auth != null || entry.allow_username_password_auth != null ||
+        entry.comma_separated_preferred_country
+    );
+
+    const preferredCountryCodes = parsePreferredCountriesString(
+        entry.comma_separated_preferred_country
     );
 
     return (
@@ -987,6 +1039,38 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                         <ConfigValue label="Windows" value={entry.windows_app_link} />
                         <ConfigValue label="Mac" value={entry.mac_app_link} />
                     </div>
+                    {preferredCountryCodes.length > 0 && (
+                        <div className="mt-3 border-t border-slate-200 pt-3">
+                            <div className="flex items-center gap-2 text-xs">
+                                <span className="text-slate-500">Preferred Countries</span>
+                                <div className="flex flex-wrap gap-1">
+                                    {preferredCountryCodes.map((code, idx) => (
+                                        <span
+                                            key={code}
+                                            className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-mono ${
+                                                idx === 0
+                                                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                                    : 'border-slate-200 bg-slate-50 text-slate-600'
+                                            }`}
+                                            title={
+                                                idx === 0
+                                                    ? 'Default selected country'
+                                                    : undefined
+                                            }
+                                        >
+                                            {idx === 0 && (
+                                                <Star className="size-2.5 fill-amber-500 text-amber-500" />
+                                            )}
+                                            <span className="text-sm leading-none">
+                                                {countryCodeToFlag(code)}
+                                            </span>
+                                            <span className="uppercase">{code}</span>
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

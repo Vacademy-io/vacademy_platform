@@ -401,6 +401,114 @@ public class AudienceService {
                 // 4. Build custom field map for email
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
 
+                // 4a. Workflow-aware path: if an active workflow trigger exists for this
+                // (institute, audience, AUDIENCE_LEAD_SUBMISSION), delegate to the workflow
+                // engine — mirroring the Zoho webhook path. This ensures audience-side and
+                // admin-manual lead submissions fire the same workflows that Zoho leads do.
+                // If no trigger is configured for the audience, we fall through to the
+                // existing direct-email blocks below (no behavior change for those cases).
+                boolean workflowTriggerExists = workflowTriggerService
+                        .findByInstituteIdEventNameAndEventId(
+                                instituteId,
+                                WorkflowTriggerEvent.AUDIENCE_LEAD_SUBMISSION.name(),
+                                requestDTO.getAudienceId())
+                        .isPresent();
+
+                if (workflowTriggerExists) {
+                    logger.info(
+                            "Workflow trigger found for audience {}. Delegating lead submission to workflow engine (skipping direct email send).",
+                            requestDTO.getAudienceId());
+
+                    // Current submission time (matches V2 / Zoho path formatting)
+                    java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+                    java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter
+                            .ofPattern("MMM dd, yyyy hh:mm a z");
+                    String submissionTime = now.format(formatter);
+
+                    // Build default email bodies so workflow nodes that consume
+                    // respondentEmailRequests / adminEmailRequests have content to send.
+                    // Workflows that build their own emails from #user / #customFields
+                    // will simply ignore these — same contract as the Zoho path.
+                    String respondentEmailBody = buildDefaultEmailBody(
+                            audience.getCampaignName(),
+                            userForNotification.getFullName(),
+                            userForNotification.getEmail(),
+                            customFieldsForEmail);
+                    String respondentEmailSubject = "Thank You for Submitting Your Response for Campaign - "
+                            + audience.getCampaignName();
+
+                    String adminEmailBody = buildAdminNotificationBody(
+                            audience.getCampaignName(),
+                            userForNotification.getFullName(),
+                            userForNotification.getEmail(),
+                            customFieldsForEmail);
+                    String adminEmailSubject = "New Lead Submitted - " + audience.getCampaignName();
+
+                    // Parse admin notification recipients (toNotify)
+                    List<String> adminEmails = new ArrayList<>();
+                    if (StringUtils.hasText(audience.getToNotify())) {
+                        for (String email : audience.getToNotify().split(",")) {
+                            String trimmedEmail = email.trim();
+                            if (StringUtils.hasText(trimmedEmail)) {
+                                adminEmails.add(trimmedEmail);
+                            }
+                        }
+                    }
+
+                    // Build audience DTO for workflow context
+                    AudienceDTO audienceDTO = AudienceDTO.builder()
+                            .id(audience.getId())
+                            .campaignName(audience.getCampaignName())
+                            .instituteId(audience.getInstituteId())
+                            .status(audience.getStatus())
+                            .toNotify(audience.getToNotify())
+                            .sendRespondentEmail(audience.getSendRespondentEmail())
+                            .build();
+
+                    // Build context data — shape mirrors submitLeadV2 / Zoho path so
+                    // existing workflow node configs work without modification.
+                    Map<String, Object> contextData = new HashMap<>();
+                    contextData.put("user", userForNotification);
+                    contextData.put("audience", audienceDTO);
+                    contextData.put("audienceId", requestDTO.getAudienceId());
+                    contextData.put("instituteId", instituteId);
+                    contextData.put("customFields", customFieldsForEmail);
+                    contextData.put("submissionTime", submissionTime);
+                    contextData.put("responseId", savedResponse.getId());
+                    contextData.put("campaignName", audience.getCampaignName());
+                    contextData.put("sendRespondentEmail",
+                            audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail());
+
+                    List<Map<String, Object>> respondentEmailRequests = new ArrayList<>();
+                    Map<String, Object> respondentEmailRequest = new HashMap<>();
+                    respondentEmailRequest.put("to", userForNotification.getEmail());
+                    respondentEmailRequest.put("subject", respondentEmailSubject);
+                    respondentEmailRequest.put("body", respondentEmailBody);
+                    respondentEmailRequests.add(respondentEmailRequest);
+                    contextData.put("respondentEmailRequests", respondentEmailRequests);
+
+                    List<Map<String, Object>> adminEmailRequests = new ArrayList<>();
+                    for (String adminEmail : adminEmails) {
+                        Map<String, Object> adminEmailRequest = new HashMap<>();
+                        adminEmailRequest.put("to", adminEmail);
+                        adminEmailRequest.put("subject", adminEmailSubject);
+                        adminEmailRequest.put("body", adminEmailBody);
+                        adminEmailRequests.add(adminEmailRequest);
+                    }
+                    contextData.put("adminEmailRequests", adminEmailRequests);
+
+                    workflowTriggerService.handleTriggerEvents(
+                            WorkflowTriggerEvent.AUDIENCE_LEAD_SUBMISSION.name(),
+                            requestDTO.getAudienceId(),
+                            instituteId,
+                            contextData);
+
+                    return savedResponse.getId();
+                }
+
+                // No workflow trigger configured for this audience — preserve the
+                // original direct-email behavior below.
+
                 // 5. Send notification to respondent (if enabled)
                 if (audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail()) {
                     logger.info("Sending notification to respondent: {}", userForNotification.getEmail());

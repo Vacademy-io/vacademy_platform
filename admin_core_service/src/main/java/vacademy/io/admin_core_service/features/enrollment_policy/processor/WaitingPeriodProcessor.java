@@ -27,7 +27,6 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentL
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
@@ -758,21 +757,34 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
     private void moveAllMappingsToInvited(List<StudentSessionInstituteGroupMapping> mappings, UserPlan userPlan) {
         log.info("Moving {} mappings to INVITED (waiting period = 0)", mappings.size());
 
+        // Mark UserPlan as EXPIRED FIRST — prevents re-processing if mapping transitions fail
+        userPlan.setStatus(UserPlanStatusEnum.EXPIRED.name());
+        userPlanRepository.save(userPlan);
+        log.info("UserPlan {} marked as EXPIRED", userPlan.getId());
+
         java.util.Date today = new java.util.Date();
         int terminatedCount = 0;
 
         for (StudentSessionInstituteGroupMapping mapping : mappings) {
             // Only mark as TERMINATED if mapping's own expiryDate has been reached
             if (mapping.getExpiryDate() != null && !mapping.getExpiryDate().after(today)) {
-                // Mapping's expiryDate has been reached - mark as TERMINATED
-                mapping.setStatus(LearnerSessionStatusEnum.TERMINATED.name());
-                mappingRepository.save(mapping);
-                terminatedCount++;
-
-                // Create INVITED entry
-                createInvitedEntry(mapping);
-                log.debug("Marked mapping {} as TERMINATED and created INVITED entry (expiryDate: {})",
-                        mapping.getId(), mapping.getExpiryDate());
+                try {
+                    // Create INVITED entry FIRST — only terminate mapping if INVITED was created
+                    StudentSessionInstituteGroupMapping invited = createInvitedEntry(mapping);
+                    if (invited != null) {
+                        mapping.setStatus(LearnerSessionStatusEnum.TERMINATED.name());
+                        mappingRepository.save(mapping);
+                        terminatedCount++;
+                        log.debug("Marked mapping {} as TERMINATED and created INVITED entry (expiryDate: {})",
+                                mapping.getId(), mapping.getExpiryDate());
+                    } else {
+                        log.warn("Skipping TERMINATED status for mapping {} — no INVITED package session found. "
+                                + "Mapping remains in current state.", mapping.getId());
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to process mapping {} to INVITED (UserPlan already marked EXPIRED)",
+                            mapping.getId(), e);
+                }
             } else {
                 // Mapping's expiryDate is still in the future - keep it ACTIVE
                 log.debug("Skipping mapping {} - expiryDate {} is still in the future",
@@ -780,19 +792,22 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
             }
         }
 
-        // Update UserPlan status to EXPIRED
-        userPlan.setStatus(UserPlanStatusEnum.EXPIRED.name());
-        userPlanRepository.save(userPlan);
-
         log.info(
-                "Moved {} mappings to INVITED (marked as TERMINATED) out of {} total mappings. UserPlan marked as EXPIRED",
-                terminatedCount, mappings.size());
+                "Moved {} mappings to INVITED (marked as TERMINATED) out of {} total mappings. UserPlan {} already marked as EXPIRED",
+                terminatedCount, mappings.size(), userPlan.getId());
     }
 
     /**
      * Creates an INVITED entry for an expired mapping.
      */
     private StudentSessionInstituteGroupMapping createInvitedEntry(StudentSessionInstituteGroupMapping mapping) {
+        PackageSession invitedPackageSession = getInvitedPackageSession(mapping.getPackageSession());
+        if (invitedPackageSession == null) {
+            log.warn("No INVITED package session found for package: {}, skipping INVITED entry creation",
+                    mapping.getPackageSession().getId());
+            return null;
+        }
+
         StudentSessionInstituteGroupMapping invited = new StudentSessionInstituteGroupMapping();
 
         invited.setUserId(mapping.getUserId());
@@ -802,7 +817,7 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
 
         invited.setGroup(mapping.getGroup());
         invited.setInstitute(mapping.getInstitute());
-        invited.setPackageSession(getInvitedPackageSession(mapping.getPackageSession()));
+        invited.setPackageSession(invitedPackageSession);
         invited.setDestinationPackageSession(mapping.getPackageSession());
 
         // Copy additional identifiers
@@ -839,18 +854,19 @@ public class WaitingPeriodProcessor implements IEnrolmentPolicyProcessor {
 
     /**
      * Gets the INVITED package session for a given package session.
+     * Returns null if no INVITED package session exists (instead of throwing).
      */
     private PackageSession getInvitedPackageSession(PackageSession packageSession) {
         String packageSessionId = packageSession.getId();
         return packageSessionRepository
                 .findInvitedPackageSessionForPackage(
                         packageSessionId,
-                        "INVITED", // levelId (placeholder — ensure correct value)
-                        "INVITED", // sessionId (placeholder — ensure correct value)
+                        "INVITED", // levelId
+                        "INVITED", // sessionId
                         List.of(PackageSessionStatusEnum.INVITED.name()),
                         List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                         List.of(PackageStatusEnum.ACTIVE.name()))
-                .orElseThrow(() -> new VacademyException("No Invited package session found"));
+                .orElse(null);
     }
 
     /**

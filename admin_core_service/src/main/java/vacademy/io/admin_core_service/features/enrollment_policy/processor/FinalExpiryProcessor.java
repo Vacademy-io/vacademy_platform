@@ -28,7 +28,6 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -256,10 +255,19 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
      * Only processes mappings whose expiryDate has been reached (not future dates).
      * Soft deletes ACTIVE mapping (marks as TERMINATED) and creates/updates INVITED
      * mapping.
+     *
+     * IMPORTANT: UserPlan is ALWAYS marked as EXPIRED first, before processing mappings.
+     * This ensures the scheduler won't re-process this UserPlan even if mapping
+     * transitions fail (e.g., missing INVITED package session).
      */
     private void moveAllMappingsToInvitedAndExpireUserPlan(List<StudentSessionInstituteGroupMapping> mappings,
             UserPlan userPlan) {
         log.info("Moving {} mappings to INVITED after waiting period ended", mappings.size());
+
+        // Mark UserPlan as EXPIRED FIRST — prevents re-processing if mapping transitions fail
+        userPlan.setStatus(UserPlanStatusEnum.EXPIRED.name());
+        userPlanRepository.save(userPlan);
+        log.info("UserPlan {} marked as EXPIRED", userPlan.getId());
 
         Date today = new Date();
         int processedCount = 0;
@@ -276,33 +284,36 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
                 // Check if INVITED mapping already exists
                 StudentSessionInstituteGroupMapping existingInvited = findExistingInvitedMapping(mapping);
 
+                boolean invitedCreated = false;
                 if (existingInvited != null) {
                     // Update existing INVITED mapping
                     log.info("Updating existing INVITED mapping {} for expired mapping {}",
                             existingInvited.getId(), mapping.getId());
                     updateInvitedMapping(existingInvited, mapping);
+                    invitedCreated = true;
                 } else {
                     // Create new INVITED mapping
                     log.info("Creating new INVITED mapping for expired mapping {}", mapping.getId());
-                    createInvitedEntry(mapping);
+                    StudentSessionInstituteGroupMapping invited = createInvitedEntry(mapping);
+                    invitedCreated = (invited != null);
                 }
 
-                // Soft delete ACTIVE mapping (mark as DELETED)
-                mapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
-                mappingRepository.save(mapping);
-                log.info("Marked mapping {} as DELETED", mapping.getId());
-
-                processedCount++;
+                if (invitedCreated) {
+                    // Only soft delete ACTIVE mapping if INVITED was successfully created/updated
+                    mapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
+                    mappingRepository.save(mapping);
+                    log.info("Marked mapping {} as DELETED", mapping.getId());
+                    processedCount++;
+                } else {
+                    log.warn("Skipping DELETED status for mapping {} — no INVITED package session found. "
+                            + "Mapping remains in current state.", mapping.getId());
+                }
             } catch (Exception e) {
-                log.error("Failed to process mapping {} to INVITED", mapping.getId(), e);
+                log.error("Failed to process mapping {} to INVITED (UserPlan already marked EXPIRED)", mapping.getId(), e);
             }
         }
 
-        // Mark UserPlan as EXPIRED (only after waiting period)
-        userPlan.setStatus(UserPlanStatusEnum.EXPIRED.name());
-        userPlanRepository.save(userPlan);
-
-        log.info("Processed {} out of {} mappings. UserPlan {} marked as EXPIRED",
+        log.info("Processed {} out of {} mappings. UserPlan {} already marked as EXPIRED",
                 processedCount, mappings.size(), userPlan.getId());
     }
 
@@ -315,6 +326,11 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
         try {
             // Get INVITED package session for the original package session
             PackageSession invitedPackageSession = getInvitedPackageSession(originalMapping.getPackageSession());
+            if (invitedPackageSession == null) {
+                log.warn("No INVITED package session found for package: {}, cannot find existing INVITED mapping",
+                        originalMapping.getPackageSession().getId());
+                return null;
+            }
 
             // Find INVITED mapping with source=EXPIRED, typeId=original package session ID
             List<StudentSessionInstituteGroupMapping> existingMappings = mappingRepository
@@ -372,6 +388,13 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
      * Creates new INVITED entry for an expired mapping.
      */
     private StudentSessionInstituteGroupMapping createInvitedEntry(StudentSessionInstituteGroupMapping mapping) {
+        PackageSession invitedPackageSession = getInvitedPackageSession(mapping.getPackageSession());
+        if (invitedPackageSession == null) {
+            log.warn("No INVITED package session found for package: {}, skipping INVITED entry creation",
+                    mapping.getPackageSession().getId());
+            return null;
+        }
+
         StudentSessionInstituteGroupMapping invited = new StudentSessionInstituteGroupMapping();
 
         invited.setUserId(mapping.getUserId());
@@ -381,7 +404,7 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
 
         invited.setGroup(mapping.getGroup());
         invited.setInstitute(mapping.getInstitute());
-        invited.setPackageSession(getInvitedPackageSession(mapping.getPackageSession()));
+        invited.setPackageSession(invitedPackageSession);
         invited.setDestinationPackageSession(mapping.getPackageSession());
 
         // Set type, typeId, and source
@@ -422,9 +445,7 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
                         List.of(PackageSessionStatusEnum.INVITED.name()),
                         List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                         List.of(PackageStatusEnum.ACTIVE.name()))
-                .orElseThrow(() -> new VacademyException(
-                        "No INVITED package session found for package: " + activePackageSession.getId() +
-                                " (levelId=INVITED, sessionId=INVITED)"));
+                .orElse(null);
     }
 
     private void notifyAdminsOfExpiry(String subOrgId, String packageSessionId, EnrolmentContext context) {

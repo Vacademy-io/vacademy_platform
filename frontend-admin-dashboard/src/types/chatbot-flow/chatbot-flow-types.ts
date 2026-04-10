@@ -11,6 +11,25 @@ export type ChatbotNodeType =
 
 export type ChatbotFlowStatus = 'DRAFT' | 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
 
+/**
+ * A dynamic placeholder mapping used by SEND_MESSAGE / SEND_TEMPLATE nodes.
+ * Any `{{name}}` in the node body/params is resolved via this list first,
+ * then falls back to built-in placeholders ({{phone}}, {{user.x}}, {{session.x}}).
+ */
+export type VariableMappingSource =
+    | 'SYSTEM_FIELD'
+    | 'CUSTOM_FIELD'
+    | 'SESSION'
+    | 'CONTEXT'
+    | 'FIXED';
+
+export interface VariableMapping {
+    name: string;
+    source: VariableMappingSource;
+    field: string;
+    defaultValue: string;
+}
+
 export interface ChatbotFlowDTO {
     id?: string;
     instituteId: string;
@@ -71,7 +90,14 @@ export const NODE_TYPE_REGISTRY: NodeTypeInfo[] = [
         description: 'Send text, image, video, or document (no template needed)',
         color: '#10b981',
         icon: '💬',
-        defaultConfig: { messageType: 'text', text: '', mediaUrl: '', mediaCaption: '', filename: '' },
+        defaultConfig: {
+            messageType: 'text',
+            text: '',
+            mediaUrl: '',
+            mediaCaption: '',
+            filename: '',
+            variables: [] as VariableMapping[],
+        },
     },
     {
         type: 'SEND_TEMPLATE',
@@ -79,7 +105,14 @@ export const NODE_TYPE_REGISTRY: NodeTypeInfo[] = [
         description: 'Send a pre-approved WhatsApp template',
         color: '#3b82f6',
         icon: '📄',
-        defaultConfig: { templateName: '', languageCode: 'en', bodyParams: [], headerConfig: { type: 'none' }, buttonConfig: [] },
+        defaultConfig: {
+            templateName: '',
+            languageCode: 'en',
+            bodyParams: [],
+            headerConfig: { type: 'none' },
+            buttonConfig: [],
+            variables: [] as VariableMapping[],
+        },
     },
     {
         type: 'SEND_INTERACTIVE',
@@ -95,7 +128,10 @@ export const NODE_TYPE_REGISTRY: NodeTypeInfo[] = [
         description: 'Branch based on user reply',
         color: '#eab308',
         icon: '🔀',
-        defaultConfig: { conditionType: 'USER_RESPONSE', branches: [{ id: 'default', label: 'Default', isDefault: true }] },
+        defaultConfig: {
+            conditionType: 'USER_RESPONSE',
+            branches: [{ id: 'default', label: 'Default', isDefault: true }],
+        },
     },
     {
         type: 'WORKFLOW_ACTION',
@@ -127,6 +163,14 @@ export const NODE_TYPE_REGISTRY: NodeTypeInfo[] = [
         description: 'AI-powered conversation',
         color: '#14b8a6',
         icon: '🤖',
-        defaultConfig: { modelId: 'google/gemini-2.0-flash-001', systemPrompt: '', maxTokens: 500, temperature: 0.7, exitKeywords: ['agent', 'human'], maxTurns: 10, enableInteractive: false },
+        defaultConfig: {
+            modelId: 'google/gemini-2.0-flash-001',
+            systemPrompt: '',
+            maxTokens: 500,
+            temperature: 0.7,
+            exitKeywords: ['agent', 'human'],
+            maxTurns: 10,
+            enableInteractive: false,
+        },
     },
 ];

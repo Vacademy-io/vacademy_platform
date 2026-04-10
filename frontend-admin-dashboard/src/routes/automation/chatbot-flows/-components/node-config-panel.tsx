@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useChatbotFlowStore } from '../-stores/chatbot-flow-store';
-import { NODE_TYPE_REGISTRY } from '@/types/chatbot-flow/chatbot-flow-types';
+import { NODE_TYPE_REGISTRY, VariableMapping } from '@/types/chatbot-flow/chatbot-flow-types';
 import { fetchWhatsAppTemplates, WhatsAppTemplateInfo } from '../-services/chatbot-flow-api';
 import { getInstituteId } from '@/constants/helper';
 import { Plus, Trash, CaretUp, CaretDown } from '@phosphor-icons/react';
+import { VariableMappingEditor } from './VariableMappingEditor';
 
 export function NodeConfigPanel() {
     const selectedNodeId = useChatbotFlowStore((s) => s.selectedNodeId);
@@ -185,6 +186,16 @@ function SendMessageConfig({ config, onChange }: { config: Record<string, unknow
                     )}
                 </>
             )}
+
+            <SectionLabel>Variable Mappings</SectionLabel>
+            <p className="text-xs text-gray-400">
+                Map {'{{placeholders}}'} used above to system or custom fields with fallback
+                defaults.
+            </p>
+            <VariableMappingEditor
+                variables={(config.variables as VariableMapping[]) || []}
+                onChange={(v) => onChange('variables', v)}
+            />
         </>
     );
 }
@@ -372,6 +383,16 @@ function SendTemplateConfig({ config, onChange }: { config: Record<string, unkno
                     ))}
                 </>
             )}
+
+            <SectionLabel>Variable Mappings</SectionLabel>
+            <p className="text-xs text-gray-400">
+                Map {'{{placeholders}}'} used in body params, header URL, or button URL suffix to
+                user or custom fields with fallback defaults.
+            </p>
+            <VariableMappingEditor
+                variables={(config.variables as VariableMapping[]) || []}
+                onChange={(v) => onChange('variables', v)}
+            />
         </>
     );
 }

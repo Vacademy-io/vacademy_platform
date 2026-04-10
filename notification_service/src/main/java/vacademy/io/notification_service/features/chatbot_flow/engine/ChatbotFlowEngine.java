@@ -11,6 +11,7 @@ import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotFlowS
 import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotNodeType;
 import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotSessionStatus;
 import vacademy.io.notification_service.features.chatbot_flow.repository.*;
+import vacademy.io.notification_service.features.chatbot_flow.service.UserLookupService;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
@@ -34,6 +35,7 @@ public class ChatbotFlowEngine {
     private final NotificationLogRepository notificationLogRepository;
     private final List<ChatbotNodeExecutor> executors;
     private final ObjectMapper objectMapper;
+    private final UserLookupService userLookupService;
 
     /**
      * Main entry point called from CombotWebhookService.
@@ -70,7 +72,7 @@ public class ChatbotFlowEngine {
                     // Session is waiting for user input on a CONDITION/AI_RESPONSE node.
                     // FIRST try to resume the session with this input — the CONDITION node
                     // will evaluate whether the input matches one of its branches.
-                    FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
+                    FlowExecutionContext context = buildContextWithUserLookup(instituteId, channelType, userPhone,
                             userText, businessChannelId, messageType, buttonId, buttonPayload,
                             listReplyId, session);
 
@@ -131,7 +133,7 @@ public class ChatbotFlowEngine {
 
                     if (matchesTrigger) {
                         // Not on a waiting node, just resume normally
-                        FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
+                        FlowExecutionContext context = buildContextWithUserLookup(instituteId, channelType, userPhone,
                                 userText, businessChannelId, messageType, buttonId, buttonPayload,
                                 listReplyId, session);
                         resumeSession(session, context);
@@ -141,7 +143,7 @@ public class ChatbotFlowEngine {
                         log.info("Resuming chatbot flow session: sessionId={}, flowId={}, currentNode={}",
                                 session.getId(), session.getFlowId(), session.getCurrentNodeId());
 
-                        FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
+                        FlowExecutionContext context = buildContextWithUserLookup(instituteId, channelType, userPhone,
                                 userText, businessChannelId, messageType, buttonId, buttonPayload,
                                 listReplyId, session);
 
@@ -225,10 +227,13 @@ public class ChatbotFlowEngine {
                         best.flow().getId(), best.triggerNode().getName(),
                         best.priority(), best.isSpecific());
 
-                // Create new session
-                FlowExecutionContext context = buildContext(instituteId, channelType, userPhone,
-                        userText, businessChannelId, messageType, buttonId, buttonPayload,
-                        listReplyId, null);
+                // Fetch user details once. Persist them into the new session's initial
+                // context JSON so subsequent turns hit the cache instead of re-fetching.
+                Map<String, Object> initialSessionVars = new HashMap<>();
+                Map<String, Object> userDetails = userLookupService.fetchUserByPhone(userPhone);
+                if (userDetails != null) {
+                    initialSessionVars.put("__userDetails", userDetails);
+                }
 
                 ChatbotFlowSession session = ChatbotFlowSession.builder()
                         .flowId(best.flow().getId())
@@ -238,13 +243,26 @@ public class ChatbotFlowEngine {
                         .businessChannelId(businessChannelId)
                         .currentNodeId(best.triggerNode().getId())
                         .status(ChatbotSessionStatus.ACTIVE.name())
-                        .context(toJson(new HashMap<>()))
+                        .context(toJson(initialSessionVars))
                         .lastActivityAt(new Timestamp(System.currentTimeMillis()))
                         .build();
                 session = sessionRepository.save(session);
 
+                FlowExecutionContext context = FlowExecutionContext.builder()
+                        .instituteId(instituteId)
+                        .channelType(channelType)
+                        .phoneNumber(userPhone)
+                        .messageText(userText)
+                        .businessChannelId(businessChannelId)
+                        .messageType(messageType != null ? messageType : "text")
+                        .buttonId(buttonId)
+                        .buttonPayload(buttonPayload)
+                        .listReplyId(listReplyId)
+                        .sessionVariables(initialSessionVars)
+                        .userDetails(userDetails)
+                        .build();
+
                 // Advance past the trigger node to the next node(s)
-                context.setSessionVariables(new HashMap<>());
                 advanceToNextNodes(session, best.triggerNode().getId(), null, context, 0);
                 return true;
             }
@@ -448,13 +466,17 @@ public class ChatbotFlowEngine {
             return;
         }
 
+        Map<String, Object> sessionVars = parseJson(session.getContext());
+        Map<String, Object> userDetails = ensureUserDetails(sessionVars, session.getUserPhone(), session);
+
         FlowExecutionContext context = FlowExecutionContext.builder()
                 .instituteId(session.getInstituteId())
                 .phoneNumber(session.getUserPhone())
                 .userId(session.getUserId())
                 .channelType(session.getChannelType())
                 .businessChannelId(session.getBusinessChannelId())
-                .sessionVariables(parseJson(session.getContext()))
+                .sessionVariables(sessionVars)
+                .userDetails(userDetails)
                 .build();
 
         advanceToNextNodes(session, task.getNextNodeId(), null, context, 0);
@@ -618,12 +640,19 @@ public class ChatbotFlowEngine {
         sessionRepository.save(session);
     }
 
+    /**
+     * Build a flow context. By default this skips the user-details HTTP lookup
+     * because most callsites (trigger scanning, etc.) don't need it. Callers that
+     * are about to execute SEND_/AI_RESPONSE nodes should call
+     * {@link #buildContextWithUserLookup} instead.
+     */
     private FlowExecutionContext buildContext(String instituteId, String channelType,
                                               String userPhone, String userText,
                                               String businessChannelId, String messageType,
                                               String buttonId, String buttonPayload,
                                               String listReplyId, ChatbotFlowSession session) {
-        Map<String, Object> sessionVars = session != null ? parseJson(session.getContext()) : new HashMap<>();
+        Map<String, Object> sessionVars = parseJson(session != null ? session.getContext() : null);
+        Map<String, Object> userDetails = readCachedUserDetails(sessionVars);
         return FlowExecutionContext.builder()
                 .instituteId(instituteId)
                 .channelType(channelType)
@@ -634,8 +663,65 @@ public class ChatbotFlowEngine {
                 .buttonId(buttonId)
                 .buttonPayload(buttonPayload)
                 .listReplyId(listReplyId)
-                .sessionVariables(sessionVars != null ? sessionVars : new HashMap<>())
+                .sessionVariables(sessionVars)
+                .userDetails(userDetails)
                 .build();
+    }
+
+    /**
+     * Build a flow context AND ensure user details are populated — fetching from
+     * admin-core-service if not already cached on the session. The fetched data
+     * is memoized in the session's context JSON under the {@code __userDetails}
+     * key so subsequent turns skip the HTTP round-trip.
+     */
+    private FlowExecutionContext buildContextWithUserLookup(String instituteId, String channelType,
+                                                            String userPhone, String userText,
+                                                            String businessChannelId, String messageType,
+                                                            String buttonId, String buttonPayload,
+                                                            String listReplyId, ChatbotFlowSession session) {
+        Map<String, Object> sessionVars = parseJson(session != null ? session.getContext() : null);
+        Map<String, Object> userDetails = ensureUserDetails(sessionVars, userPhone, session);
+        return FlowExecutionContext.builder()
+                .instituteId(instituteId)
+                .channelType(channelType)
+                .phoneNumber(userPhone)
+                .messageText(userText)
+                .businessChannelId(businessChannelId)
+                .messageType(messageType != null ? messageType : "text")
+                .buttonId(buttonId)
+                .buttonPayload(buttonPayload)
+                .listReplyId(listReplyId)
+                .sessionVariables(sessionVars)
+                .userDetails(userDetails)
+                .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readCachedUserDetails(Map<String, Object> sessionVars) {
+        if (sessionVars == null) return null;
+        Object cached = sessionVars.get("__userDetails");
+        return cached instanceof Map ? (Map<String, Object>) cached : null;
+    }
+
+    /**
+     * Return cached user details from {@code sessionVars} if present, otherwise
+     * fetch from admin-core-service and write back to both the in-memory map and
+     * (if a persisted session was provided) the session row's context column.
+     */
+    private Map<String, Object> ensureUserDetails(Map<String, Object> sessionVars,
+                                                  String userPhone,
+                                                  ChatbotFlowSession session) {
+        Map<String, Object> cached = readCachedUserDetails(sessionVars);
+        if (cached != null) return cached;
+        Map<String, Object> fetched = userLookupService.fetchUserByPhone(userPhone);
+        if (fetched != null && sessionVars != null) {
+            sessionVars.put("__userDetails", fetched);
+            if (session != null) {
+                session.setContext(toJson(sessionVars));
+                sessionRepository.save(session);
+            }
+        }
+        return fetched;
     }
 
     private String toJson(Object obj) {

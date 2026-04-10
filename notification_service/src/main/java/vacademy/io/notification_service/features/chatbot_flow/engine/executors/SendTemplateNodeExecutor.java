@@ -8,14 +8,17 @@ import org.springframework.stereotype.Component;
 import vacademy.io.notification_service.features.chatbot_flow.engine.ChatbotNodeExecutor;
 import vacademy.io.notification_service.features.chatbot_flow.engine.FlowExecutionContext;
 import vacademy.io.notification_service.features.chatbot_flow.engine.NodeExecutionResult;
+import vacademy.io.notification_service.features.chatbot_flow.engine.VariableResolver;
 import vacademy.io.notification_service.features.chatbot_flow.engine.provider.ChatbotMessageProvider;
 import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlowNode;
 import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlowSession;
 import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotNodeType;
 
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Component
 @Slf4j
@@ -24,8 +27,7 @@ public class SendTemplateNodeExecutor implements ChatbotNodeExecutor {
 
     private final ObjectMapper objectMapper;
     private final List<ChatbotMessageProvider> messageProviders;
-
-    private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\{\\{(.+?)}}");
+    private final VariableResolver variableResolver;
 
     @Override
     public boolean canHandle(String nodeType) {
@@ -47,6 +49,9 @@ public class SendTemplateNodeExecutor implements ChatbotNodeExecutor {
 
         String languageCode = (String) config.getOrDefault("languageCode", "en");
 
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> variables = (List<Map<String, Object>>) config.get("variables");
+
         try {
             // Find the right provider for this channel type
             ChatbotMessageProvider provider = findProvider(context.getChannelType());
@@ -60,7 +65,7 @@ public class SendTemplateNodeExecutor implements ChatbotNodeExecutor {
             // Resolve body parameters
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> bodyParams = (List<Map<String, Object>>) config.get("bodyParams");
-            List<String> resolvedBodyParams = resolveBodyParams(bodyParams, context);
+            List<String> resolvedBodyParams = resolveBodyParams(bodyParams, variables, context);
 
             // Resolve header config
             @SuppressWarnings("unchecked")
@@ -76,10 +81,10 @@ public class SendTemplateNodeExecutor implements ChatbotNodeExecutor {
             templatePayload.put("languageCode", languageCode);
             templatePayload.put("bodyParams", resolvedBodyParams);
             if (headerConfig != null) {
-                templatePayload.put("headerConfig", resolveHeaderConfig(headerConfig, context));
+                templatePayload.put("headerConfig", resolveHeaderConfig(headerConfig, variables, context));
             }
             if (buttonConfig != null) {
-                templatePayload.put("buttonConfig", resolveButtonConfig(buttonConfig, context));
+                templatePayload.put("buttonConfig", resolveButtonConfig(buttonConfig, variables, context));
             }
 
             // Send via provider
@@ -98,7 +103,9 @@ public class SendTemplateNodeExecutor implements ChatbotNodeExecutor {
         }
     }
 
-    private List<String> resolveBodyParams(List<Map<String, Object>> bodyParams, FlowExecutionContext context) {
+    private List<String> resolveBodyParams(List<Map<String, Object>> bodyParams,
+                                            List<Map<String, Object>> variables,
+                                            FlowExecutionContext context) {
         if (bodyParams == null) return List.of();
         List<String> resolved = new ArrayList<>();
         // Sort by index
@@ -108,86 +115,35 @@ public class SendTemplateNodeExecutor implements ChatbotNodeExecutor {
         }));
         for (Map<String, Object> param : bodyParams) {
             String value = (String) param.get("value");
-            resolved.add(resolveVariable(value, context));
+            resolved.add(variableResolver.resolve(value, variables, context));
         }
         return resolved;
     }
 
-    private Map<String, Object> resolveHeaderConfig(Map<String, Object> headerConfig, FlowExecutionContext context) {
+    private Map<String, Object> resolveHeaderConfig(Map<String, Object> headerConfig,
+                                                     List<Map<String, Object>> variables,
+                                                     FlowExecutionContext context) {
         Map<String, Object> resolved = new LinkedHashMap<>(headerConfig);
         String url = (String) resolved.get("url");
         if (url != null) {
-            resolved.put("url", resolveVariable(url, context));
+            resolved.put("url", variableResolver.resolve(url, variables, context));
         }
         return resolved;
     }
 
     private List<Map<String, Object>> resolveButtonConfig(List<Map<String, Object>> buttonConfig,
+                                                           List<Map<String, Object>> variables,
                                                            FlowExecutionContext context) {
         List<Map<String, Object>> resolved = new ArrayList<>();
         for (Map<String, Object> btn : buttonConfig) {
             Map<String, Object> resolvedBtn = new LinkedHashMap<>(btn);
             String urlSuffix = (String) resolvedBtn.get("urlSuffix");
             if (urlSuffix != null) {
-                resolvedBtn.put("urlSuffix", resolveVariable(urlSuffix, context));
+                resolvedBtn.put("urlSuffix", variableResolver.resolve(urlSuffix, variables, context));
             }
             resolved.add(resolvedBtn);
         }
         return resolved;
-    }
-
-    /**
-     * Resolve {{variable}} placeholders from context.
-     * Supports: {{user.name}}, {{phone}}, {{session.varName}}, {{fixed:literal}}
-     */
-    private String resolveVariable(String template, FlowExecutionContext context) {
-        if (template == null) return null;
-        Matcher matcher = VARIABLE_PATTERN.matcher(template);
-        StringBuilder result = new StringBuilder();
-        while (matcher.find()) {
-            String varName = matcher.group(1).trim();
-            String replacement = lookupVariable(varName, context);
-            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(result);
-        return result.toString();
-    }
-
-    private String lookupVariable(String varName, FlowExecutionContext context) {
-        // Fixed literal: {{fixed:Welcome!}}
-        if (varName.startsWith("fixed:")) {
-            return varName.substring(6);
-        }
-
-        // Session variables: {{session.varName}}
-        if (varName.startsWith("session.") && context.getSessionVariables() != null) {
-            String key = varName.substring(8);
-            Object val = context.getSessionVariables().get(key);
-            return val != null ? val.toString() : "";
-        }
-
-        // User details: {{user.name}}, {{user.email}}
-        if (varName.startsWith("user.") && context.getUserDetails() != null) {
-            String key = varName.substring(5);
-            Object val = context.getUserDetails().get(key);
-            return val != null ? val.toString() : "";
-        }
-
-        // Direct context fields
-        return switch (varName) {
-            case "phone", "phoneNumber" -> context.getPhoneNumber() != null ? context.getPhoneNumber() : "";
-            case "instituteId" -> context.getInstituteId() != null ? context.getInstituteId() : "";
-            case "userId" -> context.getUserId() != null ? context.getUserId() : "";
-            case "messageText" -> context.getMessageText() != null ? context.getMessageText() : "";
-            default -> {
-                // Check session variables as fallback
-                if (context.getSessionVariables() != null) {
-                    Object val = context.getSessionVariables().get(varName);
-                    if (val != null) yield val.toString();
-                }
-                yield "";
-            }
-        };
     }
 
     private ChatbotMessageProvider findProvider(String channelType) {
@@ -197,7 +153,6 @@ public class SendTemplateNodeExecutor implements ChatbotNodeExecutor {
                 .orElse(null);
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> parseConfig(String json) {
         if (json == null || json.isBlank()) return null;
         try {

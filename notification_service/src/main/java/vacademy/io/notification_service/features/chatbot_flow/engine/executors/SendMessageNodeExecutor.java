@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import vacademy.io.notification_service.features.chatbot_flow.engine.ChatbotNodeExecutor;
 import vacademy.io.notification_service.features.chatbot_flow.engine.FlowExecutionContext;
 import vacademy.io.notification_service.features.chatbot_flow.engine.NodeExecutionResult;
+import vacademy.io.notification_service.features.chatbot_flow.engine.VariableResolver;
 import vacademy.io.notification_service.features.chatbot_flow.engine.provider.ChatbotMessageProvider;
 import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlowNode;
 import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlowSession;
@@ -15,8 +16,6 @@ import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotNodeT
 
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Sends free-form session messages (text, image, video, document, audio).
@@ -26,10 +25,14 @@ import java.util.regex.Pattern;
  * Config JSON:
  * {
  *   "messageType": "text|image|video|document|audio",
- *   "text": "Hello {{user.name}}! Welcome.",
+ *   "text": "Hello {{userName}}! Welcome.",
  *   "mediaUrl": "https://example.com/image.jpg",
  *   "mediaCaption": "Check this out!",
- *   "filename": "brochure.pdf"
+ *   "filename": "brochure.pdf",
+ *   "variables": [
+ *     { "name": "userName", "source": "SYSTEM_FIELD", "field": "full_name", "defaultValue": "Student" },
+ *     { "name": "rollNo",   "source": "CUSTOM_FIELD", "field": "Roll Number", "defaultValue": "N/A" }
+ *   ]
  * }
  */
 @Component
@@ -39,8 +42,7 @@ public class SendMessageNodeExecutor implements ChatbotNodeExecutor {
 
     private final ObjectMapper objectMapper;
     private final List<ChatbotMessageProvider> messageProviders;
-
-    private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\{\\{(.+?)}}");
+    private final VariableResolver variableResolver;
 
     @Override
     public boolean canHandle(String nodeType) {
@@ -56,6 +58,8 @@ public class SendMessageNodeExecutor implements ChatbotNodeExecutor {
         }
 
         String messageType = (String) config.getOrDefault("messageType", "text");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> variables = (List<Map<String, Object>>) config.get("variables");
 
         try {
             ChatbotMessageProvider provider = messageProviders.stream()
@@ -71,7 +75,7 @@ public class SendMessageNodeExecutor implements ChatbotNodeExecutor {
 
             if ("text".equals(messageType)) {
                 String text = (String) config.getOrDefault("text", "");
-                String resolved = resolveVariables(text, context);
+                String resolved = variableResolver.resolve(text, variables, context);
                 log.info("SEND_MESSAGE node: phone={}, rawText=[{}], resolved=[{}], configKeys={}",
                         context.getPhoneNumber(), text, resolved, config.keySet());
                 if (resolved == null || resolved.isBlank()) {
@@ -84,11 +88,13 @@ public class SendMessageNodeExecutor implements ChatbotNodeExecutor {
 
             } else {
                 // Media message: image, video, document, audio
-                String mediaUrl = resolveVariables((String) config.getOrDefault("mediaUrl", ""), context);
-                String caption = resolveVariables((String) config.getOrDefault("mediaCaption", ""), context);
+                String mediaUrl = variableResolver.resolve(
+                        (String) config.getOrDefault("mediaUrl", ""), variables, context);
+                String caption = variableResolver.resolve(
+                        (String) config.getOrDefault("mediaCaption", ""), variables, context);
                 String filename = (String) config.get("filename");
 
-                if (mediaUrl.isBlank()) {
+                if (mediaUrl == null || mediaUrl.isBlank()) {
                     return NodeExecutionResult.builder()
                             .success(false)
                             .errorMessage("Media URL is required for " + messageType + " messages")
@@ -109,43 +115,6 @@ public class SendMessageNodeExecutor implements ChatbotNodeExecutor {
                     .errorMessage("Send failed: " + e.getMessage())
                     .build();
         }
-    }
-
-    private String resolveVariables(String template, FlowExecutionContext context) {
-        if (template == null || template.isBlank()) return template;
-        Matcher matcher = VARIABLE_PATTERN.matcher(template);
-        StringBuilder result = new StringBuilder();
-        while (matcher.find()) {
-            String varName = matcher.group(1).trim();
-            String replacement = lookupVariable(varName, context);
-            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(result);
-        return result.toString();
-    }
-
-    private String lookupVariable(String varName, FlowExecutionContext context) {
-        if (varName.startsWith("fixed:")) return varName.substring(6);
-        if (varName.startsWith("session.") && context.getSessionVariables() != null) {
-            Object val = context.getSessionVariables().get(varName.substring(8));
-            return val != null ? val.toString() : "";
-        }
-        if (varName.startsWith("user.") && context.getUserDetails() != null) {
-            Object val = context.getUserDetails().get(varName.substring(5));
-            return val != null ? val.toString() : "";
-        }
-        return switch (varName) {
-            case "phone", "phoneNumber" -> context.getPhoneNumber() != null ? context.getPhoneNumber() : "";
-            case "instituteId" -> context.getInstituteId() != null ? context.getInstituteId() : "";
-            case "messageText" -> context.getMessageText() != null ? context.getMessageText() : "";
-            default -> {
-                if (context.getSessionVariables() != null) {
-                    Object val = context.getSessionVariables().get(varName);
-                    if (val != null) yield val.toString();
-                }
-                yield "";
-            }
-        };
     }
 
     private Map<String, Object> parseConfig(String json) {

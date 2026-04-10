@@ -107,7 +107,7 @@ export default function TncSettings() {
             await uploadFile({
                 file,
                 setIsUploading: setIsUploadingMedia,
-                userId: currentUser?.userId || 'admin',
+                userId: currentUser?.id || 'admin',
                 publicUrl: true,
             }).then((uploadRes: any) => {
                  const fileId = uploadRes.id || uploadRes;

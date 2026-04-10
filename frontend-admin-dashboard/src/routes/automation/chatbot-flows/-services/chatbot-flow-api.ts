@@ -53,7 +53,9 @@ export const listChatbotFlows = async (
 };
 
 export const activateChatbotFlow = async (flowId: string): Promise<ChatbotFlowDTO> => {
-    const { data } = await authenticatedAxiosInstance.post(`${CHATBOT_FLOW_BASE}/${flowId}/activate`);
+    const { data } = await authenticatedAxiosInstance.post(
+        `${CHATBOT_FLOW_BASE}/${flowId}/activate`
+    );
     return data;
 };
 
@@ -153,4 +155,45 @@ export const fetchWhatsAppTemplates = async (
         { params: { instituteId } }
     );
     return data;
+};
+
+// ==================== Institute Custom Fields ====================
+
+export interface CustomFieldOption {
+    id: string;
+    fieldKey: string;
+    fieldName: string;
+    fieldType: string;
+}
+
+/**
+ * Fetch the institute's custom field catalog to populate the Variable Mapping
+ * editor's CUSTOM_FIELD source dropdown. Uses the existing list-with-usage
+ * endpoint that the Settings > Custom Fields page already consumes.
+ *
+ * Wire shape: `CustomFieldUsageDTO` is serialized with snake_case
+ *   `[{ "custom_field": { id, fieldKey, fieldName, fieldType, ... }, "is_default": ..., "enroll_invite_count": ..., "audience_count": ... }]`
+ * The nested `CustomFieldDTO` itself uses default (camelCase) Jackson naming —
+ * so the inner keys are NOT snake_case.
+ */
+export const fetchInstituteCustomFields = async (
+    instituteId: string
+): Promise<CustomFieldOption[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        '/admin-core-service/institute/v1/custom-field/list-with-usage',
+        { params: { instituteId } }
+    );
+    if (!Array.isArray(data)) return [];
+    return data
+        .map((row: Record<string, unknown>) => {
+            const cf = (row.custom_field ?? row.customField) as Record<string, unknown> | undefined;
+            if (!cf) return null;
+            return {
+                id: String(cf.id ?? ''),
+                fieldKey: String(cf.fieldKey ?? cf.field_key ?? ''),
+                fieldName: String(cf.fieldName ?? cf.field_name ?? ''),
+                fieldType: String(cf.fieldType ?? cf.field_type ?? 'text'),
+            };
+        })
+        .filter((f): f is CustomFieldOption => f !== null && f.fieldName !== '');
 };

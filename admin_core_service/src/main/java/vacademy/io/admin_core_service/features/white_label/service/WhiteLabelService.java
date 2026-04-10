@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.domain_routing.service.DomainRout
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.white_label.dto.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -53,10 +54,13 @@ public class WhiteLabelService {
     @Value("${vacademy.base.domain:vacademy.io}")
     private String vacademyBaseDomain;
 
+    private static final String ROLE_NAME_ADMIN = "ADMIN";
+
     private final InstituteRepository instituteRepository;
     private final InstituteDomainRoutingRepository routingRepository;
     private final DomainRoutingAdminService domainRoutingAdminService;
     private final CloudflareService cloudflareService;
+    private final UserRoleRepository userRoleRepository;
 
     // ── Setup ─────────────────────────────────────────────────────────────────
 
@@ -251,12 +255,34 @@ public class WhiteLabelService {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private void assertInstituteAccess(CustomUserDetails user, String instituteId) {
-        boolean isMember = instituteRepository.findInstitutesByUserId(user.getId())
+        if (user == null) {
+            throw new VacademyException("Access denied: no authenticated user");
+        }
+
+        // 1) Root users bypass all institute membership checks. Matches the convention
+        //    used elsewhere in the codebase (e.g. StudentListManager#applyFacultyAccessFilter).
+        if (user.isRootUser()) {
+            return;
+        }
+
+        // 2) Users with an active ADMIN role on the *specific* target institute are
+        //    allowed. This uses the canonical user_role table (the same source the
+        //    auth service builds the JWT's per-institute authorities from), so it
+        //    correctly authorizes admins regardless of how they were provisioned —
+        //    including admins who don't have a row in the `staff` table.
+        if (userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(
+                user.getUserId(), instituteId, ROLE_NAME_ADMIN)) {
+            return;
+        }
+
+        // 3) Fallback: legacy staff-table membership check, preserved for backward
+        //    compatibility with users who were granted access via that path.
+        boolean isStaff = instituteRepository.findInstitutesByUserId(user.getUserId())
                 .stream()
                 .anyMatch(i -> i.getId().equals(instituteId));
-        if (!isMember) {
+        if (!isStaff) {
             log.warn("[WhiteLabel] Unauthorized attempt by userId={} on instituteId={}",
-                    user.getId(), instituteId);
+                    user.getUserId(), instituteId);
             throw new VacademyException("Access denied: you are not a member of institute " + instituteId);
         }
     }

@@ -34,7 +34,7 @@ export function TncModal({ tncUrl, onAccepted }: TncModalProps) {
         setIsSubmitting(true);
         try {
             await authenticatedAxiosInstance.post(ACCEPT_TNC, {
-                instituteId: instituteId || '',
+                institute_id: instituteId || '',
                 name: name.trim()
             });
             toast.success('Terms & Conditions accepted successfully');

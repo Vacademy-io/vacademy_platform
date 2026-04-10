@@ -3,7 +3,7 @@ import { X, MagnifyingGlass } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MyButton } from '@/components/design-system/button';
-import { searchEnquiriesByFilter } from '../-services/applicant-services';
+import { searchEnquiriesByFilter, type EnquiryDetailsResponse } from '../-services/applicant-services';
 import { toast } from 'sonner';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
@@ -18,8 +18,8 @@ interface EnquirySearchModalProps {
     // AdmissionEntryScreen passes onSelectForAdmission only.
     // Passing both shows both action columns simultaneously.
     // Callbacks receive the full search result object (no second API call needed).
-    onSelectForApplication?: (enquiryData: any) => void;
-    onSelectForAdmission?: (enquiryData: any) => void;
+    onSelectForApplication?: (enquiryData: EnquiryDetailsResponse) => void;
+    onSelectForAdmission?: (enquiryData: EnquiryDetailsResponse) => void;
 }
 
 const STATUS_BADGE: Record<EnquiryStatus, { label: string; className: string }> = {
@@ -38,7 +38,7 @@ export const EnquirySearchModal: React.FC<EnquirySearchModalProps> = ({
     const [searchPhone, setSearchPhone] = useState('');
     const [searchTrackingId, setSearchTrackingId] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [searchResults, setSearchResults] = useState<EnquiryDetailsResponse[]>([]);
     const [hasSearched, setHasSearched] = useState(false);
     const { instituteDetails } = useInstituteDetailsStore();
 
@@ -68,12 +68,12 @@ export const EnquirySearchModal: React.FC<EnquirySearchModalProps> = ({
         }
     };
 
-    const handleSelectForApplication = (result: any) => {
+    const handleSelectForApplication = (result: EnquiryDetailsResponse) => {
         onSelectForApplication?.(result);
         onClose();
     };
 
-    const handleSelectForAdmission = (result: any) => {
+    const handleSelectForAdmission = (result: EnquiryDetailsResponse) => {
         onSelectForAdmission?.(result);
         onClose();
     };

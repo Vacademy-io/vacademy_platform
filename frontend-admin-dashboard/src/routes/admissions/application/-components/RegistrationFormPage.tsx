@@ -30,6 +30,7 @@ import {
     generatePaymentLink,
     fetchPaymentOptionById,
     type PaymentOptionDetails,
+    type EnquiryDetailsResponse,
 } from '../../-services/applicant-services';
 import { getCustomFieldSettings } from '@/services/custom-field-settings';
 import { toast } from 'sonner';
@@ -143,7 +144,7 @@ export function RegistrationFormPage() {
     const [sessionId, setSessionId] = useState('');
     const [enquiryId, setEnquiryId] = useState<string | null>(null);
     const [showParentTypeModal, setShowParentTypeModal] = useState(false);
-    const [pendingEnquiryData, setPendingEnquiryData] = useState<any>(null);
+    const [pendingEnquiryData, setPendingEnquiryData] = useState<EnquiryDetailsResponse | null>(null);
 
     const [activeSection, setActiveSection] = useState(0);
     const [formData, setFormData] = useState<Partial<Registration>>(getInitialFormData());
@@ -245,7 +246,7 @@ export function RegistrationFormPage() {
     }, [instituteId]);
 
     // Function to prefill form from enquiry data
-    const prefillFormFromEnquiry = (enquiryData: any) => {
+    const prefillFormFromEnquiry = (enquiryData: EnquiryDetailsResponse) => {
         const updates: Partial<Registration> = {};
 
         // Prefill child details
@@ -258,10 +259,10 @@ export function RegistrationFormPage() {
                 const date = new Date(enquiryData.child.dob);
                 updates.dateOfBirth = date.toISOString().split('T')[0];
             }
-            updates.gender = enquiryData.child.gender || undefined;
+            updates.gender = enquiryData.child.gender as any;
         }
 
-        const rawRelation = enquiryData.parent_relation_with_child || enquiryData.parent_relation || enquiryData.enquiry?.parent_relation_with_child || '';
+        const rawRelation = enquiryData.parent_relation_with_child || '';
         const relation = String(rawRelation).toLowerCase().trim();
 
         // Prefill parent details - need to determine if father or mother
@@ -302,7 +303,7 @@ export function RegistrationFormPage() {
                 // Apply child updates first, then ask for parent type
                 setFormData((prev) => ({ ...prev, ...updates }));
                 // Relation is OTHER, not provided, or we need to ask user
-                setPendingEnquiryData({ parent: parentData });
+                setPendingEnquiryData(enquiryData);
                 setShowParentTypeModal(true);
             }
         } else {

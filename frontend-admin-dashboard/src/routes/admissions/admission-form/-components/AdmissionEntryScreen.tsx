@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
 import { ParentTypeModal } from '../../-components/ParentTypeModal';
+import type { EnquiryDetailsResponse } from '../../-services/applicant-services';
 import { AdmissionBulkImportDialog } from './AdmissionBulkImportDialog';
 
 export interface StudentSearchResult {
@@ -209,7 +210,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         setShowApplicationModal(true);
     };
 
-    const handleSelectEnquiry = (enquiryData: any) => {
+    const handleSelectEnquiry = (enquiryData: EnquiryDetailsResponse) => {
         const mapped: Partial<StudentSearchResult> = {
             id: enquiryData.enquiry_id || '',
             studentName: enquiryData.child?.name || '',
@@ -228,7 +229,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         };
 
         // Auto-fill parent relation from enquiry data; show popup only if unknown
-        const rawRelation = enquiryData.parent_relation_with_child || enquiryData.parent_relation || enquiryData.enquiry?.parent_relation_with_child || '';
+        const rawRelation = enquiryData.parent_relation_with_child || '';
         const relation = String(rawRelation).toLowerCase().trim();
 
         if (relation === 'father') {

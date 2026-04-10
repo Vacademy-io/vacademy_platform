@@ -110,6 +110,7 @@ import { Route as ManagePagesEditorTagNameRouteImport } from "./routes/manage-pa
 import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/redirect"
 import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
 import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
+import { Route as VideoApiStudioEditVideoIdIndexRouteImport } from "./routes/video-api-studio/edit/$videoId/index"
 import { Route as StudyLibraryVoltAddIndexRouteImport } from "./routes/study-library/volt/add/index"
 import { Route as StudyLibraryLiveSessionScheduleIndexRouteImport } from "./routes/study-library/live-session/schedule/index"
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from "./routes/study-library/courses/course-details/index"
@@ -939,6 +940,16 @@ const WorkflowWorkflowIdEditIndexRoute =
       (d) => d.Route,
     ),
   )
+const VideoApiStudioEditVideoIdIndexRoute =
+  VideoApiStudioEditVideoIdIndexRouteImport.update({
+    id: "/video-api-studio/edit/$videoId/",
+    path: "/video-api-studio/edit/$videoId/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/video-api-studio/edit/$videoId/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const StudyLibraryVoltAddIndexRoute =
   StudyLibraryVoltAddIndexRouteImport.update({
     id: "/study-library/volt/add/",
@@ -1432,6 +1443,7 @@ export interface FileRoutesByFullPath {
   "/study-library/courses/course-details/": typeof StudyLibraryCoursesCourseDetailsIndexRoute
   "/study-library/live-session/schedule/": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
+  "/video-api-studio/edit/$videoId/": typeof VideoApiStudioEditVideoIdIndexRoute
   "/workflow/$workflowId/edit/": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -1578,6 +1590,7 @@ export interface FileRoutesByTo {
   "/study-library/courses/course-details": typeof StudyLibraryCoursesCourseDetailsIndexRoute
   "/study-library/live-session/schedule": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add": typeof StudyLibraryVoltAddIndexRoute
+  "/video-api-studio/edit/$videoId": typeof VideoApiStudioEditVideoIdIndexRoute
   "/workflow/$workflowId/edit": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -1726,6 +1739,7 @@ export interface FileRoutesById {
   "/study-library/courses/course-details/": typeof StudyLibraryCoursesCourseDetailsIndexRoute
   "/study-library/live-session/schedule/": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
+  "/video-api-studio/edit/$videoId/": typeof VideoApiStudioEditVideoIdIndexRoute
   "/workflow/$workflowId/edit/": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -1875,6 +1889,7 @@ export interface FileRouteTypes {
     | "/study-library/courses/course-details/"
     | "/study-library/live-session/schedule/"
     | "/study-library/volt/add/"
+    | "/video-api-studio/edit/$videoId/"
     | "/workflow/$workflowId/edit/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId/"
@@ -2021,6 +2036,7 @@ export interface FileRouteTypes {
     | "/study-library/courses/course-details"
     | "/study-library/live-session/schedule"
     | "/study-library/volt/add"
+    | "/video-api-studio/edit/$videoId"
     | "/workflow/$workflowId/edit"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId"
@@ -2168,6 +2184,7 @@ export interface FileRouteTypes {
     | "/study-library/courses/course-details/"
     | "/study-library/live-session/schedule/"
     | "/study-library/volt/add/"
+    | "/video-api-studio/edit/$videoId/"
     | "/workflow/$workflowId/edit/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId/"
@@ -2315,6 +2332,7 @@ export interface RootRouteChildren {
   StudyLibraryCoursesCourseDetailsIndexRoute: typeof StudyLibraryCoursesCourseDetailsIndexRoute
   StudyLibraryLiveSessionScheduleIndexRoute: typeof StudyLibraryLiveSessionScheduleIndexRoute
   StudyLibraryVoltAddIndexRoute: typeof StudyLibraryVoltAddIndexRoute
+  VideoApiStudioEditVideoIdIndexRoute: typeof VideoApiStudioEditVideoIdIndexRoute
   WorkflowWorkflowIdEditIndexRoute: typeof WorkflowWorkflowIdEditIndexRoute
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute: typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute: typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -3060,6 +3078,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof WorkflowWorkflowIdEditIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/video-api-studio/edit/$videoId/": {
+      id: "/video-api-studio/edit/$videoId/"
+      path: "/video-api-studio/edit/$videoId"
+      fullPath: "/video-api-studio/edit/$videoId/"
+      preLoaderRoute: typeof VideoApiStudioEditVideoIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/study-library/volt/add/": {
       id: "/study-library/volt/add/"
       path: "/study-library/volt/add"
@@ -3516,6 +3541,7 @@ const rootRouteChildren: RootRouteChildren = {
   StudyLibraryLiveSessionScheduleIndexRoute:
     StudyLibraryLiveSessionScheduleIndexRoute,
   StudyLibraryVoltAddIndexRoute: StudyLibraryVoltAddIndexRoute,
+  VideoApiStudioEditVideoIdIndexRoute: VideoApiStudioEditVideoIdIndexRoute,
   WorkflowWorkflowIdEditIndexRoute: WorkflowWorkflowIdEditIndexRoute,
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute:
     StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute,

@@ -1441,14 +1441,19 @@ class VideoGenerationService:
             
             # Read
             data = json.loads(file_path.read_text(encoding='utf-8'))
-            
+
+            # Handle both timeline formats:
+            #   - plain array:              [{"html": ...}, ...]
+            #   - wrapped object:           {"entries": [...], "meta": {...}}
+            entries = data["entries"] if isinstance(data, dict) and "entries" in data else data
+
             # Update
-            if frame_index < 0 or frame_index >= len(data):
-                raise IndexError(f"Frame index {frame_index} out of range (0-{len(data)-1})")
-                
-            data[frame_index]["html"] = new_html
-            
-            # Write
+            if frame_index < 0 or frame_index >= len(entries):
+                raise IndexError(f"Frame index {frame_index} out of range (0-{len(entries)-1})")
+
+            entries[frame_index]["html"] = new_html
+
+            # Write (data already points to the modified entries when wrapped)
             file_path.write_text(json.dumps(data, indent=2), encoding='utf-8')
             
             # Upload back

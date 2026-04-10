@@ -983,6 +983,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 if (!host) {
                   host = document.createElement('div');
                   host.id = e.id;
+                  host.dataset.inTime = String(e.inTime || 0);
                   host.style.position = 'absolute';
                   host.style.overflow = 'visible'; // Allow annotations to flow outside
                   host.style.pointerEvents = 'none';
@@ -1131,7 +1132,19 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                             };
 
                             const gsap = createScopedGsap();
-                            
+
+                            // Scoped d3 proxy — d3.select/selectAll search inside shadow root
+                            const d3 = window.d3 ? (() => {
+                                const proxy = Object.create(window.d3);
+                                proxy.select = (s) => typeof s === 'string'
+                                    ? window.d3.select(scope.querySelector(s))
+                                    : window.d3.select(s);
+                                proxy.selectAll = (s) => typeof s === 'string'
+                                    ? window.d3.selectAll(Array.from(scope.querySelectorAll(s)))
+                                    : window.d3.selectAll(s);
+                                return proxy;
+                            })() : undefined;
+
                             try {
                                 ${originalCode}
                             } catch (e) {
@@ -1675,6 +1688,7 @@ def _active_entries_at(timeline: List[Dict[str, Any]], t: float) -> List[Dict[st
                 "w": item["w"],
                 "h": item["h"],
                 "html": item["html"],
+                "inTime": item["inTime"],
             }
             if "z" in item:
                 entry["z"] = item["z"]
@@ -2092,10 +2106,17 @@ def render_video_from_json(
     # Render frames using Playwright (CSS animations run in real-time between frames)
     with sync_playwright() as p:
         browser = p.chromium.launch(
+            channel="chrome",  # Google Chrome — includes H.264/AAC codecs (Playwright Chromium lacks them)
             headless=True,
             args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
                 "--allow-file-access-from-files",
                 "--disable-web-security",
+                "--autoplay-policy=no-user-gesture-required",
+                "--disable-gpu",
+                "--use-gl=angle",
+                "--use-angle=swiftshader",
             ],
         )
         _dpi_scale = device_scale_factor if device_scale_factor is not None else 1
@@ -2144,10 +2165,18 @@ def render_video_from_json(
                 if (window.__updateCaption) window.__updateCaption(state.caption || null);
                 // 5. Sync GSAP
                 try { gsap.globalTimeline.totalTime(state.t); } catch(e) {}
-                // 6. Seek stock videos (ensure video is ready before seeking)
+                // 6. Seek stock videos (skip entirely if none exist)
                 if (state.seekVideos) {
+                    const allHosts = document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"]');
+                    let hasVideos = false;
+                    allHosts.forEach(host => {
+                        const root = host.shadowRoot;
+                        if (root && root.querySelector('video')) hasVideos = true;
+                    });
+                    if (!hasVideos) { /* skip */ }
+                    else {
                     const seekPromises = [];
-                    document.querySelectorAll('[id^="snippet-"], [id^="segment-"]').forEach(host => {
+                    allHosts.forEach(host => {
                         const root = host.shadowRoot;
                         if (!root) return;
                         root.querySelectorAll('video').forEach(v => {
@@ -2182,6 +2211,7 @@ def render_video_from_json(
                         });
                     });
                     if (seekPromises.length > 0) await Promise.all(seekPromises);
+                    } // end else (hasVideos)
                 }
                 // 7. Rough Notation time-sync
                 if (window.__registeredAnnotations && window.__annotationShowTimes) {
@@ -2273,29 +2303,34 @@ def render_video_from_json(
                     });
                     return Promise.all(promises);
                 }""")
-                # Wait for stock videos to buffer enough data for seeking
-                page.evaluate("""() => {
-                    const videos = [];
-                    document.querySelectorAll('[id^="snippet-"], [id^="segment-"]').forEach(host => {
+                # Wait for stock videos to buffer enough data for seeking (skip if none exist)
+                page.evaluate("""async () => {
+                    const allVideos = [];
+                    document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"]').forEach(host => {
                         const root = host.shadowRoot;
                         if (!root) return;
-                        root.querySelectorAll('video').forEach(v => {
-                            // Force load if not started
-                            if (v.readyState < 1) v.load();
-                            // Wait for canplaythrough (readyState >= 4) — enough data to seek freely
-                            if (v.readyState < 4) {
-                                videos.push(new Promise(resolve => {
-                                    v.addEventListener('canplaythrough', resolve, { once: true });
-                                    v.addEventListener('error', resolve, { once: true });
-                                    // Timeout fallback — large CDN videos may take time
-                                    setTimeout(resolve, 15000);
-                                }));
-                            }
-                            // Pause all videos — we control time via currentTime
-                            v.pause();
-                        });
+                        root.querySelectorAll('video').forEach(v => allVideos.push({v, host}));
                     });
-                    return Promise.all(videos);
+                    if (allVideos.length === 0) return; // No videos — skip entirely
+                    console.log('[VIDEO-DIAG] Found ' + allVideos.length + ' video elements');
+                    const waits = [];
+                    allVideos.forEach(({v, host}) => {
+                        v.preload = 'auto';
+                        if (v.readyState < 1) v.load();
+                        if (v.readyState < 4) {
+                            waits.push(new Promise(r => {
+                                v.addEventListener('canplaythrough', r, { once: true });
+                                v.addEventListener('error', r, { once: true });
+                                setTimeout(r, 10000);
+                            }));
+                        }
+                        v.pause();
+                    });
+                    if (waits.length > 0) await Promise.all(waits);
+                    allVideos.forEach(({v, host}) => {
+                        console.log('[VIDEO-DIAG] ' + host.id + ': readyState=' + v.readyState +
+                            ' duration=' + (v.duration||'?') + ' error=' + (v.error ? v.error.message : 'none'));
+                    });
                 }""")
                 # Wait for Rough Notation annotations to position after layout
                 page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
@@ -2482,7 +2517,7 @@ def render_video_from_json(
                     path=str(frame_path),
                     type="jpeg",
                     quality=95,
-                    timeout=5000,
+                    timeout=30000,
                     clip={"x": 0, "y": 0, "width": width, "height": height},
                 )
             except Exception as e:

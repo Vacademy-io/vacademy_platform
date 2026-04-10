@@ -27,8 +27,8 @@ public class CollectionDashboardResponseDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ClassWiseBreakdownDTO {
-        private String cpoId;
-        private String cpoName;
+        private String packageSessionId;
+        private String className;
         private BigDecimal projectedRevenue;
         private BigDecimal expectedToDate;
         private BigDecimal collectedToDate;

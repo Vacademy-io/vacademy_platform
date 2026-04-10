@@ -402,8 +402,8 @@ public class FeeTrackingService {
 
                 List<CollectionDashboardResponseDTO.ClassWiseBreakdownDTO> classWiseBreakdown = classRows.stream()
                                 .map(row -> CollectionDashboardResponseDTO.ClassWiseBreakdownDTO.builder()
-                                                .cpoId((String) row[0])
-                                                .cpoName((String) row[1])
+                                                .packageSessionId((String) row[0])
+                                                .className((String) row[1])
                                                 .projectedRevenue(toBD(row[2]))
                                                 .expectedToDate(toBD(row[3]))
                                                 .collectedToDate(toBD(row[4]))

@@ -114,7 +114,7 @@ export const useCollectionDashboard = () => {
     const classWiseDetails = useMemo(() => {
         if (!dashboardData?.classWiseBreakdown) return [];
         return dashboardData.classWiseBreakdown.map(row => ({
-            className: row.cpoName,
+            className: row.className,
             projectedRevenue: row.projectedRevenue,
             expectedToDate: row.expectedToDate,
             collectedToDate: row.collectedToDate,

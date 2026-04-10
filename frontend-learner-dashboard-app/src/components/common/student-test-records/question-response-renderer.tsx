@@ -1,4 +1,35 @@
-import { parseHtmlToString } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/utils";
+import "katex/dist/katex.min.css";
+
+/**
+ * Decode HTML entities that may be double-encoded in API responses.
+ * e.g. "&lt;span&gt;" → "<span>" or "&amp;lt;" → "<"
+ */
+function decodeHtmlEntities(text: string): string {
+  if (!text) return "";
+  const textarea = document.createElement("textarea");
+  // Decode up to 2 times to handle double-encoding
+  textarea.innerHTML = text;
+  let decoded = textarea.value;
+  // If it still looks like it has encoded entities, decode once more
+  if (decoded.includes("&lt;") || decoded.includes("&gt;") || decoded.includes("&amp;")) {
+    textarea.innerHTML = decoded;
+    decoded = textarea.value;
+  }
+  return decoded;
+}
+
+/**
+ * Renders HTML content safely, preserving KaTeX/LaTeX math spans.
+ * Decodes HTML entities first (handles double-encoded API content),
+ * then sanitizes to strip dangerous tags while keeping formatting.
+ */
+const HtmlContent = ({ html, className }: { html: string; className?: string }) => (
+  <span
+    className={className}
+    dangerouslySetInnerHTML={{ __html: sanitizeHtml(decodeHtmlEntities(html)) }}
+  />
+);
 
 interface QuestionOption {
   id: string;
@@ -15,29 +46,28 @@ export interface SectionQuestions {
   }>;
 }
 
-// Function to find option name by ID from questions data
-const findOptionName = (
+// Function to find option HTML by ID from questions data
+const findOptionContent = (
   optionId: string,
   questionsData: SectionQuestions | null,
   questionId: string
-) => {
-  if (!questionsData) return optionId;
+): { html: string; found: boolean } => {
+  if (!questionsData) return { html: optionId, found: false };
 
   for (const sectionQuestions of Object.values(questionsData)) {
     const question = sectionQuestions.find((q) => q.question_id === questionId);
     if (question) {
-      // Check in both options and options_with_explanation
       const option = [
         ...(question.options || []),
         ...(question.options_with_explanation || []),
       ].find((opt) => opt.id === optionId);
 
       if (option?.text?.content) {
-        return parseHtmlToString(option.text.content);
+        return { html: option.text.content, found: true };
       }
     }
   }
-  return optionId;
+  return { html: optionId, found: false };
 };
 
 interface ReviewOption {
@@ -69,7 +99,7 @@ export const renderStudentResponse = (
     if (Array.isArray(review.student_response_options)) {
       return review.student_response_options.map(
         (option: ReviewOption, idx: number) => (
-          <p key={idx}>{parseHtmlToString(option.option_name)}</p>
+          <p key={idx}><HtmlContent html={option.option_name} /></p>
         )
       );
     }
@@ -92,13 +122,13 @@ export const renderStudentResponse = (
       case "MCQS":
       case "TRUE_FALSE":
         if (responseData.responseData?.optionIds?.length) {
-          const optionId = responseData.responseData.optionIds[0]; // MCQS has single selection
-          const optionName = findOptionName(
+          const optionId = responseData.responseData.optionIds[0];
+          const { html, found } = findOptionContent(
             optionId,
             questionsData,
             review.question_id
           );
-          return <p>{optionName}</p>;
+          return <p>{found ? <HtmlContent html={html} /> : html}</p>;
         }
         return <p>No option selected</p>;
 
@@ -107,12 +137,12 @@ export const renderStudentResponse = (
           return (
             <div>
               {responseData.responseData.optionIds.map((optionId: string) => {
-                const optionName = findOptionName(
+                const { html, found } = findOptionContent(
                   optionId,
                   questionsData,
                   review.question_id
                 );
-                return <p key={optionId}>{optionName}</p>;
+                return <p key={optionId}>{found ? <HtmlContent html={html} /> : html}</p>;
               })}
             </div>
           );
@@ -123,7 +153,7 @@ export const renderStudentResponse = (
         if (Array.isArray(review.student_response_options)) {
           return review.student_response_options.map(
             (option: ReviewOption, idx: number) => (
-              <p key={idx}>{parseHtmlToString(option.option_name)}</p>
+              <p key={idx}><HtmlContent html={option.option_name} /></p>
             )
           );
         }
@@ -138,7 +168,7 @@ export const renderStudentResponse = (
     if (Array.isArray(review.student_response_options)) {
       return review.student_response_options.map(
         (option: ReviewOption, idx: number) => (
-          <p key={idx}>{parseHtmlToString(option.option_name)}</p>
+          <p key={idx}><HtmlContent html={option.option_name} /></p>
         )
       );
     }
@@ -167,7 +197,7 @@ export const renderCorrectAnswer = (
 
       case "LONG_ANSWER":
         if (correctData.data?.answer?.content) {
-          return <p>{parseHtmlToString(correctData.data.answer.content)}</p>;
+          return <p><HtmlContent html={correctData.data.answer.content} /></p>;
         }
         return <p>No answer provided</p>;
 
@@ -183,12 +213,12 @@ export const renderCorrectAnswer = (
           return (
             <div>
               {correctData.data.correctOptionIds.map((optionId: string) => {
-                const optionName = findOptionName(
+                const { html, found } = findOptionContent(
                   optionId,
                   questionsData,
                   review.question_id
                 );
-                return <p key={optionId}>{optionName}</p>;
+                return <p key={optionId}>{found ? <HtmlContent html={html} /> : html}</p>;
               })}
             </div>
           );
@@ -199,7 +229,7 @@ export const renderCorrectAnswer = (
         if (Array.isArray(review.correct_options)) {
           return review.correct_options.map(
             (option: ReviewOption, idx: number) => (
-              <p key={idx}>{parseHtmlToString(option.option_name)}</p>
+              <p key={idx}><HtmlContent html={option.option_name} /></p>
             )
           );
         }
@@ -213,7 +243,7 @@ export const renderCorrectAnswer = (
     // Fallback for legacy format
     if (Array.isArray(review.correct_options)) {
       return review.correct_options.map((option: ReviewOption, idx: number) => (
-        <p key={idx}>{parseHtmlToString(option.option_name)}</p>
+        <p key={idx}><HtmlContent html={option.option_name} /></p>
       ));
     }
 

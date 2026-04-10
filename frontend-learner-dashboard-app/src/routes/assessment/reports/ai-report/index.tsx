@@ -33,12 +33,59 @@ interface AIReportData {
 }
 
 interface ParsedProcessedJSON {
+  version?: number;
+  // Pre-computed (always present in v2)
+  quick_summary?: {
+    total_score: number;
+    max_score: number;
+    accuracy_pct: number;
+    time_used_seconds: number;
+    time_allowed_seconds: number;
+    questions_attempted: number;
+    questions_total: number;
+    performance_band: "excellent" | "good" | "average" | "needs_work";
+    encouragement: string;
+  };
+  section_scores?: {
+    name: string;
+    score: number;
+    max_score: number;
+    accuracy_pct: number;
+    time_spent_seconds: number;
+  }[];
+  difficulty_breakdown?: {
+    easy: { attempted: number; correct: number };
+    medium: { attempted: number; correct: number };
+    hard: { attempted: number; correct: number };
+  };
+  time_analysis?: {
+    avg_time_per_question_seconds: number;
+    fastest_question_seconds: number;
+    slowest_question_seconds: number;
+    rushed_count: number;
+    overtime_count: number;
+  };
+  conceptual_gaps?: {
+    concept: string;
+    evidence: string;
+    suggestion: string;
+  }[];
+  question_results?: {
+    question_number: number;
+    section: string;
+    correct: boolean;
+    attempted: boolean;
+    time_seconds: number;
+    difficulty: string;
+    marked_for_review: boolean;
+  }[];
+  // Existing fields (backward compatible)
   performance_analysis: string;
-  areas_of_improvement: string;
-  improvement_path: string;
-  flashcards: { front: string; back: string }[];
   weaknesses: Record<string, number>;
   strengths: Record<string, number>;
+  areas_of_improvement?: string; // deprecated, kept for v1 compat
+  improvement_path: string;
+  flashcards: { front: string; back: string }[];
 }
 
 function RouteComponent() {

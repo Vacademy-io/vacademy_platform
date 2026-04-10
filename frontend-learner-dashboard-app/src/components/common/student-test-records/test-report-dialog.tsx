@@ -32,7 +32,21 @@ import {
   XCircle,
   MinusCircle,
 } from "@phosphor-icons/react";
-import { parseHtmlToString } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/utils";
+import "katex/dist/katex.min.css";
+
+/** Decode potentially double-encoded HTML entities from API responses */
+function decodeHtmlEntities(text: string): string {
+  if (!text) return "";
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = text;
+  let decoded = textarea.value;
+  if (decoded.includes("&lt;") || decoded.includes("&gt;") || decoded.includes("&amp;")) {
+    textarea.innerHTML = decoded;
+    decoded = textarea.value;
+  }
+  return decoded;
+}
 import { Preferences } from "@capacitor/preferences";
 import { useRouter } from "@tanstack/react-router";
 import type {
@@ -72,7 +86,7 @@ type TestMarks = {
 // Function to fetch questions data
 const fetchQuestionsData = async (
   assessmentId: string,
-  sectionIds: string[]
+  sectionIds: string[],
 ) => {
   try {
     const response = await authenticatedAxiosInstance.get(
@@ -82,7 +96,7 @@ const fetchQuestionsData = async (
           assessmentId,
           sectionIds: sectionIds.join(","),
         },
-      }
+      },
     );
     return response.data as SectionQuestions;
   } catch (error) {
@@ -111,7 +125,7 @@ export const TestReportDialog = ({
     useState<InstituteDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [questionsData, setQuestionsData] = useState<SectionQuestions | null>(
-    null
+    null,
   );
   const { setNavHeading } = useNavHeadingStore();
 
@@ -131,7 +145,10 @@ export const TestReportDialog = ({
   });
 
   // Extract IDs from search params (passed from AssessmentCard)
-  const searchParams = report.__store.state.location.search as { assessmentId?: string; attemptId?: string };
+  const searchParams = report.__store.state.location.search as {
+    assessmentId?: string;
+    attemptId?: string;
+  };
   const assessmentIdFromSearch = searchParams?.assessmentId;
   const attemptIdFromSearch = searchParams?.attemptId;
 
@@ -161,39 +178,67 @@ export const TestReportDialog = ({
   // For Way 1 (AssessmentCard), get assessment info from state
   const assessmentInfoFromState = (locationState as any)?.assessmentInfo;
 
-  const constructedReport: Report = testReport && assessmentData ? {
-    assessment_id: assessmentIdFromSearch || assessmentData?.assessment_id || "",
-    attempt_id: attemptIdFromSearch || (testReport as any)?.question_overall_detail_dto?.attemptId || "",
-    // For Way 1, use name from AssessmentCard state; fallback to assessmentDetails
-    assessment_name: assessmentInfoFromState?.name || assessmentData?.name || assessmentData?.assessment_name || "",
-    assessment_status: "ENDED",
-    subject_id: (testReport as any)?.question_overall_detail_dto?.subjectId || assessmentData?.subject_id || "",
-    start_time: (testReport as any)?.question_overall_detail_dto?.startTime || "",
-    end_time: (testReport as any)?.question_overall_detail_dto?.submitTime || "",
-    total_marks: (testReport as any)?.question_overall_detail_dto?.achievedMarks || 0,
-    duration_in_seconds: (testReport as any)?.question_overall_detail_dto?.completionTimeInSeconds || 0,
-    sections: (testReport as any)?.all_sections || {},
-    attempt_date: (testReport as any)?.question_overall_detail_dto?.startTime || "",
-    play_mode: assessmentData?.play_mode || "",
-    evaluation_type: evaluationType || assessmentData?.evaluation_type || "",
-  } : defaultReport;
+  const constructedReport: Report =
+    testReport && assessmentData
+      ? {
+          assessment_id:
+            assessmentIdFromSearch || assessmentData?.assessment_id || "",
+          attempt_id:
+            attemptIdFromSearch ||
+            (testReport as any)?.question_overall_detail_dto?.attemptId ||
+            "",
+          // For Way 1, use name from AssessmentCard state; fallback to assessmentDetails
+          assessment_name:
+            assessmentInfoFromState?.name ||
+            assessmentData?.name ||
+            assessmentData?.assessment_name ||
+            "",
+          assessment_status: "ENDED",
+          subject_id:
+            (testReport as any)?.question_overall_detail_dto?.subjectId ||
+            assessmentData?.subject_id ||
+            "",
+          start_time:
+            (testReport as any)?.question_overall_detail_dto?.startTime || "",
+          end_time:
+            (testReport as any)?.question_overall_detail_dto?.submitTime || "",
+          total_marks:
+            (testReport as any)?.question_overall_detail_dto?.achievedMarks ||
+            0,
+          duration_in_seconds:
+            (testReport as any)?.question_overall_detail_dto
+              ?.completionTimeInSeconds || 0,
+          sections: (testReport as any)?.all_sections || {},
+          attempt_date:
+            (testReport as any)?.question_overall_detail_dto?.startTime || "",
+          play_mode: assessmentData?.play_mode || "",
+          evaluation_type:
+            evaluationType || assessmentData?.evaluation_type || "",
+        }
+      : defaultReport;
 
   // Smart priority logic:
   // - If locationState.report exists with valid data (Way 2), use it as base
   // - Otherwise, use constructedReport from API (Way 1)
   // - BUT ALWAYS override start_time and end_time with API data for accuracy
-  const hasValidLocationReport = locationState?.report && locationState.report.assessment_id;
-  const hasValidConstructedReport = testReport && constructedReport.assessment_id;
+  const hasValidLocationReport =
+    locationState?.report && locationState.report.assessment_id;
+  const hasValidConstructedReport =
+    testReport && constructedReport.assessment_id;
 
   let studentReport: Report = hasValidLocationReport
     ? (locationState.report as Report)
-    : (hasValidConstructedReport ? constructedReport : defaultReport);
+    : hasValidConstructedReport
+      ? constructedReport
+      : defaultReport;
 
   // CRITICAL FIX: Always use API times regardless of navigation way
   // This ensures both Way 1 and Way 2 show correct times from the API
   if (testReport && (testReport as any)?.question_overall_detail_dto) {
-    const apiStartTime = (testReport as any).question_overall_detail_dto.startTime;
-    const apiEndTime = (testReport as any).question_overall_detail_dto.submitTime;
+    const apiStartTime = (testReport as any).question_overall_detail_dto
+      .startTime;
+    const apiEndTime = (testReport as any).question_overall_detail_dto
+      .submitTime;
 
     if (apiStartTime) studentReport.start_time = apiStartTime;
     if (apiEndTime) studentReport.end_time = apiEndTime;
@@ -201,18 +246,34 @@ export const TestReportDialog = ({
 
   console.log("=== REPORT DATA DEBUG ===");
   console.log("Way 2 (locationState.report) exists:", hasValidLocationReport);
-  console.log("Way 1 (constructedReport from API) exists:", hasValidConstructedReport);
-  console.log("Using:", hasValidLocationReport ? "Way 2 (locationState.report)" : (hasValidConstructedReport ? "Way 1 (constructedReport)" : "defaultReport"));
-  console.log("API Start Time:", (testReport as any)?.question_overall_detail_dto?.startTime);
-  console.log("API End Time:", (testReport as any)?.question_overall_detail_dto?.submitTime);
+  console.log(
+    "Way 1 (constructedReport from API) exists:",
+    hasValidConstructedReport,
+  );
+  console.log(
+    "Using:",
+    hasValidLocationReport
+      ? "Way 2 (locationState.report)"
+      : hasValidConstructedReport
+        ? "Way 1 (constructedReport)"
+        : "defaultReport",
+  );
+  console.log(
+    "API Start Time:",
+    (testReport as any)?.question_overall_detail_dto?.startTime,
+  );
+  console.log(
+    "API End Time:",
+    (testReport as any)?.question_overall_detail_dto?.submitTime,
+  );
   console.log("studentReport (final):", studentReport);
   console.log("Assessment name:", studentReport.assessment_name);
   console.log("Start time:", studentReport.start_time);
   console.log("End time:", studentReport.end_time);
 
-
   // Determine the actual IDs to use with priority: search params → studentReport → fallback to empty
-  const actualAssessmentId = assessmentIdFromSearch || studentReport.assessment_id || "";
+  const actualAssessmentId =
+    assessmentIdFromSearch || studentReport.assessment_id || "";
   const actualAttemptId = attemptIdFromSearch || studentReport.attempt_id || "";
 
   const [testMarks, setTestMarks] = useState<TestMarks | null>(null);
@@ -260,18 +321,30 @@ export const TestReportDialog = ({
     const loadQuestionsData = async () => {
       // For Way 1: testReport has all_sections
       // For Way 2: testReport IS the Report object with sections property
-      const sectionsData = (testReport as any)?.all_sections || (testReport as any)?.sections || studentReport?.sections;
+      const sectionsData =
+        (testReport as any)?.all_sections ||
+        (testReport as any)?.sections ||
+        studentReport?.sections;
 
       console.log("🔍 [Questions API] Checking if should fetch questions...");
       console.log("  - testReport:", testReport);
-      console.log("  - testReport.all_sections:", (testReport as any)?.all_sections);
+      console.log(
+        "  - testReport.all_sections:",
+        (testReport as any)?.all_sections,
+      );
       console.log("  - testReport.sections:", (testReport as any)?.sections);
       console.log("  - studentReport:", studentReport);
       console.log("  - studentReport.sections:", studentReport?.sections);
       console.log("  - sectionsData:", sectionsData);
-      console.log("  - sectionsData keys:", sectionsData ? Object.keys(sectionsData) : "null");
+      console.log(
+        "  - sectionsData keys:",
+        sectionsData ? Object.keys(sectionsData) : "null",
+      );
       console.log("  - actualAssessmentId:", actualAssessmentId);
-      console.log("  - hasFetchedQuestions.current:", hasFetchedQuestions.current);
+      console.log(
+        "  - hasFetchedQuestions.current:",
+        hasFetchedQuestions.current,
+      );
 
       if (sectionsData && actualAssessmentId) {
         const sectionIds = Object.keys(sectionsData);
@@ -286,14 +359,17 @@ export const TestReportDialog = ({
           }
           hasFetchedQuestions.current = true;
 
-          console.log("📡 [Questions API] Fetching questions for sections:", sectionIds);
+          console.log(
+            "📡 [Questions API] Fetching questions for sections:",
+            sectionIds,
+          );
           console.log("📡 [Questions API] Assessment ID:", actualAssessmentId);
 
-          const data = await fetchQuestionsData(
-            actualAssessmentId,
-            sectionIds
+          const data = await fetchQuestionsData(actualAssessmentId, sectionIds);
+          console.log(
+            "✅ [Questions API] Questions fetched successfully:",
+            data,
           );
-          console.log("✅ [Questions API] Questions fetched successfully:", data);
           setQuestionsData(data);
         } else {
           console.log("⚠️ [Questions API] No section IDs found");
@@ -335,7 +411,7 @@ export const TestReportDialog = ({
     (section: Section) => ({
       name: section.name,
       id: section.id,
-    })
+    }),
   );
 
   const handleExport = async () => {
@@ -374,13 +450,17 @@ export const TestReportDialog = ({
   };
 
   const [selectedSection, setSelectedSection] = useState(
-    sectionsInfo?.length ? sectionsInfo[0]?.id : undefined
+    sectionsInfo?.length ? sectionsInfo[0]?.id : undefined,
   );
   const evaluation_type = evaluationType;
   const evaluated_file_id = testReport?.evaluated_file_id;
   // For Way 1: use testReport.all_sections, for Way 2: testReport.sections
-  const sectionsData = (testReport as any)?.all_sections || (testReport as any)?.sections || studentReport?.sections;
-  const currentSectionAllQuestions = selectedSection && sectionsData ? sectionsData[selectedSection] : undefined;
+  const sectionsData =
+    (testReport as any)?.all_sections ||
+    (testReport as any)?.sections ||
+    studentReport?.sections;
+  const currentSectionAllQuestions =
+    selectedSection && sectionsData ? sectionsData[selectedSection] : undefined;
 
   useEffect(() => {
     if (evaluated_file_id) {
@@ -430,15 +510,18 @@ export const TestReportDialog = ({
   // For Way 2 (direct navigation), question_overall_detail_dto might not exist
   // Calculate from sections data if needed
   const calculateStatsFromSections = (sections: any) => {
-    let correct = 0, partialCorrect = 0, wrong = 0, skipped = 0;
+    let correct = 0,
+      partialCorrect = 0,
+      wrong = 0,
+      skipped = 0;
 
     if (sections) {
       Object.values(sections).forEach((questions: any) => {
         if (Array.isArray(questions)) {
           questions.forEach((q: any) => {
-            if (q.answer_status === 'CORRECT') correct++;
-            else if (q.answer_status === 'PARTIAL_CORRECT') partialCorrect++;
-            else if (q.answer_status === 'INCORRECT') wrong++;
+            if (q.answer_status === "CORRECT") correct++;
+            else if (q.answer_status === "PARTIAL_CORRECT") partialCorrect++;
+            else if (q.answer_status === "INCORRECT") wrong++;
             else skipped++;
           });
         }
@@ -451,11 +534,12 @@ export const TestReportDialog = ({
   // Use question_overall_detail_dto if available (Way 1), otherwise calculate from sections (Way 2)
   const stats = testReport?.question_overall_detail_dto
     ? {
-      correct: testReport.question_overall_detail_dto.correctAttempt,
-      partialCorrect: testReport.question_overall_detail_dto.partialCorrectAttempt,
-      wrong: testReport.question_overall_detail_dto.wrongAttempt,
-      skipped: testReport.question_overall_detail_dto.skippedCount,
-    }
+        correct: testReport.question_overall_detail_dto.correctAttempt,
+        partialCorrect:
+          testReport.question_overall_detail_dto.partialCorrectAttempt,
+        wrong: testReport.question_overall_detail_dto.wrongAttempt,
+        skipped: testReport.question_overall_detail_dto.skippedCount,
+      }
     : calculateStatsFromSections(sectionsData);
 
   const responseData = {
@@ -472,12 +556,15 @@ export const TestReportDialog = ({
 
   // Calculate percentage score
   const percentageScore = testMarks?.total_achievable_marks
-    ? Math.round((studentReport.total_marks / testMarks.total_achievable_marks) * 100)
+    ? Math.round(
+        (studentReport.total_marks / testMarks.total_achievable_marks) * 100,
+      )
     : 0;
 
   // Get performance level
   const getPerformanceLevel = (percentage: number) => {
-    if (percentage >= 90) return { label: "Excellent", color: "bg-emerald-500" };
+    if (percentage >= 90)
+      return { label: "Excellent", color: "bg-emerald-500" };
     if (percentage >= 75) return { label: "Very Good", color: "bg-green-500" };
     if (percentage >= 60) return { label: "Good", color: "bg-blue-500" };
     if (percentage >= 50) return { label: "Average", color: "bg-amber-500" };
@@ -498,16 +585,24 @@ export const TestReportDialog = ({
                 {(() => {
                   const subjectName = getSubjectNameById(
                     instituteDetails?.subjects || [],
-                    studentReport?.subject_id
+                    studentReport?.subject_id,
                   );
-                  const shouldShowSubject = subjectName &&
+                  const shouldShowSubject =
+                    subjectName &&
                     subjectName.trim() !== "" &&
                     subjectName.toUpperCase() !== "N/A";
 
                   return shouldShowSubject ? (
                     <div className="flex items-center gap-3 mb-2">
-                      <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
-                        {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}: {subjectName}
+                      <Badge
+                        variant="secondary"
+                        className="bg-blue-50 text-blue-700 border-blue-200"
+                      >
+                        {getTerminology(
+                          ContentTerms.Subjects,
+                          SystemTerms.Subjects,
+                        )}
+                        : {subjectName}
                       </Badge>
                     </div>
                   ) : null;
@@ -524,7 +619,11 @@ export const TestReportDialog = ({
                 disabled={isLoading}
               >
                 <Export weight="duotone" />
-                {isLoading ? <span className="ml-2">Exporting...</span> : <>Export Report</>}
+                {isLoading ? (
+                  <span className="ml-2">Exporting...</span>
+                ) : (
+                  <>Export Report</>
+                )}
               </MyButton>
             </div>
 
@@ -532,21 +631,37 @@ export const TestReportDialog = ({
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="flex items-start gap-3 p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all duration-200 hover:border-blue-300">
                 <div className="p-2 bg-blue-50 rounded-lg">
-                  <CalendarBlank size={20} weight="duotone" className="text-blue-600" />
+                  <CalendarBlank
+                    size={20}
+                    weight="duotone"
+                    className="text-blue-600"
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">Attempt Date</div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+                    Attempt Date
+                  </div>
                   <div className="text-sm md:text-base font-semibold text-slate-900 leading-tight">
-                    {extractDateTime(convertToLocalDateTime(studentReport.start_time)).date}
+                    {
+                      extractDateTime(
+                        convertToLocalDateTime(studentReport.start_time),
+                      ).date
+                    }
                   </div>
                 </div>
               </div>
               <div className="flex items-start gap-3 p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all duration-200 hover:border-emerald-300">
                 <div className="p-2 bg-emerald-50 rounded-lg">
-                  <Timer size={20} weight="duotone" className="text-emerald-600" />
+                  <Timer
+                    size={20}
+                    weight="duotone"
+                    className="text-emerald-600"
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">Duration</div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+                    Duration
+                  </div>
                   <div className="text-sm md:text-base font-semibold text-slate-900 leading-tight">
                     {formatDuration(studentReport.duration_in_seconds)}
                   </div>
@@ -554,12 +669,22 @@ export const TestReportDialog = ({
               </div>
               <div className="flex items-start gap-3 p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all duration-200 hover:border-amber-300">
                 <div className="p-2 bg-amber-50 rounded-lg">
-                  <Clock size={20} weight="duotone" className="text-amber-600" />
+                  <Clock
+                    size={20}
+                    weight="duotone"
+                    className="text-amber-600"
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">Start Time</div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+                    Start Time
+                  </div>
                   <div className="text-sm md:text-base font-semibold text-slate-900 leading-tight">
-                    {extractDateTime(convertToLocalDateTime(studentReport.start_time)).time}
+                    {
+                      extractDateTime(
+                        convertToLocalDateTime(studentReport.start_time),
+                      ).time
+                    }
                   </div>
                 </div>
               </div>
@@ -568,9 +693,15 @@ export const TestReportDialog = ({
                   <Clock size={20} weight="duotone" className="text-rose-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">End Time</div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+                    End Time
+                  </div>
                   <div className="text-sm md:text-base font-semibold text-slate-900 leading-tight">
-                    {extractDateTime(convertToLocalDateTime(studentReport.end_time)).time}
+                    {
+                      extractDateTime(
+                        convertToLocalDateTime(studentReport.end_time),
+                      ).time
+                    }
                   </div>
                 </div>
               </div>
@@ -599,10 +730,13 @@ export const TestReportDialog = ({
                 <div className="space-y-2">
                   <Progress value={percentageScore} className="h-3" />
                   <div className="text-sm font-medium text-slate-600">
-                    {studentReport.total_marks} / {testMarks?.total_achievable_marks ?? "-"} marks
+                    {studentReport.total_marks} /{" "}
+                    {testMarks?.total_achievable_marks ?? "-"} marks
                   </div>
                 </div>
-                <Badge className={`${performanceLevel.color} text-white border-none px-4 py-1`}>
+                <Badge
+                  className={`${performanceLevel.color} text-white border-none px-4 py-1`}
+                >
                   {performanceLevel.label}
                 </Badge>
               </CardContent>
@@ -621,13 +755,19 @@ export const TestReportDialog = ({
                     <Crown />
                   )}
                   <div className="text-5xl font-bold text-slate-900">
-                    {testReport.question_overall_detail_dto?.rank ?? 'N/A'}
+                    {testReport.question_overall_detail_dto?.rank ?? "N/A"}
                   </div>
                 </div>
                 <div className="flex items-center justify-center gap-2 text-slate-600">
-                  <TrendUp size={20} weight="duotone" className="text-emerald-500" />
+                  <TrendUp
+                    size={20}
+                    weight="duotone"
+                    className="text-emerald-500"
+                  />
                   <span className="text-sm font-medium">
-                    Top {testReport.question_overall_detail_dto?.percentile ?? 0}% Percentile
+                    Top{" "}
+                    {testReport.question_overall_detail_dto?.percentile ?? 0}%
+                    Percentile
                   </span>
                 </div>
               </CardContent>
@@ -643,24 +783,48 @@ export const TestReportDialog = ({
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
                   <div className="flex items-center gap-2">
-                    <CheckCircle size={20} weight="fill" className="text-emerald-600" />
-                    <span className="text-sm font-medium text-slate-700">Correct</span>
+                    <CheckCircle
+                      size={20}
+                      weight="fill"
+                      className="text-emerald-600"
+                    />
+                    <span className="text-sm font-medium text-slate-700">
+                      Correct
+                    </span>
                   </div>
-                  <span className="text-lg font-bold text-emerald-700">{marksData.correct}</span>
+                  <span className="text-lg font-bold text-emerald-700">
+                    {marksData.correct}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between p-3 bg-rose-50 rounded-lg">
                   <div className="flex items-center gap-2">
-                    <XCircle size={20} weight="fill" className="text-rose-600" />
-                    <span className="text-sm font-medium text-slate-700">Incorrect</span>
+                    <XCircle
+                      size={20}
+                      weight="fill"
+                      className="text-rose-600"
+                    />
+                    <span className="text-sm font-medium text-slate-700">
+                      Incorrect
+                    </span>
                   </div>
-                  <span className="text-lg font-bold text-rose-700">{marksData.wrongResponse}</span>
+                  <span className="text-lg font-bold text-rose-700">
+                    {marksData.wrongResponse}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                   <div className="flex items-center gap-2">
-                    <MinusCircle size={20} weight="fill" className="text-slate-600" />
-                    <span className="text-sm font-medium text-slate-700">Skipped</span>
+                    <MinusCircle
+                      size={20}
+                      weight="fill"
+                      className="text-slate-600"
+                    />
+                    <span className="text-sm font-medium text-slate-700">
+                      Skipped
+                    </span>
                   </div>
-                  <span className="text-lg font-bold text-slate-700">{marksData.skipped}</span>
+                  <span className="text-lg font-bold text-slate-700">
+                    {marksData.skipped}
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -669,32 +833,44 @@ export const TestReportDialog = ({
           {/* Analytics Section */}
           <Card className="border-slate-200 shadow-lg">
             <CardHeader>
-              <CardTitle className="text-2xl font-bold text-slate-900">Performance Analytics</CardTitle>
-              <CardDescription>Detailed breakdown of your responses and marks</CardDescription>
+              <CardTitle className="text-2xl font-bold text-slate-900">
+                Performance Analytics
+              </CardTitle>
+              <CardDescription>
+                Detailed breakdown of your responses and marks
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                 {/* Response Breakdown */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-slate-800">Response Breakdown</h3>
+                  <h3 className="text-lg font-semibold text-slate-800">
+                    Response Breakdown
+                  </h3>
                   <div className="flex justify-center">
                     <ResponseBreakdownComponent responseData={responseData} />
                   </div>
                   <div className="grid grid-cols-2 gap-3 mt-4">
                     <div className="flex items-center gap-2 p-2 bg-emerald-50 rounded-lg">
                       <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                      <span className="text-sm text-slate-700">Attempted: {responseData.attempted}</span>
+                      <span className="text-sm text-slate-700">
+                        Attempted: {responseData.attempted}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 p-2 bg-slate-100 rounded-lg">
                       <div className="w-3 h-3 rounded-full bg-slate-400"></div>
-                      <span className="text-sm text-slate-700">Skipped: {responseData.skipped}</span>
+                      <span className="text-sm text-slate-700">
+                        Skipped: {responseData.skipped}
+                      </span>
                     </div>
                   </div>
                 </div>
 
                 {/* Marks Breakdown */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-slate-800">Marks Breakdown</h3>
+                  <h3 className="text-lg font-semibold text-slate-800">
+                    Marks Breakdown
+                  </h3>
                   <div className="flex justify-center">
                     <MarksBreakdownComponent marksData={marksData} />
                   </div>
@@ -705,7 +881,10 @@ export const TestReportDialog = ({
                         <span className="text-sm text-slate-700">Correct</span>
                       </div>
                       <span className="text-sm font-semibold text-slate-900">
-                        {marksData.correct} (+{testReport.question_overall_detail_dto?.totalCorrectMarks ?? 0})
+                        {marksData.correct} (+
+                        {testReport.question_overall_detail_dto
+                          ?.totalCorrectMarks ?? 0}
+                        )
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-2 bg-amber-50 rounded-lg">
@@ -714,16 +893,24 @@ export const TestReportDialog = ({
                         <span className="text-sm text-slate-700">Partial</span>
                       </div>
                       <span className="text-sm font-semibold text-slate-900">
-                        {marksData.partiallyCorrect} (+{testReport.question_overall_detail_dto?.totalPartialMarks ?? 0})
+                        {marksData.partiallyCorrect} (+
+                        {testReport.question_overall_detail_dto
+                          ?.totalPartialMarks ?? 0}
+                        )
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-2 bg-rose-50 rounded-lg">
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full bg-rose-500"></div>
-                        <span className="text-sm text-slate-700">Incorrect</span>
+                        <span className="text-sm text-slate-700">
+                          Incorrect
+                        </span>
                       </div>
                       <span className="text-sm font-semibold text-slate-900">
-                        {marksData.wrongResponse} ({testReport.question_overall_detail_dto?.totalIncorrectMarks ?? 0})
+                        {marksData.wrongResponse} (
+                        {testReport.question_overall_detail_dto
+                          ?.totalIncorrectMarks ?? 0}
+                        )
                       </span>
                     </div>
                   </div>
@@ -765,18 +952,35 @@ export const TestReportDialog = ({
             <CardHeader className="border-b border-slate-100">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <CardTitle className="text-2xl font-bold text-slate-900">Answer Review</CardTitle>
-                  <CardDescription className="mt-1">Detailed analysis of your responses</CardDescription>
+                  <CardTitle className="text-2xl font-bold text-slate-900">
+                    Answer Review
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    Detailed analysis of your responses
+                  </CardDescription>
                 </div>
-                <Badge variant="outline" className="text-sm font-medium border-slate-300">
-                  Section Total: {testMarks?.section_wise_achievable_marks?.[selectedSection ?? "0"]} Marks
+                <Badge
+                  variant="outline"
+                  className="text-sm font-medium border-slate-300"
+                >
+                  Section Total:{" "}
+                  {
+                    testMarks?.section_wise_achievable_marks?.[
+                      selectedSection ?? "0"
+                    ]
+                  }{" "}
+                  Marks
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="p-6 space-y-6">
-              {currentSectionAllQuestions && currentSectionAllQuestions.length > 0 ? (
+              {currentSectionAllQuestions &&
+              currentSectionAllQuestions.length > 0 ? (
                 currentSectionAllQuestions.map((review: any, index: number) => (
-                  <Card key={index} className="border-slate-200 hover:shadow-md transition-shadow">
+                  <Card
+                    key={index}
+                    className="border-slate-200 hover:shadow-md transition-shadow"
+                  >
                     <CardHeader className="bg-slate-50 border-b border-slate-100">
                       <div className="flex items-start justify-between gap-4 flex-wrap">
                         <div className="flex-1">
@@ -788,13 +992,20 @@ export const TestReportDialog = ({
                               {review.question_type}
                             </Badge>
                           </div>
-                          <div className="text-sm text-slate-700 leading-relaxed">
-                            {parseHtmlToString(review.question_name)}
-                          </div>
+                          <div
+                            className="text-sm text-slate-700 leading-relaxed"
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(decodeHtmlEntities(review.question_name || "")) }}
+                          />
                         </div>
                         <div className="flex items-center gap-2 text-sm text-slate-600 bg-white px-3 py-1.5 rounded-md border border-slate-200">
-                          <Clock size={16} weight="duotone" className="text-slate-500" />
-                          <span className="font-medium">{review.time_taken_in_seconds}s</span>
+                          <Clock
+                            size={16}
+                            weight="duotone"
+                            className="text-slate-500"
+                          />
+                          <span className="font-medium">
+                            {review.time_taken_in_seconds}s
+                          </span>
                         </div>
                       </div>
                     </CardHeader>
@@ -803,27 +1014,30 @@ export const TestReportDialog = ({
                       {/* Student Response */}
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm font-semibold text-slate-700">Your Response</span>
+                          <span className="text-sm font-semibold text-slate-700">
+                            Your Response
+                          </span>
                           <MarksStatusIndicator
                             mark={review.mark}
                             answer_status={
                               review.answer_status as
-                              | "CORRECT"
-                              | "INCORRECT"
-                              | "PARTIAL_CORRECT"
-                              | "DEFAULT"
+                                | "CORRECT"
+                                | "INCORRECT"
+                                | "PARTIAL_CORRECT"
+                                | "DEFAULT"
                             }
                           />
                         </div>
                         <Alert
-                          className={`border-l-4 ${review.answer_status === "CORRECT"
-                            ? "border-l-emerald-500 bg-emerald-50/50 border-emerald-200"
-                            : review.answer_status === "INCORRECT"
-                              ? "border-l-rose-500 bg-rose-50/50 border-rose-200"
-                              : review.answer_status === "PARTIAL_CORRECT"
-                                ? "border-l-amber-500 bg-amber-50/50 border-amber-200"
-                                : "border-l-slate-500 bg-slate-50/50 border-slate-200"
-                            }`}
+                          className={`border-l-4 ${
+                            review.answer_status === "CORRECT"
+                              ? "border-l-emerald-500 bg-emerald-50/50 border-emerald-200"
+                              : review.answer_status === "INCORRECT"
+                                ? "border-l-rose-500 bg-rose-50/50 border-rose-200"
+                                : review.answer_status === "PARTIAL_CORRECT"
+                                  ? "border-l-amber-500 bg-amber-50/50 border-amber-200"
+                                  : "border-l-slate-500 bg-slate-50/50 border-slate-200"
+                          }`}
                         >
                           <AlertDescription className="text-sm text-slate-700">
                             {renderStudentResponse(review, questionsData)}
@@ -834,7 +1048,9 @@ export const TestReportDialog = ({
                       {/* Correct Answer */}
                       {review.answer_status !== "CORRECT" && (
                         <div className="space-y-2">
-                          <span className="text-sm font-semibold text-slate-700">Correct Answer</span>
+                          <span className="text-sm font-semibold text-slate-700">
+                            Correct Answer
+                          </span>
                           <Alert className="border-l-4 border-l-emerald-500 bg-emerald-50/50 border-emerald-200">
                             <AlertDescription className="text-sm text-slate-700">
                               {renderCorrectAnswer(review, questionsData)}
@@ -846,10 +1062,13 @@ export const TestReportDialog = ({
                       {/* Explanation */}
                       {review.explanation && (
                         <div className="space-y-2 pt-2 border-t border-slate-100">
-                          <span className="text-sm font-semibold text-slate-700">Explanation</span>
-                          <div className="text-sm text-slate-600 bg-slate-50 rounded-lg p-4 leading-relaxed">
-                            {parseHtmlToString(review.explanation)}
-                          </div>
+                          <span className="text-sm font-semibold text-slate-700">
+                            Explanation
+                          </span>
+                          <div
+                            className="text-sm text-slate-600 bg-slate-50 rounded-lg p-4 leading-relaxed"
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(decodeHtmlEntities(review.explanation || "")) }}
+                          />
                         </div>
                       )}
                     </CardContent>
@@ -874,7 +1093,11 @@ export const TestReportDialog = ({
             className="w-full"
           >
             <Export />
-            {isLoading ? <span className="ml-2">Exporting...</span> : <>Export Report</>}
+            {isLoading ? (
+              <span className="ml-2">Exporting...</span>
+            ) : (
+              <>Export Report</>
+            )}
           </MyButton>
         </div>
 

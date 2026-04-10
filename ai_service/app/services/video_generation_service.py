@@ -1492,7 +1492,7 @@ class VideoGenerationService:
                     str(file_path),
                     bucket,
                     key,
-                    ExtraArgs={'ContentType': 'application/json', 'ACL': 'public-read'}
+                    ExtraArgs={'ContentType': 'application/json'}
                 )
                 
                 # Invalidate CloudFront? (Not handled here, assuming direct S3 usage or short TTL)

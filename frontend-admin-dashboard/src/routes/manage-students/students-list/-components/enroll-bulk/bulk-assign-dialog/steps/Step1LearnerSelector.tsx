@@ -11,7 +11,7 @@ import {
     NewUserRow,
     SelectedLearner,
 } from '../../../../-types/bulk-assign-types';
-import { CsvUserImporter } from '../../components/CsvUserImporter';
+import { CsvUserImporter, CsvPaymentInfo } from '../../components/CsvUserImporter';
 import { ManualUserEntry } from '../../components/ManualUserEntry';
 import { FromCourseSelector } from '../../components/FromCourseSelector';
 
@@ -19,12 +19,14 @@ interface Props {
     instituteId: string;
     selectedLearners: SelectedLearner[];
     onSelectedLearnersChange: (learners: SelectedLearner[]) => void;
+    onPaymentInfoDetected?: (info: CsvPaymentInfo) => void;
 }
 
 export const Step1LearnerSelector = ({
     instituteId,
     selectedLearners,
     onSelectedLearnersChange,
+    onPaymentInfoDetected,
 }: Props) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [mode, setMode] = useState<LearnerSourceMode>('manual');
@@ -193,7 +195,7 @@ export const Step1LearnerSelector = ({
 
                 {/* TAB: CSV import */}
                 <TabsContent value="csv" className="mt-4">
-                    <CsvUserImporter onImport={addNewUsers} />
+                    <CsvUserImporter onImport={addNewUsers} onPaymentInfoDetected={onPaymentInfoDetected} />
                 </TabsContent>
 
                 {/* TAB: Manual entry */}

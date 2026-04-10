@@ -58,6 +58,9 @@ public class DomainRoutingAdminService {
                                                                 ? request.getConvertUsernamePasswordToLowercase()
                                                                 : false)
                                 .subOrgId(request.getSubOrgId() == null ? null : request.getSubOrgId().trim())
+                                .commaSeparatedPreferredCountry(
+                                                request.getCommaSeparatedPreferredCountry() == null ? null
+                                                                : request.getCommaSeparatedPreferredCountry().trim())
                                 .build();
                 return repository.save(entity);
         }
@@ -113,6 +116,9 @@ public class DomainRoutingAdminService {
                                                         ? request.getConvertUsernamePasswordToLowercase()
                                                         : false);
                         existing.setSubOrgId(request.getSubOrgId() == null ? null : request.getSubOrgId().trim());
+                        existing.setCommaSeparatedPreferredCountry(
+                                        request.getCommaSeparatedPreferredCountry() == null ? null
+                                                        : request.getCommaSeparatedPreferredCountry().trim());
                         return repository.save(existing);
                 });
         }

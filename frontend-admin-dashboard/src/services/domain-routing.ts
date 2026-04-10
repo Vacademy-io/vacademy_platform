@@ -25,7 +25,29 @@ export type DomainResolveResponse = {
     learnerPortalUrl?: string | null;
     instructorPortalUrl?: string | null;
     convertUsernamePasswordToLowercase?: boolean;
+    // Comma-separated ISO 3166-1 alpha-2 country codes (e.g. "in,us,gb,au").
+    // Drives the default selection and ordering of country options in phone inputs.
+    commaSeparatedPreferredCountry?: string | null;
 };
+
+/**
+ * Parses the institute's `commaSeparatedPreferredCountry` (from domain routing)
+ * into a normalized lowercase array of ISO 3166-1 alpha-2 country codes.
+ * Reads from the cached domain routing branding so callers don't need to refetch.
+ */
+export function getCachedPreferredCountries(): string[] {
+    try {
+        const branding = getCachedInstituteBranding();
+        const raw = branding?.commaSeparatedPreferredCountry;
+        if (!raw) return [];
+        return raw
+            .split(',')
+            .map((code) => code.trim().toLowerCase())
+            .filter((code) => code.length > 0);
+    } catch {
+        return [];
+    }
+}
 
 export async function resolveInstituteForCurrentHost(): Promise<DomainResolveResponse | null> {
     try {

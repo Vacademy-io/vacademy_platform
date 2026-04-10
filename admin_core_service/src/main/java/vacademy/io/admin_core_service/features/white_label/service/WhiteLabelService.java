@@ -233,6 +233,7 @@ public class WhiteLabelService {
                         .appStoreAppLink(r.getAppStoreAppLink())
                         .windowsAppLink(r.getWindowsAppLink())
                         .macAppLink(r.getMacAppLink())
+                        .commaSeparatedPreferredCountry(r.getCommaSeparatedPreferredCountry())
                         .build())
                 .collect(Collectors.toList());
 
@@ -346,6 +347,7 @@ public class WhiteLabelService {
                     cfg.getConvertUsernamePasswordToLowercase() != null
                             ? cfg.getConvertUsernamePasswordToLowercase()
                             : false);
+            r.setCommaSeparatedPreferredCountry(cfg.getCommaSeparatedPreferredCountry());
         } else {
             r.setAllowUsernamePasswordAuth(true);
             r.setConvertUsernamePasswordToLowercase(false);

@@ -39,4 +39,5 @@ public class DomainRoutingResolveResponse {
     private String instructorPortalUrl;
     private boolean convertUsernamePasswordToLowercase;
     private String subOrgId;
+    private String commaSeparatedPreferredCountry;
 }

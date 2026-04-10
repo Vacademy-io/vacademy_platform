@@ -62,7 +62,8 @@ public class DomainRoutingService {
                 .appStoreAppLink(mapping.getAppStoreAppLink())
                 .windowsAppLink(mapping.getWindowsAppLink())
                 .macAppLink(mapping.getMacAppLink())
-                .convertUsernamePasswordToLowercase(mapping.isConvertUsernamePasswordToLowercase());
+                .convertUsernamePasswordToLowercase(mapping.isConvertUsernamePasswordToLowercase())
+                .commaSeparatedPreferredCountry(mapping.getCommaSeparatedPreferredCountry());
 
         if (institute != null) {
             responseBuilder.instituteId(institute.getId())

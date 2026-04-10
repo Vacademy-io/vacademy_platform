@@ -85,6 +85,12 @@ Each flow below is written as: *what the admin does → what the system does →
 
 ### 3.2 Settings → Custom Fields tab — opening it
 
+> **First-time confusion warning.** The table on this page shows **four logical buckets** mixed together — System Fields (renameable label list), "Fixed" custom fields (the ones the UI shows with a "System Field" badge), regular custom fields, and grouped fields. The "System Field" badge does **not** come from the backend — the frontend decides which rows get it by name‑matching against a hardcoded list `['name','email','username','password','batch','phone']` (see [Bug B-24](#b-24-system-field-badge-is-decided-by-a-frontend-name-match-heuristic)). Two consequences:
+> - Default seeded fields named `Full Name` and `Phone Number` do **not** match the heuristic, so they appear without the badge and look fully editable even though the backend marked them locked.
+> - Any legacy `custom_fields` row with `field_name = 'name' / 'username' / 'password' / 'batch'` will appear here with the badge, even though it is a perfectly normal user-created row.
+>
+> If you see duplicates (e.g. two `email` rows), you have hit [Bug B-0](#b-0-the-settings-page-shows-duplicate-fields-and-misclassified-system-fields) — run the diagnostic SQL there.
+
 **Steps:**
 1. Click the gear icon → **Settings**.
 2. Click the **Custom Fields** tab.
@@ -296,6 +302,65 @@ Bugs are tagged with severity, the file/line where the issue lives (cross-refere
 
 ### 4.1 Critical
 
+#### B-0. The Settings page shows duplicate fields and mis‑classified system fields
+
+**Where:** Combination of [B-23](#b-23-custom_fieldsfield_key-has-no-sql-unique-constraint--duplicates-accumulate) (no DB unique constraint on `field_key`) + [B-24](#b-24-system-field-badge-is-decided-by-a-frontend-name-match-heuristic) (frontend name-match heuristic for "System Field" badge).
+
+**Symptom (visible in production):** Settings → Custom Fields shows rows like `name`, `email`, `username`, `password`, `batch`, `phone`, **plus 2-3 duplicate `email` rows**, all labelled "System Field". Some are required, some aren't, some have visibility ticked, some don't — they look like garbage data because they are.
+
+**Why it looks confusing:** Three things conspire:
+1. The backend has **no SQL UNIQUE** on `custom_fields.field_key`, so duplicate inserts succeed (Bug B-23).
+2. Old / migrated data left behind `custom_fields` rows with names exactly matching the frontend's hardcoded `SYSTEM_FIELD_NAMES` list (`name / email / username / password / batch / phone`), so they all get the "System Field" badge.
+3. The current seeder only inserts `Full Name`, `Email`, `Phone Number` — but a previous version (or a migration) clearly inserted the other 4 names, and nobody cleaned up.
+
+**What an admin should do today:**
+1. Run the diagnostic SQL below to see exactly what's in the table.
+2. Identify which rows are real (referenced by active mappings, have learner answers) and which are orphans.
+3. Manually soft‑delete the orphans (`UPDATE institute_custom_fields SET status='DELETED' WHERE id IN (...)`) — but **do not** delete the master `custom_fields` rows because their `id` may be referenced by historical `custom_field_values`.
+4. Refresh the admin dashboard cache by clearing `localStorage['custom-field-settings-cache']`.
+
+**Diagnostic SQL:**
+
+```sql
+-- 1. List every "system-looking" custom field row for this institute
+SELECT cf.id              AS custom_field_id,
+       cf.field_key,
+       cf.field_name,
+       cf.field_type,
+       cf.status          AS cf_status,
+       cf.created_at      AS cf_created,
+       icf.id             AS mapping_id,
+       icf.type           AS mapping_type,
+       icf.type_id        AS mapping_type_id,
+       icf.status         AS mapping_status,
+       icf.created_at     AS mapping_created
+  FROM custom_fields cf
+  JOIN institute_custom_fields icf ON icf.custom_field_id = cf.id
+ WHERE icf.institute_id = '<INSTITUTE_ID>'
+   AND lower(cf.field_name) IN ('name','email','username','password','batch','phone','full name','phone number')
+ ORDER BY cf.field_name, cf.created_at;
+
+-- 2. Count duplicates by field_name
+SELECT lower(cf.field_name) AS name, COUNT(DISTINCT cf.id) AS dup_rows
+  FROM custom_fields cf
+  JOIN institute_custom_fields icf ON icf.custom_field_id = cf.id
+ WHERE icf.institute_id = '<INSTITUTE_ID>'
+ GROUP BY lower(cf.field_name)
+HAVING COUNT(DISTINCT cf.id) > 1;
+
+-- 3. Check whether any duplicate has actual learner answers
+SELECT cf.id, cf.field_name, COUNT(cfv.id) AS answer_count
+  FROM custom_fields cf
+  LEFT JOIN custom_field_values cfv ON cfv.custom_field_id = cf.id
+ WHERE cf.id IN (<list of duplicate ids from query 1>)
+ GROUP BY cf.id, cf.field_name
+ ORDER BY answer_count DESC;
+```
+
+The row with the highest `answer_count` is the "real" one — keep it. Soft‑delete the others by flipping their `institute_custom_fields.status` to `DELETED`.
+
+**Permanent fix:** apply both [B-23](#b-23-custom_fieldsfield_key-has-no-sql-unique-constraint--duplicates-accumulate) and [B-24](#b-24-system-field-badge-is-decided-by-a-frontend-name-match-heuristic).
+
 #### B-1. Cannot recreate a field after soft delete
 
 **Where:** [InstituteCustomFiledService.findOrCreateCustomFieldWithLock](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/service/InstituteCustomFiledService.java) (lines 127-136) and [CustomFields.java](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/entity/CustomFields.java) (`@Column(unique=true)` on `field_key`).
@@ -477,6 +542,49 @@ Bugs are tagged with severity, the file/line where the issue lives (cross-refere
 **Impact:** Fields whose master row has been individually marked deleted may still appear in usage reports if they have any active mappings.
 
 **Recommended fix:** Add `AND cf.status = 'ACTIVE'` to the JPQL query.
+
+#### B-23. `custom_fields.field_key` has no SQL UNIQUE constraint — duplicates accumulate
+
+**Where:** [V1__Initial_schema.sql:163-179](../admin_core_service/src/main/resources/db/migration/V1__Initial_schema.sql#L163-L179) defines no UNIQUE on `field_key`. The entity has `@Column(unique=true)` but Hibernate only enforces that when it's the schema generator, not when Flyway is.
+
+**Symptom:** Multiple `custom_fields` rows can have `field_name = 'email'` and identical (or near-identical) `field_key`. The Settings → Custom Fields page renders all of them — see the screenshot with three side‑by‑side `email` rows. `findOrCreateCustomFieldWithLock` thinks it's safe to insert because it only checks ACTIVE status by key, but even if it found an existing row, the lookup races against the missing DB constraint.
+
+**Root cause:** A schema/code mismatch — the entity declares uniqueness, the SQL doesn't enforce it.
+
+**Recommended fix:** Add a Flyway migration:
+```sql
+-- First clean up any existing duplicates by keeping the oldest ACTIVE row
+-- per (field_key) and reassigning institute_custom_fields rows to it.
+-- Then:
+CREATE UNIQUE INDEX uq_custom_fields_field_key
+    ON public.custom_fields (field_key)
+    WHERE status = 'ACTIVE';
+```
+This makes `findOrCreateCustomFieldWithLock` actually safe under contention. Combine with the fix for [B-1](#b-1-cannot-recreate-a-field-after-soft-delete) so soft-deleted rows can be reactivated instead of triggering a constraint violation.
+
+#### B-24. "System Field" badge is decided by a frontend name-match heuristic
+
+**Where:** [src/services/custom-field-settings.ts](../../Vacademy_Frontend/frontend-admin-dashboard/src/services/custom-field-settings.ts) line 259 (`SYSTEM_FIELD_NAMES`) and lines 596-610 (`mapApiResponseToUI`).
+
+```ts
+const SYSTEM_FIELD_NAMES = ['name', 'email', 'username', 'password', 'batch', 'phone'];
+
+if (SYSTEM_FIELD_NAMES.includes(apiField.fieldName.toLowerCase()) || …) {
+    fixedFields.push(...);   // gets the "System Field" badge, locked editing
+}
+```
+
+**Symptom (multiple variants):**
+1. **Default fields lose their lock.** The seeder writes `Full Name` and `Phone Number`. Neither matches the lowercase keys in `SYSTEM_FIELD_NAMES` exactly, so on next page load they fall into the editable `customFields` bucket — admins can rename, retype, even delete them, contradicting the `canBeDeleted=false` flag the backend stamped on them.
+2. **Renaming a user-created field to "email" or "batch" silently locks it.** A normal custom field becomes uneditable on next reload because its name now matches the heuristic.
+3. **Legacy data masquerades as system fields.** Institutes with old `custom_fields` rows literally named `name / username / password / batch` will see them all badged as "System Field", even though no backend flag actually classifies them that way.
+
+**Root cause:** Classification should be a backend property of the field row (e.g. a `is_system` boolean or a `kind` enum on `custom_fields`), not a string match in the renderer.
+
+**Recommended fix:**
+1. Add a `kind` column to `custom_fields` with values `SYSTEM` (locked seeded field), `INSTITUTE` (institute-wide custom), `CONTEXT` (per-invite/per-session). Backfill from current data: anything created by `createDefaultCustomFieldsForInstitute` becomes `SYSTEM`.
+2. Replace the `SYSTEM_FIELD_NAMES` heuristic with a check on the new column.
+3. Stop relying on `canBeDeleted` / `canBeEdited` / `canBeRenamed` flags travelling through the JSON blob — derive them from `kind` server-side.
 
 #### B-22. `hasPrefillAppliedRef` blocks repeat prefill
 

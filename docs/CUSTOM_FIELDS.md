@@ -684,14 +684,36 @@ The `LOCATION_TO_VISIBILITY_MAP` and `VISIBILITY_TO_LOCATION_MAP` constants tran
 
 ### 10.5 Field "buckets"
 
-The UI distinguishes four buckets:
+The UI distinguishes four buckets, but the **classification is done entirely on the frontend** at render time — it is not driven by a backend column or flag. The relevant logic is in [`mapApiResponseToUI`](../../Vacademy_Frontend/frontend-admin-dashboard/src/services/custom-field-settings.ts) (lines 596‑610) and the constant at line 259:
 
-| Bucket | Source | Editability |
-|--------|--------|-------------|
-| `systemFields` | `fixedFieldRenameDtos` from the API. Hardcoded keys like `EMAIL`, `NAME`, `PHONE`, `GENDER`, `DATE_OF_BIRTH`, `ADDRESS`, `CITY`, `STATE`, `COUNTRY`, `FATHERS_NAME`, `MOTHERS_NAME`, `GUARDIAN_NAME`, `PLAN_TYPE`, `AMOUNT_PAID`, `PREFERRED_BATCH`, `EXPIRY_DATE`, `STATUS`, …. | Rename only (`canBeRenamed=true`). Cannot delete or change type. Visibility toggle. |
-| `fixedFields` | `customFieldsAndGroups` returned with `canBeDeleted=false`/`canBeEdited=false`. Includes the institute‑bootstrapped Name/Email/Phone from §7. | Visibility + required toggle only. |
-| `instituteFields` / `customFields` | `customFieldsAndGroups` with `canBeDeleted=true`/`canBeEdited=true`. | Full edit (rename, retype, options, visibility, required, delete, reorder). |
-| `fieldGroups` | Built by walking `customFieldsAndGroups` and grouping by `groupName`. | Drag/drop reorder fields within and across groups. |
+```ts
+const SYSTEM_FIELD_NAMES = ['name', 'email', 'username', 'password', 'batch', 'phone'];
+
+fields.forEach((apiField) => {
+    const isSystemField = SYSTEM_FIELD_NAMES.includes(apiField.fieldName.toLowerCase());
+    const isFixedField  = fixedCustomFields.includes(apiField.customFieldId);
+
+    if (isSystemField || isFixedField) {
+        fixedFields.push(mapApiFieldToFixedField(apiField));    // gets the "System Field" badge
+    } else {
+        customFields.push(mapApiFieldToCustomField(apiField));  // normal custom field
+    }
+});
+```
+
+| Bucket | Source | Classification rule | Editability |
+|--------|--------|---------------------|-------------|
+| `systemFields` | `fixedFieldRenameDtos` from the API (the renameable label list seeded from backend [`ConstantsSettingDefaultValue.getFixedColumnsRenameDto`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/institute/constants/ConstantsSettingDefaultValue.java)). 17 hardcoded entries: `username, email, fullName, addressLine, region, city, pinCode, mobileNumber, dateOfBerth, gender, fatherName, motherName, parentMobileName, parentEmail, linkedInstituteName, parentToMotherMobileNumber, parentsToMotherEmail`. | Rendered in a separate "System Fields" section of the page. | Rename only. Visibility toggle. |
+| `fixedFields` | **Real rows from `currentCustomFieldsAndGroups`** (i.e. real `custom_fields` table rows joined via `institute_custom_fields`) **whose `field_name.toLowerCase()` is in `SYSTEM_FIELD_NAMES`**, OR whose UUID is listed in the institute's `fixedCustomFields[]` array. The "System Field" badge is shown by the row renderer. | Frontend name‑match heuristic — there is no backend flag. | Visibility + required toggle only. |
+| `instituteFields` / `customFields` | All other rows from `currentCustomFieldsAndGroups`. | Default bucket — anything that didn't match the heuristic. | Full edit (rename, retype, options, visibility, required, delete, reorder). |
+| `fieldGroups` | Built by walking `currentCustomFieldsAndGroups` and grouping by `groupName`. | Same source rows as fixed/custom — grouping is orthogonal. | Drag/drop reorder fields within and across groups. |
+
+> **Important consequences of the name‑match heuristic:**
+>
+> 1. The default fields seeded by [`createDefaultCustomFieldsForInstitute`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/service/InstituteCustomFiledService.java#L246-L294) are named `Full Name`, `Email`, `Phone Number`. Of these, **only `Email` matches the `SYSTEM_FIELD_NAMES` list exactly**. `Full Name` and `Phone Number` slip through the heuristic and end up in `customFields`, **not** `fixedFields` — so they appear without the "System Field" badge and are fully editable, contradicting the seeder's intent (`canBeDeleted=false`, `canBeEdited=false`, `canBeRenamed=false` set on the row).
+> 2. If an admin renames any user-created custom field to one of `name / email / username / password / batch / phone`, the field **immediately becomes uneditable / undeletable in the UI** at next reload, because the heuristic flips it into the `fixedFields` bucket.
+> 3. Conversely, an institute that has legacy `custom_fields` rows with names like `name` / `username` / `password` / `batch` (from older seeder code or migrations) will see them all rendered as "System Field" with the badge, even though they are normal custom field rows.
+> 4. There is no SQL `UNIQUE` constraint on `custom_fields.field_key` in [V1__Initial_schema.sql:163-179](../admin_core_service/src/main/resources/db/migration/V1__Initial_schema.sql#L163-L179) — only the entity‑level `@Column(unique=true)` annotation, which is **not enforced** when Flyway manages the schema. As a result, duplicate `field_name = 'email'` rows can and do accumulate, and the table can show two or three "Email" rows side by side.
 
 ### 10.6 Supported field types in the admin UI
 

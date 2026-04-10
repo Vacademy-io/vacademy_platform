@@ -1935,15 +1935,26 @@ public class AudienceService {
      * Extracted for reuse in single and batch methods
      */
     private UserWithCustomFieldsDTO buildUserWithCustomFields(String selectedUserId) {
-        // Step 4: Fetch complete user details from auth service
-        UserDTO userDTO;
+        // Step 4: Fetch complete user details from auth service.
+        // The selectedUserId came from custom_field_values.source_id which may be
+        // an orphaned reference (e.g. a guest_id or a deleted user). Don't fail
+        // the whole lookup in that case — return the custom fields with user=null
+        // so callers (chatbot flows, audience messaging) can still resolve
+        // CUSTOM_FIELD placeholders even when the auth-service record is missing.
+        UserDTO userDTO = null;
         try {
-            userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(selectedUserId)).get(0);
-            logger.info("Fetched user details: id={}, email={}, name={}",
-                    userDTO.getId(), userDTO.getEmail(), userDTO.getFullName());
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(selectedUserId));
+            if (users != null && !users.isEmpty()) {
+                userDTO = users.get(0);
+                logger.info("Fetched user details: id={}, email={}, name={}",
+                        userDTO.getId(), userDTO.getEmail(), userDTO.getFullName());
+            } else {
+                logger.warn("Auth service returned no user record for userId={} — "
+                        + "returning custom fields only", selectedUserId);
+            }
         } catch (Exception e) {
-            logger.error("Failed to fetch user details for userId: {}", selectedUserId, e);
-            throw new VacademyException("Failed to fetch user details: " + e.getMessage());
+            logger.warn("Failed to fetch user details for userId: {} — returning custom fields only: {}",
+                    selectedUserId, e.getMessage());
         }
 
         // Step 5: Fetch all custom field values for this user (from both USER and

@@ -1,5 +1,5 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { CHATBOT_FLOW_BASE } from '@/constants/urls';
+import { BASE_URL, CHATBOT_FLOW_BASE } from '@/constants/urls';
 import { ChatbotFlowDTO } from '@/types/chatbot-flow/chatbot-flow-types';
 
 export interface WhatsAppTemplateInfo {
@@ -168,32 +168,34 @@ export interface CustomFieldOption {
 
 /**
  * Fetch the institute's custom field catalog to populate the Variable Mapping
- * editor's CUSTOM_FIELD source dropdown. Uses the existing list-with-usage
- * endpoint that the Settings > Custom Fields page already consumes.
+ * editor's CUSTOM_FIELD source dropdown.
  *
- * Wire shape: `CustomFieldUsageDTO` is serialized with snake_case
- *   `[{ "custom_field": { id, fieldKey, fieldName, fieldType, ... }, "is_default": ..., "enroll_invite_count": ..., "audience_count": ... }]`
- * The nested `CustomFieldDTO` itself uses default (camelCase) Jackson naming —
- * so the inner keys are NOT snake_case.
+ * Uses `/admin-core-service/common/custom-fields/setup` which returns the
+ * deduped list of ALL active custom fields for the institute (regardless of
+ * whether they're used in any enroll invite or audience form). Wire shape is
+ * a flat array of `InstituteCustomFieldSetupDTO` serialized with snake_case:
+ *
+ *   [
+ *     { "custom_field_id": "...", "field_key": "full_name",
+ *       "field_name": "Full Name", "field_type": "text",
+ *       "form_order": 0, "is_hidden": false, "group_name": null,
+ *       "type": "DEFAULT_CUSTOM_FIELD", "type_id": null, "status": "ACTIVE" }
+ *   ]
  */
 export const fetchInstituteCustomFields = async (
     instituteId: string
 ): Promise<CustomFieldOption[]> => {
     const { data } = await authenticatedAxiosInstance.get(
-        '/admin-core-service/institute/v1/custom-field/list-with-usage',
+        `${BASE_URL}/admin-core-service/common/custom-fields/setup`,
         { params: { instituteId } }
     );
     if (!Array.isArray(data)) return [];
     return data
-        .map((row: Record<string, unknown>) => {
-            const cf = (row.custom_field ?? row.customField) as Record<string, unknown> | undefined;
-            if (!cf) return null;
-            return {
-                id: String(cf.id ?? ''),
-                fieldKey: String(cf.fieldKey ?? cf.field_key ?? ''),
-                fieldName: String(cf.fieldName ?? cf.field_name ?? ''),
-                fieldType: String(cf.fieldType ?? cf.field_type ?? 'text'),
-            };
-        })
-        .filter((f): f is CustomFieldOption => f !== null && f.fieldName !== '');
+        .map((row: Record<string, unknown>) => ({
+            id: String(row.custom_field_id ?? row.customFieldId ?? ''),
+            fieldKey: String(row.field_key ?? row.fieldKey ?? ''),
+            fieldName: String(row.field_name ?? row.fieldName ?? ''),
+            fieldType: String(row.field_type ?? row.fieldType ?? 'text'),
+        }))
+        .filter((f) => f.fieldName !== '');
 };

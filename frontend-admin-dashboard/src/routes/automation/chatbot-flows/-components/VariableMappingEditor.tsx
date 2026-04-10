@@ -42,24 +42,40 @@ interface VariableMappingEditorProps {
 export function VariableMappingEditor({ variables, onChange }: VariableMappingEditorProps) {
     const instituteId = getInstituteId() || '';
     const [customFields, setCustomFields] = useState<CustomFieldOption[]>(
-        customFieldCache?.instituteId === instituteId ? customFieldCache.data : []
+        customFieldCache?.instituteId === instituteId && customFieldCache.data.length > 0
+            ? customFieldCache.data
+            : []
     );
     const [loadingCustom, setLoadingCustom] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const needsCustomFields = variables.some((v) => v.source === 'CUSTOM_FIELD');
 
     const loadCustomFields = useCallback(async () => {
-        if (!instituteId) return;
-        if (customFieldCache?.instituteId === instituteId) {
+        if (!instituteId) {
+            setLoadError('No instituteId available');
+            return;
+        }
+        // Only treat the cache as warm when it has actual data — empty/failed
+        // results should NOT poison subsequent attempts.
+        if (customFieldCache?.instituteId === instituteId && customFieldCache.data.length > 0) {
             setCustomFields(customFieldCache.data);
             return;
         }
         setLoadingCustom(true);
+        setLoadError(null);
         try {
             const data = await fetchInstituteCustomFields(instituteId);
-            customFieldCache = { instituteId, data };
+            // eslint-disable-next-line no-console
+            console.debug('[VariableMappingEditor] Loaded custom fields:', data);
+            if (data.length > 0) {
+                customFieldCache = { instituteId, data };
+            }
             setCustomFields(data);
-        } catch {
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error('[VariableMappingEditor] Failed to load custom fields:', e);
+            setLoadError(e instanceof Error ? e.message : 'Failed to load custom fields');
             setCustomFields([]);
         } finally {
             setLoadingCustom(false);
@@ -162,9 +178,23 @@ export function VariableMappingEditor({ variables, onChange }: VariableMappingEd
                                 ))}
                             </select>
                             {!loadingCustom && customFields.length === 0 && (
-                                <p className="text-[10px] text-gray-400">
-                                    No custom fields found for this institute.
-                                </p>
+                                <div className="space-y-1">
+                                    <p className="text-[10px] text-gray-400">
+                                        {loadError
+                                            ? `Error: ${loadError}`
+                                            : 'No custom fields found for this institute.'}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            customFieldCache = null;
+                                            loadCustomFields();
+                                        }}
+                                        className="text-[10px] text-blue-600 hover:text-blue-800"
+                                    >
+                                        Retry
+                                    </button>
+                                </div>
                             )}
                         </>
                     )}

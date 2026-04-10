@@ -9,6 +9,7 @@ import { X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
+import { ParentTypeModal } from '../../-components/ParentTypeModal';
 import { AdmissionBulkImportDialog } from './AdmissionBulkImportDialog';
 
 export interface StudentSearchResult {
@@ -227,7 +228,9 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         };
 
         // Auto-fill parent relation from enquiry data; show popup only if unknown
-        const relation = (enquiryData.parent_relation_with_child || '').toLowerCase();
+        const rawRelation = enquiryData.parent_relation_with_child || enquiryData.parent_relation || enquiryData.enquiry?.parent_relation_with_child || '';
+        const relation = String(rawRelation).toLowerCase().trim();
+
         if (relation === 'father') {
             mapped.parentGender = 'father';
             navigateToForm(mapped, selectedSessionId);
@@ -805,50 +808,11 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 </div>
             )}
 
-            {/* Select Parent Type Modal */}
-            {showParentTypeModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
-                        <div className="mb-2">
-                            <h2 className="text-lg font-semibold text-neutral-900">Select Parent Type</h2>
-                            <p className="mt-1 text-sm text-neutral-600">
-                                Please specify if the contact details belong to the father or mother
-                            </p>
-                        </div>
-                        <div className="mt-5 space-y-3">
-                            <button
-                                onClick={() => handleParentTypeSelection('father')}
-                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-blue-400 hover:bg-blue-50"
-                            >
-                                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-blue-100">
-                                    <svg className="size-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h3 className="font-medium text-neutral-900">Father</h3>
-                                    <p className="text-sm text-neutral-500">Use these details for father's information</p>
-                                </div>
-                            </button>
-
-                            <button
-                                onClick={() => handleParentTypeSelection('mother')}
-                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-pink-400 hover:bg-pink-50"
-                            >
-                                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-pink-100">
-                                    <svg className="size-5 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h3 className="font-medium text-neutral-900">Mother</h3>
-                                    <p className="text-sm text-neutral-500">Use these details for mother's information</p>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ParentTypeModal
+                isOpen={showParentTypeModal}
+                onClose={() => setShowParentTypeModal(false)}
+                onSelect={handleParentTypeSelection}
+            />
 
             <AdmissionBulkImportDialog
                 open={isBulkImportOpen}

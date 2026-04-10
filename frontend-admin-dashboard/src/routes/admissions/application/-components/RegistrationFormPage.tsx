@@ -20,6 +20,7 @@ import { AcademicInfoSection } from './sections/AcademicInfoSection';
 import { ParentGuardianSection } from './sections/ParentGuardianSection';
 import { AddressSection } from './sections/AddressSection';
 import { PaymentSection } from './sections/PaymentSection';
+import { ParentTypeModal } from '../../-components/ParentTypeModal';
 import type { Registration } from '../../-types/registration-types';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import {
@@ -141,7 +142,7 @@ export function RegistrationFormPage() {
     // Get sessionId from URL search params
     const [sessionId, setSessionId] = useState('');
     const [enquiryId, setEnquiryId] = useState<string | null>(null);
-    const [showParentGenderModal, setShowParentGenderModal] = useState(false);
+    const [showParentTypeModal, setShowParentTypeModal] = useState(false);
     const [pendingEnquiryData, setPendingEnquiryData] = useState<any>(null);
 
     const [activeSection, setActiveSection] = useState(0);
@@ -260,24 +261,24 @@ export function RegistrationFormPage() {
             updates.gender = enquiryData.child.gender || undefined;
         }
 
-        // Apply child updates first
-        setFormData((prev) => ({ ...prev, ...updates }));
+        const rawRelation = enquiryData.parent_relation_with_child || enquiryData.parent_relation || enquiryData.enquiry?.parent_relation_with_child || '';
+        const relation = String(rawRelation).toLowerCase().trim();
 
         // Prefill parent details - need to determine if father or mother
         if (enquiryData.parent) {
             const parentData = enquiryData.parent;
+            
+            let parentUpdates: Partial<Registration> = {};
 
-            // Check if parent has gender field
-            if (parentData.gender && parentData.gender === 'MALE') {
-                // It's father
-                const parentUpdates: Partial<Registration> = {
-                    fatherInfo: {
-                        name: parentData.name || '',
-                        mobile: parentData.phone || '',
-                        email: parentData.email || '',
-                        occupation: '',
-                        annualIncome: '',
-                    },
+            if (relation === 'father' || relation === 'mother') {
+                const infoKey = relation === 'father' ? 'fatherInfo' : 'motherInfo';
+                
+                parentUpdates[infoKey] = {
+                    name: parentData.name || '',
+                    mobile: parentData.phone || '',
+                    email: parentData.email || '',
+                    occupation: '',
+                    annualIncome: '',
                 };
 
                 // Prefill address if available
@@ -295,40 +296,18 @@ export function RegistrationFormPage() {
                         pincode: parentData.pin_code || '',
                     };
                 }
-                setFormData((prev) => ({ ...prev, ...parentUpdates }));
-            } else if (parentData.gender && parentData.gender === 'FEMALE') {
-                // It's mother
-                const parentUpdates: Partial<Registration> = {
-                    motherInfo: {
-                        name: parentData.name || '',
-                        mobile: parentData.phone || '',
-                        email: parentData.email || '',
-                        occupation: '',
-                        annualIncome: '',
-                    },
-                };
-
-                // Prefill address if available
-                if (parentData.address_line || parentData.city || parentData.pin_code) {
-                    parentUpdates.currentAddress = {
-                        houseNo: '',
-                        street: '',
-                        area: '',
-                        state: '',
-                        country: '',
-                        ...formData.currentAddress,
-                        addressLine1: parentData.address_line || '',
-                        city: parentData.city || '',
-                        pinCode: parentData.pin_code || '',
-                        pincode: parentData.pin_code || '',
-                    };
-                }
-                setFormData((prev) => ({ ...prev, ...parentUpdates }));
+                
+                setFormData((prev) => ({ ...prev, ...updates, ...parentUpdates }));
             } else {
-                // Gender is OTHER, not provided, or we need to ask user
+                // Apply child updates first, then ask for parent type
+                setFormData((prev) => ({ ...prev, ...updates }));
+                // Relation is OTHER, not provided, or we need to ask user
                 setPendingEnquiryData({ parent: parentData });
-                setShowParentGenderModal(true);
+                setShowParentTypeModal(true);
             }
+        } else {
+            // Apply child updates only
+            setFormData((prev) => ({ ...prev, ...updates }));
         }
     };
 
@@ -373,7 +352,7 @@ export function RegistrationFormPage() {
         }
 
         setFormData((prev) => ({ ...prev, ...updates }));
-        setShowParentGenderModal(false);
+        setShowParentTypeModal(false);
         setPendingEnquiryData(null);
     };
 
@@ -832,54 +811,11 @@ export function RegistrationFormPage() {
                     </div>
                 </div>
             </div>
-
-            {/* Parent Type Selection Modal */}
-            {showParentGenderModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-                        <div className="mb-4">
-                            <h2 className="text-lg font-semibold text-neutral-900">
-                                Select Parent Type
-                            </h2>
-                            <p className="mt-2 text-sm text-neutral-600">
-                                Please specify if the contact details belong to the father or mother
-                            </p>
-                        </div>
-
-                        <div className="space-y-3">
-                            <button
-                                onClick={() => handleParentTypeSelection('father')}
-                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-primary-500 hover:bg-primary-50"
-                            >
-                                <div className="flex size-12 items-center justify-center rounded-full bg-blue-100">
-                                    <User size={24} className="text-blue-600" />
-                                </div>
-                                <div>
-                                    <h3 className="font-medium text-neutral-900">Father</h3>
-                                    <p className="text-sm text-neutral-600">
-                                        Use these details for father's information
-                                    </p>
-                                </div>
-                            </button>
-
-                            <button
-                                onClick={() => handleParentTypeSelection('mother')}
-                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-primary-500 hover:bg-primary-50"
-                            >
-                                <div className="flex size-12 items-center justify-center rounded-full bg-pink-100">
-                                    <User size={24} className="text-pink-600" />
-                                </div>
-                                <div>
-                                    <h3 className="font-medium text-neutral-900">Mother</h3>
-                                    <p className="text-sm text-neutral-600">
-                                        Use these details for mother's information
-                                    </p>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ParentTypeModal
+                isOpen={showParentTypeModal}
+                onClose={() => setShowParentTypeModal(false)}
+                onSelect={handleParentTypeSelection}
+            />
         </>
     );
 }

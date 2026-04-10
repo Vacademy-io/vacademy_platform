@@ -236,31 +236,53 @@ public class WhatsAppTemplateManagerService {
         }
 
         try {
-            String url = "https://graph.facebook.com/v22.0/" + creds.wabaId
-                    + "/message_templates?limit=100&fields=name,language,status,category,components,rejected_reason";
-
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(creds.accessToken);
 
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET,
-                    new HttpEntity<>(headers), String.class);
+            String url = "https://graph.facebook.com/v22.0/" + creds.wabaId
+                    + "/message_templates?limit=100&fields=name,language,status,category,components,rejected_reason";
+
+            int synced = 0;
+
+            // Paginate through all pages of Meta templates
+            while (url != null) {
+                ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET,
+                        new HttpEntity<>(headers), String.class);
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 throw new RuntimeException("Meta API returned: " + response.getStatusCode());
             }
 
-            JsonNode body = objectMapper.readTree(response.getBody());
-            JsonNode data = body.path("data");
-            if (!data.isArray()) return 0;
+                JsonNode body = objectMapper.readTree(response.getBody());
+                JsonNode data = body.path("data");
+                if (!data.isArray()) break;
 
-            int synced = 0;
-            for (JsonNode tmpl : data) {
-                String name = tmpl.path("name").asText();
-                String language = tmpl.path("language").asText("en");
-                String status = tmpl.path("status").asText("PENDING").toUpperCase();
-                String category = tmpl.path("category").asText("");
-                String metaId = tmpl.path("id").asText(null);
-                String rejectedReason = tmpl.path("rejected_reason").asText(null);
+                for (JsonNode tmpl : data) {
+                    syncSingleMetaTemplate(instituteId, tmpl);
+                    synced++;
+                }
+
+                // Follow pagination cursor if present
+                url = body.path("paging").path("next").asText(null);
+            }
+
+            log.info("Synced {} templates from Meta for institute {}", synced, instituteId);
+            return synced;
+
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Sync failed: " + e.getMessage());
+        }
+    }
+
+    private void syncSingleMetaTemplate(String instituteId, JsonNode tmpl) {
+        String name = tmpl.path("name").asText();
+        String language = tmpl.path("language").asText("en");
+        String status = tmpl.path("status").asText("PENDING").toUpperCase();
+        String category = tmpl.path("category").asText("");
+        String metaId = tmpl.path("id").asText(null);
+        String rejectedReason = tmpl.path("rejected_reason").asText(null);
 
                 // Parse components to extract body/header/footer/buttons
                 String bodyText = "";
@@ -338,18 +360,7 @@ public class WhatsAppTemplateManagerService {
                     }
                 }
 
-                templateRepository.save(template);
-                synced++;
-            }
-
-            log.info("Synced {} templates from Meta for institute {}", synced, instituteId);
-            return synced;
-
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("Sync failed: " + e.getMessage());
-        }
+        templateRepository.save(template);
     }
 
     /**
@@ -363,33 +374,59 @@ public class WhatsAppTemplateManagerService {
         }
 
         try {
-            String url = watiCreds.apiUrl + "/api/v1/getMessageTemplates";
-
             HttpHeaders headers = new HttpHeaders();
             headers.set("Authorization", "Bearer " + watiCreds.apiKey);
 
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET,
-                    new HttpEntity<>(headers), String.class);
+            int pageSize = 100;
+            int pageNumber = 1;
+            int synced = 0;
+
+            // Paginate through all pages of WATI templates
+            while (true) {
+                String url = watiCreds.apiUrl + "/api/v1/getMessageTemplates?pageSize=" + pageSize
+                        + "&pageNumber=" + pageNumber;
+
+                ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET,
+                        new HttpEntity<>(headers), String.class);
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 throw new RuntimeException("WATI API returned: " + response.getStatusCode());
             }
 
-            JsonNode body = objectMapper.readTree(response.getBody());
-            // WATI returns: { "messageTemplates": [...] } or { "result": [...] }
-            JsonNode templateArray = body.path("messageTemplates");
-            if (!templateArray.isArray()) {
-                templateArray = body.path("result");
-            }
-            if (!templateArray.isArray()) return 0;
+                JsonNode body = objectMapper.readTree(response.getBody());
+                // WATI returns: { "messageTemplates": [...] } or { "result": [...] }
+                JsonNode templateArray = body.path("messageTemplates");
+                if (!templateArray.isArray()) {
+                    templateArray = body.path("result");
+                }
+                if (!templateArray.isArray() || templateArray.isEmpty()) break;
 
-            int synced = 0;
-            for (JsonNode tmpl : templateArray) {
-                String name = tmpl.path("elementName").asText(tmpl.path("name").asText(""));
-                String language = tmpl.path("languageCode").asText(tmpl.path("language").asText("en"));
-                String status = tmpl.path("status").asText("APPROVED").toUpperCase();
-                String category = tmpl.path("category").asText("");
-                String rejectedReason = tmpl.path("rejectedReason").asText(null);
+                for (JsonNode tmpl : templateArray) {
+                    syncSingleWatiTemplate(instituteId, tmpl);
+                    synced++;
+                }
+
+                // If we got fewer than pageSize, we've reached the last page
+                if (templateArray.size() < pageSize) break;
+                pageNumber++;
+            }
+
+            log.info("Synced {} templates from WATI for institute {}", synced, instituteId);
+            return synced;
+
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("WATI sync failed: " + e.getMessage());
+        }
+    }
+
+    private void syncSingleWatiTemplate(String instituteId, JsonNode tmpl) {
+        String name = tmpl.path("elementName").asText(tmpl.path("name").asText(""));
+        String language = tmpl.path("languageCode").asText(tmpl.path("language").asText("en"));
+        String status = tmpl.path("status").asText("APPROVED").toUpperCase();
+        String category = tmpl.path("category").asText("");
+        String rejectedReason = tmpl.path("rejectedReason").asText(null);
 
                 // Parse body
                 String bodyText = tmpl.path("body").asText(tmpl.path("bodyOriginal").asText(""));
@@ -470,18 +507,7 @@ public class WhatsAppTemplateManagerService {
                     }
                 }
 
-                templateRepository.save(template);
-                synced++;
-            }
-
-            log.info("Synced {} templates from WATI for institute {}", synced, instituteId);
-            return synced;
-
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("WATI sync failed: " + e.getMessage());
-        }
+        templateRepository.save(template);
     }
 
     private WatiCredentials resolveWatiCredentials(String instituteId) {

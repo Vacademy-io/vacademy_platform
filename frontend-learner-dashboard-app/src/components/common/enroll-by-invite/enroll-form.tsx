@@ -63,7 +63,16 @@ import {
   getPaymentVendor,
   PaymentVendor,
 } from "./-utils/payment-vendor-helper";
-import { injectGtm, pushEnrollmentSuccess } from "./-utils/gtm";
+import {
+  injectGtm,
+  pushPageView,
+  pushRegistrationCompleted,
+  pushPlanSelected,
+  pushReviewStepViewed,
+  pushPaymentInitiated,
+  pushPaymentFailed,
+  pushEnrollmentSuccess,
+} from "./-utils/gtm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CourseStructureDetails as CatalogCourseStructureDetails } from "@/routes/$tagName/-components/CourseStructureDetails";
 
@@ -219,15 +228,29 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     if (gtmId) injectGtm(gtmId);
   }, [inviteData?.gtm_container_id]);
 
-  // Fire enrollment_success dataLayer event when reaching the success step
+  // Fire enrollment_page_view once course data is loaded
+  const hasFiredPageView = useRef(false);
+  useEffect(() => {
+    if (inviteData?.gtm_container_id && courseData.course && !hasFiredPageView.current) {
+      hasFiredPageView.current = true;
+      pushPageView(courseData.course, paymentType);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inviteData?.gtm_container_id, courseData.course]);
+
+  // Fire GTM funnel events on step transitions
   const hasFiredEnrollmentEvent = useRef(false);
+  const lastTrackedStep = useRef(-1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (
-      currentStep === 5 &&
-      !hasFiredEnrollmentEvent.current &&
-      inviteData?.gtm_container_id
-    ) {
+    if (!inviteData?.gtm_container_id || currentStep === lastTrackedStep.current) return;
+    lastTrackedStep.current = currentStep;
+
+    if (currentStep === 2) {
+      pushReviewStepViewed(courseData.course || "", paymentType);
+    }
+
+    if (currentStep === 5 && !hasFiredEnrollmentEvent.current) {
       hasFiredEnrollmentEvent.current = true;
       pushEnrollmentSuccess({
         courseName: courseData.course || "",
@@ -621,6 +644,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       }
     }
 
+    if (inviteData?.gtm_container_id) {
+      pushRegistrationCompleted(courseData.course || "");
+    }
     setCurrentStep(targetStep);
   }
 
@@ -629,6 +655,14 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       ...prev,
       selectedPayment: payment,
     }));
+    if (inviteData?.gtm_container_id) {
+      pushPlanSelected({
+        courseName: courseData.course || "",
+        planName: payment.name || "",
+        amount: payment.amount || 0,
+        currency: payment.currency || "",
+      });
+    }
   };
 
   const handleDonationAmountChange = (amount: number) => {
@@ -861,6 +895,17 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   };
 
   const handleSubmitEnrollment = async () => {
+    // Fire payment_initiated GTM event (skip for FREE — no payment involved)
+    if (inviteData?.gtm_container_id && paymentType !== "FREE") {
+      pushPaymentInitiated({
+        courseName: courseData.course || "",
+        paymentType,
+        vendor: getPaymentVendor(inviteData) || "STRIPE",
+        currency: enrollmentData.selectedPayment?.currency,
+        amount: enrollmentData.selectedPayment?.amount,
+      });
+    }
+
     // For FREE payments, skip payment processing and go directly to success
     if (paymentType === "FREE") {
       setLoading(true);
@@ -903,6 +948,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           }
         }
         setError(errorData?.ex);
+        if (inviteData?.gtm_container_id) {
+          pushPaymentFailed({ courseName: courseData.course || "", vendor: "NONE", errorMessage: errorData?.ex || "Enrollment failed" });
+        }
       } finally {
         setLoading(false);
       }
@@ -963,6 +1011,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           }
         }
         setError(errorData?.ex);
+        if (inviteData?.gtm_container_id) {
+          pushPaymentFailed({ courseName: courseData.course || "", vendor: "EWAY", errorMessage: errorData?.ex || "Payment failed" });
+        }
         console.error(err);
       } finally {
         setLoading(false);
@@ -1079,11 +1130,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             toast.error(errorData?.ex || "Payment failed");
           }
         }
-        setError(
-          (err as Error)?.message ||
-          errorData?.ex ||
-          "Failed to initiate Cashfree payment"
-        );
+        const cashfreeErrorMsg = (err as Error)?.message || errorData?.ex || "Failed to initiate Cashfree payment";
+        setError(cashfreeErrorMsg);
+        if (inviteData?.gtm_container_id) {
+          pushPaymentFailed({ courseName: courseData.course || "", vendor: "CASHFREE", errorMessage: cashfreeErrorMsg });
+        }
         console.error("Cashfree enrollment error:", err);
       } finally {
         setLoading(false);
@@ -1158,6 +1209,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           }
         }
         setError(errorData?.ex || "Failed to initiate payment");
+        if (inviteData?.gtm_container_id) {
+          pushPaymentFailed({ courseName: courseData.course || "", vendor: "RAZORPAY", errorMessage: errorData?.ex || "Failed to initiate payment" });
+        }
         console.error("Razorpay enrollment error:", err);
         setLoading(false);
       }
@@ -1229,6 +1283,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         }
       }
       setError(errorData?.ex);
+      if (inviteData?.gtm_container_id) {
+        pushPaymentFailed({ courseName: courseData.course || "", vendor: "STRIPE", errorMessage: errorData?.ex || "Payment failed" });
+      }
       console.error(err);
     } finally {
       setLoading(false);
@@ -1297,6 +1354,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             }
           }
           setError(errorData?.ex || "Failed to complete enrollment");
+          if (inviteData?.gtm_container_id) {
+            pushPaymentFailed({ courseName: courseData.course || "", vendor: "RAZORPAY", errorMessage: errorData?.ex || "Failed to complete enrollment" });
+          }
           console.error("Razorpay completion error:", err);
         } finally {
           setLoading(false);

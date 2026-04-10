@@ -17,6 +17,7 @@ import { MyFilterOption } from '@/types/assessments/my-filter';
 import {
     fetchApplicantList,
     type Applicant,
+    type EnquiryDetailsResponse,
 } from '../../-services/applicant-services';
 import { EnquirySearchModal } from '../../-components/EnquirySearchModal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -190,7 +191,7 @@ function RegistrationListPageInner({
         setShowEnquiryModal(true);
     };
 
-    const handleSelectEnquiry = (enquiryData: any) => {
+    const handleSelectEnquiry = (enquiryData: EnquiryDetailsResponse) => {
         // Guard: should not reach here (button is disabled in modal), but double-check
         if (enquiryData.overall_status === 'APPLICATION' || enquiryData.overall_status === 'ADMISSION') {
             toast.warning('This enquiry has already been converted to an application.');

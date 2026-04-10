@@ -315,6 +315,15 @@ public class UserAnnouncementPreferenceService {
             return null;
         }
         String trimmed = email.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        // Strip display name if present, e.g. "Aanandham <support@aanandham.uk>" → "support@aanandham.uk"
+        int ltIndex = trimmed.indexOf('<');
+        int gtIndex = trimmed.indexOf('>');
+        if (ltIndex >= 0 && gtIndex > ltIndex) {
+            trimmed = trimmed.substring(ltIndex + 1, gtIndex).trim();
+        }
         return trimmed.isEmpty() ? null : trimmed.toLowerCase();
     }
 

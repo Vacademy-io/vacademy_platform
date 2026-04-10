@@ -533,8 +533,10 @@ function ConditionConfig({ config, onChange, nodeId }: { config: Record<string, 
         const newBranches = interactiveOptions.map((opt) => ({
             id: `branch_${opt.id}`,
             label: opt.title,
-            matchType,
-            matchValue: opt.id,
+            // Use title as matchValue — WATI returns positional IDs like "0-0" instead of
+            // our row IDs, so matching by title is the only reliable cross-provider approach
+            matchType: type === 'list' ? 'list_id' : 'button_id',
+            matchValue: opt.title,
             isDefault: false,
         }));
         // Add a default fallback branch

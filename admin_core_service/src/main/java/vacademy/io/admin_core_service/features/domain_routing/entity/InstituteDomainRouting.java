@@ -98,4 +98,7 @@ public class InstituteDomainRouting {
 
     @Column(name = "sub_org_id")
     private String subOrgId;
+
+    @Column(name = "comma_separated_preferred_country", length = 500)
+    private String commaSeparatedPreferredCountry;
 }

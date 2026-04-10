@@ -48,6 +48,12 @@ public class OpenInstituteController {
         return ResponseEntity.ok(instituteInfoDTO);
     }
 
+    @GetMapping("/branding/{instituteId}")
+    @ClientCacheable(maxAgeSeconds = 3600, scope = CacheScope.PUBLIC)
+    public ResponseEntity<java.util.Map<String, String>> getInstituteBranding(@PathVariable String instituteId) {
+        return ResponseEntity.ok(instituteService.getInstituteBranding(instituteId));
+    }
+
     @GetMapping("/get/subdomain-or-id")
     @ClientCacheable(maxAgeSeconds = 600, scope = CacheScope.PUBLIC)
     @Cacheable(value = "openInstituteIdOrSubdomain", key = "(#instituteId != null ? 'id:' + #instituteId : '') + (#subdomain != null ? 'sub:' + #subdomain : '')")

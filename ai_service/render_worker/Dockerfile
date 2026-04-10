@@ -14,7 +14,9 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN playwright install chromium
+# Install Google Chrome (NOT Chromium) — includes H.264/AAC proprietary codecs
+# Playwright's bundled Chromium lacks these codecs due to patent licensing
+RUN playwright install chrome --with-deps
 
 # Copy the render worker code
 COPY . .

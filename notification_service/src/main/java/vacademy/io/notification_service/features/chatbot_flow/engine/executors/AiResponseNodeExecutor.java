@@ -221,6 +221,14 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
             String text = (String) parsed.get("text");
             Map<String, Object> interactiveData = (Map<String, Object>) parsed.get("interactive");
 
+            // If JSON has no "text" but has "interactive", use text before the JSON as body
+            if ((text == null || text.isBlank()) && interactiveData != null) {
+                int jsonStart = msg.indexOf(jsonStr);
+                if (jsonStart > 0) {
+                    text = msg.substring(0, jsonStart).trim();
+                }
+            }
+
             if (text == null || text.isBlank()) {
                 sendTextToUser(ctx, msg);
                 return msg;
@@ -258,7 +266,7 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
     /**
      * Extract a JSON object from an AI response that may contain extra text.
      * Handles: pure JSON, markdown fences, "json" prefix, or text + JSON mixed.
-     * Returns null if no valid JSON object with "text" key is found.
+     * Returns null if no valid JSON object with interactive elements is found.
      */
     private String extractJsonObject(String msg) {
         if (msg == null) return null;
@@ -278,8 +286,8 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
         int firstBrace = msg.indexOf('{');
         if (firstBrace < 0) return null;
         String candidate = msg.substring(firstBrace);
-        // Quick validation: must contain "text" key to be our interactive format
-        if (candidate.contains("\"text\"") && candidate.contains("\"interactive\"")) {
+        // Must contain "interactive" to be our format (may or may not have "text")
+        if (candidate.contains("\"interactive\"")) {
             return candidate;
         }
         return null;

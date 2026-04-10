@@ -73,4 +73,12 @@ public class PortalRoutingConfig {
 
     @JsonProperty("convert_username_password_to_lowercase")
     private Boolean convertUsernamePasswordToLowercase;
+
+    /**
+     * Comma-separated list of ISO 3166-1 alpha-2 country codes (e.g. "in,us,gb,au").
+     * Drives the default selection and ordering of country options in phone inputs
+     * across the learner and admin dashboards.
+     */
+    @JsonProperty("comma_separated_preferred_country")
+    private String commaSeparatedPreferredCountry;
 }

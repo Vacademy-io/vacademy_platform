@@ -6,6 +6,35 @@ import type { PaymentOptionApi } from '@/types/payment';
 const APPLICANT_URL = `${BASE_URL}/admin-core-service/v1/applicant`;
 
 // Payload Types
+
+export interface EnquiryParentDetails {
+    id: string;
+    name: string;
+    phone: string;
+    email: string | null;
+    address_line: string | null;
+    city: string | null;
+    pin_code: string | null;
+}
+
+export interface EnquiryChildDetails {
+    id: string;
+    name: string;
+    dob: string | null;
+    gender: 'MALE' | 'FEMALE' | 'OTHER' | null;
+    destination_package_session_id: string | null;
+}
+
+export interface EnquiryDetailsResponse {
+    enquiry_id: string;
+    tracking_id: string;
+    overall_status: 'ENQUIRY' | 'APPLICATION' | 'ADMISSION';
+    applicant_id: string | null;
+    parent_relation_with_child: 'FATHER' | 'MOTHER' | 'GUARDIAN' | string | null;
+    parent: EnquiryParentDetails | null;
+    child: EnquiryChildDetails | null;
+}
+
 export interface ApplicantFormData {
     parent_name: string;
     parent_phone: string;

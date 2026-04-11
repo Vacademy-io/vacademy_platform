@@ -311,8 +311,8 @@ export interface DashboardCollectionResponse {
     collectedToDate: number;
     totalOverdue: number;
     classWiseBreakdown: Array<{
-        cpoId: string;
-        cpoName: string;
+        packageSessionId: string;
+        className: string;
         projectedRevenue: number;
         expectedToDate: number;
         collectedToDate: number;

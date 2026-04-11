@@ -1543,17 +1543,14 @@ public class ApplicantService {
                 }
 
                 // SECURE FLAG FOR WEBHOOK: If payment is for application fees, flag it for
-                // Razorpay Webhook
-                if (paymentOptionId != null && (paymentOptionId.contains("application_fee")
-                                || paymentOptionId.contains("admission_fee"))) { // Handle both admission/application
-                                                                                 // fee formats
-                        requestDTO.setPaymentType(vacademy.io.common.payment.enums.PaymentType.APPLICATION_FEE);
-                } else {
-                        // Keep previous default behavior for other payments
-                        requestDTO.setPaymentType(vacademy.io.common.payment.enums.PaymentType.INITIAL); // Fallback
-                                                                                                         // for
-                                                                                                         // normal
-                                                                                                         // payments
+                // Razorpay Webhook. Respect frontend-provided paymentType if already set.
+                if (requestDTO.getPaymentType() == null) {
+                        if (paymentOptionId != null && (paymentOptionId.contains("application_fee")
+                                        || paymentOptionId.contains("admission_fee"))) {
+                                requestDTO.setPaymentType(vacademy.io.common.payment.enums.PaymentType.APPLICATION_FEE);
+                        } else {
+                                requestDTO.setPaymentType(vacademy.io.common.payment.enums.PaymentType.INITIAL);
+                        }
                 }
 
                 // Inject applicantId and optionId into Gateway Requests so PaymentService saves
@@ -1624,6 +1621,7 @@ public class ApplicantService {
                                         userPlan.getId());
 
                         // ---- INJECT APPLICATION FEE INVOICE GENERATION FOR MANUAL PAYMENTS ----
+                        java.util.Map<String, Object> receiptDetails = null;
                         try {
                                 if (vacademy.io.common.payment.enums.PaymentType.APPLICATION_FEE
                                                 .equals(requestDTO.getPaymentType())) {
@@ -1652,7 +1650,7 @@ public class ApplicantService {
                                                 }
                                         }
 
-                                        applicationFeeReceiptService.generateAndSendInvoice(
+                                        receiptDetails = applicationFeeReceiptService.generateAndSendInvoice(
                                                         applicantId, paymentOptionId, paymentLog.getId(), instituteId,
                                                         java.math.BigDecimal.valueOf(requestDTO.getAmount()),
                                                         transactionRef,
@@ -1673,6 +1671,9 @@ public class ApplicantService {
                         responseData.put("paymentStatus", "PAID");
                         responseData.put("paymentMode", "MANUAL");
                         responseData.put("transactionRef", transactionRef);
+                        if (receiptDetails != null) {
+                                responseData.put("receipt", receiptDetails);
+                        }
                         response.setResponseData(responseData);
 
                         logger.info("Manual payment recorded for applicant: {}, ref: {}", applicantId, transactionRef);

@@ -5,9 +5,10 @@ import { toast } from 'sonner';
 import type {
     PaymentOptionDetails,
     PaymentLinkMethod,
+    AppFeeReceiptData,
 } from '../../../-services/applicant-services';
 import { initiateManualPayment, generatePaymentLink } from '../../../-services/applicant-services';
-import { CardholderIcon, GlobeIcon, ArrowSquareOut, EnvelopeSimple, SpinnerGap } from '@phosphor-icons/react';
+import { CardholderIcon, GlobeIcon, ArrowSquareOut, EnvelopeSimple, SpinnerGap, DownloadSimple } from '@phosphor-icons/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getPublicUrl, UploadFileInS3 } from '@/services/upload_file';
 import { MyButton } from '@/components/design-system/button';
@@ -50,6 +51,9 @@ export const PaymentSection: React.FC<SectionProps> = ({
     const [isUploadingProof, setIsUploadingProof] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const proofInputRef = useRef<HTMLInputElement>(null);
+
+    // Receipt state (populated after successful manual payment)
+    const [receiptData, setReceiptData] = useState<AppFeeReceiptData | null>(null);
 
     // Email sending state
     const [showEmailInput, setShowEmailInput] = useState(false);
@@ -200,16 +204,20 @@ export const PaymentSection: React.FC<SectionProps> = ({
         setIsSubmitting(true);
         try {
             const email = formData.fatherInfo?.email || formData.motherInfo?.email || '';
-            await initiateManualPayment(applicantId, paymentOptionId, {
+            const receipt = await initiateManualPayment(applicantId, paymentOptionId, {
                 vendor: 'MANUAL',
                 amount: registrationFee,
                 currency: registrationFeeCurrency,
                 email,
+                payment_type: 'APPLICATION_FEE',
                 manual_request: {
                     file_id: proofFileId || null,
                     transaction_id: manualTxnId.trim(),
                 },
             });
+            if (receipt) {
+                setReceiptData(receipt);
+            }
             updateFormData({
                 feeStatus: 'PAID',
                 paymentMode: selectedPaymentMethod as string,
@@ -238,6 +246,7 @@ export const PaymentSection: React.FC<SectionProps> = ({
     if (isPaid) {
         return (
             <div className="space-y-6">
+                {/* Success banner */}
                 <div className="overflow-hidden rounded-xl border-2 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 shadow-sm">
                     <div className="flex items-center gap-4 p-5">
                         <div className="flex size-12 items-center justify-center rounded-full bg-green-100">
@@ -261,12 +270,94 @@ export const PaymentSection: React.FC<SectionProps> = ({
                     </div>
                     <div className="border-t border-green-200 px-5 py-3">
                         <button
-                            onClick={() => updateFormData({ feeStatus: 'PENDING' })}
+                            onClick={() => {
+                                setReceiptData(null);
+                                updateFormData({ feeStatus: 'PENDING' });
+                            }}
                             className="text-xs text-green-600 underline underline-offset-2 hover:text-green-700"
                         >
                             ↩ Undo — Mark as Unpaid
                         </button>
                     </div>
+                </div>
+
+                {/* Receipt card — always shown after payment */}
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                    {/* Receipt header */}
+                    <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/60 px-6 py-4">
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                                Receipt No.
+                            </p>
+                            <p className="text-sm text-gray-800">
+                                {receiptData?.receipt_number ?? 'N/A'}
+                            </p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                                Date
+                            </p>
+                            <p className="text-sm text-gray-800">
+                                {receiptData?.receipt_date ?? formData.paymentDate ?? 'N/A'}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Receipt details */}
+                    <div className="px-6 py-4 space-y-3">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-500">Student</span>
+                            <span className="font-extrabold text-lg text-gray-800">
+                                {formData.studentName || 'N/A'}
+                            </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-500">Fee Description</span>
+                            <span className="font-medium text-gray-800">
+                                {receiptData?.fee_description ?? registrationFeeName}
+                            </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-500">Payment Mode</span>
+                            <span className="font-medium text-gray-800">
+                                {receiptData?.payment_mode ?? formData.paymentMode ?? 'N/A'}
+                            </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-500">Transaction ID</span>
+                            <span className="font-mono text-gray-800">
+                                {receiptData?.transaction_id ?? formData.transactionId ?? 'N/A'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Amount */}
+                    <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/60 px-6 py-4">
+                        <span className="text-sm font-semibold text-gray-700">Amount Paid</span>
+                        <span className="text-xl font-extrabold text-emerald-700">
+                            {currencySymbol}{' '}
+                            {receiptData?.amount_paid != null
+                                ? typeof receiptData.amount_paid === 'number'
+                                    ? receiptData.amount_paid.toLocaleString('en-IN')
+                                    : receiptData.amount_paid
+                                : registrationFee.toLocaleString('en-IN')}
+                        </span>
+                    </div>
+
+                    {/* Download button */}
+                    {receiptData?.download_url && (
+                        <div className="border-t border-gray-100 px-6 py-4">
+                            <a
+                                href={receiptData.download_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 transition-colors"
+                            >
+                                <DownloadSimple size={16} weight="bold" />
+                                Download Receipt
+                            </a>
+                        </div>
+                    )}
                 </div>
             </div>
         );

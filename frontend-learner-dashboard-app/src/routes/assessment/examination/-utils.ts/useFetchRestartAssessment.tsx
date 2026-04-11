@@ -2,6 +2,7 @@ import { Storage } from '@capacitor/storage';
 import { useAssessmentStore } from "@/stores/assessment-store";
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { RESTART_ASSESSMENT } from '@/constants/urls';
+import { safeParse } from '@/lib/storage';
 
 interface StoredData {
   assessment?: {
@@ -122,7 +123,8 @@ export async function restartAssessment(assessmentId: string, attemptId: string)
   const storedAssessmentData = await Storage.get({ key: `ASSESSMENT_STATE_${attemptId}` });
 
   console.log('Stored Assessment Data:', storedAssessmentData);
-  const body = storedAssessmentData.value ? formatStoredAssessmentData(JSON.parse(storedAssessmentData.value)) : {};
+  const parsedStored = safeParse<StoredData | null>(storedAssessmentData.value, null);
+  const body = parsedStored ? formatStoredAssessmentData(parsedStored) : {};
   console.log('Restarting assessment with body:', body);
   try {
     // API Call

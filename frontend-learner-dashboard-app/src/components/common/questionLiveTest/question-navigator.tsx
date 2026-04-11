@@ -7,8 +7,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { ViewToggle } from "./view-toggle";
 import { QuestionListView } from "./question-list-view";
-import { QuestionDto, QuestionState } from "@/types/assessment";
+import { QuestionDto } from "@/types/assessment";
 import { Circle } from "@phosphor-icons/react";
+import {
+  getQuestionStatus,
+  QUESTION_LEGEND_ORDER,
+  QUESTION_STATUS_GRID_CLASS,
+  QUESTION_STATUS_LABEL,
+  type QuestionStatus,
+} from "./question-status-colors";
 
 interface QuestionNavigatorProps {
   onClose: () => void;
@@ -40,45 +47,20 @@ export function QuestionNavigator({
     onClose();
   };
 
-  const getQuestionButtonClass = (state: QuestionState) => {
-    if (state.isAnswered)
-      return "bg-green-100 hover:bg-green-200 text-green-700";
-    if (!state.isVisited) return "bg-white hover:bg-gray-100 text-gray-700";
-    return "bg-pink-100 hover:bg-pink-200 text-pink-700";
-  };
-
-  const getCounts = () => {
-    const counts = {
-      Answered: 0,
-      "Not Answered": 0,
-      "Not Visited": 0,
-      "Marked for review": 0,
-      "Answered & Marked for review": 0,
+  const counts = React.useMemo(() => {
+    const base: Record<QuestionStatus, number> = {
+      answered: 0,
+      "answered-marked": 0,
+      marked: 0,
+      "not-answered": 0,
+      "not-visited": 0,
     };
-
     currentSectionQuestions.forEach((question) => {
-      const state = questionStates[question.question_id];
-      if (state) {
-        if (state.isAnswered && state.isMarkedForReview) {
-          counts["Answered & Marked for review"]++;
-          counts["Answered"]++;
-        } else if (state.isAnswered) {
-          counts["Answered"]++;
-        } else if (state.isMarkedForReview) {
-          counts["Marked for review"]++;
-          counts["Not Answered"]++;
-        } else if (state.isVisited) {
-          counts["Not Answered"]++;
-        } else {
-          counts["Not Visited"]++;
-        }
-      } else {
-        counts["Not Visited"]++;
-      }
+      const status = getQuestionStatus(questionStates[question.question_id]);
+      base[status] += 1;
     });
-
-    return counts;
-  };
+    return base;
+  }, [currentSectionQuestions, questionStates]);
 
   return (
     <div className="flex flex-col h-full">
@@ -87,35 +69,31 @@ export function QuestionNavigator({
       </div>
 
       <div className="p-4">
-        {/* answred and not answerd section */}
+        {/* Status legend + counts */}
         {evaluationType !== "MANUAL" && (
-          <div className="grid grid-cols-2 gap-2 mb-2 text-xs">
-            {Object.entries(getCounts()).map(([key, count]) => (
-              <div key={key} className="flex items-center gap-2">
+          <div
+            className="grid grid-cols-2 gap-2 mb-2 text-xs"
+            aria-label="Question status legend"
+          >
+            {QUESTION_LEGEND_ORDER.map((status) => (
+              <div key={status} className="flex items-center gap-2">
                 <div className="relative">
                   <div
                     className={cn(
-                      "w-6 h-6 rounded border flex items-center justify-center",
-                      key === "Answered" && "bg-emerald-100 border-emerald-200",
-                      key === "Not Answered" && "bg-pink-100 border-pink-200",
-                      key === "Not Visited" && "bg-white border-gray-200",
-                      key === "Marked for review" &&
-                        "bg-pink-100 border-pink-200",
-                      key === "Answered & Marked for review" &&
-                        "bg-emerald-100 border-emerald-200"
+                      "w-6 h-6 rounded border flex items-center justify-center font-medium",
+                      QUESTION_STATUS_GRID_CLASS[status]
                     )}
                   >
-                    {count}
+                    {counts[status]}
                   </div>
-                  {(key === "Marked for review" ||
-                    key === "Answered & Marked for review") && (
+                  {(status === "marked" || status === "answered-marked") && (
                     <Circle
                       className="absolute -top-1 -right-1 w-3 h-3 text-primary-500"
                       weight="fill"
                     />
                   )}
                 </div>
-                <span>{key}</span>
+                <span>{QUESTION_STATUS_LABEL[status]}</span>
               </div>
             ))}
           </div>
@@ -126,6 +104,7 @@ export function QuestionNavigator({
           <div className="grid grid-cols-5 gap-2 p-1 px-4">
             {currentSectionQuestions.map((question, index) => {
               const state = questionStates[question.question_id];
+              const status = getQuestionStatus(state);
               const isActive =
                 currentQuestion?.question_id === question.question_id;
               return (
@@ -133,9 +112,10 @@ export function QuestionNavigator({
                   <Button
                     variant="outline"
                     size="sm"
+                    aria-label={`Question ${index + 1}, ${QUESTION_STATUS_LABEL[status]}`}
                     className={cn(
-                      "w-full aspect-square text-sm font-medium p-0",
-                      state && getQuestionButtonClass(state),
+                      "w-full aspect-square text-sm font-medium p-0 border",
+                      QUESTION_STATUS_GRID_CLASS[status],
                       isActive && "ring-2 ring-primary"
                     )}
                     onClick={() => handleQuestionClick(question)}

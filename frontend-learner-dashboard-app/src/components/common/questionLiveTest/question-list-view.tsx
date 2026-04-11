@@ -1,9 +1,10 @@
-import { cn, processHtmlString } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { QuestionDto, QuestionState } from "@/types/assessment";
 import { useEffect } from "react";
 import { Circle } from "@phosphor-icons/react";
+import { QuestionHtmlContent } from "./question-html-content";
 
 export function QuestionListView() {
   const {
@@ -52,7 +53,7 @@ export function QuestionListView() {
                 !isTimeUp && "cursor-pointer hover:bg-accent/50",
                 isActive && "ring-2 ring-primary",
                 state && getQuestionClass(state),
-                isTimeUp && "opacity-50"
+                isTimeUp && "opacity-50",
               )}
               onClick={() => handleQuestionClick(question)}
             >
@@ -68,20 +69,7 @@ export function QuestionListView() {
                 )}
               </div>
               <div className="text-sm line-clamp-2">
-                {/* {parseHtmlToString(question.question.content)} */}
-                {processHtmlString(question.question.content).map(
-                  (item, index) =>
-                    item.type === "text" ? (
-                      <span key={index}>{item.content}</span>
-                    ) : (
-                      <img
-                        key={index}
-                        src={item.content}
-                        alt={`Question image ${index + 1}`}
-                        className=""
-                      />
-                    )
-                )}
+                <QuestionHtmlContent html={question.question.content} inline />
               </div>
             </div>
           );

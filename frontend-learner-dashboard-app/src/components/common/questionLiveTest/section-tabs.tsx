@@ -1,8 +1,8 @@
-'use client'
-import { cn } from '@/lib/utils'
-import { useAssessmentStore } from '@/stores/assessment-store'
-import { useEffect } from 'react'
-import {distribution_duration_types} from "@/types/assessment";
+"use client";
+import { cn } from "@/lib/utils";
+import { useAssessmentStore } from "@/stores/assessment-store";
+import { useEffect } from "react";
+import { distribution_duration_types } from "@/types/assessment";
 
 export function SectionTabs() {
   const {
@@ -12,36 +12,45 @@ export function SectionTabs() {
     sectionTimers,
     setCurrentQuestion,
     updateSectionTimer,
-    moveToNextAvailableSection
-  } = useAssessmentStore()
+    moveToNextAvailableSection,
+  } = useAssessmentStore();
 
   // Track if the current section's time is ending
   // const [showEndButton, setShowEndButton] = useState(false)
 
   useEffect(() => {
-    if (assessment?.distribution_duration !== distribution_duration_types.SECTION) return
+    if (
+      assessment?.distribution_duration !== distribution_duration_types.SECTION
+    )
+      return;
 
     const timer = setInterval(() => {
-      const currentTimer = sectionTimers[currentSection]
-      
+      const currentTimer = sectionTimers[currentSection];
+
       if (currentTimer && currentTimer.timeLeft > 0) {
-        updateSectionTimer(currentSection, currentTimer.timeLeft - 1000)
-        
+        updateSectionTimer(currentSection, currentTimer.timeLeft - 1000);
+
         // Show end button when 1 minute is remaining for the current section
         if (currentTimer.timeLeft <= 60000 && !assessment?.can_switch_section) {
           // setShowEndButton(true);
         }
       } else if (!assessment?.can_switch_section) {
         // Automatically move to next section when time ends if switching is disabled
-        moveToNextAvailableSection()
+        moveToNextAvailableSection();
         // setShowEndButton(false)
       }
-    }, 1000)
-    
-    return () => clearInterval(timer)
-  }, [assessment, currentSection, sectionTimers, updateSectionTimer, moveToNextAvailableSection])
+    }, 1000);
 
-  if (!assessment) return null
+    return () => clearInterval(timer);
+  }, [
+    assessment,
+    currentSection,
+    sectionTimers,
+    updateSectionTimer,
+    moveToNextAvailableSection,
+  ]);
+
+  if (!assessment || assessment.section_dtos.length <= 1) return null;
 
   const handleSectionChange = (index: number) => {
     // If switching is disabled, only allow changing to the first non-completed section
@@ -52,26 +61,20 @@ export function SectionTabs() {
 
       if (!isFirstAvailableSection) return;
     }
-    
-    if (sectionTimers[index]?.timeLeft === 0) return
-    
-    setCurrentSection(index)
-    const firstQuestion = assessment.section_dtos[index].question_preview_dto_list[0]
-    setCurrentQuestion(firstQuestion)
-  }
 
-  const handleEndSection = () => {
-    // Set current section timer to 0
-    updateSectionTimer(currentSection, 0)
-    moveToNextAvailableSection()
-    // setShowEndButton(false)
-  }
+    if (sectionTimers[index]?.timeLeft === 0) return;
+
+    setCurrentSection(index);
+    const firstQuestion =
+      assessment.section_dtos[index].question_preview_dto_list[0];
+    setCurrentQuestion(firstQuestion);
+  };
 
   const formatTime = (ms: number) => {
-    const minutes = Math.floor(ms / 60000)
-    const seconds = Math.floor((ms % 60000) / 1000)
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-  }
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  };
 
   return (
     <div className="flex gap-2 px-4 pt-2 border-b bg-white overflow-x-auto">
@@ -79,55 +82,47 @@ export function SectionTabs() {
         ?.map((section, originalIndex) => ({ section, originalIndex }))
         ?.sort((a, b) => a.section.section_order - b.section.section_order)
         ?.map(({ section, originalIndex }) => {
-        const timer = sectionTimers[originalIndex]
-        const isTimeUp = timer?.timeLeft === 0
-        const isActive = currentSection === originalIndex
-        const isAvailable =
-          assessment.can_switch_section ||
-          assessment.section_dtos
-            .slice(0, originalIndex)
-            .every((_, i) => sectionTimers[i]?.timeLeft === 0);
+          const timer = sectionTimers[originalIndex];
+          const isTimeUp = timer?.timeLeft === 0;
+          const isActive = currentSection === originalIndex;
+          const isAvailable =
+            assessment.can_switch_section ||
+            assessment.section_dtos
+              .slice(0, originalIndex)
+              .every((_, i) => sectionTimers[i]?.timeLeft === 0);
 
-        return (
-          <div key={section.id} className="flex items-center">
-            <button
-              onClick={() => handleSectionChange(originalIndex)}
-              disabled={!isAvailable || isTimeUp}
-              className={cn(
-                "relative px-4 py-2 rounded-t-lg text-sm",
-                isActive &&
-                  "border border-b-0 border-primary-500 bg-orange-50 text-primary-500",
-                !isActive && "border border-transparent hover:bg-gray-50",
-                (!isAvailable || isTimeUp) && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              <div className="flex items-center gap-1 min-w-max">
-                <span>{section.name}</span>
-                {assessment.distribution_duration === distribution_duration_types.SECTION && (
-                  <span
-                    className={cn(
-                      timer?.timeLeft < 60000 && !isTimeUp
-                        ? "text-red-500"
-                        : "text-gray-500"
-                    )}
-                  >
-                    {formatTime(timer?.timeLeft || 0)}
-                  </span>
-                )}
-              </div>
-            </button>
-            {/* Hide End Section button */}
-            {false && !assessment.can_switch_section && isActive && (
+          return (
+            <div key={section.id} className="flex items-center">
               <button
-                onClick={handleEndSection}
-                className="ml-2 px-3 py-1 text-sm border rounded hover:bg-gray-50"
+                onClick={() => handleSectionChange(originalIndex)}
+                disabled={!isAvailable || isTimeUp}
+                className={cn(
+                  "relative px-4 py-2 rounded-t-lg text-sm",
+                  isActive &&
+                    "border border-b-0 border-primary-500 bg-orange-50 text-primary-500",
+                  !isActive && "border border-transparent hover:bg-gray-50",
+                  (!isAvailable || isTimeUp) && "opacity-50 cursor-not-allowed",
+                )}
               >
-                End Section
+                <div className="flex items-center gap-1 min-w-max">
+                  <span>{section.name}</span>
+                  {assessment.distribution_duration ===
+                    distribution_duration_types.SECTION && (
+                    <span
+                      className={cn(
+                        timer?.timeLeft < 60000 && !isTimeUp
+                          ? "text-red-500"
+                          : "text-gray-500",
+                      )}
+                    >
+                      {formatTime(timer?.timeLeft || 0)}
+                    </span>
+                  )}
+                </div>
               </button>
-            )}
-          </div>
-        );
-      })}
+            </div>
+          );
+        })}
     </div>
-  )
+  );
 }

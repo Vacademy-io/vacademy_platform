@@ -7,7 +7,6 @@ import { useRouter } from "@tanstack/react-router";
 import { startAssessment } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 import { Storage } from "@capacitor/storage";
 import { AssessmentPreviewData } from "@/types/assessment";
-import { processHtmlString } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -18,6 +17,7 @@ import { useProctoring } from "@/hooks";
 import { App } from "@capacitor/app";
 import { useLocation } from "@tanstack/react-router";
 import { PluginListenerHandle } from "@capacitor/core";
+import { QuestionHtmlContent } from "./question-html-content";
 
 export function AssessmentPreview() {
   const router = useRouter();
@@ -170,30 +170,38 @@ export function AssessmentPreview() {
           </div>
 
           {/* Section Tabs */}
-          <div className="sticky top-0 z-10 bg-white border-b">
-            <div className="flex overflow-x-auto items-center justify-between p-4 pb-0">
-              <div className="flex flex-nowrap items-center space-x-4">
-                {assessment.section_dtos
-                  ?.map((section, originalIndex) => ({ section, originalIndex }))
-                  ?.sort((a, b) => a.section.section_order - b.section.section_order)
-                  ?.map(({ section, originalIndex }) => (
-                  <button
-                    key={section.id}
-                    onClick={() => setActiveSection(originalIndex)}
-                    className={`px-4 py-2 text-sm rounded-t-lg ${
-                      activeSection === originalIndex
-                        ? "bg-orange-50 text-primary-500 border border-b-0 border-primary-500"
-                        : "text-gray-600"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-max">
-                      <span>{section.name}</span>
-                    </div>
-                  </button>
-                ))}
+          {assessment.section_dtos.length > 1 && (
+            <div className="sticky top-0 z-10 bg-white border-b">
+              <div className="flex overflow-x-auto items-center justify-between p-4 pb-0">
+                <div className="flex flex-nowrap items-center space-x-4">
+                  {assessment.section_dtos
+                    ?.map((section, originalIndex) => ({
+                      section,
+                      originalIndex,
+                    }))
+                    ?.sort(
+                      (a, b) =>
+                        a.section.section_order - b.section.section_order,
+                    )
+                    ?.map(({ section, originalIndex }) => (
+                      <button
+                        key={section.id}
+                        onClick={() => setActiveSection(originalIndex)}
+                        className={`px-4 py-2 text-sm rounded-t-lg ${
+                          activeSection === originalIndex
+                            ? "bg-orange-50 text-primary-500 border border-b-0 border-primary-500"
+                            : "text-gray-600"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-max">
+                          <span>{section.name}</span>
+                        </div>
+                      </button>
+                    ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Main content */}
@@ -219,22 +227,10 @@ export function AssessmentPreview() {
                   </span>
                 </div>
 
-                <p className="text-base mb-4">
-                  {/* {question.question.content} */}
-                  {processHtmlString(question.question.content).map(
-                    (item, index) =>
-                      item.type === "text" ? (
-                        <span key={index}>{item.content}</span>
-                      ) : (
-                        <img
-                          key={index}
-                          src={item.content}
-                          alt={`Question image ${index + 1}`}
-                          className=""
-                        />
-                      )
-                  )}
-                </p>
+                <QuestionHtmlContent
+                  html={question.question.content}
+                  className="text-base mb-4"
+                />
 
                 <div className="space-y-3">
                   {question.options.map((option) => (
@@ -242,20 +238,7 @@ export function AssessmentPreview() {
                       key={option.id}
                       className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
                     >
-                      {/* {parseHtmlToString(option.text.content)} */}
-                      {processHtmlString(option.text.content).map(
-                        (item, index) =>
-                          item.type === "text" ? (
-                            <span key={index}>{item.content}</span>
-                          ) : (
-                            <img
-                              key={index}
-                              src={item.content}
-                              alt={`Question image ${index + 1}`}
-                              className=""
-                            />
-                          )
-                      )}
+                      <QuestionHtmlContent html={option.text.content} inline />
                     </div>
                   ))}
                 </div>

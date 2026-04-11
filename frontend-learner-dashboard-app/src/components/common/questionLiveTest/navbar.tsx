@@ -50,6 +50,7 @@ export function Navbar({
 }) {
   const {
     assessment,
+    isSubmitted,
     submitAssessment,
     updateEntireTestTimer,
     tabSwitchCount,
@@ -67,6 +68,7 @@ export function Navbar({
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasAutoSubmittedRef = useRef(false);
 
   const [isUploading, setIsUploading] = useState(false);
 
@@ -84,7 +86,7 @@ export function Navbar({
     assessment_id: string,
     status: string,
     evaluationType: string,
-    fileId: string
+    fileId: string,
   ) => {
     const parsedValue = await getServerStartEndTime();
     const start_time = parsedValue.start_time
@@ -97,7 +99,7 @@ export function Navbar({
       ? state.assessment.duration * 60 - state.entireTestTimer
       : 0;
     const clientLastSync = new Date(
-      start_time + timeElapsedInSeconds * 1000
+      start_time + timeElapsedInSeconds * 1000,
     ).toISOString();
 
     const base = {
@@ -209,7 +211,7 @@ export function Navbar({
       assessment_id_json?.assessment_id,
       "END",
       evaluationType ?? "",
-      pdfFile?.fileId ?? ""
+      pdfFile?.fileId ?? "",
     );
     console.log("evaluationType", evaluationType, "pdfFile", pdfFile);
     if (evaluationType === "MANUAL" && pdfFile) {
@@ -226,7 +228,7 @@ export function Navbar({
             assessmentId: assessment_id_json?.assessment_id,
             instituteId: INSTITUTE_ID,
           },
-        }
+        },
       );
       console.log("response of manual", response);
       if (response?.data) {
@@ -261,7 +263,7 @@ export function Navbar({
             attemptId: state.assessment?.attempt_id,
             assessmentId: assessment_id_json?.assessment_id,
           },
-        }
+        },
       );
 
       if (response?.data) {
@@ -347,6 +349,17 @@ export function Navbar({
 
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (evaluationType === "MANUAL") return;
+    if (isSubmitted) return;
+    if (entireTestTimer > 0) return;
+    if (hasAutoSubmittedRef.current) return;
+
+    hasAutoSubmittedRef.current = true;
+    setShowTimesUpModal(true);
+    void handleSubmit();
+  }, [entireTestTimer, evaluationType, isSubmitted]);
 
   const formatTime = (timeInSeconds: number) => {
     const hours = Math.floor(timeInSeconds / 3600);

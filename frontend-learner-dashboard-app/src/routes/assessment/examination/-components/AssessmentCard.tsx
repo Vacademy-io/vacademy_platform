@@ -102,7 +102,7 @@ export const AssessmentCard = ({
     try {
       await fetchPreviewData(
         assessmentInfo.assessment_id,
-        assessmentInfo.batch_id || assessmentInfo.package_session_id
+        assessmentInfo.batch_id || assessmentInfo.package_session_id,
       );
       navigate({
         to: `/assessment/examination/${assessmentInfo.assessment_id}/LearnerLiveTest`,
@@ -132,7 +132,7 @@ export const AssessmentCard = ({
       const maxAttempts =
         assessmentInfo.user_attempts !== 0
           ? assessmentInfo.user_attempts
-          : assessmentInfo.assessment_attempts ?? 1;
+          : (assessmentInfo.assessment_attempts ?? 1);
       const usedAttempts = assessmentInfo.created_attempts ?? 0;
 
       if ((maxAttempts ?? 1) > usedAttempts) {
@@ -168,7 +168,7 @@ export const AssessmentCard = ({
       await storeAssessmentInfo(assessmentInfo);
       const isRestarted = await restartAssessment(
         assessmentInfo.assessment_id,
-        assessmentInfo.last_attempt_id ?? ""
+        assessmentInfo.last_attempt_id ?? "",
       );
 
       if (isRestarted) {
@@ -178,7 +178,7 @@ export const AssessmentCard = ({
         });
       } else {
         toast.error(
-          "Failed to resume the assessment. Assessment already Ended."
+          "Failed to resume the assessment. Assessment already Ended.",
         );
       }
     } catch (error) {
@@ -205,7 +205,7 @@ export const AssessmentCard = ({
       const maxAttempts =
         assessmentInfo.user_attempts !== 0
           ? assessmentInfo.user_attempts
-          : assessmentInfo.assessment_attempts ?? 1;
+          : (assessmentInfo.assessment_attempts ?? 1);
       const usedAttempts = assessmentInfo.created_attempts ?? 0;
 
       if ((maxAttempts ?? 1) > usedAttempts) {
@@ -223,7 +223,7 @@ export const AssessmentCard = ({
 
   const buttonLabel = getButtonLabel();
   const isResume = ["LIVE", "PREVIEW"].includes(
-    assessmentInfo?.recent_attempt_status ?? ""
+    assessmentInfo?.recent_attempt_status ?? "",
   );
 
   return (
@@ -231,7 +231,7 @@ export const AssessmentCard = ({
       <Card
         className={cn(
           "w-full transition-all duration-200 border-l-[6px] overflow-hidden hover:shadow-md cursor-default",
-          getCardBorderColor(assessmentInfo.play_mode)
+          getCardBorderColor(assessmentInfo.play_mode),
         )}
       >
         <CardHeader className="pb-3 pt-5 px-5 sm:px-6">
@@ -243,7 +243,7 @@ export const AssessmentCard = ({
                     variant="outline"
                     className={cn(
                       "px-2.5 py-0.5 text-xs font-semibold tracking-wider border",
-                      getPlayModeStyles(assessmentInfo.play_mode)
+                      getPlayModeStyles(assessmentInfo.play_mode),
                     )}
                   >
                     {assessmentInfo.play_mode}
@@ -269,7 +269,7 @@ export const AssessmentCard = ({
                   bgClass="bg-blue-50"
                   label="Starts"
                   value={dayjs(assessmentInfo.bound_start_time).format(
-                    "DD/MM/YYYY, hh:mm A"
+                    "DD/MM/YYYY, hh:mm A",
                   )}
                 />
               )}
@@ -285,8 +285,8 @@ export const AssessmentCard = ({
                   dayjs(assessmentInfo.bound_end_time).year() === 9999
                     ? "No Expiry"
                     : dayjs(assessmentInfo.bound_end_time).format(
-                      "DD/MM/YYYY, hh:mm A"
-                    )
+                        "DD/MM/YYYY, hh:mm A",
+                      )
                 }
               />
 
@@ -320,7 +320,7 @@ export const AssessmentCard = ({
                   assessmentInfo.user_attempts !== 0 &&
                   assessmentInfo.user_attempts !== null
                     ? assessmentInfo.user_attempts
-                    : assessmentInfo.assessment_attempts ?? 0
+                    : (assessmentInfo.assessment_attempts ?? 0)
                 }`}
               />
             </div>
@@ -332,14 +332,14 @@ export const AssessmentCard = ({
             assessmentType !== assessmentTypes.PAST && (
               <Button
                 className={cn(
-                  "w-full sm:w-auto min-w-[140px] font-semibold transition-all"
+                  "w-full sm:w-auto min-w-[140px] font-semibold transition-all",
                 )}
                 variant={
                   isResume
                     ? "default"
                     : buttonLabel === "Ended"
-                    ? "secondary"
-                    : "default"
+                      ? "secondary"
+                      : "default"
                 }
                 disabled={isButtonDisabled()}
                 onClick={(e) => {
@@ -371,14 +371,13 @@ export const AssessmentCard = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate({
-                      to: `/assessment/reports/student-report`,
+                      to: `/assessment/reports/comparison`,
                       search: {
                         assessmentId: assessmentInfo.assessment_id,
                         attemptId: assessmentInfo.last_attempt_id ?? "",
                       },
                       state: {
-                        playMode: assessmentInfo.play_mode,
-                        assessmentInfo: assessmentInfo,
+                        assessmentName: assessmentInfo.name,
                       } as any,
                     });
                   }}

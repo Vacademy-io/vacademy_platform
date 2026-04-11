@@ -1,0 +1,6 @@
+export const REMOTE_SAVE_INTERVAL_MS = 60_000;
+export const LOCAL_SAVE_INTERVAL_MS = 2_000;
+
+export const REMOTE_SAVE_RETRY_ATTEMPTS = 3;
+export const REMOTE_SAVE_RETRY_BASE_MS = 1_000;
+export const REMOTE_SAVE_RETRY_MAX_MS = 4_000;

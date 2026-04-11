@@ -12,6 +12,14 @@ import { Preferences } from "@capacitor/preferences";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { ASSESSMENT_SAVE } from "@/constants/urls";
 import { toast } from "sonner";
+import { safeParse } from "@/lib/storage";
+import {
+  LOCAL_SAVE_INTERVAL_MS,
+  REMOTE_SAVE_INTERVAL_MS,
+  REMOTE_SAVE_RETRY_ATTEMPTS,
+  REMOTE_SAVE_RETRY_BASE_MS,
+  REMOTE_SAVE_RETRY_MAX_MS,
+} from "@/constants/assessment-timings";
 
 export function convertToLocalDateTime(utcDate: string): string {
   const date = new Date(utcDate);
@@ -34,7 +42,7 @@ export function convertToLocalDateTime(utcDate: string): string {
 // Function to format data from assessment-store
 export const getServerStartEndTime = async () => {
   const { value } = await Preferences.get({ key: "server_start_end_time" });
-  return value ? JSON.parse(value) : {};
+  return safeParse<{ start_time?: string; end_time?: string }>(value, {});
 };
 
 export const formatDataFromStore = async (
@@ -65,11 +73,15 @@ export const formatDataFromStore = async (
       status: status,
       tabSwitchCount: state.tabSwitchCount || 0,
     },
-    sections: state.assessment?.section_dtos?.map((section, idx) => ({
+    sections: state.assessment?.section_dtos?.map((section, idx) => {
+      const sectionTimeLeftSeconds = Math.round(
+        (state.sectionTimers?.[idx]?.timeLeft || 0) / 1000
+      );
+      return {
       sectionId: section.id,
-      sectionDurationLeftInSeconds: state.sectionTimers?.[idx]?.timeLeft || 0,
+      sectionDurationLeftInSeconds: sectionTimeLeftSeconds,
       timeElapsedInSeconds: section.duration
-        ? (state.sectionTimers?.[idx]?.timeLeft || 0) - section.duration * 60
+        ? section.duration * 60 - sectionTimeLeftSeconds
         : 0,
       questions: section.question_preview_dto_list?.map((question) => {
         const rawAnswer = state.answers?.[question.question_id];
@@ -105,7 +117,8 @@ export const formatDataFromStore = async (
           },
         };
       }),
-    })),
+      };
+    }),
   };
 };
 
@@ -116,41 +129,58 @@ export default function Page() {
   const [evaluationType, setEvaluationType] = useState<string>("");
 
   const sendFormattedData = async () => {
-    try {
-      const state = useAssessmentStore.getState();
-      const InstructionID_and_AboutID = await Preferences.get({
-        key: "InstructionID_and_AboutID",
-      });
+    const state = useAssessmentStore.getState();
+    state.setRemoteSaveStatus("saving");
+    const InstructionID_and_AboutID = await Preferences.get({
+      key: "InstructionID_and_AboutID",
+    });
 
-      const assessment_id_json = InstructionID_and_AboutID.value
-        ? JSON.parse(InstructionID_and_AboutID.value)
-        : null;
-      const formattedData = await formatDataFromStore(
-        assessment_id_json?.assessment_id,
-        "LIVE"
-      );
-      const response = await authenticatedAxiosInstance.post(
-        `${ASSESSMENT_SAVE}`,
-        { json_content: JSON.stringify(formattedData) },
-        {
-          params: {
-            attemptId: state.assessment?.attempt_id,
-            assessmentId: assessment_id_json?.assessment_id,
-          },
-        }
-      );
+    const assessment_id_json = safeParse<{ assessment_id?: string } | null>(
+      InstructionID_and_AboutID.value,
+      null
+    );
+    const formattedData = await formatDataFromStore(
+      assessment_id_json?.assessment_id ?? "",
+      "LIVE"
+    );
 
-      // Save announcements in local storage
-      await Preferences.set({
-        key: "announcements",
-        value: JSON.stringify(response.data),
-      });
+    let lastError: unknown;
+    for (let attempt = 0; attempt < REMOTE_SAVE_RETRY_ATTEMPTS; attempt++) {
+      try {
+        const response = await authenticatedAxiosInstance.post(
+          `${ASSESSMENT_SAVE}`,
+          { json_content: JSON.stringify(formattedData) },
+          {
+            params: {
+              attemptId: state.assessment?.attempt_id,
+              assessmentId: assessment_id_json?.assessment_id,
+            },
+          }
+        );
 
-      return response.data;
-    } catch (error) {
-      console.error("Error sending data:", error);
-      throw error;
+        // Save announcements in local storage
+        await Preferences.set({
+          key: "announcements",
+          value: JSON.stringify(response.data),
+        });
+
+        state.setRemoteSaveStatus("success");
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        const isLastAttempt = attempt === REMOTE_SAVE_RETRY_ATTEMPTS - 1;
+        if (isLastAttempt) break;
+        const delay = Math.min(
+          REMOTE_SAVE_RETRY_BASE_MS * 2 ** attempt,
+          REMOTE_SAVE_RETRY_MAX_MS
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
+
+    state.setRemoteSaveStatus("failed");
+    console.error("Error sending data after retries:", lastError);
+    throw lastError;
   };
 
   const { isSubmitted } = useAssessmentStore();
@@ -180,7 +210,7 @@ export default function Page() {
 
     const interval = setInterval(() => {
       sent();
-    }, 60000);
+    }, REMOTE_SAVE_INTERVAL_MS);
 
     // Cleanup function to clear the interval
     return () => clearInterval(interval);
@@ -193,9 +223,10 @@ export default function Page() {
       const assessmentData = await Preferences.get({
         key: "InstructionID_and_AboutID",
       });
-      const assessment = assessmentData.value
-        ? JSON.parse(assessmentData.value)
-        : null;
+      const assessment = safeParse<{ play_mode?: string } | null>(
+        assessmentData.value,
+        null
+      );
 
       // For surveys, only load state if we don't already have assessment data
       if (assessment?.play_mode === "SURVEY" && state.assessment && state.currentQuestion) {
@@ -210,7 +241,7 @@ export default function Page() {
 
     const saveInterval = setInterval(() => {
       saveState();
-    }, 1000);
+    }, LOCAL_SAVE_INTERVAL_MS);
 
     return () => {
       clearInterval(saveInterval);
@@ -218,14 +249,41 @@ export default function Page() {
     };
   }, []);
   useEffect(() => {
+    const reconcileTimer = async () => {
+      if (document.hidden) return;
+      const state = useAssessmentStore.getState();
+      const totalDurationSeconds = state.assessment?.duration
+        ? state.assessment.duration * 60
+        : 0;
+      if (!totalDurationSeconds) return;
+
+      const { start_time } = await getServerStartEndTime();
+      if (!start_time) return;
+
+      const startMs = new Date(start_time).getTime();
+      if (Number.isNaN(startMs)) return;
+
+      const elapsedSeconds = Math.floor((Date.now() - startMs) / 1000);
+      const remaining = Math.max(0, totalDurationSeconds - elapsedSeconds);
+      state.setEntireTestTimer(remaining);
+    };
+
+    document.addEventListener("visibilitychange", reconcileTimer);
+    return () => document.removeEventListener("visibilitychange", reconcileTimer);
+  }, []);
+
+  useEffect(() => {
     const fetchPlayMode = async () => {
       const storedMode = await Preferences.get({
         key: "InstructionID_and_AboutID",
       });
-      if (storedMode.value) {
-        const parsedData = JSON.parse(storedMode.value);
-        setPlayMode(parsedData.play_mode);
-        setEvaluationType(parsedData.evaluation_type);
+      const parsedData = safeParse<{
+        play_mode?: string;
+        evaluation_type?: string;
+      } | null>(storedMode.value, null);
+      if (parsedData) {
+        setPlayMode(parsedData.play_mode ?? "");
+        setEvaluationType(parsedData.evaluation_type ?? "");
       }
     };
 
@@ -249,7 +307,7 @@ export default function Page() {
         onClose={() => setIsSidebarOpen(false)}
         evaluationType={evaluationType}
       />
-      <NetworkStatus />
+      <NetworkStatus onRetrySave={sendFormattedData} />
     </div>
   );
 }

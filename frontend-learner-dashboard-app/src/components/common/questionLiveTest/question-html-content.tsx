@@ -1,0 +1,150 @@
+import { useMemo } from "react";
+import katex from "katex";
+import "katex/dist/katex.min.css";
+
+interface QuestionHtmlContentProps {
+  html: string;
+  className?: string;
+  inline?: boolean;
+}
+
+const decodeHtml = (input: string): string => {
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = input;
+  const once = textarea.value || textarea.textContent || "";
+
+  if (
+    once.includes("&lt;") ||
+    once.includes("&gt;") ||
+    once.includes("&amp;")
+  ) {
+    textarea.innerHTML = once;
+    return textarea.value || textarea.textContent || "";
+  }
+
+  return once;
+};
+
+const renderLatexDelimiters = (text: string): string => {
+  const pattern = /(\\\[(.+?)\\\]|\\\((.+?)\\\)|\$\$(.+?)\$\$|\$(.+?)\$)/gs;
+
+  return text.replace(
+    pattern,
+    (match, _full, bracket, paren, displayDollar, inlineDollar) => {
+      const latex = (
+        bracket ||
+        paren ||
+        displayDollar ||
+        inlineDollar ||
+        ""
+      ).trim();
+      if (!latex) return match;
+
+      const displayMode = Boolean(bracket || displayDollar);
+      try {
+        return katex.renderToString(latex, {
+          throwOnError: false,
+          displayMode,
+        });
+      } catch {
+        return match;
+      }
+    },
+  );
+};
+
+const renderHtmlWithMath = (html: string): string => {
+  if (!html) return "";
+
+  const decoded = html.includes("&lt;") ? decodeHtml(html) : html;
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(decoded, "text/html");
+
+    doc.querySelectorAll("script").forEach((node) => node.remove());
+
+    const mathNodes = doc.querySelectorAll(
+      "span.math-inline, span.math-display, div.math-display, span[data-latex], div[data-latex], span[latex], div[latex]",
+    );
+
+    mathNodes.forEach((node) => {
+      const element = node as HTMLElement;
+      const latex =
+        element.getAttribute("data-latex") ||
+        element.getAttribute("latex") ||
+        element.textContent ||
+        "";
+
+      if (!latex.trim()) return;
+
+      const displayMode =
+        element.classList.contains("math-display") ||
+        element.tagName.toLowerCase() === "div";
+
+      try {
+        element.innerHTML = katex.renderToString(latex.trim(), {
+          throwOnError: false,
+          displayMode,
+        });
+      } catch {
+        // Keep original content if KaTeX rendering fails.
+      }
+    });
+
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+
+    let currentNode = walker.nextNode();
+    while (currentNode) {
+      if (currentNode.nodeType === Node.TEXT_NODE) {
+        textNodes.push(currentNode as Text);
+      }
+      currentNode = walker.nextNode();
+    }
+
+    textNodes.forEach((textNode) => {
+      const value = textNode.nodeValue || "";
+      if (
+        !(value.includes("$") || value.includes("\\(") || value.includes("\\["))
+      ) {
+        return;
+      }
+
+      const rendered = renderLatexDelimiters(value);
+      if (rendered === value) return;
+
+      const span = doc.createElement("span");
+      span.innerHTML = rendered;
+      textNode.replaceWith(span);
+    });
+
+    return doc.body.innerHTML;
+  } catch {
+    return decoded;
+  }
+};
+
+export function QuestionHtmlContent({
+  html,
+  className = "",
+  inline = false,
+}: QuestionHtmlContentProps) {
+  const renderedHtml = useMemo(() => renderHtmlWithMath(html), [html]);
+
+  if (inline) {
+    return (
+      <span
+        className={className}
+        dangerouslySetInnerHTML={{ __html: renderedHtml }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={className}
+      dangerouslySetInnerHTML={{ __html: renderedHtml }}
+    />
+  );
+}

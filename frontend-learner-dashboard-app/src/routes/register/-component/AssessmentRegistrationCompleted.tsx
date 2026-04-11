@@ -3,15 +3,20 @@ import { Separator } from "@/components/ui/separator";
 import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import { RegistrationCompletedMobile, RegistrationCompletedWeb } from "@/svgs";
 import {
-  RegistrationCompletedMobile,
-  RegistrationCompletedWeb,
-} from "@/svgs";
-import { InstituteBrandingComponent, type InstituteBranding } from "@/components/common/institute-branding";
+  InstituteBrandingComponent,
+  type InstituteBranding,
+} from "@/components/common/institute-branding";
 import { useInstituteDetails } from "../live-class/-hooks/useInstituteDetails";
 import { Preferences } from "@capacitor/preferences";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import {
+  fetchAssessmentData,
+  storeAssessmentInfo,
+} from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
+import { Assessment, assessmentTypes } from "@/types/assessment";
 
 interface TimeLeft {
   hours: number;
@@ -20,15 +25,41 @@ interface TimeLeft {
 }
 
 const AssessmentRegistrationCompleted = ({
+  assessmentId,
   assessmentName,
   timeLeft,
 }: {
+  assessmentId: string;
   assessmentName: string;
   timeLeft: TimeLeft;
 }) => {
   const navigate = useNavigate();
   const { data: instituteDetails } = useInstituteDetails();
-  
+
+  const resolveAssessmentById = async (
+    id: string,
+  ): Promise<Assessment | undefined> => {
+    const tabs = [
+      assessmentTypes.LIVE,
+      assessmentTypes.UPCOMING,
+      assessmentTypes.PAST,
+    ];
+
+    for (const tab of tabs) {
+      const response = await fetchAssessmentData(0, 100, tab, "ASSESSMENT");
+      const assessments = response?.content ?? [];
+      const matchedAssessment = assessments.find(
+        (assessment: Assessment) => assessment.assessment_id === id,
+      );
+
+      if (matchedAssessment) {
+        return matchedAssessment;
+      }
+    }
+
+    return undefined;
+  };
+
   const branding: InstituteBranding = {
     instituteId: instituteDetails?.id || null,
     instituteName: instituteDetails?.institute_name || null,
@@ -45,11 +76,15 @@ const AssessmentRegistrationCompleted = ({
       const authorities = decodedData?.authorities;
       const userId = decodedData?.user;
       const authorityKeys = authorities ? Object.keys(authorities) : [];
-      
+      const assessmentRoute = `/assessment/examination/${assessmentId}`;
+
       if (authorityKeys.length > 1) {
         navigate({
           to: "/institute-selection",
-          search: { redirect: "/assessment/examination" , isPublicAssessment: true },
+          search: {
+            redirect: assessmentRoute,
+            isPublicAssessment: true,
+          },
         });
       } else {
         const instituteId = authorityKeys[0];
@@ -57,27 +92,28 @@ const AssessmentRegistrationCompleted = ({
         if (instituteId && userId) {
           try {
             await fetchAndStoreInstituteDetails(instituteId, userId);
-            const status = await fetchAndStoreStudentDetails(
-              instituteId,
-              userId
-            );
-            // Skip session selection and go directly to assessment
+            await fetchAndStoreStudentDetails(instituteId, userId);
+            const fullAssessment = await resolveAssessmentById(assessmentId);
+            if (fullAssessment) {
+              await storeAssessmentInfo(fullAssessment);
+            }
+
             navigate({
-              to: "/assessment/examination",
+              to: assessmentRoute,
               search: { isPublicAssessment: true },
             });
           } catch (error) {
             console.error("Error fetching details:", error);
             toast.error("Failed to fetch details");
             navigate({
-              to: "/assessment/examination",
+              to: assessmentRoute,
               search: { isPublicAssessment: true },
             });
           }
         } else {
           console.error("Institute ID or User ID is undefined");
           navigate({
-            to: "/assessment/examination",
+            to: assessmentRoute,
             search: { isPublicAssessment: true },
           });
         }
@@ -85,13 +121,17 @@ const AssessmentRegistrationCompleted = ({
     } catch (error) {
       console.error("Error processing decoded data:", error);
       navigate({
-        to: "/assessment/examination",
+        to: `/assessment/examination/${assessmentId}`,
       });
     }
   };
   return (
     <div className="flex flex-col w-screen h-screen items-center justify-center gap-2 p-10 bg-background">
-      <InstituteBrandingComponent branding={branding} size="large" showName={false} />
+      <InstituteBrandingComponent
+        branding={branding}
+        size="large"
+        showName={false}
+      />
       <h1 className="text-sm sm:text-lg my-1 text-center">{assessmentName}</h1>
       <Separator className="mt-2" />
       <div className="block sm:hidden">

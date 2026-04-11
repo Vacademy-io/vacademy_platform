@@ -6,6 +6,18 @@ import {
   distribution_duration_types,
   type QuestionDto,
 } from "../types/assessment";
+import { safeParse } from "@/lib/storage";
+
+const LEGACY_STATE_KEY_PREFIX = "ASSESSMENT_STATE_";
+
+const buildStateKey = (assessmentId: string, attemptId: string) =>
+  `ASSESSMENT_STATE_${assessmentId}_${attemptId}`;
+
+const getAssessmentIdFromStorage = async (): Promise<string | null> => {
+  const { value } = await Storage.get({ key: "InstructionID_and_AboutID" });
+  const parsed = safeParse<{ assessment_id?: string } | null>(value, null);
+  return parsed?.assessment_id ?? null;
+};
 
 interface PdfFile {
   fileId: string;
@@ -55,6 +67,9 @@ interface AssessmentStore {
   incrementTabSwitchCount: () => void;
   saveState: () => Promise<void>;
   loadState: () => Promise<void>;
+  clearPersistedState: () => Promise<void>;
+  remoteSaveStatus: "idle" | "saving" | "success" | "failed";
+  setRemoteSaveStatus: (status: "idle" | "saving" | "success" | "failed") => void;
   questionStartTime: Record<string, number>;
   setQuestionStartTime: (questionId: string, startTime: number) => void;
   calculateTimeTaken: (questionId: string) => number;
@@ -452,6 +467,9 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
 
   entireTestTimer: 0,
   setEntireTestTimer: (time) => set({ entireTestTimer: time }),
+
+  remoteSaveStatus: "idle",
+  setRemoteSaveStatus: (status) => set({ remoteSaveStatus: status }),
   updateEntireTestTimer: () =>
     set((state) => {
       const newTimer = Math.max(0, state.entireTestTimer - 1);
@@ -461,9 +479,10 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   saveState: async () => {
     const state = get();
     const attemptId = state?.assessment?.attempt_id;
+    const assessmentId = await getAssessmentIdFromStorage();
 
-    if (!attemptId) {
-      console.error("Attempt ID is missing");
+    if (!attemptId || !assessmentId) {
+      console.error("Attempt ID or Assessment ID is missing");
       return;
     }
 
@@ -489,50 +508,60 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
         : null,
     };
 
-    const storageKey = `ASSESSMENT_STATE_${attemptId}`;
-
     await Storage.set({
-      key: storageKey,
+      key: buildStateKey(assessmentId, attemptId),
       value: JSON.stringify(dataToSave),
     });
   },
 
   loadState: async () => {
-    const getAttemptId = async () => {
-      const { value } = await Storage.get({ key: "Assessment_questions" });
+    const { value } = await Storage.get({ key: "Assessment_questions" });
+    const parsedAssessment = safeParse<{ attempt_id?: string } | null>(
+      value,
+      null
+    );
+    const attemptId = parsedAssessment?.attempt_id;
+    const assessmentId = await getAssessmentIdFromStorage();
 
-      if (!value) {
-        console.error("No data found in Assessment_questions.");
-        return null;
-      }
-
-      try {
-        const parsedData = JSON.parse(value);
-        return parsedData?.attempt_id || null;
-      } catch (error) {
-        console.error("Error parsing Assessment_questions:", error);
-        return null;
-      }
-    };
-    const attemptId = await getAttemptId();
-
-    if (!attemptId) {
-      console.error("Attempt ID is required to load state");
+    if (!attemptId || !assessmentId) {
+      console.error("Attempt ID or Assessment ID is required to load state");
       return;
     }
 
-    const storageKey = `ASSESSMENT_STATE_${attemptId}`;
+    const storageKey = buildStateKey(assessmentId, attemptId);
     let { value: savedState } = await Storage.get({ key: storageKey });
 
+    // Backwards compat: migrate from the legacy attempt-only key if present.
     if (!savedState) {
-      const { value } = await Storage.get({ key: storageKey });
-      savedState = value;
+      const legacyKey = `${LEGACY_STATE_KEY_PREFIX}${attemptId}`;
+      const { value: legacyValue } = await Storage.get({ key: legacyKey });
+      if (legacyValue) {
+        savedState = legacyValue;
+        await Storage.set({ key: storageKey, value: legacyValue });
+        await Storage.remove({ key: legacyKey });
+      }
     }
 
-    if (savedState) {
-      const parsedState = JSON.parse(savedState);
-      set(parsedState);
-    }
+    if (!savedState) return;
+
+    const parsedState = safeParse<Record<string, unknown> | null>(
+      savedState,
+      null
+    );
+    if (!parsedState) return;
+
+    set(parsedState);
+  },
+
+  clearPersistedState: async () => {
+    const state = get();
+    const attemptId = state?.assessment?.attempt_id;
+    const assessmentId = await getAssessmentIdFromStorage();
+    if (!attemptId || !assessmentId) return;
+
+    await Storage.remove({ key: buildStateKey(assessmentId, attemptId) });
+    // Clean up the legacy key too, just in case it was migrated mid-session.
+    await Storage.remove({ key: `${LEGACY_STATE_KEY_PREFIX}${attemptId}` });
   },
 
   setQuestionStartTime: (questionId: string, startTime: number) =>

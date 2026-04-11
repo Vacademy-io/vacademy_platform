@@ -8,12 +8,13 @@ import {
   distribution_duration_types,
   QUESTION_TYPES,
 } from "@/types/assessment";
-import { processHtmlString } from "@/lib/utils";
+import { parseHtmlToString } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";
 import { NumericInputWithKeypad } from "./otherQuestionTypes/numeric";
 import { ExpandableParagraph } from "./otherQuestionTypes/paragraph";
 import { OneWordInput } from "./otherQuestionTypes/OneWordInput";
 import { LongAnswerInput } from "./otherQuestionTypes/LongAnswerInput";
+import { QuestionHtmlContent } from "./question-html-content";
 
 export function QuestionDisplay() {
   const {
@@ -149,6 +150,25 @@ export function QuestionDisplay() {
     }
   };
 
+  const hasEmbeddedOptionPrefix = (optionHtml: string, optionIndex: number) => {
+    const plainText = parseHtmlToString(optionHtml).trim();
+    if (!plainText) return false;
+
+    const expectedAlpha = String.fromCharCode(97 + (optionIndex % 26));
+    const alphaPattern = new RegExp(
+      `^\\(?${expectedAlpha}\\)?[\\).:-]\\s*`,
+      "i",
+    );
+    const genericAlphaPattern = /^\(?[a-z]\)?[\).:-]\s*/i;
+    const numericPattern = /^\(?\d+\)?[\).:-]\s*/;
+
+    return (
+      alphaPattern.test(plainText) ||
+      genericAlphaPattern.test(plainText) ||
+      numericPattern.test(plainText)
+    );
+  };
+
   return (
     <div className="space-y-6 mx-auto">
       <div className="flex flex-col items-start justify-between w-full">
@@ -186,20 +206,10 @@ export function QuestionDisplay() {
           </div>
           {<ExpandableParagraph />}
 
-          <p className="text-lg text-gray-800">
-            {processHtmlString(currentQuestion.question.content).map(
-              (item, index) =>
-                item.type === "text" ? (
-                  <span key={index}>{item.content}</span>
-                ) : (
-                  <img
-                    key={index}
-                    src={item.content}
-                    alt={`Question image ${index + 1}`}
-                  />
-                )
-            )}
-          </p>
+          <QuestionHtmlContent
+            html={currentQuestion.question.content}
+            className="text-lg text-gray-800"
+          />
         </div>
         {!isManualTest && (
           <div className="flex gap-2 mt-4 w-full justify-between">
@@ -279,19 +289,10 @@ export function QuestionDisplay() {
                           : "text-gray-700"
                       }`}
                     >
-                      {`(${String.fromCharCode(97 + index)}) `}
-                      {processHtmlString(option.text.content).map(
-                        (item, index) =>
-                          item.type === "text" ? (
-                            <span key={index}>{item.content}</span>
-                          ) : (
-                            <img
-                              key={index}
-                              src={item.content}
-                              alt={`Option ${index}`}
-                            />
-                          )
+                      {!hasEmbeddedOptionPrefix(option.text.content, index) && (
+                        <span>{`(${String.fromCharCode(97 + index)}) `}</span>
                       )}
+                      <QuestionHtmlContent html={option.text.content} inline />
                     </label>
                   </div>
                 ))}

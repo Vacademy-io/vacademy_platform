@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CurrencyInr, Wallet, WarningCircle, X } from '@phosphor-icons/react';
+import { ArrowLeft, CurrencyInr, DownloadSimple, Spinner, Wallet, WarningCircle, X } from '@phosphor-icons/react';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -11,6 +11,7 @@ import {
     generateInvoiceForInstallments,
     applyManualDiscount,
     sendInvoiceEmail,
+    getReceiptUrlForInstallment,
 } from '@/services/manage-finances';
 import { useTheme } from '@/providers/theme/theme-provider';
 import { InvoiceActionDialog } from './InvoiceActionDialog';
@@ -156,6 +157,20 @@ export function InstallmentSelectionStep({
 
     const [discountDrafts, setDiscountDrafts] = useState<Record<string, string>>({});
     const [reasonDrafts, setReasonDrafts] = useState<Record<string, string>>({});
+    const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
+
+    const handleDownloadReceipt = async (installmentId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setDownloadingReceiptId(installmentId);
+        try {
+            const data = await getReceiptUrlForInstallment(installmentId);
+            window.open(data.download_url, '_blank');
+        } catch {
+            toast.error('No receipt found for this installment');
+        } finally {
+            setDownloadingReceiptId(null);
+        }
+    };
 
     const discountMutation = useMutation({
         mutationFn: ({
@@ -252,7 +267,7 @@ export function InstallmentSelectionStep({
         selectableDues.length > 0 && selectableDues.every((d) => selectedIds.has(d.id));
 
     return (
-        <div className="flex flex-col h-[calc(100vh-220px)]">
+        <div className="flex flex-col flex-1 min-h-0">
             {/* ── Top section ── */}
             <div className="space-y-4 mb-4">
                 {/* Header */}
@@ -412,6 +427,7 @@ export function InstallmentSelectionStep({
                                         <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Due / Overdue</th>
                                         <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
                                         <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                                        <th className="py-3 px-4 w-10" />
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 text-sm font-medium">
@@ -538,6 +554,21 @@ export function InstallmentSelectionStep({
                                                 </td>
                                                 <td className="py-3 px-4">
                                                     <StatusPill status={inst.status} />
+                                                </td>
+                                                <td className="py-3 px-2">
+                                                    {inst.status === 'PAID' && (
+                                                        <button
+                                                            title="Download Receipt"
+                                                            onClick={(e) => handleDownloadReceipt(inst.id, e)}
+                                                            disabled={downloadingReceiptId === inst.id}
+                                                            className="flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                                                        >
+                                                            {downloadingReceiptId === inst.id
+                                                                ? <Spinner size={14} className="animate-spin" />
+                                                                : <DownloadSimple size={14} weight="bold" />
+                                                            }
+                                                        </button>
+                                                    )}
                                                 </td>
                                             </tr>
                                         );

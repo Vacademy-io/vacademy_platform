@@ -229,9 +229,8 @@ public class SchoolFeeReceiptService {
      * @param paymentMode         Payment mode (e.g., "OFFLINE")
      * @param paidInstallmentIds  List of student_fee_payment IDs that were paid/partially paid in this allocation
      */
-    @Async
     @Transactional
-    public void generateAndSendReceipt(String userId, String paymentLogId,
+    public String generateAndSendReceipt(String userId, String paymentLogId,
             String instituteId, BigDecimal amountPaid, String transactionId, String paymentMode,
             List<String> paidInstallmentIds) {
         try {
@@ -240,7 +239,7 @@ public class SchoolFeeReceiptService {
 
             if (paidInstallmentIds == null || paidInstallmentIds.isEmpty()) {
                 log.warn("No paid installment IDs provided for receipt generation");
-                return;
+                return null;
             }
 
             // 1. Check if invoice email is enabled
@@ -255,14 +254,14 @@ public class SchoolFeeReceiptService {
             UserDTO user = authService.getUsersFromAuthServiceByUserIds(List.of(userId)).get(0);
             if (user == null) {
                 log.warn("User not found for receipt generation: {}", userId);
-                return;
+                return null;
             }
 
             // 3. Fetch ONLY the specific fee installments that were paid in this allocation
             List<StudentFeePayment> feePayments = studentFeePaymentRepository.findAllById(paidInstallmentIds);
             if (feePayments == null || feePayments.isEmpty()) {
                 log.warn("No fee payments found for provided installment IDs");
-                return;
+                return null;
             }
 
             // Sort fees chronologically (earliest due date first)
@@ -307,7 +306,7 @@ public class SchoolFeeReceiptService {
             // 11. Save line items (only for paid installments)
             saveLineItems(invoice, feePayments, currency);
 
-            log.info("School fee receipt generated successfully: {} for {} installments", 
+            log.info("School fee receipt generated successfully: {} for {} installments",
                     receiptNumber, feePayments.size());
 
             // 12. Send email if enabled
@@ -322,10 +321,13 @@ public class SchoolFeeReceiptService {
                 log.debug("Receipt email disabled by institute setting for institute: {}", instituteId);
             }
 
+            return invoice.getId();
+
         } catch (Exception e) {
             log.error("Error generating school fee receipt for userId: {}, instituteId: {}",
                     userId, instituteId, e);
             // Don't throw — receipt failure should never break allocation
+            return null;
         }
     }
 

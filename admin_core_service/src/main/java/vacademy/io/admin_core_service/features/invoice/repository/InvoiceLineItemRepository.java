@@ -11,8 +11,10 @@ import java.util.List;
 public interface InvoiceLineItemRepository extends JpaRepository<InvoiceLineItem, String> {
     
     List<InvoiceLineItem> findByInvoice(Invoice invoice);
-    
+
     List<InvoiceLineItem> findByInvoiceId(String invoiceId);
+
+    List<InvoiceLineItem> findBySourceId(String sourceId);
 }
 
 

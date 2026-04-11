@@ -97,14 +97,39 @@ export const fetchStudentDues = async (userId: string): Promise<StudentFeeDueDTO
 
 // ─── Allocate Selected Payment ─────────────────────────────────────────────
 
+export interface ReceiptLineItem {
+    fee_type_name: string | null;
+    cpo_name: string | null;
+    due_date: string | null;
+    amount_expected: number;
+    amount_paid: number;
+    balance: number;
+    status: string;
+}
+
+export interface AllocatePaymentResponse {
+    invoice_id?: string;
+    receipt_number?: string;
+    receipt_date?: string;
+    download_url?: string;
+    payment_mode?: string;
+    transaction_id?: string;
+    line_items?: ReceiptLineItem[];
+    total_expected?: number;
+    total_paid?: number;
+    balance_due?: number;
+    amount_paid_now?: number;
+}
+
 export const allocateSelectedPayment = async (
     userId: string,
     body: AllocateSelectedRequest
-): Promise<void> => {
-    await authenticatedAxiosInstance.post(
+): Promise<AllocatePaymentResponse> => {
+    const response = await authenticatedAxiosInstance.post<AllocatePaymentResponse>(
         `${BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/allocate-selected`,
         body
     );
+    return response.data;
 };
 
 // ─── Apply Manual Discount (per installment) ─────────────────────────────
@@ -153,6 +178,23 @@ export const generateInvoiceForInstallments = async (
         `${BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/generate-invoice`,
         { installment_ids: installmentIds },
         { params: { instituteId } }
+    );
+    return response.data;
+};
+
+// ─── Receipt URL for a specific paid installment ───────────────────────────
+
+export interface InstallmentReceiptResponse {
+    invoice_id: string;
+    receipt_number: string;
+    download_url: string;
+}
+
+export const getReceiptUrlForInstallment = async (
+    installmentId: string
+): Promise<InstallmentReceiptResponse> => {
+    const response = await authenticatedAxiosInstance.get<InstallmentReceiptResponse>(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/installment/${installmentId}/receipt-url`
     );
     return response.data;
 };

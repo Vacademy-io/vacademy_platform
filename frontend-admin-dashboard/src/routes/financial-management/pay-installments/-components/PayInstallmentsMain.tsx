@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { StudentFeePaymentRowDTO, StudentFeeDueDTO } from '@/types/manage-finances';
+import { AllocatePaymentResponse } from '@/services/manage-finances';
 import { StudentSearchStep } from './StudentSearchStep';
 import { InstallmentSelectionStep } from './InstallmentSelectionStep';
 import { PaymentDetailsStep } from './PaymentDetailsStep';
@@ -19,6 +20,7 @@ export function PayInstallmentsMain() {
     const [selectedStudent, setSelectedStudent] = useState<StudentFeePaymentRowDTO | null>(null);
     const [selectedDues, setSelectedDues] = useState<StudentFeeDueDTO[]>([]);
     const [paidAmount, setPaidAmount] = useState<number>(0);
+    const [receipt, setReceipt] = useState<AllocatePaymentResponse | undefined>();
 
     const handleSelectStudent = (student: StudentFeePaymentRowDTO) => {
         setSelectedStudent(student);
@@ -30,8 +32,9 @@ export function PayInstallmentsMain() {
         setStep('payment');
     };
 
-    const handlePaymentSuccess = (amount: number) => {
+    const handlePaymentSuccess = (amount: number, receiptData?: AllocatePaymentResponse) => {
         setPaidAmount(amount);
+        setReceipt(receiptData);
         setStep('success');
     };
 
@@ -43,13 +46,14 @@ export function PayInstallmentsMain() {
         setSelectedStudent(null);
         setSelectedDues([]);
         setPaidAmount(0);
+        setReceipt(undefined);
         setStep('search');
     };
 
     const stepIndex = STEPS.findIndex((s) => s.key === step);
 
     return (
-        <div className="space-y-6">
+        <div className="flex flex-col gap-6 flex-1 min-h-0">
             {/* Step Indicator */}
             <div className="flex items-center gap-3 text-sm font-medium">
                 {STEPS.map((s, idx) => (
@@ -101,7 +105,7 @@ export function PayInstallmentsMain() {
             {step === 'success' && selectedStudent && (
                 <PaymentSuccessStep
                     studentName={selectedStudent.student_name}
-                    amount={paidAmount}
+                    receipt={receipt}
                     onPayAnother={handleReset}
                 />
             )}

@@ -39,7 +39,7 @@ import { AcceptRequestDialog } from '@/routes/manage-students/enroll-requests/-c
 import { DeclineRequestDialog } from '@/routes/manage-students/enroll-requests/-components/bulk-actions/bulk-actions-component/decline-request-dialog';
 import { InviteFormProvider } from '@/routes/manage-students/invite/-context/useInviteFormContext';
 import { Users, FileMagnifyingGlass } from '@phosphor-icons/react';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const StudentsListSection = () => {
@@ -76,7 +76,7 @@ export const StudentsListSection = () => {
 
     useEffect(() => {
         setNavHeading(
-            <h1 className="text-lg">{getTerminology(RoleTerms.Learner, SystemTerms.Learner)}s</h1>
+            <h1 className="text-lg">{getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}</h1>
         );
     }, []);
 

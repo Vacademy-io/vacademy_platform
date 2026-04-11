@@ -83,7 +83,7 @@ public class ApplicationFeeReceiptService {
      * @param recipientEmail  Email address to send invoice to
      * @param recipientName   Display name of recipient
      */
-    public void generateAndSendInvoice(
+    public Map<String, Object> generateAndSendInvoice(
             String applicantId,
             String paymentOptionId,
             String paymentLogId,
@@ -135,7 +135,15 @@ public class ApplicationFeeReceiptService {
 
             log.info("Application fee invoice saved: {}", receiptNumber);
 
-            // 9. Send email if recipient email is available
+            // 9. Get download URL for receipt PDF
+            String downloadUrl = null;
+            try {
+                downloadUrl = mediaService.getFileUrlById(pdfFileId);
+            } catch (Exception e) {
+                log.warn("Could not get download URL for receipt PDF fileId={}: {}", pdfFileId, e.getMessage());
+            }
+
+            // 10. Send email if recipient email is available
             if (StringUtils.hasText(recipientEmail)) {
                 try {
                     sendInvoiceEmail(invoice, instituteId, institute, pdfBytes, receiptNumber,
@@ -148,10 +156,23 @@ public class ApplicationFeeReceiptService {
                 log.warn("No recipient email available. Skipping email for receipt: {}", receiptNumber);
             }
 
+            // 11. Return receipt details for API response
+            Map<String, Object> receiptDetails = new HashMap<>();
+            receiptDetails.put("invoice_id", invoice.getId());
+            receiptDetails.put("receipt_number", receiptNumber);
+            receiptDetails.put("receipt_date", LocalDateTime.now().format(DISPLAY_DATE_FORMATTER));
+            receiptDetails.put("download_url", downloadUrl);
+            receiptDetails.put("payment_mode", paymentMode);
+            receiptDetails.put("transaction_id", transactionId);
+            receiptDetails.put("amount_paid", amountPaid);
+            receiptDetails.put("fee_description", paymentOptionName);
+            return receiptDetails;
+
         } catch (Exception e) {
             log.error("Error generating application fee invoice for applicantId={}, paymentLogId={}",
                     applicantId, paymentLogId, e);
             // Do NOT rethrow — invoice failure must never break the payment flow
+            return null;
         }
     }
 

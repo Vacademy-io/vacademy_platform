@@ -1214,7 +1214,7 @@ public class HtmlBuilderService {
      *    Uses tag-depth counting instead of regex to handle arbitrary nesting.
      * 3. Strip any remaining HTML tags.
      */
-    private static String stripHtmlTags(String text) {
+    public static String stripHtmlTags(String text) {
         if (text == null || text.isEmpty()) return "";
 
         // Step 0: Decode HTML entities FIRST so encoded KaTeX becomes real tags
@@ -1623,5 +1623,153 @@ public class HtmlBuilderService {
         } catch (Exception e) {
             return new ArrayList<>();
         }
+    }
+
+    /**
+     * Generate comparison sections HTML fragment (Score Overview + Performance vs Batch + Leaderboard)
+     * for reuse in both system report and AI report PDFs.
+     * Returns the HTML as a string, including necessary CSS styles.
+     */
+    public String generateComparisonSectionsHtml(StudentComparisonDto comparison, ReportBrandingDto branding) {
+        if (comparison == null) return "";
+        StringBuilder html = new StringBuilder();
+        String primaryColor = branding.getPrimaryColor() != null ? branding.getPrimaryColor() : "#FF6B35";
+        String secondaryColor = branding.getSecondaryColor() != null ? branding.getSecondaryColor() : "#6C5CE7";
+
+        // Score Overview (with Grade badge and icons — matching system report)
+        Double marks = comparison.getStudentMarks();
+        Double totalMarks = comparison.getTotalMarks() != null ? comparison.getTotalMarks() : 100.0;
+        String grade = calculateGrade(comparison.getStudentPercentile());
+        String gColor = gradeColor(grade);
+
+        html.append("<div class=\"section\">");
+        html.append("<div class=\"section-title\">").append(SYM_STAT).append(" Score Overview</div>");
+        html.append("<table class=\"layout-table\"><tr>");
+        // Grade
+        html.append("<td width=\"20%\"><div class=\"score-card\">");
+        html.append("<div style=\"width: 48px; height: 48px; border-radius: 24px; background-color: ").append(gColor)
+                .append("; color: white; text-align: center; line-height: 48px; font-size: 20px; font-weight: 800; margin: 0 auto;\">")
+                .append(grade).append("</div>");
+        html.append("<div class=\"score-label\">Grade</div></div></td>");
+        // Marks
+        html.append("<td width=\"20%\"><div class=\"score-card\">");
+        html.append("<div class=\"score-value\" style=\"color: ").append(primaryColor).append(";\">").append(formatNumber(marks)).append("/").append(formatNumber(totalMarks)).append("</div>");
+        html.append("<div class=\"score-label\">Marks Obtained</div></div></td>");
+        // Rank
+        html.append("<td width=\"20%\"><div class=\"score-card\">");
+        html.append("<div class=\"score-value\" style=\"color: ").append(secondaryColor).append(";\">").append(SYM_RANK).append(" #").append(comparison.getStudentRank() != null ? comparison.getStudentRank() : "-").append("</div>");
+        html.append("<div class=\"score-label\">Rank</div></div></td>");
+        // Percentile
+        html.append("<td width=\"20%\"><div class=\"score-card\">");
+        html.append("<div class=\"score-value\" style=\"color: #00B894;\">").append(SYM_PERCENTILE).append(" ").append(formatNumber(comparison.getStudentPercentile())).append("%</div>");
+        html.append("<div class=\"score-label\">Percentile</div></div></td>");
+        // Accuracy
+        if (comparison.getStudentAccuracy() != null) {
+            html.append("<td width=\"20%\"><div class=\"score-card\">");
+            html.append("<div class=\"score-value\" style=\"color: #0984E3;\">").append(formatNumber(comparison.getStudentAccuracy())).append("%</div>");
+            html.append("<div class=\"score-label\">Accuracy</div></div></td>");
+        }
+        html.append("</tr></table></div>");
+
+        // Performance vs Batch
+        Double studentMarks = safeDouble(comparison.getStudentMarks());
+        Double avgMarks = safeDouble(comparison.getAverageMarks());
+        double marksBarPct = totalMarks > 0 ? (studentMarks / totalMarks) * 100 : 0;
+        boolean hasTimeData = comparison.getStudentDuration() != null && comparison.getStudentDuration() > 0;
+        Double studentAcc = safeDouble(comparison.getStudentAccuracy());
+        Double classAcc = safeDouble(comparison.getClassAccuracy());
+
+        html.append("<div class=\"section\">");
+        html.append("<div class=\"section-title\">").append(SYM_TARGET).append(" Your Performance vs Batch</div>");
+        html.append("<table class=\"layout-table\"><tr>");
+
+        html.append("<td width=\"33%\"><div class=\"score-card\">");
+        html.append("<div class=\"comp-label\">Marks (You vs Class Avg)</div>");
+        appendBarHtml(html, marksBarPct, primaryColor);
+        html.append("<table style=\"width:100%; font-size: 11px; margin-top: 4px;\"><tr>");
+        html.append("<td style=\"color: ").append(primaryColor).append("; font-weight: 700;\">You: ").append(formatNumber(studentMarks)).append("/").append(formatNumber(totalMarks)).append("</td>");
+        html.append("<td style=\"color: #888; text-align: right;\">Avg: ").append(formatNumber(avgMarks)).append("</td>");
+        html.append("</tr></table></div></td>");
+
+        if (hasTimeData) {
+            Long studentDur = comparison.getStudentDuration();
+            Double avgDur = safeDouble(comparison.getAverageDuration());
+            double maxDur = Math.max(studentDur, avgDur) > 0 ? Math.max(studentDur, avgDur) * 1.2 : 1;
+            double timeBarPct = (studentDur / maxDur) * 100;
+            html.append("<td width=\"33%\"><div class=\"score-card\">");
+            html.append("<div class=\"comp-label\">Time Taken (You vs Class Avg)</div>");
+            appendBarHtml(html, timeBarPct, "#0984E3");
+            html.append("<table style=\"width:100%; font-size: 11px; margin-top: 4px;\"><tr>");
+            html.append("<td style=\"color: ").append(primaryColor).append("; font-weight: 700;\">You: ").append(convertToReadableTime(studentDur)).append("</td>");
+            html.append("<td style=\"color: #888; text-align: right;\">Avg: ").append(convertToReadableTime(avgDur.longValue())).append("</td>");
+            html.append("</tr></table></div></td>");
+        }
+
+        html.append("<td width=\"33%\"><div class=\"score-card\">");
+        html.append("<div class=\"comp-label\">Accuracy (You vs Class Avg)</div>");
+        appendBarHtml(html, studentAcc, "#00B894");
+        html.append("<table style=\"width:100%; font-size: 11px; margin-top: 4px;\"><tr>");
+        html.append("<td style=\"color: ").append(primaryColor).append("; font-weight: 700;\">You: ").append(formatNumber(studentAcc)).append("%</td>");
+        html.append("<td style=\"color: #888; text-align: right;\">Avg: ").append(formatNumber(classAcc)).append("%</td>");
+        html.append("</tr></table></div></td>");
+
+        html.append("</tr></table>");
+        html.append("<table style=\"margin-top: 12px; font-size: 12px; color: #555;\"><tr>");
+        html.append("<td style=\"padding-right: 20px;\">").append(SYM_ARROW_UP).append(" <b>Highest:</b> ").append(formatNumber(safeDouble(comparison.getHighestMarks()))).append("/").append(formatNumber(totalMarks)).append("</td>");
+        html.append("<td style=\"padding-right: 20px;\">").append(SYM_ARROW_DOWN).append(" <b>Lowest:</b> ").append(formatNumber(safeDouble(comparison.getLowestMarks()))).append("/").append(formatNumber(totalMarks)).append("</td>");
+        html.append("<td>").append(SYM_STAT).append(" <b>Total Participants:</b> ").append(comparison.getTotalParticipants() != null ? comparison.getTotalParticipants() : 0).append("</td>");
+        html.append("</tr></table></div>");
+
+        // Leaderboard
+        if (comparison.getLeaderboard() != null) {
+            SmartLeaderboardDto lb = comparison.getLeaderboard();
+            boolean lbHasTime = false;
+            if (lb.getTopRanks() != null) {
+                lbHasTime = lb.getTopRanks().stream().anyMatch(e -> e.getCompletionTimeInSeconds() != null && e.getCompletionTimeInSeconds() > 0);
+            }
+
+            html.append("<div class=\"section\">");
+            html.append("<div class=\"section-title\">Leaderboard (Your Position)</div>");
+            // Find the current student's userId from leaderboard entries by matching rank
+            String currentUserId = null;
+            Integer studentRank = comparison.getStudentRank();
+            if (studentRank != null && lb.getTopRanks() != null) {
+                currentUserId = lb.getTopRanks().stream()
+                        .filter(e -> studentRank.equals(e.getRank()))
+                        .map(LeaderBoardDto::getUserId).findFirst().orElse(null);
+            }
+            if (currentUserId == null && studentRank != null && lb.getSurroundingRanks() != null) {
+                currentUserId = lb.getSurroundingRanks().stream()
+                        .filter(e -> studentRank.equals(e.getRank()))
+                        .map(LeaderBoardDto::getUserId).findFirst().orElse(null);
+            }
+            final String resolvedUserId = currentUserId;
+            html.append("<table class=\"lb-table\"><thead><tr>");
+            html.append("<th>Rank</th><th>Student</th><th>Marks</th>");
+            if (lbHasTime) html.append("<th>Time</th>");
+            html.append("<th>Percentile</th></tr></thead><tbody>");
+
+            if (lb.getTopRanks() != null) {
+                for (LeaderBoardDto entry : lb.getTopRanks()) {
+                    appendLeaderboardRow(html, entry, resolvedUserId, comparison.getTotalMarks(), lbHasTime, primaryColor);
+                }
+            }
+            if (lb.isHasGap()) {
+                int colspan = lbHasTime ? 5 : 4;
+                html.append("<tr><td colspan=\"").append(colspan).append("\" style=\"text-align: center; color: #aaa;\">···</td></tr>");
+            }
+            if (lb.getSurroundingRanks() != null) {
+                for (LeaderBoardDto entry : lb.getSurroundingRanks()) {
+                    appendLeaderboardRow(html, entry, resolvedUserId, comparison.getTotalMarks(), lbHasTime, primaryColor);
+                }
+            }
+            html.append("</tbody></table>");
+            html.append("<p style=\"text-align: center; font-size: 11px; color: #888; margin-top: 10px;\">Your rank: <b style=\"color: ")
+                    .append(secondaryColor).append(";\">#").append(comparison.getStudentRank() != null ? comparison.getStudentRank() : "-")
+                    .append("</b> of ").append(comparison.getTotalParticipants() != null ? comparison.getTotalParticipants() : "-").append(" students</p>");
+            html.append("</div>");
+        }
+
+        return html.toString();
     }
 }

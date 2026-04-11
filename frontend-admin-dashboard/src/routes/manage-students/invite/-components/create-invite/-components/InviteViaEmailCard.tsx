@@ -4,6 +4,8 @@ import { InviteLinkFormValues } from '../GenerateInviteLinkSchema';
 import { X } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { MyButton } from '@/components/design-system/button';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface InviteViaEmailCardProps {
     form: UseFormReturn<InviteLinkFormValues>;
@@ -21,7 +23,7 @@ const InviteViaEmailCard = ({
     return (
         <Card className="mb-4">
             <CardHeader>
-                <CardTitle className="text-2xl font-bold">Invite via email</CardTitle>
+                <CardTitle className="text-2xl font-bold">{`${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} via email`}</CardTitle>
             </CardHeader>
             <CardContent>
                 <div className="flex w-full items-end gap-2">

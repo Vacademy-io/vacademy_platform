@@ -9,6 +9,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { MAX_LENGTH, isValidEmail } from '@/utils/form-validation';
+import PhoneNumberInput from '@/components/design-system/phone-number-input';
 
 interface SectionProps {
     formData: Partial<Registration>;
@@ -30,6 +32,13 @@ export const ParentGuardianSection: React.FC<SectionProps> = ({ formData, update
                 [field]: value,
             },
         });
+    };
+
+    const getMaxLength = (type: string, label: string): number | undefined => {
+        if (type === 'email') return MAX_LENGTH.EMAIL;
+        if (type === 'tel') return MAX_LENGTH.PHONE;
+        if (label.toLowerCase().includes('name')) return MAX_LENGTH.NAME;
+        return MAX_LENGTH.GENERAL;
     };
 
     const renderField = (
@@ -64,6 +73,7 @@ export const ParentGuardianSection: React.FC<SectionProps> = ({ formData, update
                     placeholder={placeholder}
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
+                    maxLength={getMaxLength(type, label)}
                 />
             )}
         </div>
@@ -74,6 +84,8 @@ export const ParentGuardianSection: React.FC<SectionProps> = ({ formData, update
         title: string
     ) => {
         const data = (formData[type] as any) || {};
+        const emailValue = data.email || '';
+        const showEmailError = emailValue.length > 0 && !isValidEmail(emailValue);
 
         return (
             <div className="space-y-6">
@@ -85,22 +97,31 @@ export const ParentGuardianSection: React.FC<SectionProps> = ({ formData, update
                         `${title}'s full name`,
                         true
                     )}
-                    {renderField(
-                        'Mobile Number',
-                        data.mobile || '',
-                        (v) => updateParentInfo(type, 'mobile', v),
-                        '+91 XXXXX XXXXX',
-                        true,
-                        'tel'
-                    )}
-                    {renderField(
-                        'Email Address',
-                        data.email || '',
-                        (v) => updateParentInfo(type, 'email', v),
-                        'example@email.com',
-                        type === 'fatherInfo',
-                        'email'
-                    )}
+                    <PhoneNumberInput
+                        name={`${type}.mobile`}
+                        value={data.mobile || ''}
+                        onChange={(_name, value) => updateParentInfo(type, 'mobile', value)}
+                        label="Mobile Number"
+                        required
+                        placeholder="Enter mobile number"
+                    />
+                    <div>
+                        <Label className="mb-1 block text-sm font-medium text-neutral-700">
+                            Email Address{' '}
+                            {type === 'fatherInfo' && <span className="text-red-500">*</span>}
+                        </Label>
+                        <Input
+                            type="email"
+                            placeholder="example@email.com"
+                            value={emailValue}
+                            onChange={(e) => updateParentInfo(type, 'email', e.target.value)}
+                            maxLength={MAX_LENGTH.EMAIL}
+                            className={showEmailError ? 'border-red-400 focus:border-red-500 focus:ring-red-300' : ''}
+                        />
+                        {showEmailError && (
+                            <span className="text-xs text-red-500">Enter a valid email address</span>
+                        )}
+                    </div>
                 </div>
             </div>
         );

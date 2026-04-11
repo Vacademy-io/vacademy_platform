@@ -17,6 +17,8 @@ import {
     type PackageSessionConfig,
 } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-courses/invite-picker-row';
 import { getUserIdsByTags, type TagItem } from '@/services/tag-management';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 type WizardStep = 'SELECT_COURSES' | 'CONFIGURE' | 'PREVIEW' | 'RESULTS';
 
@@ -396,7 +398,7 @@ export const AssignCoursesToTagsDialog = ({
                     <table className="w-full text-left text-xs">
                         <thead className="sticky top-0 bg-neutral-50">
                             <tr>
-                                <th className="px-3 py-2 font-medium text-neutral-600">Course</th>
+                                <th className="px-3 py-2 font-medium text-neutral-600">{getTerminology(ContentTerms.Course, SystemTerms.Course)}</th>
                                 <th className="px-3 py-2 font-medium text-neutral-600">Status</th>
                                 <th className="px-3 py-2 font-medium text-neutral-600">Action</th>
                             </tr>
@@ -582,7 +584,7 @@ export const AssignCoursesToTagsDialog = ({
 
     return (
         <MyDialog
-            heading="Assign Courses to Tagged Users"
+            heading={`Assign ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)} to Tagged Users`}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-xl"

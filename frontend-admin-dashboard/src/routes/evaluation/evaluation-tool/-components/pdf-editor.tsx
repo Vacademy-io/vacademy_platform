@@ -833,7 +833,7 @@ const PDFEvaluator = ({
                                         className=""
                                         disabled={isLoading}
                                     >
-                                        <TbZoomReset size={25} />
+                                        <RotateCcw size={20} />
                                     </Button>
                                     <Button
                                         onClick={() => setShowEvaluationPanel(!showEvaluationPanel)}

@@ -3,6 +3,8 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useEffect, useState } from 'react';
 import { FilterType } from '../../-types/filter-type';
 import { useDoubtFilters } from '../../-stores/filter-store';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const AllBatchOption = {
     label: 'All',
@@ -49,7 +51,7 @@ export const BatchFilter = () => {
 
     return (
         <div className="flex items-center gap-2">
-            <p>Batch</p>
+            <p>{getTerminology(ContentTerms.Batch, SystemTerms.Batch)}</p>
             <SelectChips
                 options={batchList}
                 selected={selectedBatch}

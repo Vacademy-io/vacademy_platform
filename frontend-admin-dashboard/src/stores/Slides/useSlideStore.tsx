@@ -69,6 +69,30 @@ const CONTROLLED_APPSTATE_PROPS: (keyof PartialAppState)[] = [
 ];
 
 // Helper to serialize a slide for localStorage (converts collaborators Map to Array)
+const saveSlidesToLocalStorage = (slides: Slide[]) => {
+    if (typeof window === 'undefined') return;
+    try {
+        localStorage.setItem(
+            'slides',
+            JSON.stringify(slides.map(serializeSlideForStorage))
+        );
+    } catch (e) {
+        if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+            console.warn(
+                'localStorage quota exceeded for slides. Data is safe in memory but will not persist across page reloads. Consider saving your presentation to the server.'
+            );
+            // Try to clear the stale entry so future smaller saves can succeed
+            try {
+                localStorage.removeItem('slides');
+            } catch {
+                // ignore
+            }
+        } else {
+            console.error('Error saving slides to localStorage:', e);
+        }
+    }
+};
+
 const serializeSlideForStorage = (slide: Slide): any => {
     if (slide.type === SlideTypeEnum.Quiz || slide.type === SlideTypeEnum.Feedback) {
         return slide; // Quiz/Feedback slides don't have Excalidraw appState
@@ -194,19 +218,13 @@ export const useSlideStore = create<SlideStore>((set, get) => {
             });
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('slides'); // Clear out old presentation
-                localStorage.setItem(
-                    'slides',
-                    JSON.stringify(newInitialSlides.map(serializeSlideForStorage))
-                );
             }
+            saveSlidesToLocalStorage(newInitialSlides);
         },
 
         setSlides: (newSlides, skipSave = false) => {
-            if (!skipSave && typeof window !== 'undefined') {
-                localStorage.setItem(
-                    'slides',
-                    JSON.stringify(newSlides.map(serializeSlideForStorage))
-                );
+            if (!skipSave) {
+                saveSlidesToLocalStorage(newSlides);
             }
             set({ slides: newSlides });
         },
@@ -279,7 +297,7 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                 const oldStoredAppState = oldExcalidrawSlide.appState || {};
 
                 // Check for meaningful changes (excluding frequent scroll/zoom noise)
-                const meaningfulProps = CONTROLLED_APPSTATE_PROPS.filter(prop => 
+                const meaningfulProps = CONTROLLED_APPSTATE_PROPS.filter(prop =>
                     !['scrollX', 'scrollY', 'zoom'].includes(prop)
                 );
 
@@ -343,12 +361,7 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                     index === slideIndex ? updatedSlide : s
                 );
 
-                if (typeof window !== 'undefined') {
-                    localStorage.setItem(
-                        'slides',
-                        JSON.stringify(newSlidesArray.map(serializeSlideForStorage))
-                    );
-                }
+                saveSlidesToLocalStorage(newSlidesArray);
 
                 // Mark this slide as dirty so savePresentation knows to re-upload it
                 const newDirtyIds = new Set(state.dirtySlideIds);
@@ -452,18 +465,13 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                     index === slideIndex ? updatedSlide : s
                 );
 
-                if (typeof window !== 'undefined') {
-                    localStorage.setItem(
-                        'slides',
-                        JSON.stringify(newSlidesArray.map(serializeSlideForStorage))
-                    );
-                }
+                saveSlidesToLocalStorage(newSlidesArray);
 
                 const newDirtyIds = new Set(state.dirtySlideIds);
                 newDirtyIds.add(id);
                 return { slides: newSlidesArray, dirtySlideIds: newDirtyIds };
             }),
-            
+
         updateSlideIds: (idUpdates) => set((state) => {
             const newSlides = state.slides.map(slide => {
                 const update = idUpdates.find(u => u.tempId === slide.id);
@@ -497,12 +505,7 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                 newCurrentSlideId = currentSlideUpdate.newId;
             }
 
-            if (typeof window !== 'undefined') {
-                localStorage.setItem(
-                    'slides',
-                    JSON.stringify(newSlides.map(serializeSlideForStorage))
-                );
-            }
+            saveSlidesToLocalStorage(newSlides);
 
             return { slides: newSlides, currentSlideId: newCurrentSlideId };
         }),

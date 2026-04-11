@@ -8,6 +8,8 @@ import { MoveToDialog } from './move-dialog';
 import { CopyToDialog } from './copy-dialog';
 import { AddChapterForm } from '../add-chapters/add-chapter-form';
 import { ChapterWithSlides } from '@/stores/study-library/use-modules-with-chapters-store';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface ChapterMenuOptionsProps {
     chapter: ChapterWithSlides;
@@ -62,7 +64,7 @@ export const ChapterMenuOptions = ({
 
             {/* Edit Dialog */}
             <MyDialog
-                heading="Edit Chapter"
+                heading={`Edit ${getTerminology(ContentTerms.Chapter, SystemTerms.Chapter)}`}
                 dialogWidth="min-w-[800px]"
                 open={openDialog === 'edit'}
                 onOpenChange={() => setOpenDialog(null)}
@@ -81,7 +83,7 @@ export const ChapterMenuOptions = ({
             <MoveToDialog openDialog={openDialog} setOpenDialog={setOpenDialog} chapter={chapter} />
 
             <MyDialog
-                heading="Delete Chapter"
+                heading={`Delete ${getTerminology(ContentTerms.Chapter, SystemTerms.Chapter)}`}
                 open={openDeleteChapterDialog}
                 onOpenChange={() => setOpenDeleteChapterDialog(!openDeleteChapterDialog)}
                 footer={

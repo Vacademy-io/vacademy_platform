@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { InventoryFilters as FiltersType } from '../-types/inventory-types';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface FilterOption {
     id: string;
@@ -109,10 +111,10 @@ export const InventoryFilters = ({
                         }
                     >
                         <SelectTrigger className="h-9 w-[180px]">
-                            <SelectValue placeholder="All Levels" />
+                            <SelectValue placeholder="{`All ${getTerminologyPlural(ContentTerms.Level, SystemTerms.Level)}`}" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="__all__">All Levels</SelectItem>
+                            <SelectItem value="__all__">{`All ${getTerminologyPlural(ContentTerms.Level, SystemTerms.Level)}`}</SelectItem>
                             {filterOptions.levels.map((level) => (
                                 <SelectItem key={level.id} value={level.id}>
                                     {level.name}
@@ -132,10 +134,10 @@ export const InventoryFilters = ({
                         }
                     >
                         <SelectTrigger className="h-9 w-[180px]">
-                            <SelectValue placeholder="All Sessions" />
+                            <SelectValue placeholder="{`All ${getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)}`}" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="__all__">All Sessions</SelectItem>
+                            <SelectItem value="__all__">{`All ${getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)}`}</SelectItem>
                             {filterOptions.sessions.map((session) => (
                                 <SelectItem key={session.id} value={session.id}>
                                     {session.name}

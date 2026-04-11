@@ -182,6 +182,9 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 <!-- Howler -->
                 <script src="https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js"></script>
 
+                <!-- D3.js (data visualizations, charts) -->
+                <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+
                 <!-- Iconify (Web Component — 275k+ icons) -->
                 <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
 
@@ -980,6 +983,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 if (!host) {
                   host = document.createElement('div');
                   host.id = e.id;
+                  host.dataset.inTime = String(e.inTime || 0);
                   host.style.position = 'absolute';
                   host.style.overflow = 'visible'; // Allow annotations to flow outside
                   host.style.pointerEvents = 'none';
@@ -1128,7 +1132,19 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                             };
 
                             const gsap = createScopedGsap();
-                            
+
+                            // Scoped d3 proxy — d3.select/selectAll search inside shadow root
+                            const d3 = window.d3 ? (() => {
+                                const proxy = Object.create(window.d3);
+                                proxy.select = (s) => typeof s === 'string'
+                                    ? window.d3.select(scope.querySelector(s))
+                                    : window.d3.select(s);
+                                proxy.selectAll = (s) => typeof s === 'string'
+                                    ? window.d3.selectAll(Array.from(scope.querySelectorAll(s)))
+                                    : window.d3.selectAll(s);
+                                return proxy;
+                            })() : undefined;
+
                             try {
                                 ${originalCode}
                             } catch (e) {
@@ -1264,13 +1280,20 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
               const root = host.shadowRoot;
               const wrapper = root.getElementById('content-wrapper');
               wrapper.innerHTML = e.html;
-              host.style.left = (e.x | 0) + 'px';
-              host.style.top = (e.y | 0) + 'px';
-              host.style.width = (e.w | 0) + 'px';
-              host.style.height = (e.h | 0) + 'px';
-              // Full-viewport entries get page background so no bleed-through
-              const vw = window.innerWidth, vh = window.innerHeight;
-              if (e.x === 0 && e.y === 0 && e.w >= vw && e.h >= vh) {
+              // Match client AIContentPlayer behavior: every entry fills the
+              // full viewport (top:0 left:0 100% 100%) regardless of x/y/w/h.
+              // This ensures the rendered video looks identical to the client.
+              // Branding watermarks are excluded since they need positioning.
+              if (e.id && e.id.startsWith('branding-')) {
+                host.style.left = (e.x | 0) + 'px';
+                host.style.top = (e.y | 0) + 'px';
+                host.style.width = (e.w | 0) + 'px';
+                host.style.height = (e.h | 0) + 'px';
+              } else {
+                host.style.left = '0px';
+                host.style.top = '0px';
+                host.style.width = window.innerWidth + 'px';
+                host.style.height = window.innerHeight + 'px';
                 host.style.background = getComputedStyle(document.body).backgroundColor || '#ffffff';
               }
             };
@@ -1672,6 +1695,7 @@ def _active_entries_at(timeline: List[Dict[str, Any]], t: float) -> List[Dict[st
                 "w": item["w"],
                 "h": item["h"],
                 "html": item["html"],
+                "inTime": item["inTime"],
             }
             if "z" in item:
                 entry["z"] = item["z"]
@@ -2089,13 +2113,20 @@ def render_video_from_json(
     # Render frames using Playwright (CSS animations run in real-time between frames)
     with sync_playwright() as p:
         browser = p.chromium.launch(
+            channel="chrome",  # Google Chrome — includes H.264/AAC codecs (Playwright Chromium lacks them)
             headless=True,
             args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
                 "--allow-file-access-from-files",
                 "--disable-web-security",
+                "--autoplay-policy=no-user-gesture-required",
+                "--disable-gpu",
+                "--use-gl=angle",
+                "--use-angle=swiftshader",
             ],
         )
-        _dpi_scale = device_scale_factor if device_scale_factor is not None else 2
+        _dpi_scale = device_scale_factor if device_scale_factor is not None else 1
         print(f"🎥 Rendering with DPI Scale Factor: {_dpi_scale}")
         context = browser.new_context(
             viewport={"width": width, "height": height},
@@ -2119,13 +2150,103 @@ def render_video_from_json(
         page.on("pageerror", _on_pageerror)
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
-        # Wait for fonts and libraries to load before rendering frames
+        # Wait for fonts to load before rendering frames
         try:
-            page.wait_for_load_state("networkidle", timeout=10000)
+            page.evaluate("() => document.fonts.ready")
         except Exception:
             pass
         if not show_character:
             page.evaluate("() => window.__updateCharacter && window.__updateCharacter(null)")
+
+        # ── Inject batched render function to reduce IPC round-trips ──
+        # One page.evaluate() per frame instead of 5-7 separate calls.
+        page.evaluate("""() => {
+            window.__batchRenderFrame = async (state) => {
+                // 1. Update snippets
+                if (state.entries) await window.__updateSnippets(state.entries);
+                // 2. Update camera
+                if (window.__updateCamera) window.__updateCamera(state.camera);
+                // 3. Update character
+                if (state.character && window.__updateCharacter) window.__updateCharacter(state.character);
+                // 4. Update caption
+                if (window.__updateCaption) window.__updateCaption(state.caption || null);
+                // 5. Sync GSAP
+                try { gsap.globalTimeline.totalTime(state.t); } catch(e) {}
+                // 6. Seek stock videos (skip entirely if none exist)
+                if (state.seekVideos) {
+                    const allHosts = document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"]');
+                    let hasVideos = false;
+                    allHosts.forEach(host => {
+                        const root = host.shadowRoot;
+                        if (root && root.querySelector('video')) hasVideos = true;
+                    });
+                    if (!hasVideos) { /* skip */ }
+                    else {
+                    const seekPromises = [];
+                    allHosts.forEach(host => {
+                        const root = host.shadowRoot;
+                        if (!root) return;
+                        root.querySelectorAll('video').forEach(v => {
+                            try {
+                                v.pause();
+                                // Wait for video to be seekable if not ready yet
+                                const doSeek = async () => {
+                                    if (v.readyState < 4) {
+                                        await new Promise(r => {
+                                            v.addEventListener('canplaythrough', r, { once: true });
+                                            setTimeout(r, 10000);
+                                        });
+                                    }
+                                    const inTime = parseFloat(host.dataset.inTime || '0');
+                                    const relTime = state.t - inTime;
+                                    let targetTime = 0;
+                                    if (v.duration && v.duration > 0 && relTime >= 0) {
+                                        targetTime = relTime % v.duration;
+                                    } else if (relTime >= 0) {
+                                        targetTime = relTime;
+                                    }
+                                    if (Math.abs(v.currentTime - targetTime) > 0.05) {
+                                        await new Promise(r => {
+                                            v.addEventListener('seeked', r, { once: true });
+                                            setTimeout(r, 2000);
+                                            v.currentTime = targetTime;
+                                        });
+                                    }
+                                };
+                                seekPromises.push(doSeek());
+                            } catch(e) {}
+                        });
+                    });
+                    if (seekPromises.length > 0) await Promise.all(seekPromises);
+                    } // end else (hasVideos)
+                }
+                // 7. Rough Notation — always force-show all registered annotations
+                // and force their SVGs visible. This matches the snippet-injection
+                // behavior and ensures underlines/highlights persist across frames.
+                if (window.__registeredAnnotations && window.__registeredAnnotations.length > 0) {
+                    window.__registeredAnnotations.forEach(a => {
+                        try { if (!a.isShowing) a.show(); } catch(e) {}
+                    });
+                }
+                // Force-show all annotation SVGs in shadow DOMs (battles any !important hide rules)
+                document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"], [id^="branding-"]').forEach(host => {
+                    const root = host.shadowRoot;
+                    if (!root) return;
+                    root.querySelectorAll('svg.rough-annotation').forEach(svg => {
+                        svg.style.setProperty('opacity', '1', 'important');
+                        svg.style.setProperty('visibility', 'visible', 'important');
+                    });
+                });
+                // 8. Wait for paint — always at least one RAF to ensure video frames
+                // and DOM mutations are rendered before screenshot capture.
+                // Double-RAF on segment changes for layout/annotation settling.
+                if (state.segmentChanged) {
+                    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                } else {
+                    await new Promise(r => requestAnimationFrame(r));
+                }
+            };
+        }""")
 
         _render_start = start_frame if start_frame is not None else 0
         _render_end = end_frame if end_frame is not None else total_frames
@@ -2139,38 +2260,64 @@ def render_video_from_json(
             # Add branding if enabled
             if show_branding and branding_entry:
                 active.append(branding_entry)
-            # Update DOM for overlays
+            # Update DOM for overlays (part of batch, but snippets need to run first for segment-change detection)
             page.evaluate("async (entries) => await window.__updateSnippets(entries)", active)
 
             # Wait for images/fonts/annotations to load when active segments change
             _cur_active_ids = {e["id"] for e in active}
-            if _cur_active_ids != _prev_active_ids:
+            _segment_changed = _cur_active_ids != _prev_active_ids
+            if _segment_changed:
+                # Wait for fonts used by new snippets (fast: resolves instantly if cached)
                 try:
-                    page.wait_for_load_state("networkidle", timeout=5000)
+                    page.evaluate("() => document.fonts.ready")
                 except Exception:
-                    pass  # timeout is fine — best effort
-                # Wait for stock videos to load metadata so we can seek them
+                    pass
+                # Wait for all images in shadow DOMs to finish loading
                 page.evaluate("""() => {
-                    const videos = [];
+                    const promises = [];
                     document.querySelectorAll('[id^="snippet-"], [id^="segment-"]').forEach(host => {
                         const root = host.shadowRoot;
                         if (!root) return;
-                        root.querySelectorAll('video').forEach(v => {
-                            if (v.readyState < 1) {
-                                videos.push(new Promise(resolve => {
-                                    v.addEventListener('loadedmetadata', resolve, { once: true });
-                                    v.addEventListener('error', resolve, { once: true });
-                                    // Force load
-                                    v.load();
-                                    // Timeout fallback
-                                    setTimeout(resolve, 5000);
+                        root.querySelectorAll('img').forEach(img => {
+                            if (!img.complete) {
+                                promises.push(new Promise(resolve => {
+                                    img.addEventListener('load', resolve, { once: true });
+                                    img.addEventListener('error', resolve, { once: true });
+                                    setTimeout(resolve, 3000);
                                 }));
                             }
-                            // Pause all videos — we control time via currentTime
-                            v.pause();
                         });
                     });
-                    return Promise.all(videos);
+                    return Promise.all(promises);
+                }""")
+                # Wait for stock videos to buffer enough data for seeking (skip if none exist)
+                page.evaluate("""async () => {
+                    const allVideos = [];
+                    document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"]').forEach(host => {
+                        const root = host.shadowRoot;
+                        if (!root) return;
+                        root.querySelectorAll('video').forEach(v => allVideos.push({v, host}));
+                    });
+                    if (allVideos.length === 0) return; // No videos — skip entirely
+                    console.log('[VIDEO-DIAG] Found ' + allVideos.length + ' video elements');
+                    const waits = [];
+                    allVideos.forEach(({v, host}) => {
+                        v.preload = 'auto';
+                        if (v.readyState < 1) v.load();
+                        if (v.readyState < 4) {
+                            waits.push(new Promise(r => {
+                                v.addEventListener('canplaythrough', r, { once: true });
+                                v.addEventListener('error', r, { once: true });
+                                setTimeout(r, 10000);
+                            }));
+                        }
+                        v.pause();
+                    });
+                    if (waits.length > 0) await Promise.all(waits);
+                    allVideos.forEach(({v, host}) => {
+                        console.log('[VIDEO-DIAG] ' + host.id + ': readyState=' + v.readyState +
+                            ' duration=' + (v.duration||'?') + ' error=' + (v.error ? v.error.message : 'none'));
+                    });
                 }""")
                 # Wait for Rough Notation annotations to position after layout
                 page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
@@ -2268,13 +2415,12 @@ def render_video_from_json(
                         cam_x *= _blend
                         cam_y *= _blend
 
-            page.evaluate("(state) => window.__updateCamera && window.__updateCamera(state)", {
-                "x": cam_x,
-                "y": cam_y,
-                "scale": cam_scale,
-            })
-            # ------------------------------
+            # ── Build batched frame state (Python-side) ──
+            # Camera
+            _cam_state = {"x": cam_x, "y": cam_y, "scale": cam_scale}
 
+            # Character (lip-sync)
+            _char_state = None
             if show_character:
                 phone_code = _normalize_phone_code(_get_active_phoneme(alignment_phonemes, t, _phoneme_start_times))
                 mouth_file = (
@@ -2293,7 +2439,7 @@ def render_video_from_json(
                         raise FileNotFoundError(f"Mouth sprite not found: {mouth_path}")
                     mouth_src = _path_to_data_uri(mouth_path)
                     mouth_src_cache[mouth_file] = mouth_src
-                char_state = {
+                _char_state = {
                     "visible": True,
                     "poseSrc": pose_image_src,
                     "mouthSrc": mouth_src,
@@ -2305,30 +2451,22 @@ def render_video_from_json(
                     "mouthScale": mouth_scale_value,
                     "zIndex": character_z_index,
                 }
-                page.evaluate("(state) => window.__updateCharacter(state)", char_state)
 
-            # Update caption if enabled — matching client-side CaptionDisplay.tsx styling
+            # Caption
+            _caption_entry = None
             if show_captions and caption_segments and caption_styles:
                 seg = _active_caption_at(caption_segments, t)
                 if seg:
                     style = caption_styles
                     allow_html = bool(style.get("allow_html", False))
-
-                    # Show entire phrase text (matching client buildPhrases approach)
                     raw_text = seg.get("text", "")
                     content_html = raw_text if allow_html else _html_escape(raw_text)
-
-                    # Determine caption position (matches client CaptionDisplay.tsx)
                     cap_position = str(style.get("position", "bottom"))
                     if cap_position == "top":
                         position_css = f"top:{int(height * 0.037)}px; bottom:auto;"
                     else:
                         position_css = f"bottom:{int(height * 0.074)}px; top:auto;"
-
-                    # Font size (scaled proportionally)
                     font_size = int(style.get("font_size", 20))
-
-                    # Build caption HTML matching client CaptionDisplay.tsx exactly
                     html = (
                         f'<div style="width:100%; height:100%; position:relative;">'
                         f'<div style="position:absolute; left:50%; transform:translateX(-50%); '
@@ -2342,120 +2480,31 @@ def render_video_from_json(
                         f'<div style="display:inline-block; text-shadow:0 1px 3px rgba(0,0,0,0.4);">'
                         f'{content_html}</div></div></div>'
                     )
-                    # Use full-viewport overlay so position CSS works correctly
-                    entry = {"x": 0, "y": 0, "w": width, "h": height, "html": html}
-                    page.evaluate("(entry) => window.__updateCaption(entry)", entry)
-                else:
-                    page.evaluate("() => window.__updateCaption(null)")
-            else:
-                # ensure no caption if disabled
-                page.evaluate("() => window.__updateCaption && window.__updateCaption(null)")
+                    _caption_entry = {"x": 0, "y": 0, "w": width, "h": height, "html": html}
 
-            # Capture frame immediately after state change (represents time t)
+            # ── Single batched evaluate: camera + character + caption + GSAP + video seek + annotations + paint wait ──
             if frame_index % 30 == 0:
                 print(f"DEBUG: Processing frame {frame_index}/{total_frames} (t={t:.2f}s)")
 
-            # Sync GSAP animation to exact time t
-            page.evaluate(f"gsap.globalTimeline.totalTime({t}); void 0;")
-
-            # Sync stock <video> elements to correct time within their shot.
-            # Videos are inside shadow DOMs with autoplay+muted+loop.
-            # We pause them and seek to (t - snippet_inTime), then wait for
-            # the seeked event so the correct frame is rendered before screenshot.
-            page.evaluate(f"""async () => {{
-                const seekPromises = [];
-                document.querySelectorAll('[id^="snippet-"], [id^="segment-"]').forEach(host => {{
-                    const root = host.shadowRoot;
-                    if (!root) return;
-                    root.querySelectorAll('video').forEach(v => {{
-                        try {{
-                            v.pause();
-                            const inTime = parseFloat(host.dataset.inTime || '0');
-                            const relTime = {t} - inTime;
-                            let targetTime = 0;
-                            if (v.duration && v.duration > 0 && relTime >= 0) {{
-                                targetTime = relTime % v.duration;
-                            }} else if (relTime >= 0) {{
-                                targetTime = relTime;
-                            }}
-                            if (Math.abs(v.currentTime - targetTime) > 0.05) {{
-                                const p = new Promise(resolve => {{
-                                    v.addEventListener('seeked', resolve, {{ once: true }});
-                                    setTimeout(resolve, 500);
-                                }});
-                                v.currentTime = targetTime;
-                                seekPromises.push(p);
-                            }}
-                        }} catch(e) {{}}
-                    }});
-                }});
-                if (seekPromises.length > 0) await Promise.all(seekPromises);
-            }}""")
-
-            # Time-aware Rough Notation: only show annotations whose show()
-            # was triggered at or before current time t. This prevents annotations
-            # from appearing before their intended GSAP timeline position.
-            page.evaluate(f"""() => {{
-                const currentTime = {t};
-                if (window.__registeredAnnotations && window.__annotationShowTimes) {{
-                    window.__registeredAnnotations.forEach(a => {{
-                        const showTime = window.__annotationShowTimes.get(a);
-                        if (showTime !== undefined && showTime <= currentTime) {{
-                            // Show this annotation — it should be visible at this time
-                            try {{ if (!a.isShowing) a.show(); }} catch(e) {{}}
-                        }} else {{
-                            // Hide this annotation — it shouldn't be visible yet
-                            try {{ if (a.isShowing) a.hide(); }} catch(e) {{}}
-                            // Also force-hide the SVG element since the blanket
-                            // * {{ opacity: 1 !important }} rule would otherwise show it
-                            try {{
-                                if (a._e && a._e.nextElementSibling && a._e.nextElementSibling.tagName === 'svg') {{
-                                    a._e.nextElementSibling.style.setProperty('opacity', '0', 'important');
-                                    a._e.nextElementSibling.style.setProperty('visibility', 'hidden', 'important');
-                                }}
-                            }} catch(e) {{}}
-                        }}
-                    }});
-                }}
-                // Also force-hide/show annotation SVGs in shadow DOMs
-                document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="branding-"]').forEach(host => {{
-                    const root = host.shadowRoot;
-                    if (!root) return;
-                    root.querySelectorAll('svg.rough-annotation').forEach(svg => {{
-                        // Check if parent annotation is registered and has a show-time
-                        // If we can't determine, default to visible (matches old behavior)
-                        const parentEl = svg.previousElementSibling;
-                        let shouldShow = true;
-                        if (window.__registeredAnnotations && parentEl) {{
-                            for (const a of window.__registeredAnnotations) {{
-                                if (a._e === parentEl) {{
-                                    const st = window.__annotationShowTimes.get(a);
-                                    shouldShow = (st !== undefined && st <= currentTime);
-                                    break;
-                                }}
-                            }}
-                        }}
-                        if (shouldShow) {{
-                            svg.style.setProperty('opacity', '1', 'important');
-                            svg.style.setProperty('visibility', 'visible', 'important');
-                        }} else {{
-                            svg.style.setProperty('opacity', '0', 'important');
-                            svg.style.setProperty('visibility', 'hidden', 'important');
-                        }}
-                    }});
-                }});
-            }}""")
-
-            # Wait for annotation SVGs + video frames to paint before capturing
-            page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+            page.evaluate("async (state) => await window.__batchRenderFrame(state)", {
+                "entries": None,  # Already updated via __updateSnippets above
+                "camera": _cam_state,
+                "character": _char_state,
+                "caption": _caption_entry,
+                "t": t,
+                "seekVideos": True,
+                "segmentChanged": _segment_changed,
+            })
 
             # Capture frame — clip to exact viewport to prevent camera/overflow bleeding
-            frame_path = frames_dir / f"frame_{frame_index:06d}.png"
+            # JPEG is 3-5x faster than PNG to encode and sufficient for H.264 re-encoding
+            frame_path = frames_dir / f"frame_{frame_index:06d}.jpg"
             try:
                 page.screenshot(
                     path=str(frame_path),
-                    type="png",
-                    timeout=5000,
+                    type="jpeg",
+                    quality=95,
+                    timeout=30000,
                     clip={"x": 0, "y": 0, "width": width, "height": height},
                 )
             except Exception as e:
@@ -2473,13 +2522,16 @@ def render_video_from_json(
 
     # If frames-only mode, skip video assembly (caller handles it)
     if frames_only:
-        rendered_count = len(list(frames_dir.glob("frame_*.png")))
+        rendered_count = len(list(frames_dir.glob("frame_*.jpg")))
+        stale_png = len(list(frames_dir.glob("frame_*.png")))
+        if stale_png > 0 and rendered_count == 0:
+            print(f"ERROR: FRAME FORMAT MISMATCH — {stale_png} .png frames found but expected .jpg!")
         print(f"DEBUG: Frames-only mode complete. Rendered {rendered_count} frames to {frames_dir}")
         return frames_dir
 
     # Assemble video
     print("DEBUG: Collecting frame files...")
-    frame_files = sorted(str(p) for p in frames_dir.glob("frame_*.png"))
+    frame_files = sorted(str(p) for p in frames_dir.glob("frame_*.jpg"))
     print(f"DEBUG: Found {len(frame_files)} frames.")
     if len(frame_files) != total_frames:
         raise RuntimeError(

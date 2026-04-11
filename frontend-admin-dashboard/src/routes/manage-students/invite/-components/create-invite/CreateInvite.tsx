@@ -24,6 +24,8 @@ import {
     Level,
     Batch,
 } from './CreateInviteSchema';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 type DummyBatchesType = {
     [key: string]: Session[];
@@ -170,7 +172,7 @@ const CreateInvite = () => {
                             buttonType="secondary"
                             className="flex items-center gap-1 border-none bg-gray-100 p-4 py-5 font-semibold hover:bg-gray-200">
                             <Plus size={18} weight="fill" />
-                            Create Invite Link
+                            {`Create ${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link`}
                         </MyButton>
                     </DialogTrigger>
                     <DialogContent className="animate-fadeIn min-w-[500px]">

@@ -15,6 +15,7 @@ import { SiStripe } from "react-icons/si";
 import { Lock } from "lucide-react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
+import { getCachedPreferredCountries } from "@/services/domain-routing";
 import {
   GET_PAYMENT_GATEWAY_DETAILS_URL,
   ENROLLMENT_INVITE_URL,
@@ -103,6 +104,14 @@ export const EnrollmentPaymentDialog: React.FC<
   const [isLoadingOtp, setIsLoadingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
+
+  // Institute-configured preferred countries (sourced from domain routing).
+  // First entry is the default selected country; the full list orders the dropdown.
+  const preferredCountries = React.useMemo(() => {
+    const cached = getCachedPreferredCountries();
+    return cached.length > 0 ? cached : ["in", "us", "gb", "au", "ae"];
+  }, []);
+  const defaultPhoneCountry = preferredCountries[0] ?? "in";
 
   // Validation functions
   const validateEmail = (email: string): boolean => {
@@ -565,24 +574,18 @@ export const EnrollmentPaymentDialog: React.FC<
                       Phone Number *
                     </label>
                     <PhoneInput
-                      country="in"
+                      country={defaultPhoneCountry}
                       enableSearch={true}
                       value={phone}
                       onChange={(value) => handlePhoneChange(value)}
-                      inputClass={`w-full px-3 py-2 border rounded-r-md focus:outline-none focus:ring-2 ${phoneError
-                        ? "border-red-500 focus:ring-red-500"
-                        : "border-gray-300 focus:ring-blue-500"
-                        }`}
-                      buttonClass="!rounded-l-md !border-r-0 !border-gray-300"
+                      inputClass="!w-full h-10 !rounded-md !border-input"
+                      buttonClass="!rounded-l-md !border-input"
                       containerClass="!w-full"
                       placeholder="Enter your phone number"
                       countryCodeEditable={false}
-                      enableAreaCodes={true}
+                      enableAreaCodes={false}
                       disableCountryGuess={false}
-                      preferredCountries={["in", "us", "gb", "au"]}
-                      inputProps={{
-                        maxLength: 15,
-                      }}
+                      preferredCountries={preferredCountries}
                     />
                     {phoneError && (
                       <p className="text-red-500 text-sm mt-1">{phoneError}</p>

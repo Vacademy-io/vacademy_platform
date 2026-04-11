@@ -20,4 +20,9 @@ public class LearnerDashBoardController {
     public ResponseEntity<LeanerDashBoardDetailDTO> getLeanerDashBoardDetail(@RequestAttribute("user") CustomUserDetails user, @RequestBody List<String> packageSessionIds, @RequestParam String instituteId) {
         return ResponseEntity.ok(learnerDashBoardService.getLearnerDashBoardDetail(instituteId, packageSessionIds, user));
     }
+
+    @PostMapping("/accept-tnc")
+    public ResponseEntity<String> acceptTnc(@RequestAttribute("user") CustomUserDetails user, @RequestBody vacademy.io.admin_core_service.features.learner.dto.AcceptTncRequestDTO request) {
+        return ResponseEntity.ok(learnerDashBoardService.acceptTnc(user, request));
+    }
 }

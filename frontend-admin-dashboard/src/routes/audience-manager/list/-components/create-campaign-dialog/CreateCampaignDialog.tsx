@@ -7,6 +7,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface CreateCampaignDialogProps {
     isOpen: boolean;
@@ -19,7 +21,8 @@ export const CreateCampaignDialog: React.FC<CreateCampaignDialogProps> = ({
     onClose,
     campaign,
 }) => {
-    const heading = campaign ? 'Edit Campaign' : 'Create Campaign';
+    const audienceListLabel = getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList);
+    const heading = campaign ? `Edit ${audienceListLabel}` : `Create ${audienceListLabel}`;
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

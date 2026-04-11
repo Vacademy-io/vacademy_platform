@@ -41,16 +41,11 @@ class VideoGenerationService:
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info("[VideoGenService] Initializing video generation service")
-        
         self.repository = repository or AiVideoRepository()
         self.s3_service = s3_service or S3Service()
         
         # Path to ai-video-gen-main directory
         self.video_gen_root = Path(__file__).parent.parent / "ai-video-gen-main"
-        
-        logger.info(f"[VideoGenService] Looking for ai-video-gen-main at: {self.video_gen_root}")
-        logger.info(f"[VideoGenService] Path exists: {self.video_gen_root.exists()}")
         
         # Ensure the video generation code exists
         if not self.video_gen_root.exists():
@@ -61,7 +56,6 @@ class VideoGenerationService:
             )
         
         # Pre-download NLTK data if needed (prevents blocking during video generation)
-        logger.info("[VideoGenService] Pre-downloading NLTK data...")
         try:
             import nltk
             import ssl
@@ -76,11 +70,8 @@ class VideoGenerationService:
             # Download required NLTK data silently
             nltk.download('averaged_perceptron_tagger', quiet=True)
             nltk.download('cmudict', quiet=True)
-            logger.info("[VideoGenService] NLTK data pre-downloaded successfully")
         except Exception as e:
             logger.warning(f"[VideoGenService] Failed to pre-download NLTK data: {e}. Will download on first use.")
-        
-        logger.info("[VideoGenService] Video generation service initialized successfully")
     
     async def generate_till_stage(
         self,
@@ -95,7 +86,8 @@ class VideoGenerationService:
         target_audience: str = "General/Adult",
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
-        tts_provider: str = "edge",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
         content_type: str = "VIDEO",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
@@ -120,6 +112,7 @@ class VideoGenerationService:
             content_type: Type of content (VIDEO, QUIZ, STORYBOOK, etc.)
             quality_tier: Quality tier (free, standard, premium, ultra)
             orientation: Video orientation ('landscape' or 'portrait')
+            voice_id: Specific voice ID for premium TTS
 
         Yields:
             SSE events with progress updates
@@ -215,6 +208,7 @@ class VideoGenerationService:
                     target_duration=target_duration,
                     voice_gender=voice_gender,
                     tts_provider=tts_provider,
+                    voice_id=voice_id,
                     content_type=content_type,
                     db_session=db_session,
                     institute_id=institute_id,
@@ -291,7 +285,8 @@ class VideoGenerationService:
         target_audience: str = "General/Adult",
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
-        tts_provider: str = "edge",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
         content_type: str = "VIDEO",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
@@ -653,6 +648,7 @@ class VideoGenerationService:
                     target_duration=target_duration,
                     voice_gender=voice_gender,
                     tts_provider=tts_provider,
+                    voice_id=voice_id,
                     branding_config=branding_config,
                     style_config=style_config,
                     content_type=content_type,
@@ -714,22 +710,33 @@ class VideoGenerationService:
                                 logger.info(f"[VideoGenService] Deducted credits for {_image_count} images in stage {stage_pipeline_name}")
 
                             # Deduct separately for TTS characters
+                            # Use premium pricing (2x) for premium/google/sarvam providers
                             _tts_chars = usage.get("tts_character_count", 0)
+                            _is_premium_tts = tts_provider in ("premium", "google", "sarvam")
                             if _tts_chars > 0:
+                                _tts_model = "edge-tts"
+                                if _is_premium_tts:
+                                    # Resolve actual provider: premium + Indian lang → sarvam, else google
+                                    _INDIAN = {"hindi", "bengali", "tamil", "telugu", "marathi", "kannada",
+                                               "gujarati", "malayalam", "punjabi", "odia", "english (india)"}
+                                    _resolved = tts_provider
+                                    if tts_provider == "premium":
+                                        _resolved = "sarvam" if language.lower().strip() in _INDIAN else "google"
+                                    _tts_model = "sarvam-bulbul-v3" if _resolved == "sarvam" else "google-cloud-tts"
                                 token_service.record_usage_and_deduct_credits(
                                     api_provider=ApiProvider.GOOGLE_TTS,
                                     prompt_tokens=0,
                                     completion_tokens=0,
                                     total_tokens=0,
-                                    request_type=RequestType.TTS,
+                                    request_type=RequestType.TTS_PREMIUM if _is_premium_tts else RequestType.TTS,
                                     institute_id=institute_id,
                                     user_id=user_id,
-                                    model="google-cloud-tts",
+                                    model=_tts_model,
                                     character_count=_tts_chars,
-                                    metadata={"video_id": video_id, "stage": stage_pipeline_name},
+                                    metadata={"video_id": video_id, "stage": stage_pipeline_name, "tts_provider": tts_provider},
                                     batch_id=video_id,
                                 )
-                                logger.info(f"[VideoGenService] Deducted TTS credits for {_tts_chars} chars in stage {stage_pipeline_name}")
+                                logger.info(f"[VideoGenService] Deducted {'premium ' if _is_premium_tts else ''}TTS credits for {_tts_chars} chars in stage {stage_pipeline_name}")
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
                 
@@ -1283,26 +1290,44 @@ class VideoGenerationService:
             if not self.s3_service.download_file(timeline_url, timeline_path):
                 raise RuntimeError("Failed to download timeline file")
                 
-            timeline_data = json.loads(timeline_path.read_text(encoding='utf-8'))
-            
-            # 3. Find the target frame
+            raw = json.loads(timeline_path.read_text(encoding='utf-8'))
+
+            # Handle both timeline formats:
+            #   plain array: [{...}, ...]
+            #   wrapped:     {"entries": [...], "meta": {...}}
+            timeline_data = raw["entries"] if isinstance(raw, dict) and "entries" in raw else raw
+
+            # 3. Find the target frame by index (when timestamp is an int index)
+            #    or by time range using inTime/exitTime (or legacy start_time/end_time).
             target_frame = None
             frame_index = -1
-            
-            # Timeline is list of {start_time, end_time, html, ...}
-            # Find frame where start_time <= timestamp < end_time
-            # Or closest frame
-            for idx, frame in enumerate(timeline_data):
-                start = float(frame.get("start_time", 0))
-                end = float(frame.get("end_time", 99999))
-                
-                if start <= timestamp and timestamp < end:
-                    target_frame = frame
-                    frame_index = idx
-                    break
-            
+
+            # Accept both int and float whole numbers as direct frame indices
+            is_index = (
+                isinstance(timestamp, (int, float))
+                and float(timestamp) == float(int(timestamp))
+                and 0 <= int(timestamp) < len(timeline_data)
+            )
+            if is_index:
+                idx = int(timestamp)
+                target_frame = timeline_data[idx]
+                frame_index = idx
+            else:
+                # Find frame where inTime <= timestamp < exitTime
+                for idx, frame in enumerate(timeline_data):
+                    start = float(
+                        frame.get("inTime") or frame.get("start_time") or frame.get("start") or 0
+                    )
+                    end = float(
+                        frame.get("exitTime") or frame.get("end_time") or frame.get("end") or 99999
+                    )
+                    if start <= timestamp < end:
+                        target_frame = frame
+                        frame_index = idx
+                        break
+
             if not target_frame:
-                # If no exact match (e.g. timestamp at very end), take last frame
+                # Fallback to last frame
                 if timeline_data:
                     target_frame = timeline_data[-1]
                     frame_index = len(timeline_data) - 1
@@ -1312,11 +1337,8 @@ class VideoGenerationService:
             original_html = target_frame.get("html", "")
             
             # 4. Call LLM to regenerate HTML
-            # We need an LLM client here. We can use OpenRouter client directly or via pipeline.
-            # For simplicity and speed, let's use the one from config/pipeline settings
             from ..config import get_settings
-            from ..adapters.openrouter_llm_client import OpenRouterOutlineLLMClient
-            
+
             # Construct prompt
             system_prompt = """
             You are an expert HTML/CSS developer for educational videos. 
@@ -1339,18 +1361,6 @@ class VideoGenerationService:
             Generate the updated HTML:
             """
             
-            # Use LLM client
-            # We can reuse the outline client or a simpler one. 
-            # Ideally we should inject this dependency, but for now we instantiate as service method
-            llm_client = OpenRouterOutlineLLMClient() 
-            
-            # Note: OpenRouterOutlineLLMClient expects specific format, let's use a simpler direct call or 
-            # if the client supports chat. The existing client is for outlines.
-            # Let's import requests to call OpenRouter direct for this specific task
-            # OR better, stick to the pattern and use a proper adapter.
-            # Since we are in the service, let's use the pipeline's LLM logic if available, 
-            # or just call the API directly using settings keys.
-            
             import requests
             settings = get_settings()
             
@@ -1372,24 +1382,22 @@ class VideoGenerationService:
                     ],
                     "temperature": 0.7
                 },
-                timeout=30
+                timeout=90  # M27: increased from 30s — LLM cold-start can take 60-90s
             )
-            
+
             if response.status_code != 200:
                 logger.error(f"LLM Error: {response.text}")
                 raise RuntimeError("Failed to regenerate HTML via AI")
                 
             new_html = response.json()["choices"][0]["message"]["content"].strip()
-            
-            # Cleanup markdown block if present
-            if new_html.startswith("```html"):
-                new_html = new_html.replace("```html", "", 1)
-            if new_html.startswith("```"):
-                new_html = new_html.replace("```", "", 1)
-            if new_html.endswith("```"):
-                new_html = new_html[:-3]
-            
-            new_html = new_html.strip()
+
+            # Extract HTML from markdown code fence if the LLM wrapped its response.
+            # Handles both ```html ... ``` and ``` ... ``` anywhere in the response.
+            fence_match = re.search(r'```(?:html)?\s*\n?([\s\S]*?)\n?\s*```', new_html, re.IGNORECASE)
+            if fence_match:
+                new_html = fence_match.group(1).strip()
+            else:
+                new_html = new_html.strip()
             
             return {
                 "video_id": video_id,
@@ -1434,14 +1442,19 @@ class VideoGenerationService:
             
             # Read
             data = json.loads(file_path.read_text(encoding='utf-8'))
-            
+
+            # Handle both timeline formats:
+            #   - plain array:              [{"html": ...}, ...]
+            #   - wrapped object:           {"entries": [...], "meta": {...}}
+            entries = data["entries"] if isinstance(data, dict) and "entries" in data else data
+
             # Update
-            if frame_index < 0 or frame_index >= len(data):
-                raise IndexError(f"Frame index {frame_index} out of range (0-{len(data)-1})")
-                
-            data[frame_index]["html"] = new_html
-            
-            # Write
+            if frame_index < 0 or frame_index >= len(entries):
+                raise IndexError(f"Frame index {frame_index} out of range (0-{len(entries)-1})")
+
+            entries[frame_index]["html"] = new_html
+
+            # Write (data already points to the modified entries when wrapped)
             file_path.write_text(json.dumps(data, indent=2), encoding='utf-8')
             
             # Upload back
@@ -1480,7 +1493,7 @@ class VideoGenerationService:
                     str(file_path),
                     bucket,
                     key,
-                    ExtraArgs={'ContentType': 'application/json', 'ACL': 'public-read'}
+                    ExtraArgs={'ContentType': 'application/json'}
                 )
                 
                 # Invalidate CloudFront? (Not handled here, assuming direct S3 usage or short TTL)

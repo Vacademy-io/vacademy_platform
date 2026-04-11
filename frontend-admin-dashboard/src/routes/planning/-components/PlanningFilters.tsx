@@ -10,6 +10,8 @@ import { MyButton } from '@/components/design-system/button';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { FilterChips } from '@/components/design-system/chips';
 import IntervalPeriodSelector from './IntervalPeriodSelector';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface PlanningFiltersProps {
     filters: ListPlanningLogsRequest;
@@ -225,7 +227,7 @@ export default function PlanningFilters({
                 {/* Course Filter - Multiselect */}
 
                 <FilterChips
-                    label="Batch"
+                    label={getTerminology(ContentTerms.Batch, SystemTerms.Batch)}
                     filterList={packageSessionOptions}
                     selectedFilters={
                         localFilters.entity_ids?.map((id) => {

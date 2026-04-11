@@ -78,6 +78,8 @@ import { handleGetEnrollSingleInviteDetails } from '@/routes/manage-students/inv
 import { handleGetPaymentDetails } from '@/routes/manage-students/invite/-components/create-invite/-services/get-payments';
 import { extractBatchesFromInviteDetails } from '@/routes/manage-students/invite/-utils/enrollInviteTransformers';
 import { LoadingSpinner } from '@/components/ai-course-builder/LoadingSpinner';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface PackageSessionSidebarProps {
     selectedPackage: {
@@ -515,7 +517,7 @@ const EnrollInvitesList = ({
                     <CaretLeft className="size-4" />
                 </button>
                 <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-neutral-800">Enroll Invites</span>
+                    <span className="text-xs font-semibold text-neutral-800">{`Enroll ${getTerminologyPlural(OtherTerms.Invite, SystemTerms.Invite)}`}</span>
                     <span className="max-w-[200px] truncate text-[10px] text-neutral-500">
                         {session.level.level_name} • {session.session.session_name}
                     </span>
@@ -914,7 +916,7 @@ const ContentTab = ({
             <CourseContentDialog
                 open={open}
                 onOpenChange={setOpen}
-                courseName={packageDto.package_name || 'Course'}
+                courseName={packageDto.package_name || getTerminology(ContentTerms.Package, SystemTerms.Package)}
                 defaultTab="content"
                 initialData={{
                     why_learn_html: packageDto.why_learn_html,
@@ -1027,7 +1029,7 @@ const MediaTab = ({
             <CourseContentDialog
                 open={open}
                 onOpenChange={setOpen}
-                courseName={packageDto.package_name || 'Course'}
+                courseName={packageDto.package_name || getTerminology(ContentTerms.Package, SystemTerms.Package)}
                 defaultTab="media"
                 initialData={{
                     why_learn_html: packageDto.why_learn_html,

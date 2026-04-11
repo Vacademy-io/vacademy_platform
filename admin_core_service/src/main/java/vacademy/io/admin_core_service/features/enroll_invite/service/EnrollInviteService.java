@@ -77,6 +77,9 @@ public class EnrollInviteService {
     @Autowired
     private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService instituteSettingService;
+
     @org.springframework.beans.factory.annotation.Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerBaseUrl;
 
@@ -488,6 +491,21 @@ public class EnrollInviteService {
                 subOrgInfo.setLogoFileId(subOrg.getLogoFileId());
                 dto.setSubOrg(subOrgInfo);
             });
+        }
+
+        // 4. Populate GTM container ID if configured
+        try {
+            Object gtmSetting = instituteSettingService.getSettingByInstituteIdAndKey(instituteId, "GTM_SETTING");
+            if (gtmSetting instanceof Map) {
+                Map<?, ?> gtmMap = (Map<?, ?>) gtmSetting;
+                if (Boolean.TRUE.equals(gtmMap.get("enabled"))
+                        && gtmMap.get("containerId") != null
+                        && StringUtils.hasText(gtmMap.get("containerId").toString())) {
+                    dto.setGtmContainerId(gtmMap.get("containerId").toString());
+                }
+            }
+        } catch (Exception e) {
+            logger.debug("GTM setting not found for institute {}: {}", instituteId, e.getMessage());
         }
 
         return dto;

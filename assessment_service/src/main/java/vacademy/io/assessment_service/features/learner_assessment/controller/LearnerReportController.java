@@ -77,4 +77,13 @@ public class LearnerReportController {
             @RequestParam(name = "instituteId") String instituteId) {
         return learnerReportService.getStudentReportPdf(user, assessmentId, attemptId, instituteId);
     }
+
+    @GetMapping("/ai-pdf")
+    public ResponseEntity<byte[]> getAiReportPdf(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam(name = "assessmentId") String assessmentId,
+            @RequestParam(name = "attemptId", required = false) String attemptId,
+            @RequestParam(name = "instituteId") String instituteId) {
+        return learnerReportService.getAiReportPdf(user, assessmentId, attemptId, instituteId);
+    }
 }

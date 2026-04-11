@@ -95,6 +95,7 @@ const AssessmentReportList = ({
       search: {
         assessmentId: report.assessment_id,
         assessmentName: report.assessment_name,
+        attemptId: report.attempt_id,
       },
     });
   };

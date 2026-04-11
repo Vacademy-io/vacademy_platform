@@ -129,6 +129,10 @@ public class EmailNotificationService implements INotificationService {
         notificationDTO.setBody(body);
         notificationDTO.setSubject(subject);
         notificationDTO.setSource("daily_enrollment_check");
+        // Deterministic sourceId for deduplication: same user+date+userPlan = same sourceId
+        String today = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
+        String userPlanId = context.getUserPlan() != null ? context.getUserPlan().getId() : "unknown";
+        notificationDTO.setSourceId("enrollment_" + userPlanId + "_" + today);
 
         NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
         notificationToUserDTO.setChannelId(recipientEmail);

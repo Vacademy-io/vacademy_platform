@@ -261,6 +261,61 @@ class AiVideoRepository:
             if not self.session:
                 session.close()
     
+    def clear_video_url(self, video_id: str) -> Optional[AiGenVideo]:
+        """Remove the rendered video file from s3_urls and file_ids.
+
+        Used when the user wants to re-render a video — the next download
+        button click should trigger a fresh render instead of returning the
+        old cached video.
+        """
+        def _do_clear(session: Session) -> Optional[AiGenVideo]:
+            video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
+            if not video:
+                return None
+            if video.s3_urls and "video" in video.s3_urls:
+                new_urls = dict(video.s3_urls)
+                new_urls.pop("video", None)
+                video.s3_urls = new_urls
+                flag_modified(video, "s3_urls")
+            if video.file_ids and "video" in video.file_ids:
+                new_ids = dict(video.file_ids)
+                new_ids.pop("video", None)
+                video.file_ids = new_ids
+                flag_modified(video, "file_ids")
+            # Also clear render_job_id from metadata so the frontend doesn't
+            # try to resume a stale render job after the URL is cleared.
+            if video.metadata and "render_job_id" in video.metadata:
+                new_meta = dict(video.metadata)
+                new_meta.pop("render_job_id", None)
+                video.metadata = new_meta
+                flag_modified(video, "metadata")
+            video.updated_at = datetime.utcnow()
+            session.commit()
+            session.refresh(video)
+            return video
+
+        session = self._get_session()
+        try:
+            return _do_clear(session)
+        except Exception as e:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            if self.session and _is_connection_error(e):
+                fresh = self._get_fresh_session()
+                try:
+                    return _do_clear(fresh)
+                except Exception as e2:
+                    fresh.rollback()
+                    raise e2
+                finally:
+                    fresh.close()
+            raise e
+        finally:
+            if not self.session:
+                session.close()
+
     def update_metadata(self, video_id: str, metadata: Dict[str, Any]) -> None:
         """Update the metadata JSON column for a video."""
         session = self._get_session()

@@ -4,6 +4,8 @@ import { SessionsPage } from './-components/sessionsPage';
 import { Helmet } from 'react-helmet';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect } from 'react';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const Route = createLazyFileRoute('/manage-institute/sessions/')({
     component: RouteComponent,
@@ -24,7 +26,7 @@ function RouteComponent() {
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Session</title>
+                <title>{getTerminology(ContentTerms.Session, SystemTerms.Session)}</title>
                 <meta
                     name="description"
                     content="This page shows the study library of the institute."

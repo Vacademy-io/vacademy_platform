@@ -28,6 +28,8 @@ import {
 import { AlertTriangle, Trash2, Calendar, Target, Lock, Eye } from 'lucide-react';
 import { MyButton } from '@/components/design-system/button';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface DripConditionDialogProps {
     open: boolean;
@@ -194,13 +196,13 @@ export const DripConditionDialog: React.FC<DripConditionDialogProps> = ({
                                     <SelectItem value="chapter">
                                         <div className="flex items-center gap-2">
                                             <Target className="size-4" />
-                                            Chapter
+                                            {getTerminology(ContentTerms.Chapter, SystemTerms.Chapter)}
                                         </div>
                                     </SelectItem>
                                     <SelectItem value="slide">
                                         <div className="flex items-center gap-2">
                                             <Target className="size-4" />
-                                            Slide
+                                            {getTerminology(ContentTerms.Slide, SystemTerms.Slide)}
                                         </div>
                                     </SelectItem>
                                 </SelectContent>
@@ -213,8 +215,8 @@ export const DripConditionDialog: React.FC<DripConditionDialogProps> = ({
                                 {formData.level === 'package'
                                     ? 'Package'
                                     : formData.level === 'chapter'
-                                      ? 'Chapter ID'
-                                      : 'Slide ID'}
+                                      ? `${getTerminology(ContentTerms.Chapter, SystemTerms.Chapter)} ID`
+                                      : `${getTerminology(ContentTerms.Slide, SystemTerms.Slide)} ID`}
                             </Label>
                             {formData.level === 'package' ? (
                                 <Select
@@ -279,8 +281,8 @@ export const DripConditionDialog: React.FC<DripConditionDialogProps> = ({
                                     <SelectValue placeholder="Select target" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="chapter">All Chapters</SelectItem>
-                                    <SelectItem value="slide">All Slides</SelectItem>
+                                    <SelectItem value="chapter">{`All ${getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter)}`}</SelectItem>
+                                    <SelectItem value="slide">{`All ${getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide)}`}</SelectItem>
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
@@ -551,8 +553,8 @@ const RuleEditor: React.FC<RuleEditorProps> = ({ rule, index, onUpdate, onRemove
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="chapters">Required Chapters</SelectItem>
-                                <SelectItem value="slides">Required Slides</SelectItem>
+                                <SelectItem value="chapters">{`Required ${getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter)}`}</SelectItem>
+                                <SelectItem value="slides">{`Required ${getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide)}`}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

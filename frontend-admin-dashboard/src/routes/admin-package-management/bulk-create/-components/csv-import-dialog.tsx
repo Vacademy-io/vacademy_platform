@@ -43,6 +43,8 @@ import {
     BATCH_CSV_FIELDS,
     BatchConfig,
 } from '../-types/bulk-create-types';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface CsvImportDialogProps {
     open: boolean;
@@ -52,20 +54,20 @@ interface CsvImportDialogProps {
     onImport: (courses: BulkCourseItem[]) => void;
 }
 
-const STEP_TITLES = {
-    1: 'Select Batch Combinations',
+const getStepTitles = () => ({
+    1: `Select ${getTerminology(ContentTerms.Batch, SystemTerms.Batch)} Combinations`,
     2: 'Download Template',
     3: 'Upload & Import',
-};
+});
 
-const STEP_DESCRIPTIONS = {
-    1: 'Choose the level and session combinations for your courses.',
-    2: 'Download the CSV template with columns for your selected batches.',
-    3: 'Upload your filled CSV file to import courses.',
-};
+const getStepDescriptions = () => ({
+    1: `Choose the ${getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()} and ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()} combinations for your ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}.`,
+    2: `Download the CSV template with columns for your selected ${getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()}.`,
+    3: `Upload your filled CSV file to import ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}.`,
+});
 
-const COURSE_TYPES: { value: CourseType; label: string }[] = [
-    { value: 'COURSE', label: 'Course' },
+const getCourseTypes = (): { value: CourseType; label: string }[] => [
+    { value: 'COURSE', label: getTerminology(ContentTerms.Course, SystemTerms.Course) },
     { value: 'MEMBERSHIP', label: 'Membership' },
     { value: 'PRODUCT', label: 'Product' },
     { value: 'SERVICE', label: 'Service' },
@@ -117,7 +119,7 @@ export function CsvImportDialog({
 
     const handleAddCombination = () => {
         if (!pendingLevelId || !pendingSessionId) {
-            toast.error('Please select both level and session');
+            toast.error(`Please select both ${getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()} and ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}`);
             return;
         }
 
@@ -355,12 +357,12 @@ export function CsvImportDialog({
 
     const handleImport = () => {
         if (parsedCourses.length === 0) {
-            toast.error('No valid courses to import');
+            toast.error(`No valid ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()} to import`);
             return;
         }
         onImport(parsedCourses);
         toast.success(
-            `Imported ${parsedCourses.length} courses with ${selectedCombinations.length} batch(es) each`
+            `Imported ${parsedCourses.length} ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()} with ${selectedCombinations.length} ${getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()}(es) each`
         );
         handleOpenChange(false);
     };
@@ -372,8 +374,8 @@ export function CsvImportDialog({
         <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
-                    <DialogTitle>{STEP_TITLES[step]}</DialogTitle>
-                    <DialogDescription>{STEP_DESCRIPTIONS[step]}</DialogDescription>
+                    <DialogTitle>{getStepTitles()[step]}</DialogTitle>
+                    <DialogDescription>{getStepDescriptions()[step]}</DialogDescription>
                 </DialogHeader>
 
                 {/* Step 1: Select Batch Combinations */}
@@ -381,7 +383,7 @@ export function CsvImportDialog({
                     <div className="space-y-4 py-4">
                         <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
                             <p className="mb-2 text-xs text-neutral-600">
-                                Add level + session combinations. Each combination will create
+                                Add {getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()} + {getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()} combinations. Each combination will create
                                 separate columns in the CSV for pricing and inventory.
                             </p>
                         </div>
@@ -389,10 +391,10 @@ export function CsvImportDialog({
                         {/* Add Combination Form */}
                         <div className="flex items-end gap-2">
                             <div className="flex-1 space-y-1">
-                                <Label className="text-xs">Level</Label>
+                                <Label className="text-xs">{getTerminology(ContentTerms.Level, SystemTerms.Level)}</Label>
                                 <Select value={pendingLevelId} onValueChange={setPendingLevelId}>
                                     <SelectTrigger className="h-9">
-                                        <SelectValue placeholder="Select Level" />
+                                        <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {levels.map((level) => (
@@ -404,13 +406,13 @@ export function CsvImportDialog({
                                 </Select>
                             </div>
                             <div className="flex-1 space-y-1">
-                                <Label className="text-xs">Session</Label>
+                                <Label className="text-xs">{getTerminology(ContentTerms.Session, SystemTerms.Session)}</Label>
                                 <Select
                                     value={pendingSessionId}
                                     onValueChange={setPendingSessionId}
                                 >
                                     <SelectTrigger className="h-9">
-                                        <SelectValue placeholder="Select Session" />
+                                        <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {sessions.map((session) => (
@@ -477,16 +479,16 @@ export function CsvImportDialog({
 
                         {/* Course Type */}
                         <div className="space-y-2">
-                            <Label className="text-xs">Default Course Type</Label>
+                            <Label className="text-xs">Default {getTerminology(ContentTerms.Course, SystemTerms.Course)} Type</Label>
                             <Select
                                 value={selectedCourseType}
                                 onValueChange={(val) => setSelectedCourseType(val as CourseType)}
                             >
                                 <SelectTrigger className="h-9">
-                                    <SelectValue placeholder="Select Course Type" />
+                                    <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Course, SystemTerms.Course)} Type`} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {COURSE_TYPES.map((type) => (
+                                    {getCourseTypes().map((type) => (
                                         <SelectItem key={type.value} value={type.value}>
                                             {type.label}
                                         </SelectItem>
@@ -506,15 +508,15 @@ export function CsvImportDialog({
                             </h4>
                             <ul className="space-y-1 text-xs text-neutral-600">
                                 <li>
-                                    • <strong>{selectedCombinations.length}</strong> batch
+                                    • <strong>{selectedCombinations.length}</strong> {getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()}
                                     combination(s) selected
                                 </li>
                                 <li>
                                     • <strong>{csvHeaders.length}</strong> total columns in CSV
                                 </li>
                                 <li>
-                                    • Each row = 1 package with{' '}
-                                    <strong>{selectedCombinations.length}</strong> package
+                                    • Each row = 1 {getTerminology(ContentTerms.Package, SystemTerms.Package).toLowerCase()} with{' '}
+                                    <strong>{selectedCombinations.length}</strong> {getTerminology(ContentTerms.Package, SystemTerms.Package).toLowerCase()}
                                     session(s)
                                 </li>
                             </ul>
@@ -522,7 +524,7 @@ export function CsvImportDialog({
 
                         <div className="space-y-2">
                             <Label className="text-xs text-neutral-500">
-                                Batch Columns Preview
+                                {getTerminology(ContentTerms.Batch, SystemTerms.Batch)} Columns Preview
                             </Label>
                             <ScrollArea className="max-h-[120px]">
                                 <div className="flex flex-wrap gap-1">
@@ -586,10 +588,10 @@ export function CsvImportDialog({
                                 </div>
                                 <ul className="space-y-1 text-sm text-neutral-600">
                                     <li>Total Rows: {importStats.total}</li>
-                                    <li>Valid Courses: {importStats.valid}</li>
-                                    <li>Batches per course: {selectedCombinations.length}</li>
+                                    <li>Valid {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}: {importStats.valid}</li>
+                                    <li>{getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)} per {getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()}: {selectedCombinations.length}</li>
                                     <li>
-                                        Total Package Sessions:{' '}
+                                        Total {getTerminology(ContentTerms.Package, SystemTerms.Package)} Sessions:{' '}
                                         {importStats.valid * selectedCombinations.length}
                                     </li>
                                 </ul>
@@ -597,7 +599,7 @@ export function CsvImportDialog({
                                     <div className="mt-3 flex items-start gap-2 text-xs text-red-600">
                                         <Warning className="size-4 shrink-0" />
                                         <p>
-                                            No valid courses found. Please check column headers
+                                            No valid {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()} found. Please check column headers
                                             match the template.
                                         </p>
                                     </div>
@@ -642,7 +644,7 @@ export function CsvImportDialog({
                                 onClick={handleImport}
                                 disabled={!importStats || importStats.valid === 0}
                             >
-                                Import {importStats?.valid || 0} Courses
+                                Import {importStats?.valid || 0} {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
                             </Button>
                         </div>
                     )}

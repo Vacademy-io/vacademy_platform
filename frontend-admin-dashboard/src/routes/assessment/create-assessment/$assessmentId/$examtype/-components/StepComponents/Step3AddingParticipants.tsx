@@ -53,7 +53,31 @@ import { Step3ParticipantsListIndiviudalStudentInterface } from '@/types/assessm
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { getFieldsForLocation } from '@/lib/custom-fields/utils';
 type TestAccessFormType = z.infer<typeof testAccessSchema>;
+
+function getInitialAssessmentCustomFields() {
+    const settingsFields = getFieldsForLocation('Assessment Registration Form');
+    if (!settingsFields.length) {
+        // Fallback to hardcoded defaults only if settings has nothing
+        return [
+            { id: '0', type: 'textfield', name: 'Full Name', oldKey: true, isRequired: true, key: 'full_name', order: 0 },
+            { id: '1', type: 'textfield', name: 'Email', oldKey: true, isRequired: true, key: 'email', order: 1 },
+            { id: '2', type: 'textfield', name: 'Phone Number', oldKey: true, isRequired: true, key: 'phone_number', order: 2 },
+        ];
+    }
+
+    return settingsFields.map((f, i) => ({
+        id: String(i),
+        type: f.type === 'dropdown' ? 'dropdown' : 'textfield',
+        name: f.name,
+        oldKey: !f.canBeDeleted,
+        isRequired: f.required,
+        key: f.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
+        order: i,
+        ...(f.type === 'dropdown' && f.options ? { options: f.options.map((opt, oi) => ({ id: `${i}_opt_${oi}`, value: opt })) } : {}),
+    }));
+}
 
 const Step3AddingParticipants: React.FC<StepContentProps> = ({
     currentStep,
@@ -122,35 +146,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                 start_date: '',
                 end_date: '',
                 instructions: '',
-                custom_fields: [
-                    {
-                        id: '0',
-                        type: 'textfield',
-                        name: 'Full Name',
-                        oldKey: true,
-                        isRequired: true,
-                        key: 'full_name',
-                        order: 0,
-                    },
-                    {
-                        id: '1',
-                        type: 'textfield',
-                        name: 'Email',
-                        oldKey: true,
-                        isRequired: true,
-                        key: 'email',
-                        order: 1,
-                    },
-                    {
-                        id: '2',
-                        type: 'textfield',
-                        name: 'Phone Number',
-                        oldKey: true,
-                        isRequired: true,
-                        key: 'phone_number',
-                        order: 2,
-                    },
-                ],
+                custom_fields: getInitialAssessmentCustomFields(),
             },
             select_batch: storeDataStep3?.select_batch || {
                 checked: false,

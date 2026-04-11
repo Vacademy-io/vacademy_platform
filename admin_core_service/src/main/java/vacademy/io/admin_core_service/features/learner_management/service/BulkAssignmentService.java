@@ -59,6 +59,7 @@ public class BulkAssignmentService {
     private final CustomFieldValueService customFieldValueService;
     private final StudentRegistrationManager studentRegistrationManager;
     private final SubOrgAutoLinkService subOrgAutoLinkService;
+    private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -161,7 +162,7 @@ public class BulkAssignmentService {
             for (String userId : allUserIds) {
                 BulkAssignResultItemDTO result = processAssignment(
                         userId, userMap, newUserDataMap, assignment, config,
-                        request.getInstituteId(), duplicateHandling, dryRun, adminUserId);
+                        request.getInstituteId(), duplicateHandling, dryRun, adminUserId, options);
                 results.add(result);
 
                 // Collect successful enrollments for notification
@@ -314,7 +315,8 @@ public class BulkAssignmentService {
             String instituteId,
             String duplicateHandling,
             boolean dryRun,
-            String adminUserId) {
+            String adminUserId,
+            BulkAssignOptionsDTO options) {
 
         String packageSessionId = assignment.getPackageSessionId();
         UserDTO userDTO = userMap.get(userId);
@@ -371,7 +373,7 @@ public class BulkAssignmentService {
             }
 
             // Case C: No existing mapping → create new
-            return handleNewEnrollment(userId, userEmail, config, instituteId, dryRun, userDTO, extraDetails, adminUserId);
+            return handleNewEnrollment(userId, userEmail, config, instituteId, dryRun, userDTO, extraDetails, adminUserId, options);
 
         } catch (Exception e) {
             log.error("Error processing assignment userId={}, packageSessionId={}: {}",
@@ -395,7 +397,7 @@ public class BulkAssignmentService {
             DefaultInviteResolver.ResolvedConfig config,
             String instituteId, boolean dryRun,
             UserDTO userDTO, StudentExtraDetails extraDetails,
-            String adminUserId) {
+            String adminUserId, BulkAssignOptionsDTO options) {
 
         if (dryRun) {
             return BulkAssignResultItemDTO.builder()
@@ -469,6 +471,41 @@ public class BulkAssignmentService {
 
         // Auto-link learner to sub-org if the enrolling admin belongs to one
         subOrgAutoLinkService.linkIfSubOrgAdmin(userId, config.getPackageSession().getId(), mappingId, adminUserId);
+
+        // Create payment log if payment date or transaction ID is provided
+        if (options != null && (options.getPaymentDate() != null || StringUtils.hasText(options.getTransactionId()))) {
+            try {
+                Double amount = config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0;
+                String currency = config.getPaymentPlan() != null ? config.getPaymentPlan().getCurrency()
+                        : (config.getEnrollInvite().getCurrency() != null ? config.getEnrollInvite().getCurrency() : "INR");
+                Date paymentDate = options.getPaymentDate() != null ? options.getPaymentDate() : new Date();
+
+                String paymentLogId = paymentLogService.createPaymentLog(
+                        userId,
+                        amount != null ? amount : 0.0,
+                        vacademy.io.common.payment.enums.PaymentGateway.MANUAL.name(),
+                        vacademy.io.common.payment.enums.PaymentGateway.MANUAL.name(),
+                        currency,
+                        userPlan,
+                        null,
+                        paymentDate);
+
+                Map<String, Object> paymentSpecificData = new HashMap<>();
+                if (StringUtils.hasText(options.getTransactionId())) {
+                    paymentSpecificData.put("transaction_id", options.getTransactionId());
+                }
+                paymentSpecificData.put("source", "BULK_ASSIGN");
+
+                // Use updatePaymentLogOnly to avoid triggering invoice generation and email notifications
+                paymentLogService.updatePaymentLogOnly(
+                        paymentLogId,
+                        vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.SUCCESS.name(),
+                        vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
+                        vacademy.io.admin_core_service.features.common.util.JsonUtil.toJson(paymentSpecificData));
+            } catch (Exception e) {
+                log.warn("Failed to create payment log for userId={}: {}", userId, e.getMessage());
+            }
+        }
 
         return BulkAssignResultItemDTO.builder()
                 .userId(userId).userEmail(userEmail)

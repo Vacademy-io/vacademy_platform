@@ -9,7 +9,7 @@ import { Module } from '@/stores/study-library/use-modules-with-chapters-store';
 import { getPublicUrl } from '@/services/upload_file';
 import { ModulesWithChapters } from '../../../../../../../../stores/study-library/use-modules-with-chapters-store';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 
 interface ModuleCardProps {
     module: ModulesWithChapters;
@@ -95,7 +95,7 @@ export const ModuleCard = ({ module, onDelete, onEdit }: ModuleCardProps) => {
 
                 <div className="flex gap-2 text-body font-semibold">
                     <div className="text-primary-500">{module.chapters.length}</div>
-                    <div>{getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}s</div>
+                    <div>{getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter)}</div>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -108,7 +108,7 @@ export const ModuleCard = ({ module, onDelete, onEdit }: ModuleCardProps) => {
 
             <MyDialog
                 trigger={<></>}
-                heading="Edit Module"
+                heading={`Edit ${getTerminology(ContentTerms.Module, SystemTerms.Module)}`}
                 dialogWidth="w-[400px]"
                 open={isEditDialogOpen}
                 onOpenChange={setIsEditDialogOpen}

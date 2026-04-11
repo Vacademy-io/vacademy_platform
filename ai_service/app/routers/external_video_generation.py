@@ -38,7 +38,7 @@ from ..services.s3_service import S3Service
 
 class RenderOptionsBody(BaseModel):
     resolution: Optional[str] = Field(None, description="720p or 1080p")
-    fps: Optional[int] = Field(None, description="15, 20, or 25")
+    fps: Optional[int] = Field(None, description="15, 20, 25, or 30")
     show_captions: Optional[bool] = Field(None)
     show_branding: Optional[bool] = Field(None)
     caption_position: Optional[str] = Field(None, description="top or bottom")
@@ -194,6 +194,7 @@ async def generate_video_external(
                         target_duration=p.target_duration,
                         voice_gender=p.voice_gender,
                         tts_provider=p.tts_provider,
+                        voice_id=p.voice_id,
                         content_type=p.content_type,
                         db_session=bg_session,
                         model=p.model or "",  # Empty = let service pick based on quality_tier
@@ -514,7 +515,7 @@ async def request_video_render(
         _render_height = 1920 if _orientation == "portrait" else 1080
 
     # Build optional render params — explicit None checks so `False` / `0` values are respected
-    _fps = (body.fps if body is not None and body.fps is not None and body.fps in (15, 20, 25) else None)
+    _fps = (body.fps if body is not None and body.fps is not None and body.fps in (15, 20, 25, 30) else None)
     _show_captions = body.show_captions if (body is not None and body.show_captions is not None) else True
     _show_branding = body.show_branding if (body is not None and body.show_branding is not None) else True
     _caption_position = (body.caption_position if body is not None and body.caption_position in ("top", "bottom") else None)
@@ -620,6 +621,26 @@ async def get_render_status(
     return result
 
 
+@router.delete("/render/{video_id}")
+async def clear_rendered_video(
+    video_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """
+    Clear the rendered video URL for a video so it can be re-rendered.
+
+    Removes `video` from s3_urls and file_ids, and removes `render_job_id`
+    from metadata. The next call to /render/{video_id} will start a fresh
+    render. Useful when the user wants to re-download with different settings.
+    """
+    repo = AiVideoRepository(session=db)
+    updated = repo.clear_video_url(video_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    return {"status": "ok", "video_id": video_id, "message": "Rendered video cleared"}
+
+
 @router.post("/render-callback/{video_id}")
 async def render_callback(
     video_id: str,
@@ -659,3 +680,255 @@ async def render_callback(
         return {"status": "ok", "note": "failure recorded"}
     else:
         return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# TTS Voice Catalog
+# ---------------------------------------------------------------------------
+
+# Sarvam AI voices (bulbul:v3) — all voices work across all supported languages
+_SARVAM_VOICES = {
+    "male": [
+        {"id": "shubh", "name": "Shubh"}, {"id": "aditya", "name": "Aditya"},
+        {"id": "rahul", "name": "Rahul"}, {"id": "rohan", "name": "Rohan"},
+        {"id": "amit", "name": "Amit"}, {"id": "dev", "name": "Dev"},
+        {"id": "ratan", "name": "Ratan"}, {"id": "varun", "name": "Varun"},
+        {"id": "manan", "name": "Manan"}, {"id": "sumit", "name": "Sumit"},
+        {"id": "kabir", "name": "Kabir"}, {"id": "aayan", "name": "Aayan"},
+        {"id": "ashutosh", "name": "Ashutosh"}, {"id": "advait", "name": "Advait"},
+        {"id": "anand", "name": "Anand"}, {"id": "tarun", "name": "Tarun"},
+        {"id": "sunny", "name": "Sunny"}, {"id": "mani", "name": "Mani"},
+        {"id": "gokul", "name": "Gokul"}, {"id": "vijay", "name": "Vijay"},
+        {"id": "mohit", "name": "Mohit"}, {"id": "rehan", "name": "Rehan"},
+        {"id": "soham", "name": "Soham"},
+    ],
+    "female": [
+        {"id": "ritu", "name": "Ritu"}, {"id": "priya", "name": "Priya"},
+        {"id": "neha", "name": "Neha"}, {"id": "pooja", "name": "Pooja"},
+        {"id": "simran", "name": "Simran"}, {"id": "kavya", "name": "Kavya"},
+        {"id": "ishita", "name": "Ishita"}, {"id": "shreya", "name": "Shreya"},
+        {"id": "roopa", "name": "Roopa"}, {"id": "amelia", "name": "Amelia"},
+        {"id": "sophia", "name": "Sophia"}, {"id": "tanya", "name": "Tanya"},
+        {"id": "shruti", "name": "Shruti"}, {"id": "suhani", "name": "Suhani"},
+        {"id": "kavitha", "name": "Kavitha"}, {"id": "rupali", "name": "Rupali"},
+    ],
+}
+
+# Google Cloud TTS voices (curated per language+gender for premium tier)
+_GOOGLE_VOICES = {
+    "english (us)": {
+        "female": [
+            {"id": "en-US-Journey-F", "name": "Journey (Natural)"},
+            {"id": "en-US-Neural2-F", "name": "Neural2"},
+        ],
+        "male": [
+            {"id": "en-US-Journey-D", "name": "Journey (Natural)"},
+            {"id": "en-US-Neural2-D", "name": "Neural2"},
+        ],
+    },
+    "english (uk)": {
+        "female": [
+            {"id": "en-GB-Neural2-A", "name": "Neural2"},
+            {"id": "en-GB-Wavenet-A", "name": "WaveNet"},
+        ],
+        "male": [
+            {"id": "en-GB-Neural2-B", "name": "Neural2"},
+            {"id": "en-GB-Wavenet-B", "name": "WaveNet"},
+        ],
+    },
+    "spanish": {
+        "female": [{"id": "es-ES-Neural2-A", "name": "Neural2"}],
+        "male": [{"id": "es-ES-Neural2-B", "name": "Neural2"}],
+    },
+    "french": {
+        "female": [{"id": "fr-FR-Neural2-A", "name": "Neural2"}],
+        "male": [{"id": "fr-FR-Neural2-B", "name": "Neural2"}],
+    },
+    "german": {
+        "female": [{"id": "de-DE-Neural2-A", "name": "Neural2"}],
+        "male": [{"id": "de-DE-Neural2-B", "name": "Neural2"}],
+    },
+    "japanese": {
+        "female": [{"id": "ja-JP-Neural2-B", "name": "Neural2"}],
+        "male": [{"id": "ja-JP-Neural2-C", "name": "Neural2"}],
+    },
+    "chinese": {
+        "female": [{"id": "zh-CN-Neural2-C", "name": "Neural2"}],
+        "male": [{"id": "zh-CN-Neural2-D", "name": "Neural2"}],
+    },
+}
+
+# Edge TTS voices (one per language+gender, standard tier)
+_EDGE_VOICES = {
+    "english (us)": {"female": "en-US-AriaNeural", "male": "en-US-ChristopherNeural"},
+    "english (uk)": {"female": "en-GB-SoniaNeural", "male": "en-GB-RyanNeural"},
+    "english (india)": {"female": "en-IN-NeerjaNeural", "male": "en-IN-PrabhatNeural"},
+    "hindi": {"female": "hi-IN-SwaraNeural", "male": "hi-IN-MadhurNeural"},
+    "bengali": {"female": "bn-IN-TanishaaNeural", "male": "bn-IN-BashkarNeural"},
+    "tamil": {"female": "ta-IN-PallaviNeural", "male": "ta-IN-ValluvarNeural"},
+    "telugu": {"female": "te-IN-ShrutiNeural", "male": "te-IN-MohanNeural"},
+    "marathi": {"female": "mr-IN-AarohiNeural", "male": "mr-IN-ManoharNeural"},
+    "kannada": {"female": "kn-IN-SapnaNeural", "male": "kn-IN-GaganNeural"},
+    "gujarati": {"female": "gu-IN-DhwaniNeural", "male": "gu-IN-NiranjanNeural"},
+    "malayalam": {"female": "ml-IN-SobhanaNeural", "male": "ml-IN-MidhunNeural"},
+    "spanish": {"female": "es-ES-ElviraNeural", "male": "es-ES-AlvaroNeural"},
+    "french": {"female": "fr-FR-DeniseNeural", "male": "fr-FR-HenriNeural"},
+    "german": {"female": "de-DE-KatjaNeural", "male": "de-DE-ConradNeural"},
+    "japanese": {"female": "ja-JP-NanamiNeural", "male": "ja-JP-KeitaNeural"},
+    "chinese": {"female": "zh-CN-XiaoxiaoNeural", "male": "zh-CN-YunxiNeural"},
+}
+
+_INDIAN_LANGUAGES = {
+    "hindi", "bengali", "tamil", "telugu", "marathi", "kannada",
+    "gujarati", "malayalam", "punjabi", "odia", "english (india)",
+}
+
+# Pre-recorded voice sample URLs (hosted on S3 via Vacademy media service)
+_SARVAM_SAMPLE_URLS = {
+    "aayan": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/af27be2f-86ab-42ed-8479-cb381d8faeb5-aayan.mp3",
+    "aditya": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/9badf126-8277-47f6-a027-6c2125938f1d-aditya.mp3",
+    "advait": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/81536e8e-f9ea-4eb1-9c6d-c4a1331ae703-advait.mp3",
+    "amelia": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/58b632f9-99a9-4dcf-9bef-9a66b9b2a537-amelia.mp3",
+    "amit": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/f6194632-1ab6-4981-98c7-6cdcd4fada95-amit.mp3",
+    "anand": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/bc064296-bc27-48db-bc4f-583a24d215c4-anand.mp3",
+    "ashutosh": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/875419e5-da05-40a3-b611-cd2def044a46-ashutosh.mp3",
+    "dev": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/58c208ed-53f8-4790-bf88-d0247b05769e-dev.mp3",
+    "gokul": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/f64af8bc-b692-4cf7-9bfc-c9772de747d2-gokul.mp3",
+    "ishita": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/2be6712b-b736-496d-96db-69b50ce71e56-ishita.mp3",
+    "kabir": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/28d6a62a-a283-44f6-9a26-0bf3ecb9d94c-kabir.mp3",
+    "kavitha": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/b784166e-7512-4c90-a39b-497f64bf1811-kavitha.mp3",
+    "kavya": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/25fc67e7-f5f5-457a-a501-2d0b0260bd9a-kavya.mp3",
+    "manan": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/47a0a396-ab1c-4531-bbb5-9cd67a8562b0-manan.mp3",
+    "mani": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/e6f5225b-f076-4af7-b569-4e5ecf59a5b7-mani.mp3",
+    "mohit": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/9df6d3cc-7e9d-45cd-9a5f-66f99d501ae1-mohit.mp3",
+    "neha": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/18b7cdd9-dfd5-4603-b554-329215007355-neha.mp3",
+    "pooja": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/d65b3c3e-0645-4458-bd18-833339ff6de8-pooja.mp3",
+    "priya": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/b2ce2fc8-2cf7-40d4-b09e-09b4b1a4cace-priya.mp3",
+    "rahul": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/8517e2f3-e30f-47bb-ace6-e4ab5a3252ba-rahul.mp3",
+    "ratan": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/5a192620-b45d-4026-9ef7-18741a25d45b-ratan.mp3",
+    "rehan": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/03107cfe-2e7e-4678-a894-cd4f780b826e-rehan.mp3",
+    "ritu": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/3996b1ce-8ca0-43d4-aae0-b1af436e8db3-ritu.mp3",
+    "rohan": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/6936bd6a-ffa7-4026-a82f-aff5516f5f90-rohan.mp3",
+    "roopa": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/ccd72cb8-e5f3-470c-93da-02245572e3a7-roopa.mp3",
+    "rupali": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/b84cbb84-ba23-4076-bf24-09e510d4e7b6-rupali.mp3",
+    "shreya": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/c18e4948-ecfa-4930-b662-4a0a0c4860b7-shreya.mp3",
+    "shruti": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/0f9da9a2-f993-4619-bf9f-88240196b40c-shruti.mp3",
+    "shubh": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/5644f3bf-d378-4cee-afc6-8c4001f27364-shubh.mp3",
+    "simran": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/7419dd84-8aea-43b0-8b8f-c828ce138383-simran.mp3",
+    "soham": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/d2883100-030d-416e-95e0-2e28350e82ac-soham.mp3",
+    "sophia": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/887ed89e-0a3b-445a-8c03-f7b76ee89454-sophia.mp3",
+    "suhani": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/e52ba58c-78d4-44c0-9925-9bfbc3c3c586-suhani.mp3",
+    "sumit": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/f40dd450-3927-43e5-bcff-fbcfbe61caee-sumit.mp3",
+    "sunny": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/f9232984-917e-494f-9c70-cc7b94dbae2b-sunny.mp3",
+    "tanya": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/813ebb58-ff02-4128-bb3f-e32fb7e76070-tanya.mp3",
+    "tarun": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/d88dbe63-e7d9-4aac-8eca-91eb661e0364-tarun.mp3",
+    "varun": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/a8fd7e3c-d342-4f7f-85d5-d33f7d014a9e-varun.mp3",
+    "vijay": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/SARVAM/5bc1a29e-970f-425a-abdf-90d2b39f51ab-vijay.mp3",
+}
+
+_EDGE_SAMPLE_URLS = {
+    "bn-IN-BashkarNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/9e67b75a-30a1-49c6-8cd8-8adb755ffc06-bn-IN-BashkarNeural.mp3",
+    "bn-IN-TanishaaNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/177d56be-29b2-44b9-b9c0-09e1f2c4f5b1-bn-IN-TanishaaNeural.mp3",
+    "de-DE-ConradNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/7c57dc29-3971-4b69-acf7-50a82b47a2c0-de-DE-ConradNeural.mp3",
+    "de-DE-KatjaNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/74c4eec9-b98e-4f3d-b8ed-bca5441465e8-de-DE-KatjaNeural.mp3",
+    "en-GB-RyanNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/91cc684d-c1fe-4c81-986d-0aed4a249309-en-GB-RyanNeural.mp3",
+    "en-GB-SoniaNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/a0c33adf-984d-48ba-93a9-ba8a1e0e661d-en-GB-SoniaNeural.mp3",
+    "en-IN-NeerjaNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/97906395-b534-4702-b699-14e7f258101d-en-IN-NeerjaNeural.mp3",
+    "en-IN-PrabhatNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/240c4846-4359-46a5-8616-82f337b3b19c-en-IN-PrabhatNeural.mp3",
+    "en-US-AriaNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/ad9e6d16-6744-49c4-a9bb-3e18c0b751c7-en-US-AriaNeural.mp3",
+    "en-US-ChristopherNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/8d9c98c8-a20a-41fd-80c3-f40456fd17ca-en-US-ChristopherNeural.mp3",
+    "es-ES-AlvaroNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/48de9d79-3a76-4d3b-ba4d-4a9c78e3edaf-es-ES-AlvaroNeural.mp3",
+    "es-ES-ElviraNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/48b6f2d8-6f5d-4c5c-80fd-ee2f21d89772-es-ES-ElviraNeural.mp3",
+    "fr-FR-DeniseNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/3db79b9c-a424-40b0-8dca-d3fd572db1e2-fr-FR-DeniseNeural.mp3",
+    "fr-FR-HenriNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/7e241e72-ea76-4f0a-b34e-a16a438d3cd6-fr-FR-HenriNeural.mp3",
+    "gu-IN-DhwaniNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/b3e55a52-861f-44b9-a9df-683e79ea98b6-gu-IN-DhwaniNeural.mp3",
+    "gu-IN-NiranjanNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/0a2fb66b-9ad5-476d-824d-33ad963c76e6-gu-IN-NiranjanNeural.mp3",
+    "hi-IN-MadhurNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/3c830ee7-2bd3-46fb-99fb-d8a810c93519-hi-IN-MadhurNeural.mp3",
+    "hi-IN-SwaraNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/01697cae-493f-4215-bb43-f7f9513290ba-hi-IN-SwaraNeural.mp3",
+    "ja-JP-KeitaNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/dbfcdeed-4f78-47c0-af02-602c478975f3-ja-JP-KeitaNeural.mp3",
+    "ja-JP-NanamiNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/01b45e8b-e615-4730-80ac-3d5c1783b091-ja-JP-NanamiNeural.mp3",
+    "kn-IN-GaganNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/ed9da038-1b0f-47e9-89ea-7f56a9f869b5-kn-IN-GaganNeural.mp3",
+    "kn-IN-SapnaNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/c24822ce-fe7a-4352-b4c9-654251774232-kn-IN-SapnaNeural.mp3",
+    "ml-IN-MidhunNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/fb017ef4-c70c-4a93-b50d-97867cdf1336-ml-IN-MidhunNeural.mp3",
+    "ml-IN-SobhanaNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/3a167e0c-736e-44c2-9d87-de73192bdeea-ml-IN-SobhanaNeural.mp3",
+    "mr-IN-AarohiNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/b464e29f-97e9-4433-8147-5dcc3053690f-mr-IN-AarohiNeural.mp3",
+    "mr-IN-ManoharNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/da0cbdf4-ab65-4a7b-8d8b-84bf571c02f5-mr-IN-ManoharNeural.mp3",
+    "ta-IN-PallaviNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/d8447ff1-0bba-416a-bc16-6e722de8805d-ta-IN-PallaviNeural.mp3",
+    "ta-IN-ValluvarNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/dedb9fda-b209-4234-888e-91e83bff946f-ta-IN-ValluvarNeural.mp3",
+    "te-IN-MohanNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/852dacc3-df32-4b7e-99e4-97d73d9eb9d1-te-IN-MohanNeural.mp3",
+    "te-IN-ShrutiNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/ea9dd7b7-adf3-4f99-a1fb-e8e587f3f063-te-IN-ShrutiNeural.mp3",
+    "zh-CN-XiaoxiaoNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/36f7402b-cf48-401c-bc69-39c8c9459656-zh-CN-XiaoxiaoNeural.mp3",
+    "zh-CN-YunxiNeural": "https://vacademy-media-storage.s3.amazonaws.com/TTS_SAMPLES/EDGE/ecb0a3b3-72b5-45ba-b0fe-feede2f49f64-zh-CN-YunxiNeural.mp3",
+}
+
+
+@router.get(
+    "/tts/voices",
+    summary="List available TTS voices for a language, gender, and tier",
+)
+async def list_tts_voices(
+    language: str = "English (US)",
+    gender: str = "female",
+    tier: str = "standard",
+):
+    """
+    Returns available TTS voices for the given combination.
+
+    - **standard** tier: Single Edge TTS voice per language+gender (free).
+    - **premium** tier: Multiple voices — Sarvam AI for Indian languages,
+      Google Cloud TTS for global languages.
+
+    Each voice includes a `sample_url` for audio preview (placeholder until
+    samples are generated).
+    """
+    lang_key = language.lower().strip()
+    gender_key = gender.lower().strip()
+    if gender_key not in ("male", "female"):
+        gender_key = "female"
+
+    if tier == "premium":
+        if lang_key in _INDIAN_LANGUAGES:
+            # Sarvam voices — same set for all Indian languages
+            raw_voices = _SARVAM_VOICES.get(gender_key, [])
+            voices = [
+                {
+                    "id": v["id"],
+                    "name": v["name"],
+                    "provider": "sarvam",
+                    "sample_url": _SARVAM_SAMPLE_URLS.get(v["id"], ""),
+                }
+                for v in raw_voices
+            ]
+            return {"tier": "premium", "provider": "sarvam", "language": language, "gender": gender_key, "voices": voices}
+        else:
+            # Google voices
+            lang_voices = _GOOGLE_VOICES.get(lang_key, {})
+            raw_voices = lang_voices.get(gender_key, [])
+            voices = [
+                {
+                    "id": v["id"],
+                    "name": v["name"],
+                    "provider": "google",
+                    "sample_url": "",  # Google samples not yet generated
+                }
+                for v in raw_voices
+            ]
+            return {"tier": "premium", "provider": "google", "language": language, "gender": gender_key, "voices": voices}
+    else:
+        # Standard — single Edge TTS voice
+        edge_lang = _EDGE_VOICES.get(lang_key, _EDGE_VOICES.get("english (us)", {}))
+        voice_name = edge_lang.get(gender_key, "en-US-AriaNeural")
+        return {
+            "tier": "standard",
+            "provider": "edge",
+            "language": language,
+            "gender": gender_key,
+            "voices": [
+                {
+                    "id": voice_name,
+                    "name": voice_name.replace("Neural", "").split("-")[-1],
+                    "provider": "edge",
+                    "sample_url": _EDGE_SAMPLE_URLS.get(voice_name, ""),
+                }
+            ],
+        }

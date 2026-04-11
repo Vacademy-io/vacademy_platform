@@ -37,6 +37,16 @@ public class SendInteractiveNodeExecutor implements ChatbotNodeExecutor {
             return NodeExecutionResult.builder().success(false).errorMessage("Invalid interactive config").build();
         }
 
+        // Validate body text is present — WATI rejects empty body
+        String body = (String) config.get("body");
+        if (body == null || body.isBlank()) {
+            log.error("SEND_INTERACTIVE node has empty body text — nodeId={}", node.getId());
+            return NodeExecutionResult.builder()
+                    .success(false)
+                    .errorMessage("Interactive message body text is required")
+                    .build();
+        }
+
         try {
             ChatbotMessageProvider provider = messageProviders.stream()
                     .filter(p -> p.supports(context.getChannelType()))

@@ -100,7 +100,8 @@ class RequestType(str, enum.Enum):
     CONTENT = "content"
     VIDEO = "video"
     # New types for comprehensive logging
-    TTS = "tts"                      # Text-to-Speech (Google Cloud TTS)
+    TTS = "tts"                      # Text-to-Speech (Edge TTS, standard)
+    TTS_PREMIUM = "tts_premium"      # Text-to-Speech (Google Cloud / Sarvam AI, premium)
     EMBEDDING = "embedding"          # Embedding generation (Gemini)
     EVALUATION = "evaluation"        # Answer evaluation
     PRESENTATION = "presentation"    # Presentation generation

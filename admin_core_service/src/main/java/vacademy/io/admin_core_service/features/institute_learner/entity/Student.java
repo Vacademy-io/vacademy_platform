@@ -145,6 +145,17 @@ public class Student {
     @Column(name = "guardian_email")
     private String guardianEmail;
 
+    // --- Terms and Conditions Fields ---
+    @Column(name = "tnc_accepted")
+    @Builder.Default
+    private Boolean tncAccepted = false;
+
+    @Column(name = "tnc_file_id")
+    private String tncFileId;
+
+    @Column(name = "tnc_accepted_date")
+    private java.util.Date tncAcceptedDate;
+
     // TODO (future migration): section, has_transport, student_type, class_group,
     // year_of_passing, previous_admission_no, religion, how_did_you_know,
     // father_aadhaar, father_qualification, father_occupation,

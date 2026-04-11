@@ -16,6 +16,8 @@ import {
     InvitePickerRow,
     type PackageSessionConfig,
 } from './invite-picker-row';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 type WizardStep = 'SELECT_COURSES' | 'CONFIGURE' | 'PREVIEW' | 'RESULTS';
 
@@ -649,7 +651,7 @@ export const AssignCourseDialog = ({
 
     return (
         <MyDialog
-            heading="Assign to Courses"
+            heading={`Assign to ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-lg"

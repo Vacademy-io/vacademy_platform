@@ -37,6 +37,8 @@ import {
     X,
     ImageIcon,
     FileText,
+    Play,
+    Pause,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { useFileUpload } from '@/hooks/use-file-upload';
@@ -63,6 +65,8 @@ import {
     TtsProvider,
     ContentType,
     QualityTier,
+    TtsVoice,
+    fetchTtsVoices,
 } from '../-services/video-generation';
 import { useAIModelsList } from '@/hooks/useAiModels';
 import { useAiCreditsQuery, useCreditEstimateQuery } from '@/services/ai-credits/get-ai-credits';
@@ -120,6 +124,11 @@ export function PromptInput({
 }: PromptInputProps) {
     const [showPreview, setShowPreview] = useState(false);
     const [isPdfProcessing, setIsPdfProcessing] = useState(false);
+    // TTS voice selection state
+    const [availableVoices, setAvailableVoices] = useState<TtsVoice[]>([]);
+    const [isLoadingVoices, setIsLoadingVoices] = useState(false);
+    const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+    const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const [videoStyle, setVideoStyle] = useState<{
         primary_color?: string;
         layout_theme?: string;
@@ -204,6 +213,55 @@ export function PromptInput({
             })
             .catch(() => {});
     }, []);
+
+    // Fetch available TTS voices when language, gender, or tier changes
+    useEffect(() => {
+        setIsLoadingVoices(true);
+        fetchTtsVoices(options.language, options.voice_gender, options.tts_provider)
+            .then((res) => {
+                setAvailableVoices(res.voices);
+                // Clear voice_id if it's not in the new voice list
+                if (options.voice_id && !res.voices.some((v) => v.id === options.voice_id)) {
+                    onOptionsChange({ ...options, voice_id: undefined });
+                }
+            })
+            .catch(() => setAvailableVoices([]))
+            .finally(() => setIsLoadingVoices(false));
+    }, [options.language, options.voice_gender, options.tts_provider]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Cleanup audio preview on unmount
+    useEffect(() => {
+        return () => {
+            if (previewAudioRef.current) {
+                previewAudioRef.current.pause();
+                previewAudioRef.current = null;
+            }
+        };
+    }, []);
+
+    const handlePlayPreview = (voice: TtsVoice) => {
+        // Stop current preview if playing
+        if (previewAudioRef.current) {
+            previewAudioRef.current.pause();
+            previewAudioRef.current = null;
+        }
+        if (playingVoiceId === voice.id) {
+            setPlayingVoiceId(null);
+            return;
+        }
+        const audio = new Audio(voice.sample_url);
+        audio.onended = () => setPlayingVoiceId(null);
+        audio.onerror = () => {
+            setPlayingVoiceId(null);
+            toast.error('Sample audio not available yet');
+        };
+        audio.play().catch(() => {
+            setPlayingVoiceId(null);
+            toast.error('Sample audio not available yet');
+        });
+        previewAudioRef.current = audio;
+        setPlayingVoiceId(voice.id);
+    };
 
     const handleSubmit = () => {
         if (!prompt.trim() || isGenerating || disabled) return;
@@ -588,35 +646,109 @@ export function PromptInput({
                         </Select>
                     </OptionBubble>
 
-                    <OptionBubble
-                        icon={<Volume2 className="size-3" />}
-                        label="Audio"
-                        value={
-                            TTS_PROVIDERS.find(
-                                (p) => p.value === options.tts_provider
-                            )?.label.split(' ')[0] || 'Standard'
-                        }
-                    >
-                        <Select
-                            value={options.tts_provider}
-                            onValueChange={(v) => updateOption('tts_provider', v as TtsProvider)}
-                        >
-                            <SelectTrigger className="h-8 text-xs">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {TTS_PROVIDERS.map((provider) => (
-                                    <SelectItem
-                                        key={provider.value}
-                                        value={provider.value}
-                                        className="text-xs"
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1.5 bg-background text-xs font-normal hover:bg-muted"
+                            >
+                                <Volume2 className="size-3" />
+                                <span className="hidden text-muted-foreground sm:inline">Audio:</span>
+                                <span className="max-w-[120px] truncate font-medium">
+                                    {TTS_PROVIDERS.find((p) => p.value === options.tts_provider)?.label || 'Standard'}
+                                    {options.voice_id && ` · ${availableVoices.find((v) => v.id === options.voice_id)?.name || options.voice_id}`}
+                                </span>
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72 p-3" align="start">
+                            <div className="space-y-3">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-muted-foreground">Audio Quality</Label>
+                                    <Select
+                                        value={options.tts_provider}
+                                        onValueChange={(v) => updateOption('tts_provider', v as TtsProvider)}
                                     >
-                                        {provider.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </OptionBubble>
+                                        <SelectTrigger className="h-8 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {TTS_PROVIDERS.map((provider) => (
+                                                <SelectItem
+                                                    key={provider.value}
+                                                    value={provider.value}
+                                                    className="text-xs"
+                                                >
+                                                    <div className="flex flex-col">
+                                                        <span>{provider.label}</span>
+                                                        <span className="text-[10px] text-muted-foreground">{provider.description}</span>
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* Voice selection — show for all tiers */}
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-muted-foreground">
+                                        Voice {isLoadingVoices && <Loader2 className="ml-1 inline size-3 animate-spin" />}
+                                    </Label>
+                                    {availableVoices.length > 0 && (
+                                        <div className="max-h-48 space-y-1 overflow-y-auto">
+                                            {availableVoices.map((voice) => {
+                                                const isSelected =
+                                                    options.tts_provider === 'standard'
+                                                        ? !options.voice_id // standard has one voice, always selected
+                                                        : options.voice_id === voice.id;
+                                                const isPlaying = playingVoiceId === voice.id;
+                                                return (
+                                                    <div
+                                                        key={voice.id}
+                                                        className={`flex items-center justify-between rounded-md border px-2 py-1.5 text-xs transition-colors ${
+                                                            isSelected
+                                                                ? 'border-primary bg-primary/5'
+                                                                : 'border-transparent hover:bg-muted'
+                                                        }`}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            className="flex-1 text-left"
+                                                            onClick={() => {
+                                                                if (options.tts_provider === 'premium') {
+                                                                    onOptionsChange({ ...options, voice_id: voice.id });
+                                                                }
+                                                            }}
+                                                        >
+                                                            <span className="font-medium">{voice.name}</span>
+                                                            <span className="ml-1 text-[10px] text-muted-foreground">
+                                                                {voice.provider === 'sarvam' ? 'Sarvam' : voice.provider === 'google' ? 'Google' : 'Edge'}
+                                                            </span>
+                                                        </button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="size-6 p-0"
+                                                            onClick={() => handlePlayPreview(voice)}
+                                                        >
+                                                            {isPlaying ? (
+                                                                <Pause className="size-3" />
+                                                            ) : (
+                                                                <Play className="size-3" />
+                                                            )}
+                                                        </Button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                    {availableVoices.length === 0 && !isLoadingVoices && (
+                                        <p className="text-[10px] text-muted-foreground">No voices available for this combination.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
 
                     <OptionBubble
                         icon={<Users className="size-3" />}

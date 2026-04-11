@@ -19,6 +19,8 @@ import {
     DripConditionConfig,
 } from '@/types/course-settings';
 import { MyButton } from '@/components/design-system/button';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 // Helper functions to convert between ISO string and local datetime-local format
 function toLocalDateTimeString(isoString: string): string {
@@ -326,13 +328,13 @@ export const PackageDripConditionDialog: React.FC<PackageDripConditionDialogProp
                                 <SelectValue placeholder="Select target" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="chapter">Chapters</SelectItem>
-                                <SelectItem value="slide">Slides</SelectItem>
+                                <SelectItem value="chapter">{getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter)}</SelectItem>
+                                <SelectItem value="slide">{getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide)}</SelectItem>
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
                             This condition will apply to all{' '}
-                            {selectedTarget === 'chapter' ? 'chapters' : 'slides'} in this package
+                            {selectedTarget === 'chapter' ? getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter).toLowerCase() : getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide).toLowerCase()} in this package
                         </p>
                     </div>
 

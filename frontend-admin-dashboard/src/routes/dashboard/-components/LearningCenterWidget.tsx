@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { BookOpen, VideoCamera, Folder } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 
 interface LearningCenterWidgetProps {
     courseCount?: number;
@@ -78,13 +78,13 @@ export default function LearningCenterWidget({
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Badge variant="secondary" className="text-xs">
-                            {courseCount} {getTerminology(ContentTerms.Course, SystemTerms.Course)}s
+                            {courseCount} {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
                         </Badge>
                         <Badge variant="secondary" className="text-xs">
-                            {levelCount} {getTerminology(ContentTerms.Level, SystemTerms.Level)}s
+                            {levelCount} {getTerminologyPlural(ContentTerms.Level, SystemTerms.Level)}
                         </Badge>
                         <Badge variant="secondary" className="text-xs">
-                            {subjectCount} Subjects
+                            {subjectCount} {getTerminologyPlural(ContentTerms.Subject, SystemTerms.Subject)}
                         </Badge>
                     </div>
                 </div>

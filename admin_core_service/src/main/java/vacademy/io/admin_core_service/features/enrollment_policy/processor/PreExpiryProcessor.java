@@ -113,7 +113,20 @@ public class PreExpiryProcessor implements IEnrolmentPolicyProcessor {
         
         return policy.getNotifications().stream()
                 .filter(p -> NotificationTriggerType.BEFORE_EXPIRY.equals(p.getTrigger()))
-                .filter(p -> p.getDaysBefore() != null && p.getDaysBefore() == daysUntilExpiry)
+                .filter(p -> {
+                    Integer daysBefore = p.getEffectiveDaysBefore();
+                    if (daysBefore == null || daysUntilExpiry <= 0) {
+                        return false;
+                    }
+                    // If sendEveryNDays is set, send daily from daysBefore down to 1
+                    if (p.getSendEveryNDays() != null && p.getSendEveryNDays() > 0) {
+                        return daysUntilExpiry <= daysBefore
+                                && daysUntilExpiry > 0
+                                && (daysBefore - daysUntilExpiry) % p.getSendEveryNDays() == 0;
+                    }
+                    // Original behavior: exact day match
+                    return daysBefore == daysUntilExpiry;
+                })
                 .collect(Collectors.toList());
     }
 }

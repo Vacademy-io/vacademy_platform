@@ -9,6 +9,8 @@ import {
     fetchFeeTypesForInstitute,
     getFeeTypesQueryKey,
 } from '@/services/manage-finances';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface ManageFinancesFiltersProps {
     filter: FeeSearchFilterDTO;
@@ -249,7 +251,7 @@ export function ManageFinancesFilters({
 
                 {/* Package filter */}
                 <FilterChips
-                    label="Package"
+                    label={getTerminology(ContentTerms.Package, SystemTerms.Package)}
                     filterList={packageOptions}
                     selectedFilters={selectedPackages}
                     handleSelect={handlePackageSelect}
@@ -292,7 +294,7 @@ export function ManageFinancesFilters({
 
                 {/* Level filter */}
                 <FilterChips
-                    label="Level"
+                    label={getTerminology(ContentTerms.Level, SystemTerms.Level)}
                     filterList={levelOptions}
                     selectedFilters={selectedLevels}
                     handleSelect={handleLevelSelect}

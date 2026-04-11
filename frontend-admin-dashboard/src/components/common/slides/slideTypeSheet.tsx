@@ -7,6 +7,8 @@ import { Search, Youtube, Link2, QrCode } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FileQuestion, GraduationCap, MessageSquare, Presentation } from 'lucide-react';
 import { SlideType } from './constant/slideType';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface SlideTypeSheetProps {
     open: boolean;
@@ -147,7 +149,7 @@ export function SlideTypeSheet({ open, onOpenChange, onSelectType }: SlideTypeSh
         <Sheet open={open} onOpenChange={onOpenChange}>
             <SheetContent className="w-[350px] overflow-y-auto sm:w-[400px]" side="left">
                 <SheetHeader>
-                    <SheetTitle className="text-xl">Select Slide</SheetTitle>
+                    <SheetTitle className="text-xl">{`Select ${getTerminology(ContentTerms.Slide, SystemTerms.Slide)}`}</SheetTitle>
                 </SheetHeader>
 
                 <div className="mt-4">

@@ -100,6 +100,11 @@ public class PaymentLogService {
 
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
             UserPlan userPlan, String orderId) {
+        return createPaymentLog(userId, paymentAmount, vendor, vendorId, currency, userPlan, orderId, null);
+    }
+
+    public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
+            UserPlan userPlan, String orderId, Date paymentDate) {
         log.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}, providedOrderId={}", userId,
                 paymentAmount,
                 vendor, currency, orderId);
@@ -111,7 +116,7 @@ public class PaymentLogService {
         paymentLog.setPaymentStatus(null);
         paymentLog.setVendor(vendor);
         paymentLog.setVendorId(vendorId);
-        paymentLog.setDate(new Date());
+        paymentLog.setDate(paymentDate != null ? paymentDate : new Date());
         paymentLog.setCurrency(currency);
         paymentLog.setUserPlan(userPlan);
 

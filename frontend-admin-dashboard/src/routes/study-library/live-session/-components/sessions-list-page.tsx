@@ -26,7 +26,7 @@ import { useFilterDataForAssesment } from '@/routes/assessment/assessment-list/-
 import { MyPagination } from '@/components/design-system/pagination';
 import { RecurringType, AccessType, StreamingPlatform } from '../-constants/enums';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import SelectChips, { SelectOption } from '@/components/design-system/SelectChips';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
@@ -578,7 +578,7 @@ export default function SessionListPage() {
     );
 
     useEffect(() => {
-        setNavHeading(getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession) + 's');
+        setNavHeading(getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession));
         clearSessionDetails();
         clearSessionId();
     }, [setNavHeading, clearSessionDetails, clearSessionId]);

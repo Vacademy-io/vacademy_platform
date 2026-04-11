@@ -13,7 +13,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { NoCourseDialog } from '@/components/common/students/no-course-dialog';
 import { cn } from '@/lib/utils';
 import { UserPlus, ArrowRight, Users, GraduationCap, Calendar } from '@phosphor-icons/react';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import CreateInvite from '@/routes/manage-students/invite/-components/create-invite/CreateInvite';
 import { convertCapitalToTitleCase } from '@/lib/utils';
@@ -222,7 +222,7 @@ export const StudentListHeader = ({
                         <NoCourseDialog
                             isOpen={isOpen}
                             setIsOpen={setIsOpen}
-                            type={`Enroll ${getTerminology(RoleTerms.Learner, SystemTerms.Learner)}s`}
+                            type={`Enroll ${getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}`}
                             content="You need to create a course and add a subject in it before"
                             trigger={
                                 <MyButton

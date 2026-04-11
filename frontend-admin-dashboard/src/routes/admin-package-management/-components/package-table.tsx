@@ -13,6 +13,8 @@ import {
 } from '@phosphor-icons/react';
 import { removeDefaultPrefix } from '@/utils/helpers/removeDefaultPrefix';
 import { ColumnWidthConfig } from '@/components/design-system/utils/constants/table-layout';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface PackageTableColumnsProps {
     onPackageClick: (packageData: { id: string; name: string }) => void;
@@ -27,7 +29,7 @@ export const getPackageTableColumns = ({
         header: () => (
             <div className="flex items-center gap-2">
                 <Package className="size-4" />
-                <span>Package Name</span>
+                <span>{getTerminology(ContentTerms.Package, SystemTerms.Package)} Name</span>
             </div>
         ),
         cell: ({ row }) => {
@@ -56,7 +58,7 @@ export const getPackageTableColumns = ({
         header: () => (
             <div className="flex items-center gap-2">
                 <GraduationCap className="size-4" />
-                <span>Level</span>
+                <span>{getTerminology(ContentTerms.Level, SystemTerms.Level)}</span>
             </div>
         ),
         cell: ({ row }) => {
@@ -71,7 +73,7 @@ export const getPackageTableColumns = ({
         header: () => (
             <div className="flex items-center gap-2">
                 <Calendar className="size-4" />
-                <span>Session</span>
+                <span>{getTerminology(ContentTerms.Session, SystemTerms.Session)}</span>
             </div>
         ),
         cell: ({ row }) => {

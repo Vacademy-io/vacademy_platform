@@ -13,6 +13,8 @@ import {
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface ChapterNavigatorProps {
     currentChapterId: string;
@@ -196,7 +198,7 @@ export const ChapterNavigator = ({
                             <div className="p-1">
                                 {filteredChapters.length === 0 ? (
                                     <div className="px-3 py-6 text-center text-sm text-neutral-400">
-                                        No chapters found
+                                        {`No ${getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter).toLowerCase()} found`}
                                     </div>
                                 ) : (
                                     filteredChapters.map((ch, index) => {

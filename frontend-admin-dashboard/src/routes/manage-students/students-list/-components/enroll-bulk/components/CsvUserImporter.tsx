@@ -7,6 +7,7 @@ import {
     getCustomFieldSettingsFromCache,
     CustomField,
 } from '@/services/custom-field-settings';
+import { parse, isValid } from 'date-fns';
 
 // ─── System field definitions ───────────────────────────────────
 // These map 1-to-1 with the backend NewUserDTO snake_case field names.
@@ -32,6 +33,8 @@ const CORE_COLUMNS: CsvColumnDef[] = [
     { csvKey: 'mobile_number', label: 'Mobile Number', required: false, sample: '+91 9876543210', systemKey: 'MOBILE_NUMBER' },
     { csvKey: 'username', label: 'Username', required: false, sample: '' },
     { csvKey: 'password', label: 'Password', required: false, sample: '' },
+    { csvKey: 'payment_date', label: 'Payment Date (dd/MM/yyyy)', required: false, sample: '15/01/2025' },
+    { csvKey: 'transaction_id', label: 'Transaction ID', required: false, sample: '' },
 ];
 
 // Optional system columns — included ONLY if visible in the institute's custom field settings
@@ -51,11 +54,17 @@ const OPTIONAL_SYSTEM_COLUMNS: CsvColumnDef[] = [
     { csvKey: 'parents_to_mother_email', label: "Mother's Email", required: false, sample: '', systemKey: 'PARENTS_TO_MOTHER_EMAIL' },
 ];
 
-interface Props {
-    onImport: (rows: NewUserRow[]) => void;
+export interface CsvPaymentInfo {
+    paymentDate?: string;
+    transactionId?: string;
 }
 
-export const CsvUserImporter = ({ onImport }: Props) => {
+interface Props {
+    onImport: (rows: NewUserRow[]) => void;
+    onPaymentInfoDetected?: (info: CsvPaymentInfo) => void;
+}
+
+export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
     const fileRef = useRef<HTMLInputElement>(null);
     const [preview, setPreview] = useState<NewUserRow[]>([]);
     const [errors, setErrors] = useState<string[]>([]);
@@ -192,6 +201,29 @@ export const CsvUserImporter = ({ onImport }: Props) => {
                         custom_field_values: customFieldValues.length > 0 ? customFieldValues : undefined,
                     });
                 });
+
+                // Extract payment info from CSV rows (use first non-empty value)
+                if (onPaymentInfoDetected && result.data.length > 0) {
+                    let paymentDate: string | undefined;
+                    let transactionId: string | undefined;
+                    for (const row of result.data) {
+                        if (!paymentDate && row.payment_date?.trim()) {
+                            // Parse dd/MM/yyyy and convert to ISO for backend
+                            const raw = row.payment_date.trim();
+                            const parsed = parse(raw, 'dd/MM/yyyy', new Date());
+                            if (isValid(parsed)) {
+                                paymentDate = parsed.toISOString();
+                            }
+                        }
+                        if (!transactionId && row.transaction_id?.trim()) {
+                            transactionId = row.transaction_id.trim();
+                        }
+                        if (paymentDate && transactionId) break;
+                    }
+                    if (paymentDate || transactionId) {
+                        onPaymentInfoDetected({ paymentDate, transactionId });
+                    }
+                }
 
                 setErrors(errs);
                 setPreview(rows);

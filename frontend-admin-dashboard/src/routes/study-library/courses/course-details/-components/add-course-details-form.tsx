@@ -10,6 +10,8 @@ import { useSelectedSessionStore } from '@/stores/study-library/selected-session
 import { Checkbox } from '@/components/ui/checkbox';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { AddSessionInput } from '@/components/design-system/add-session-input';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const formSchema = z.object({
     id: z.string().optional(),
@@ -144,10 +146,10 @@ export const AddCourseDetailsForm = ({
                         <FormItem>
                             <FormControl>
                                 <MyInput
-                                    label="Level"
+                                    label={getTerminology(ContentTerms.Level, SystemTerms.Level)}
                                     required={true}
                                     inputType="text"
-                                    inputPlaceholder="Enter level name"
+                                    inputPlaceholder={`Enter ${getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()} name`}
                                     className="w-[352px]"
                                     input={field.value}
                                     onChangeFunction={(e) => field.onChange(e.target.value)}

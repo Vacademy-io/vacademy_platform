@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 import { BatchesSummaryResponse } from '../-types/package-types';
 import { ColumnFilter, FilterOption } from '../-hooks/usePackageFilters';
 import { Link } from '@tanstack/react-router';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface PackageFiltersProps {
     summaryData: BatchesSummaryResponse | undefined;
@@ -36,10 +38,10 @@ const STATUS_OPTIONS = [
     { id: 'INACTIVE', label: 'Inactive' },
 ];
 
-const SORT_OPTIONS = [
-    { id: 'package_name', label: 'Package Name' },
-    { id: 'level_name', label: 'Level Name' },
-    { id: 'session_name', label: 'Session Name' },
+const getSortOptions = () => [
+    { id: 'package_name', label: `${getTerminology(ContentTerms.Package, SystemTerms.Package)} Name` },
+    { id: 'level_name', label: `${getTerminology(ContentTerms.Level, SystemTerms.Level)} Name` },
+    { id: 'session_name', label: `${getTerminology(ContentTerms.Session, SystemTerms.Session)} Name` },
     { id: 'created_at', label: 'Created Date' },
 ];
 
@@ -125,7 +127,7 @@ export const PackageFilters = ({
                 <div className="flex items-center gap-3">
                     <span className="text-sm text-neutral-500">
                         Total: <strong className="text-neutral-700">{totalElements}</strong>{' '}
-                        packages
+                        {getTerminologyPlural(ContentTerms.Package, SystemTerms.Package).toLowerCase()}
                     </span>
                 </div>
 
@@ -169,7 +171,7 @@ export const PackageFilters = ({
 
                     <div className="flex flex-wrap gap-3">
                         <FilterChips
-                            label="Session"
+                            label={getTerminology(ContentTerms.Session, SystemTerms.Session)}
                             filterList={sessionOptions}
                             selectedFilters={localFilters['session'] || []}
                             clearFilters={clearFilters}
@@ -178,7 +180,7 @@ export const PackageFilters = ({
                         />
 
                         <FilterChips
-                            label="Level"
+                            label={getTerminology(ContentTerms.Level, SystemTerms.Level)}
                             filterList={levelOptions}
                             selectedFilters={localFilters['level'] || []}
                             clearFilters={clearFilters}
@@ -187,7 +189,7 @@ export const PackageFilters = ({
                         />
 
                         <FilterChips
-                            label="Package"
+                            label={getTerminology(ContentTerms.Package, SystemTerms.Package)}
                             filterList={packageOptions}
                             selectedFilters={localFilters['package'] || []}
                             clearFilters={clearFilters}
@@ -248,7 +250,8 @@ const SortDropdown = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
 
-    const currentLabel = SORT_OPTIONS.find((o) => o.id === currentSort)?.label || 'Created Date';
+    const sortOptions = getSortOptions();
+    const currentLabel = sortOptions.find((o) => o.id === currentSort)?.label || 'Created Date';
 
     return (
         <div className="relative">
@@ -270,7 +273,7 @@ const SortDropdown = ({
                 <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
                     <div className="absolute right-0 z-50 mt-1 w-48 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
-                        {SORT_OPTIONS.map((option) => (
+                        {sortOptions.map((option) => (
                             <div key={option.id} className="px-1">
                                 <button
                                     className={cn(

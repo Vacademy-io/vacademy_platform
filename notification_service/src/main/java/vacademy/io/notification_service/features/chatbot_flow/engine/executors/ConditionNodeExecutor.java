@@ -110,10 +110,14 @@ public class ConditionNodeExecutor implements ChatbotNodeExecutor {
                 return safeRegexMatch(matchValue, userText);
 
             case "button_id":
-                return context.getButtonId() != null && matchValue.equalsIgnoreCase(context.getButtonId());
+                // Check buttonId first, fallback to userText (button title)
+                if (context.getButtonId() != null && matchValue.equalsIgnoreCase(context.getButtonId())) return true;
+                return userText != null && matchValue.equalsIgnoreCase(userText.trim());
 
             case "list_id":
-                return context.getListReplyId() != null && matchValue.equalsIgnoreCase(context.getListReplyId());
+                // Check listReplyId first, fallback to userText (row title — WATI may not return IDs)
+                if (context.getListReplyId() != null && matchValue.equalsIgnoreCase(context.getListReplyId())) return true;
+                return userText != null && matchValue.equalsIgnoreCase(userText.trim());
 
             case "payload":
                 return context.getButtonPayload() != null && matchValue.equalsIgnoreCase(context.getButtonPayload());

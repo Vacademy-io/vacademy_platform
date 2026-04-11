@@ -24,6 +24,7 @@ import { AcademicInfoSection } from './sections/AcademicInfoSection';
 import { ParentGuardianSection } from './sections/ParentGuardianSection';
 import { AddressSection } from './sections/AddressSection';
 import { PaymentSection } from './sections/PaymentSection';
+import { ParentTypeModal } from '../../-components/ParentTypeModal';
 import type { Registration } from '../../-types/registration-types';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import {
@@ -33,9 +34,11 @@ import {
     generatePaymentLink,
     fetchPaymentOptionById,
     type PaymentOptionDetails,
+    type EnquiryDetailsResponse,
 } from '../../-services/applicant-services';
 import { getCustomFieldSettings } from '@/services/custom-field-settings';
 import { toast } from 'sonner';
+import { isValidEmail, isValidPincode, isNonEmpty, normalizePhoneForInput } from '@/utils/form-validation';
 
 interface FormSection {
     id: string;
@@ -145,10 +148,8 @@ export function RegistrationFormPage() {
     // Get sessionId from URL search params
     const [sessionId, setSessionId] = useState('');
     const [enquiryId, setEnquiryId] = useState<string | null>(null);
-    const [enquiryTrackingId, setEnquiryTrackingId] = useState<string | null>(null);
-    const [applicationTrackingId, setApplicationTrackingId] = useState<string | null>(null);
-    const [showParentGenderModal, setShowParentGenderModal] = useState(false);
-    const [pendingEnquiryData, setPendingEnquiryData] = useState<any>(null);
+    const [showParentTypeModal, setShowParentTypeModal] = useState(false);
+    const [pendingEnquiryData, setPendingEnquiryData] = useState<EnquiryDetailsResponse | null>(null);
 
     const [activeSection, setActiveSection] = useState(0);
     const [formData, setFormData] = useState<Partial<Registration>>(getInitialFormData());
@@ -351,7 +352,7 @@ export function RegistrationFormPage() {
     }, [instituteId]);
 
     // Function to prefill form from enquiry data
-    const prefillFormFromEnquiry = (enquiryData: any) => {
+    const prefillFormFromEnquiry = (enquiryData: EnquiryDetailsResponse) => {
         const updates: Partial<Registration> = {};
 
         // Prefill child details
@@ -364,27 +365,27 @@ export function RegistrationFormPage() {
                 const date = new Date(enquiryData.child.dob);
                 updates.dateOfBirth = date.toISOString().split('T')[0];
             }
-            updates.gender = enquiryData.child.gender || undefined;
+            updates.gender = enquiryData.child.gender as any;
         }
 
-        // Apply child updates first
-        setFormData((prev) => ({ ...prev, ...updates }));
+        const rawRelation = enquiryData.parent_relation_with_child || '';
+        const relation = String(rawRelation).toLowerCase().trim();
 
         // Prefill parent details - need to determine if father or mother
         if (enquiryData.parent) {
             const parentData = enquiryData.parent;
+            
+            let parentUpdates: Partial<Registration> = {};
 
-            // Check if parent has gender field
-            if (parentData.gender && parentData.gender === 'MALE') {
-                // It's father
-                const parentUpdates: Partial<Registration> = {
-                    fatherInfo: {
-                        name: parentData.name || '',
-                        mobile: parentData.phone || '',
-                        email: parentData.email || '',
-                        occupation: '',
-                        annualIncome: '',
-                    },
+            if (relation === 'father' || relation === 'mother') {
+                const infoKey = relation === 'father' ? 'fatherInfo' : 'motherInfo';
+                
+                parentUpdates[infoKey] = {
+                    name: parentData.name || '',
+                    mobile: normalizePhoneForInput(parentData.phone),
+                    email: parentData.email || '',
+                    occupation: '',
+                    annualIncome: '',
                 };
 
                 // Prefill address if available
@@ -402,40 +403,18 @@ export function RegistrationFormPage() {
                         pincode: parentData.pin_code || '',
                     };
                 }
-                setFormData((prev) => ({ ...prev, ...parentUpdates }));
-            } else if (parentData.gender && parentData.gender === 'FEMALE') {
-                // It's mother
-                const parentUpdates: Partial<Registration> = {
-                    motherInfo: {
-                        name: parentData.name || '',
-                        mobile: parentData.phone || '',
-                        email: parentData.email || '',
-                        occupation: '',
-                        annualIncome: '',
-                    },
-                };
-
-                // Prefill address if available
-                if (parentData.address_line || parentData.city || parentData.pin_code) {
-                    parentUpdates.currentAddress = {
-                        houseNo: '',
-                        street: '',
-                        area: '',
-                        state: '',
-                        country: '',
-                        ...formData.currentAddress,
-                        addressLine1: parentData.address_line || '',
-                        city: parentData.city || '',
-                        pinCode: parentData.pin_code || '',
-                        pincode: parentData.pin_code || '',
-                    };
-                }
-                setFormData((prev) => ({ ...prev, ...parentUpdates }));
+                
+                setFormData((prev) => ({ ...prev, ...updates, ...parentUpdates }));
             } else {
-                // Gender is OTHER, not provided, or we need to ask user
-                setPendingEnquiryData({ parent: parentData });
-                setShowParentGenderModal(true);
+                // Apply child updates first, then ask for parent type
+                setFormData((prev) => ({ ...prev, ...updates }));
+                // Relation is OTHER, not provided, or we need to ask user
+                setPendingEnquiryData(enquiryData);
+                setShowParentTypeModal(true);
             }
+        } else {
+            // Apply child updates only
+            setFormData((prev) => ({ ...prev, ...updates }));
         }
     };
 
@@ -448,7 +427,7 @@ export function RegistrationFormPage() {
         if (type === 'father') {
             updates.fatherInfo = {
                 name: parentData.name || '',
-                mobile: parentData.phone || '',
+                mobile: normalizePhoneForInput(parentData.phone),
                 email: parentData.email || '',
                 occupation: '',
                 annualIncome: '',
@@ -456,7 +435,7 @@ export function RegistrationFormPage() {
         } else {
             updates.motherInfo = {
                 name: parentData.name || '',
-                mobile: parentData.phone || '',
+                mobile: normalizePhoneForInput(parentData.phone),
                 email: parentData.email || '',
                 occupation: '',
                 annualIncome: '',
@@ -480,7 +459,7 @@ export function RegistrationFormPage() {
         }
 
         setFormData((prev) => ({ ...prev, ...updates }));
-        setShowParentGenderModal(false);
+        setShowParentTypeModal(false);
         setPendingEnquiryData(null);
     };
 
@@ -524,10 +503,7 @@ export function RegistrationFormPage() {
             icon: <GraduationCap size={20} />,
             isComplete: Boolean(
                 formData.applyingForClass &&
-                formData.preferredBoard &&
-                formData.previousSchoolName &&
-                formData.previousSchoolBoard &&
-                formData.lastClassAttended
+                formData.preferredBoard
             ),
             hasErrors: false,
         },
@@ -548,12 +524,12 @@ export function RegistrationFormPage() {
             shortLabel: 'Address',
             icon: <MapPin size={20} />,
             isComplete: Boolean(
-                formData.currentAddress?.houseNo &&
                 formData.currentAddress?.street &&
                 formData.currentAddress?.area &&
                 formData.currentAddress?.city &&
                 formData.currentAddress?.state &&
-                (formData.currentAddress?.pincode || formData.currentAddress?.pinCode)
+                (formData.currentAddress?.pincode || formData.currentAddress?.pinCode) &&
+                (formData.currentAddress?.country)
             ),
             hasErrors: false,
         },
@@ -602,8 +578,89 @@ export function RegistrationFormPage() {
     const handleSubmit = async () => {
         setIsSaving(true);
         try {
+            // Validate all required fields (matching * markers in UI)
+            if (!isNonEmpty(formData.studentName)) {
+                toast.warning('Student name is required');
+                setActiveSection(0);
+                setIsSaving(false);
+                return;
+            }
+            if (!isNonEmpty(formData.dateOfBirth)) {
+                toast.warning('Date of birth is required');
+                setActiveSection(0);
+                setIsSaving(false);
+                return;
+            }
+            if (!formData.gender) {
+                toast.warning('Gender is required');
+                setActiveSection(0);
+                setIsSaving(false);
+                return;
+            }
+            if (!formData.nationality) {
+                toast.warning('Nationality is required');
+                setActiveSection(0);
+                setIsSaving(false);
+                return;
+            }
+            if (!formData.category) {
+                toast.warning('Category is required');
+                setActiveSection(0);
+                setIsSaving(false);
+                return;
+            }
             if (!formData.applyingForClass) {
                 toast.warning('Please select a class/grade from the Academic Info section');
+                setActiveSection(1);
+                setIsSaving(false);
+                return;
+            }
+            if (!formData.preferredBoard) {
+                toast.warning('Board preference is required');
+                setActiveSection(1);
+                setIsSaving(false);
+                return;
+            }
+            // Parent: at least one parent with name + mobile
+            const hasFather = isNonEmpty(formData.fatherInfo?.name) && isNonEmpty(formData.fatherInfo?.mobile);
+            const hasMother = isNonEmpty(formData.motherInfo?.name) && isNonEmpty(formData.motherInfo?.mobile);
+            if (!hasFather && !hasMother) {
+                toast.warning('At least one parent (father or mother) with name and mobile is required');
+                setActiveSection(2);
+                setIsSaving(false);
+                return;
+            }
+            // Email validation
+            if (formData.fatherInfo?.email && !isValidEmail(formData.fatherInfo.email)) {
+                toast.warning('Father email address is invalid');
+                setActiveSection(2);
+                setIsSaving(false);
+                return;
+            }
+            if (formData.motherInfo?.email && !isValidEmail(formData.motherInfo.email)) {
+                toast.warning('Mother email address is invalid');
+                setActiveSection(2);
+                setIsSaving(false);
+                return;
+            }
+            // Address validation (fields marked with *)
+            const addr = formData.currentAddress;
+            if (!isNonEmpty(addr?.street) || !isNonEmpty(addr?.area) || !isNonEmpty(addr?.city) || !isNonEmpty(addr?.state)) {
+                toast.warning('Please fill all required address fields (Street, Area, City, State)');
+                setActiveSection(3);
+                setIsSaving(false);
+                return;
+            }
+            if (!isNonEmpty(addr?.country)) {
+                toast.warning('Country is required');
+                setActiveSection(3);
+                setIsSaving(false);
+                return;
+            }
+            const pincode = addr?.pinCode || addr?.pincode || '';
+            if (!pincode || !isValidPincode(pincode)) {
+                toast.warning('Please enter a valid 6-digit pincode');
+                setActiveSection(3);
                 setIsSaving(false);
                 return;
             }
@@ -963,68 +1020,11 @@ export function RegistrationFormPage() {
                     </div>
                 </div>
             </div>
-
-            {/* Parent Type Selection Modal */}
-            {showParentGenderModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-                        <div className="mb-4">
-                            <h2 className="text-lg font-semibold text-neutral-900">
-                                Select Parent Type
-                            </h2>
-                            <p className="mt-2 text-sm text-neutral-600">
-                                Please specify if the contact details belong to the father or mother
-                            </p>
-                        </div>
-
-                        <div className="space-y-3">
-                            <button
-                                onClick={() => handleParentTypeSelection('father')}
-                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-primary-500 hover:bg-primary-50"
-                            >
-                                <div className="flex size-12 items-center justify-center rounded-full bg-blue-100">
-                                    <User size={24} className="text-blue-600" />
-                                </div>
-                                <div>
-                                    <h3 className="font-medium text-neutral-900">Father</h3>
-                                    <p className="text-sm text-neutral-600">
-                                        Use these details for father's information
-                                    </p>
-                                </div>
-                            </button>
-
-                            <button
-                                onClick={() => handleParentTypeSelection('mother')}
-                                className="flex w-full items-center gap-4 rounded-lg border border-neutral-200 p-4 text-left transition-all hover:border-primary-500 hover:bg-primary-50"
-                            >
-                                <div className="flex size-12 items-center justify-center rounded-full bg-pink-100">
-                                    <User size={24} className="text-pink-600" />
-                                </div>
-                                <div>
-                                    <h3 className="font-medium text-neutral-900">Mother</h3>
-                                    <p className="text-sm text-neutral-600">
-                                        Use these details for mother's information
-                                    </p>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Hidden print/PDF template rendered off-screen */}
-            <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-                <div ref={printTemplateRef}>
-                    <ApplicationFormPrintTemplate
-                        ref={pdfTargetRef}
-                        formData={formData}
-                        instituteName={instituteName}
-                        instituteLogo={logoBase64}
-                        trackingLabel={applicationTrackingId ? 'Application Tracking ID' : enquiryTrackingId ? 'Enquiry Tracking ID' : ''}
-                        trackingId={applicationTrackingId || enquiryTrackingId || ''}
-                    />
-                </div>
-            </div>
+            <ParentTypeModal
+                isOpen={showParentTypeModal}
+                onClose={() => setShowParentTypeModal(false)}
+                onSelect={handleParentTypeSelection}
+            />
         </>
     );
 }

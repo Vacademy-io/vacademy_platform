@@ -29,7 +29,7 @@ import {
 
 import { useDeleteCourse } from '@/services/study-library/course-operations/delete-course';
 import { toast } from 'sonner';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import CourseListPage from './course-list-page';
 import { AdminApprovalDashboard } from './admin-approval-dashboard';
@@ -395,7 +395,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     };
 
     useEffect(() => {
-        setNavHeading(`Explore ${getTerminology(ContentTerms.Course, SystemTerms.Course) + 's'}`);
+        setNavHeading(`Explore ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`);
     }, []);
 
     // Update sort_columns in selectedFilters when sortBy changes and call handleGetCourses after update
@@ -577,11 +577,11 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         const labelFor = (id: CourseListTabId): string => {
             switch (id) {
                 case 'AuthoredCourses':
-                    return `Authored ${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`;
+                    return `Authored ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`;
                 case 'AllCourses':
-                    return `All ${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`;
+                    return `All ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`;
                 case 'CourseInReview':
-                    return `${getTerminology(ContentTerms.Course, SystemTerms.Course)}s In Review`;
+                    return `${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)} In Review`;
                 case 'CourseApproval':
                     return `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Approval`;
                 default:
@@ -602,17 +602,17 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         const tabs: { key: string; label: string; show: boolean }[] = [
             {
                 key: 'AuthoredCourses',
-                label: `Authored ${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`,
+                label: `Authored ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`,
                 show: true,
             },
             {
                 key: 'AllCourses',
-                label: `All ${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`,
+                label: `All ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`,
                 show: true,
             },
             {
                 key: 'CourseInReview',
-                label: `${getTerminology(ContentTerms.Course, SystemTerms.Course)}s In Review`,
+                label: `${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)} In Review`,
                 show: !isAdmin,
             },
             {
@@ -721,7 +721,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         return (
             <div className="flex h-full flex-col items-center justify-center py-20">
                 <div className="mb-2 text-2xl font-semibold">
-                    No {getTerminology(ContentTerms.Course, SystemTerms.Course)}s found
+                    No {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)} found
                 </div>
                 <div className="mb-4 text-gray-500">
                     Try adding a new {getTerminology(ContentTerms.Course, SystemTerms.Course)}.
@@ -751,7 +751,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-col gap-1">
                     <div className="sm:text-h5 text-lg font-semibold">
-                        Explore {getTerminology(ContentTerms.Course, SystemTerms.Course)}s
+                        Explore {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
                     </div>
                     <div className="text-xs text-neutral-500 sm:text-sm">
                         Effortlessly organize, upload, and track educational resources in one place.

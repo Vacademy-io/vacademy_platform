@@ -8,6 +8,8 @@ import { QuestionsFromTextData } from './GenerateQuestionsFromText';
 import SelectField from '@/components/design-system/select-field';
 import { languageSupport } from '@/constants/dummy-data';
 import { ModelSelector } from '../../-components/ModelSelector';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const QuestionsFromTextDialog = ({
     open,
@@ -146,7 +148,7 @@ export const QuestionsFromTextDialog = ({
                                     <MyInput
                                         input={field.value?.toString() || ''}
                                         onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        label="Level"
+                                        label={getTerminology(ContentTerms.Level, SystemTerms.Level)}
                                         required={true}
                                         inputType="text"
                                         inputPlaceholder="For example, 8th standard"

@@ -11,6 +11,12 @@ import {
 import { BulkEnrollOptions, SelectedPackageSession } from '../../../../-types/bulk-assign-types';
 import { InvitePickerDropdown } from '../../components/InvitePickerDropdown';
 import { BookOpen } from '@phosphor-icons/react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { CalendarIcon } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 interface Props {
     instituteId: string;
@@ -177,6 +183,73 @@ export const Step3EnrollConfig = ({
                                 'Students with expired or terminated access will be re-activated.'}
                             {options.duplicateHandling === 'ERROR' &&
                                 'Already enrolled students will appear as failures in the results.'}
+                        </p>
+                    </div>
+
+                    {/* Payment Date (Optional) */}
+                    <div>
+                        <Label className="mb-1 text-sm font-medium text-neutral-700">
+                            Payment Date (Optional)
+                        </Label>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    className={cn(
+                                        'w-full justify-start text-left font-normal',
+                                        !options.paymentDate && 'text-muted-foreground'
+                                    )}
+                                >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {options.paymentDate ? (
+                                        format(parseISO(options.paymentDate), 'PPP')
+                                    ) : (
+                                        <span>Select payment date</span>
+                                    )}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                    mode="single"
+                                    selected={
+                                        options.paymentDate
+                                            ? parseISO(options.paymentDate)
+                                            : undefined
+                                    }
+                                    onSelect={(date) => {
+                                        onOptionsChange({
+                                            ...options,
+                                            paymentDate: date ? date.toISOString() : '',
+                                        });
+                                    }}
+                                    disabled={(date) => date > new Date()}
+                                    initialFocus
+                                />
+                            </PopoverContent>
+                        </Popover>
+                        <p className="mt-1 text-xs text-neutral-400">
+                            Date when the payment was made
+                        </p>
+                    </div>
+
+                    {/* Transaction ID (Optional) */}
+                    <div>
+                        <Label className="mb-1 text-sm font-medium text-neutral-700">
+                            Transaction ID (Optional)
+                        </Label>
+                        <Input
+                            type="text"
+                            placeholder="Enter transaction ID"
+                            value={options.transactionId}
+                            onChange={(e) =>
+                                onOptionsChange({
+                                    ...options,
+                                    transactionId: e.target.value,
+                                })
+                            }
+                        />
+                        <p className="mt-1 text-xs text-neutral-400">
+                            External payment transaction reference
                         </p>
                     </div>
                 </div>

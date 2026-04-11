@@ -23,6 +23,8 @@ import { BatchConfig, LevelOption, SessionOption, PaymentType } from '../-types/
 import { toast } from 'sonner';
 import { currencyOptions } from '@/routes/settings/-constants/payments';
 import { getCurrencySymbol } from '@/routes/settings/-components/Payment/utils/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface BatchSelectorDialogProps {
     open: boolean;
@@ -70,7 +72,7 @@ export function BatchSelectorDialog({
 
     const handleCreateLevel = async () => {
         if (!newLevelName.trim()) {
-            toast.error('Please enter a level name');
+            toast.error(`Please enter a ${getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()} name`);
             return;
         }
 
@@ -79,9 +81,9 @@ export function BatchSelectorDialog({
             const newLevel = await onAddLevel(newLevelName.trim());
             setSelectedLevel(newLevel.id);
             setNewLevelName('');
-            toast.success(`Level "${newLevel.name}" created`);
+            toast.success(`${getTerminology(ContentTerms.Level, SystemTerms.Level)} "${newLevel.name}" created`);
         } catch (error) {
-            toast.error('Failed to create level');
+            toast.error(`Failed to create ${getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()}`);
         } finally {
             setIsCreatingLevel(false);
         }
@@ -89,7 +91,7 @@ export function BatchSelectorDialog({
 
     const handleCreateSession = async () => {
         if (!newSessionName.trim()) {
-            toast.error('Please enter a session name');
+            toast.error(`Please enter a ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()} name`);
             return;
         }
 
@@ -98,9 +100,9 @@ export function BatchSelectorDialog({
             const newSession = await onAddSession(newSessionName.trim());
             setSelectedSession(newSession.id);
             setNewSessionName('');
-            toast.success(`Session "${newSession.name}" created`);
+            toast.success(`${getTerminology(ContentTerms.Session, SystemTerms.Session)} "${newSession.name}" created`);
         } catch (error) {
-            toast.error('Failed to create session');
+            toast.error(`Failed to create ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}`);
         } finally {
             setIsCreatingSession(false);
         }
@@ -115,7 +117,7 @@ export function BatchSelectorDialog({
 
         // Validate price for paid types
         if ((paymentType === 'ONE_TIME' || paymentType === 'SUBSCRIPTION') && !price) {
-            toast.error('Please enter a price for paid courses');
+            toast.error(`Please enter a price for paid ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}`);
             return;
         }
 
@@ -169,16 +171,16 @@ export function BatchSelectorDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
                 <DialogHeader>
-                    <DialogTitle>Add Batch</DialogTitle>
+                    <DialogTitle>Add {getTerminology(ContentTerms.Batch, SystemTerms.Batch)}</DialogTitle>
                     <DialogDescription>
-                        Configure level, session, payment, and inventory for this batch.
+                        Configure {getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()}, {getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}, payment, and inventory for this {getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()}.
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
                     {/* Level Selection */}
                     <div className="space-y-2">
-                        <Label className="text-sm">Level</Label>
+                        <Label className="text-sm">{getTerminology(ContentTerms.Level, SystemTerms.Level)}</Label>
                         <Tabs defaultValue="existing" className="w-full">
                             <TabsList className="grid w-full grid-cols-2">
                                 <TabsTrigger value="existing" className="text-xs">
@@ -191,7 +193,7 @@ export function BatchSelectorDialog({
                             <TabsContent value="existing" className="mt-2">
                                 <Select value={selectedLevel} onValueChange={setSelectedLevel}>
                                     <SelectTrigger className="h-9 text-sm">
-                                        <SelectValue placeholder="Select level (or leave for DEFAULT)" />
+                                        <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()} (or leave for DEFAULT)`} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="DEFAULT_VALUE">DEFAULT</SelectItem>
@@ -206,7 +208,7 @@ export function BatchSelectorDialog({
                             <TabsContent value="new" className="mt-2">
                                 <div className="flex gap-2">
                                     <Input
-                                        placeholder="Enter new level name"
+                                        placeholder={`Enter new ${getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()} name`}
                                         value={newLevelName}
                                         onChange={(e) => setNewLevelName(e.target.value)}
                                         className="h-9 text-sm"
@@ -225,7 +227,7 @@ export function BatchSelectorDialog({
 
                     {/* Session Selection */}
                     <div className="space-y-2">
-                        <Label className="text-sm">Session</Label>
+                        <Label className="text-sm">{getTerminology(ContentTerms.Session, SystemTerms.Session)}</Label>
                         <Tabs defaultValue="existing" className="w-full">
                             <TabsList className="grid w-full grid-cols-2">
                                 <TabsTrigger value="existing" className="text-xs">
@@ -238,7 +240,7 @@ export function BatchSelectorDialog({
                             <TabsContent value="existing" className="mt-2">
                                 <Select value={selectedSession} onValueChange={setSelectedSession}>
                                     <SelectTrigger className="h-9 text-sm">
-                                        <SelectValue placeholder="Select session (or leave for DEFAULT)" />
+                                        <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()} (or leave for DEFAULT)`} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="DEFAULT_VALUE">DEFAULT</SelectItem>
@@ -253,7 +255,7 @@ export function BatchSelectorDialog({
                             <TabsContent value="new" className="mt-2">
                                 <div className="flex gap-2">
                                     <Input
-                                        placeholder="Enter new session name"
+                                        placeholder={`Enter new ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()} name`}
                                         value={newSessionName}
                                         onChange={(e) => setNewSessionName(e.target.value)}
                                         className="h-9 text-sm"
@@ -273,7 +275,7 @@ export function BatchSelectorDialog({
                     {/* Divider */}
                     <div className="border-t border-neutral-200 pt-2">
                         <p className="text-xs font-medium text-neutral-500">
-                            Payment & Inventory (Batch-level)
+                            Payment & Inventory ({getTerminology(ContentTerms.Batch, SystemTerms.Batch)}-level)
                         </p>
                     </div>
 
@@ -360,7 +362,7 @@ export function BatchSelectorDialog({
                     <Button variant="outline" onClick={() => onOpenChange(false)}>
                         Cancel
                     </Button>
-                    <Button onClick={handleConfirm}>Add Batch</Button>
+                    <Button onClick={handleConfirm}>Add {getTerminology(ContentTerms.Batch, SystemTerms.Batch)}</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

@@ -35,6 +35,8 @@ import { PackageSessionInventory } from '../-types/inventory-types';
 import { UpdateCapacityDialog } from './update-capacity-dialog';
 import { useReserveSlot, useReleaseSlot } from '../-hooks/use-inventory-data';
 import { toast } from 'sonner';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface InventoryTableViewProps {
     items: PackageSessionInventory[];
@@ -188,7 +190,7 @@ export const InventoryTableView = ({
         return (
             <Card>
                 <CardHeader>
-                    <CardTitle>Package Sessions Inventory</CardTitle>
+                    <CardTitle>{`${getTerminologyPlural(ContentTerms.Package, SystemTerms.Package)} ${getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)} ${getTerminology(OtherTerms.Inventory, SystemTerms.Inventory)}`}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-3">
@@ -206,25 +208,25 @@ export const InventoryTableView = ({
             <Card className="border-0 shadow-lg">
                 <CardHeader className="pb-3">
                     <CardTitle className="text-lg font-semibold">
-                        Package Sessions Inventory
+                        {`${getTerminologyPlural(ContentTerms.Package, SystemTerms.Package)} ${getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)} ${getTerminology(OtherTerms.Inventory, SystemTerms.Inventory)}`}
                         <span className="ml-2 text-sm font-normal text-muted-foreground">
-                            ({totalElements} sessions)
+                            ({totalElements} {getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()})
                         </span>
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
                     {items.length === 0 ? (
                         <div className="p-10 text-center text-muted-foreground">
-                            No sessions match the current filters.
+                            {`No ${getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()} match the current filters.`}
                         </div>
                     ) : (
                         <div className="rounded-md border-t">
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-muted/50">
-                                        <TableHead className="font-semibold">Course</TableHead>
-                                        <TableHead className="font-semibold">Level</TableHead>
-                                        <TableHead className="font-semibold">Session</TableHead>
+                                        <TableHead className="font-semibold">{getTerminology(ContentTerms.Course, SystemTerms.Course)}</TableHead>
+                                        <TableHead className="font-semibold">{getTerminology(ContentTerms.Level, SystemTerms.Level)}</TableHead>
+                                        <TableHead className="font-semibold">{getTerminology(ContentTerms.Session, SystemTerms.Session)}</TableHead>
                                         <TableHead className="text-center font-semibold">
                                             Max Seats
                                         </TableHead>

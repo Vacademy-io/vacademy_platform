@@ -202,12 +202,46 @@ VOICE_MAPPING = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Sarvam AI TTS voice configuration (bulbul:v3)
+# All voices work across all 11 supported languages.
+# ---------------------------------------------------------------------------
+SARVAM_VOICES = {
+    "male": [
+        "shubh", "aditya", "rahul", "rohan", "amit", "dev", "ratan", "varun",
+        "manan", "sumit", "kabir", "aayan", "ashutosh", "advait", "anand",
+        "tarun", "sunny", "mani", "gokul", "vijay", "mohit", "rehan", "soham",
+    ],
+    "female": [
+        "ritu", "priya", "neha", "pooja", "simran", "kavya", "ishita", "shreya",
+        "roopa", "amelia", "sophia", "tanya", "shruti", "suhani", "kavitha", "rupali",
+    ],
+}
+
+# Default Sarvam voice per gender (must be present in SARVAM_VOICES above)
+SARVAM_DEFAULT_VOICE = {"male": "shubh", "female": "ritu"}
+
+# Sarvam-supported language → BCP-47 code
+SARVAM_LANG_CODES = {
+    "hindi": "hi-IN", "bengali": "bn-IN", "tamil": "ta-IN", "telugu": "te-IN",
+    "marathi": "mr-IN", "kannada": "kn-IN", "gujarati": "gu-IN", "malayalam": "ml-IN",
+    "punjabi": "pa-IN", "odia": "od-IN", "english (india)": "en-IN",
+}
+
+# Languages that route to Sarvam AI when premium TTS is selected
+INDIAN_LANGUAGES = {
+    "hindi", "bengali", "tamil", "telugu", "marathi", "kannada",
+    "gujarati", "malayalam", "punjabi", "odia", "english (india)",
+}
+
+
 # Whisper ISO-639-1 language codes for forced alignment
 WHISPER_LANG_MAP = {
     "english": "en", "english (us)": "en", "english (uk)": "en",
     "english (india)": "en", "hindi": "hi", "bengali": "bn",
     "tamil": "ta", "telugu": "te", "marathi": "mr", "kannada": "kn",
-    "gujarati": "gu", "malayalam": "ml", "spanish": "es", "french": "fr",
+    "gujarati": "gu", "malayalam": "ml", "punjabi": "pa", "odia": "or",
+    "spanish": "es", "french": "fr",
     "german": "de", "japanese": "ja", "chinese": "zh",
 }
 
@@ -220,7 +254,9 @@ _SCRIPT_RANGES: dict[str, tuple[int, int]] = {
     "te": (0x0C00, 0x0C7F),   # Telugu
     "kn": (0x0C80, 0x0CFF),   # Kannada
     "gu": (0x0A80, 0x0AFF),   # Gujarati
+    "pa": (0x0A00, 0x0A7F),   # Gurmukhi (Punjabi)
     "ml": (0x0D00, 0x0D7F),   # Malayalam
+    "or": (0x0B00, 0x0B7F),   # Odia
     "ja": (0x3040, 0x30FF),   # Hiragana/Katakana
     "zh": (0x4E00, 0x9FFF),   # CJK Unified Ideographs
 }
@@ -1059,7 +1095,8 @@ class VideoGenerationPipeline:
         target_audience: str = "General/Adult",
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
-        tts_provider: str = "edge",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
         branding_config: Optional[Dict[str, Any]] = None,
         style_config: Optional[Dict[str, Any]] = None,
         content_type: str = "VIDEO",
@@ -1225,7 +1262,8 @@ class VideoGenerationPipeline:
                     run_dir,
                     language=language,
                     voice_gender=voice_gender,
-                    tts_provider=tts_provider
+                    tts_provider=tts_provider,
+                    voice_id=voice_id,
                 )
                 # Track TTS character count for credit deduction
                 accumulate_usage({"tts_character_count": tts_outputs.get("tts_character_count", 0)})
@@ -1305,6 +1343,7 @@ class VideoGenerationPipeline:
                 _seg_audio_dur = 0.0
                 _seg_audio_path = tts_outputs.get("audio_path")
                 if _seg_audio_path and Path(_seg_audio_path).exists():
+                    # Try ffprobe first, then fall back to mutagen (pure Python)
                     try:
                         _probe_res = subprocess.run(
                             ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
@@ -1312,9 +1351,15 @@ class VideoGenerationPipeline:
                             capture_output=True, text=True, timeout=10,
                         )
                         _seg_audio_dur = float(_probe_res.stdout.strip())
-                        print(f"   ℹ️  Actual audio duration: {_seg_audio_dur:.1f}s")
                     except Exception:
-                        pass
+                        # ffprobe not available — use mutagen (pure Python)
+                        try:
+                            from mutagen.mp3 import MP3
+                            _seg_audio_dur = MP3(str(_seg_audio_path)).info.length
+                        except Exception:
+                            pass
+                    if _seg_audio_dur > 0:
+                        print(f"   ℹ️  Actual audio duration: {_seg_audio_dur:.1f}s")
 
                 # Configurable max segments to limit LLM expense
                 # Default: max 12 segments (covers ~8 minutes of video at ~40s each)
@@ -2057,46 +2102,89 @@ class VideoGenerationPipeline:
     @retry_with_backoff(max_retries=3, initial_delay=2.0)
     def _synthesize_voice(
         self, 
-        script_path: Path, 
-        run_dir: Path, 
+        script_path: Path,
+        run_dir: Path,
         language: str = "English",
         voice_gender: str = "female",
-        tts_provider: str = "edge"
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        print(f"🗣️  Synthesizing narration ({tts_provider}) - {language} [{voice_gender}]...")
-        
+        # Map new tier names to internal provider keys
+        # "standard" → edge, "premium" → sarvam (Indian) or google (global)
+        # Legacy values "edge"/"google" still supported for backward compatibility
+        lang_key = language.lower().strip()
+        gender_key = voice_gender.lower().strip()
+        if gender_key not in ["male", "female"]:
+            gender_key = "female"
+
+        tier = tts_provider.lower().strip()
+        if tier == "premium":
+            # Route Indian languages → Sarvam, global → Google
+            if lang_key in INDIAN_LANGUAGES:
+                provider_key = "sarvam"
+            else:
+                provider_key = "google"
+        elif tier in ("standard", "edge"):
+            provider_key = "edge"
+        elif tier == "google":
+            provider_key = "google"
+        elif tier == "sarvam":
+            provider_key = "sarvam"
+        else:
+            provider_key = "edge"
+
+        print(f"🗣️  Synthesizing narration (tier={tier}, provider={provider_key}) - {language} [{voice_gender}]...")
+
         # Ensure local deps are available
         if str(LOCAL_DEPS_DIR) not in sys.path:
             sys.path.insert(0, str(LOCAL_DEPS_DIR))
-            
+
         import asyncio
         import edge_tts
         from edge_tts import submaker
-        
+
         response_json = run_dir / "narration_raw.json"
         audio_path = run_dir / "narration.mp3"
         script_text = script_path.read_text().strip()
-        
-        # --- Voice Selection Logic ---
-        lang_key = language.lower().strip()
-        gender_key = voice_gender.lower().strip()
-        provider_key = tts_provider.lower().strip()
-        
-        if gender_key not in ["male", "female"]: gender_key = "female"
-        if provider_key not in ["edge", "google"]: provider_key = "edge"
-        
+
+        # --- Sarvam AI TTS Path (premium, Indian languages) ---
+        if provider_key == "sarvam":
+            try:
+                return self._synthesize_voice_sarvam(
+                    script_text=script_text,
+                    run_dir=run_dir,
+                    response_json=response_json,
+                    audio_path=audio_path,
+                    language=language,
+                    voice_gender=gender_key,
+                    voice_id=voice_id,
+                )
+            except Exception as sarvam_err:
+                print(f"    ⚠️  Sarvam TTS failed: {sarvam_err}")
+                print(f"    🔄 Falling back to Edge TTS...")
+                provider_key = "edge"
+                # Fall through to Edge TTS path below
+
+        # --- Voice Selection Logic (Edge / Google) ---
         # Fallback to English if language not found
         if lang_key not in VOICE_MAPPING:
              print(f"    ⚠️  Language '{language}' not found in mapping, falling back to 'english'")
              lang_key = "english"
-             
+
+        # For Google premium, allow voice_id override
+        edge_or_google = "google" if provider_key == "google" else "edge"
+
         # Select voice
-        try:
-            selected_voice = VOICE_MAPPING[lang_key][provider_key][gender_key]
-        except KeyError:
-            # Deep fallback
-            selected_voice = VOICE_MAPPING["english"][provider_key][gender_key]
-            
+        if voice_id and provider_key == "google":
+            selected_voice = voice_id
+            print(f"    🗣️  Using explicit voice_id: {selected_voice}")
+        else:
+            try:
+                selected_voice = VOICE_MAPPING[lang_key][edge_or_google][gender_key]
+            except KeyError:
+                # Deep fallback
+                selected_voice = VOICE_MAPPING["english"][edge_or_google][gender_key]
+
         print(f"    🗣️  Voice: {selected_voice} (Provider: {provider_key}, Lang: {language})")
 
         # --- Google TTS Path ---
@@ -2388,6 +2476,171 @@ class VideoGenerationPipeline:
                 raise e
         
         return {"response_json": response_json, "audio_path": audio_path, "tts_character_count": len(script_text)}
+
+    # --- Sarvam AI TTS (premium, Indian languages) -------------------------
+    def _synthesize_voice_sarvam(
+        self,
+        script_text: str,
+        run_dir: Path,
+        response_json: Path,
+        audio_path: Path,
+        language: str = "English (India)",
+        voice_gender: str = "female",
+        voice_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Synthesize narration using Sarvam AI bulbul:v3 TTS.
+
+        Sarvam returns WAV audio (24 kHz). We convert to MP3 for pipeline
+        compatibility, then run Whisper forced alignment for word timestamps.
+        """
+        import asyncio
+        import httpx
+        import base64
+
+        lang_key = language.lower().strip()
+        sarvam_lang = SARVAM_LANG_CODES.get(lang_key, "en-IN")
+
+        # Pick voice: explicit voice_id > default for gender
+        if voice_id and voice_id in SARVAM_VOICES.get(voice_gender, []):
+            speaker = voice_id
+        else:
+            speaker = SARVAM_DEFAULT_VOICE.get(voice_gender, "shubh")
+
+        print(f"    🗣️  Sarvam AI voice: {speaker} (lang={sarvam_lang})")
+
+        sarvam_api_key = os.environ.get("SARVAM_API_KEY", "")
+        if not sarvam_api_key:
+            raise RuntimeError(
+                "Sarvam AI TTS requested but SARVAM_API_KEY is not set. "
+                "Set it in the environment or .env file."
+            )
+
+        # Split text into chunks of ≤500 chars (Sarvam API limit per input string)
+        max_chunk = 500
+        chunks = []
+        remaining = script_text
+        while remaining:
+            if len(remaining) <= max_chunk:
+                chunks.append(remaining)
+                break
+            # Find last sentence boundary within limit
+            cut = remaining[:max_chunk].rfind(". ")
+            if cut == -1 or cut < max_chunk // 2:
+                cut = remaining[:max_chunk].rfind(" ")
+            if cut == -1:
+                cut = max_chunk
+            else:
+                cut += 1  # include the space/period
+            chunks.append(remaining[:cut])
+            remaining = remaining[cut:].lstrip()
+
+        if len(chunks) > 1:
+            print(f"    📄 Script split into {len(chunks)} chunks for Sarvam API")
+
+        async def _call_sarvam():
+            all_audio = bytearray()
+            headers = {
+                "api-subscription-key": sarvam_api_key,
+                "Content-Type": "application/json",
+            }
+            async with httpx.AsyncClient(timeout=60) as client:
+                for i, chunk in enumerate(chunks):
+                    body = {
+                        "inputs": [chunk],
+                        "target_language_code": sarvam_lang,
+                        "speaker": speaker,
+                        "model": "bulbul:v3",
+                        "speech_sample_rate": 24000,
+                        "enable_preprocessing": True,
+                        "output_audio_codec": "mp3",
+                    }
+                    resp = await client.post(
+                        "https://api.sarvam.ai/text-to-speech",
+                        headers=headers,
+                        json=body,
+                    )
+                    if resp.status_code != 200:
+                        error_body = resp.text[:500] if resp.text else "(empty)"
+                        print(f"    ❌ Sarvam API error {resp.status_code}: {error_body}")
+                        resp.raise_for_status()
+                    data = resp.json()
+                    audios = data.get("audios", [])
+                    if audios:
+                        all_audio.extend(base64.b64decode(audios[0]))
+                    if len(chunks) > 1:
+                        print(f"    ✅ Chunk {i+1}/{len(chunks)} synthesized")
+            return bytes(all_audio)
+
+        print(f"    ⏳ Calling Sarvam TTS API...")
+        wav_bytes = asyncio.run(_call_sarvam())
+        if not wav_bytes:
+            raise RuntimeError("Sarvam TTS returned empty audio")
+
+        print(f"    ✅ Sarvam TTS complete ({len(wav_bytes)} bytes MP3)")
+
+        # Sarvam returns MP3 directly (output_audio_codec: "mp3"), write to file
+        with open(audio_path, "wb") as f:
+            f.write(wav_bytes)
+
+        # Sarvam does not return word-level timestamps.
+        # Use Whisper forced alignment to get word timings.
+        whisper_lang = WHISPER_LANG_MAP.get(language.lower().strip(), "en")
+        print(f"    🎯 Running Whisper alignment for Sarvam audio (lang={whisper_lang})...")
+        word_entries = _whisper_align(audio_path, language)
+
+        if not word_entries:
+            # Fallback: linear interpolation
+            print(f"    ⚠️  Whisper failed — using linear interpolation")
+            import re as _lre
+            from mutagen.mp3 import MP3
+            try:
+                mp3_info = MP3(str(audio_path))
+                est_dur = mp3_info.info.length
+            except Exception:
+                est_dur = len(wav_bytes) / (24000 * 2)  # rough WAV estimate
+            words_list = _lre.findall(r'\S+', script_text)
+            if words_list and est_dur > 0:
+                per_word = est_dur / len(words_list)
+                word_entries = [
+                    {"word": w, "start": round(i * per_word, 3),
+                     "end": round(i * per_word + per_word * 0.85, 3)}
+                    for i, w in enumerate(words_list)
+                ]
+                print(f"    ✅ Generated {len(word_entries)} linear word timestamps")
+
+        # Build character-level alignment (same format as Edge TTS)
+        chars, starts, ends = [], [], []
+        for w in word_entries:
+            word_str = w["word"]
+            w_start, w_end = w["start"], w["end"]
+            w_dur = w_end - w_start
+            if not word_str:
+                continue
+            char_dur = w_dur / len(word_str)
+            for i, char in enumerate(word_str):
+                c_start = w_start + i * char_dur
+                chars.append(char)
+                starts.append(round(c_start, 3))
+                ends.append(round(c_start + char_dur, 3))
+            chars.append(" ")
+            starts.append(round(w_end, 3))
+            ends.append(round(w_end, 3))
+
+        final_data = {
+            "alignment": {
+                "characters": chars,
+                "character_start_times_seconds": starts,
+                "character_end_times_seconds": ends,
+            }
+        }
+        response_json.write_text(json.dumps(final_data))
+        print(f"    ✅ Sarvam TTS pipeline complete (speaker={speaker}, {len(script_text)} chars)")
+
+        return {
+            "response_json": response_json,
+            "audio_path": audio_path,
+            "tts_character_count": len(script_text),
+        }
 
     # --- Alignment + words -------------------------------------------------
     def _parse_timestamps(self, response_json: Path, run_dir: Path) -> Dict[str, Path]:
@@ -2962,20 +3215,34 @@ class VideoGenerationPipeline:
                     temperature=0.5,
                     max_tokens=self._tier_config.get("director_max_tokens", 8000),
                 )
+                print(f"   ℹ️  Director raw response length: {len(raw)} chars")
                 director_plan = _extract_json_blob(raw)
+                print(f"   ℹ️  Director parsed keys: {list(director_plan.keys()) if isinstance(director_plan, dict) else type(director_plan).__name__}")
                 break
             except (ValueError, Exception) as e:
                 last_error = e
                 print(f"   ⚠️ Director attempt {attempt + 1}/{max_attempts} failed: {e}")
+                # Log first 500 chars of raw response if available for debugging
+                if 'raw' in dir():
+                    print(f"   ℹ️  Raw response preview: {raw[:500] if raw else '(empty)'}...")
                 time.sleep(2)
         else:
             print(f"   ❌ Director failed after {max_attempts} attempts — falling back to segment flow")
+            if last_error:
+                print(f"   ❌ Last error: {last_error}")
             return None
 
         # Validate the director plan
         shots = director_plan.get("shots", [])
         if not shots:
-            print("   ⚠️ Director returned empty shots list — falling back")
+            print(f"   ⚠️ Director returned empty shots list — falling back")
+            print(f"   ℹ️  Director plan contents: {json.dumps(director_plan, indent=2)[:1000]}")
+            # Save for debugging
+            try:
+                (run_dir / "director_debug.json").write_text(json.dumps({"raw": raw, "parsed": director_plan}, indent=2))
+                print(f"   ℹ️  Debug saved to {run_dir / 'director_debug.json'}")
+            except Exception:
+                pass
             return None
 
         # Validate shot types

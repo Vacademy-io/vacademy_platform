@@ -90,6 +90,7 @@ DEFAULT_PRICING = {
     "image": {"base_cost": Decimal("0.30"), "token_rate": Decimal("0"), "min_charge": Decimal("0.30"), "unit": "none"},
     "video": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
     "tts": {"base_cost": Decimal("0.02"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.02"), "unit": "characters"},
+    "tts_premium": {"base_cost": Decimal("0.04"), "token_rate": Decimal("0.00002"), "min_charge": Decimal("0.04"), "unit": "characters"},
 }
 
 

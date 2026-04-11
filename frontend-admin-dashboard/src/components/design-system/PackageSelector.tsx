@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 import { MagnifyingGlass, X, CaretRight, Info } from '@phosphor-icons/react';
 import { PACKAGE_AUTOCOMPLETE_URL } from '@/constants/urls';
 import { BatchForSession } from '@/types/payment-logs';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface PackageSelectorProps {
     instituteId: string;
@@ -497,13 +499,13 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
                 {/* 2. Level Selector */}
                 <div className="flex items-center gap-2">
                     <Label className="text-xs font-medium text-gray-700 uppercase tracking-wider whitespace-nowrap">
-                        2. Select Level
+                        2. Select {getTerminology(ContentTerms.Level, SystemTerms.Level)}
                     </Label>
                     <SelectChips
                         options={levelOptions}
                         selected={levelOptions.filter(o => o.value === levelId)}
                         onChange={handleLevelChange}
-                        placeholder="Choose Level"
+                        placeholder={`Choose ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`}
                         multiSelect={false}
                         className="w-auto min-w-[160px]"
                     />
@@ -512,13 +514,13 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
                 {/* 3. Session Selector */}
                 <div className="flex items-center gap-2">
                     <Label className="text-xs font-medium text-gray-700 uppercase tracking-wider whitespace-nowrap">
-                        3. Select Session
+                        3. Select {getTerminology(ContentTerms.Session, SystemTerms.Session)}
                     </Label>
                     <SelectChips
                         options={sessionOptions}
                         selected={sessionOptions.filter(o => o.value === sessionId)}
                         onChange={handleSessionChange}
-                        placeholder="Choose Session"
+                        placeholder={`Choose ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`}
                         multiSelect={false}
                         className="w-auto min-w-[160px]"
                     />
@@ -533,7 +535,7 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
                         <Info className="size-2.5 text-blue-600 fill-blue-600" />
                     </div>
                     <p className="text-xs text-blue-700 leading-relaxed font-normal">
-                        Start by searching for a <span className="font-bold">Package</span> to filter by level and session.
+                        Start by searching for a <span className="font-bold">{getTerminology(ContentTerms.Package, SystemTerms.Package)}</span> to filter by {getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()} and {getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}.
                     </p>
                 </div>
             )}

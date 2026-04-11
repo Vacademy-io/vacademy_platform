@@ -9,7 +9,9 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class InstituteService {
@@ -41,5 +43,16 @@ public class InstituteService {
     @Transactional(readOnly = true)
     public List<InstituteSearchProjection> searchInstitute(String searchName) {
         return instituteRepository.searchByQuery(searchName);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, String> getInstituteBranding(String instituteId) {
+        Institute institute = instituteRepository.findById(instituteId)
+                .orElseThrow(() -> new VacademyException("Institute not found"));
+        Map<String, String> branding = new HashMap<>();
+        branding.put("institute_id", institute.getId());
+        branding.put("institute_name", institute.getInstituteName());
+        branding.put("logo_file_id", institute.getLogoFileId());
+        return branding;
     }
 }

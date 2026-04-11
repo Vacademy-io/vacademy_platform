@@ -43,9 +43,14 @@ public class AssessmentLLMAnalyticsService {
             Integer totalMarks) {
 
         try {
-            // Use enrichment service to build data with full text content
+            // Derive instituteId from registration
+            String instituteId = studentAttempt.getRegistration() != null
+                    ? studentAttempt.getRegistration().getInstituteId() : null;
+
+            // Use enrichment service to build data with full text content + comparison context
             Map<String, Object> assessmentData = enrichmentService.buildEnrichedAssessmentData(
-                    studentAttempt, assessmentId, assessmentName, assessmentType, durationMinutes, totalMarks);
+                    studentAttempt, assessmentId, assessmentName, assessmentType, durationMinutes, totalMarks,
+                    instituteId);
 
             // Synchronous call to admin core service
             adminCoreServiceClient.saveAssessmentRawDataAsync(assessmentData);

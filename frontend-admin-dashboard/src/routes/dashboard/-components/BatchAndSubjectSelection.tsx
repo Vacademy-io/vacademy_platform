@@ -20,7 +20,7 @@ import type { PackageSessionDTO } from '@/routes/admin-package-management/-types
 import { fetchCourseStudyLibraryDetails } from '@/routes/study-library/courses/-services/getStudyLibraryDetails';
 import { MultiSelect } from '@/components/design-system/multi-select';
 import type { inviteUsersSchema } from './InviteUsersComponent';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const PAGE_SIZE = 10;
@@ -206,7 +206,7 @@ export default function BatchSubjectForm({ initialBatchId }: BatchSubjectFormPro
         <Card className="w-full">
             <CardHeader className="px-2 py-4">
                 <CardTitle>
-                    Select Batch and {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}s
+                    Select Batch and {getTerminologyPlural(ContentTerms.Subject, SystemTerms.Subject)}
                 </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 p-2">

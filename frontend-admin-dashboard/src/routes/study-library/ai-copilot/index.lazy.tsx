@@ -1222,18 +1222,18 @@ function RouteComponent() {
                     <div className="space-y-4 py-4">
                         {courseDepth > 4 && (
                             <div>
-                                <Label className="mb-2 block text-sm">Number of Subjects</Label>
+                                <Label className="mb-2 block text-sm">{`Number of ${getTerminologyPlural(ContentTerms.Subject, SystemTerms.Subject)}`}</Label>
                                 <Select
                                     value={numberOfSubjects}
                                     onValueChange={setNumberOfSubjects}
                                 >
                                     <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select subjects" />
+                                        <SelectValue placeholder={`Select ${getTerminologyPlural(ContentTerms.Subject, SystemTerms.Subject).toLowerCase()}`} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {[1, 2, 3, 4, 5, 6].map((num) => (
                                             <SelectItem key={num} value={num.toString()}>
-                                                {num} Subject{num > 1 ? 's' : ''}
+                                                {num} {num > 1 ? getTerminologyPlural(ContentTerms.Subject, SystemTerms.Subject) : getTerminology(ContentTerms.Subject, SystemTerms.Subject)}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -1615,7 +1615,7 @@ function RouteComponent() {
                                 {numberOfSubjects && (
                                     <div>
                                         <h4 className="mb-1 text-sm font-semibold text-neutral-900">
-                                            Number of Subjects
+                                            {`Number of ${getTerminologyPlural(ContentTerms.Subject, SystemTerms.Subject)}`}
                                         </h4>
                                         <p className="text-sm text-neutral-600">
                                             {numberOfSubjects}

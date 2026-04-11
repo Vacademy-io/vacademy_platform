@@ -76,6 +76,7 @@ export const ENROLL_USER_INVITE_PAYMENT_URL = `${ENROLL_API_BASE}/admin-core-ser
 export const ENROLL_DETAILS_RESPONSE = `${BASE_URL}/admin-core-service/learner-invitation-response/record`;
 export const STUDENT_DETAIL_EDIT = `${BASE_URL}/admin-core-service/learner/info/v1/edit`;
 export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/pdf`;
+export const EXPORT_AI_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/ai-pdf`;
 export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessment/learner/manual-status/submit`;
 
 export const ADD_UPDATE_VIDEO_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-video-activity`;
@@ -101,6 +102,7 @@ export const GET_PUBLIC_URL_PUBLIC = `${BASE_URL}/media-service/public/get-publi
 
 export const ACKNOWLEDGE_FOR_PUBLIC_URL = `${BASE_URL}/media-service/acknowledge-get-details`;
 export const GET_DASHBOARD_DATA = `${BASE_URL}/admin-core-service/learner/v1/get-dashboard-details`;
+export const ACCEPT_TNC = `${BASE_URL}/admin-core-service/learner/v1/accept-tnc`;
 export const GET_ASSESSMENT_COUNT = `${BASE_URL}/assessment-service/assessment/learner-assessment/v1/assessment-count-for-user-id`;
 export const GET_NOTIFCATIONS = `${BASE_URL}/`;
 export const GET_ANNOUNCEMENTS = `${BASE_URL}/`;

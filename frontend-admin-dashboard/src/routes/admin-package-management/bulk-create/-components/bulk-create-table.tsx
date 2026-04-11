@@ -31,6 +31,8 @@ import {
 import { BatchSelectorDialog } from './batch-selector-dialog';
 import { CourseContentDialog } from './course-content-dialog';
 import { cn } from '@/lib/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface BulkCreateTableProps {
     courses: BulkCourseItem[];
@@ -46,8 +48,8 @@ interface BulkCreateTableProps {
     getErrorsForCourse: (courseId: string) => ValidationError[];
 }
 
-const COURSE_TYPES: { value: CourseType; label: string }[] = [
-    { value: 'COURSE', label: 'Course' },
+const getCourseTypes = (): { value: CourseType; label: string }[] => [
+    { value: 'COURSE', label: getTerminology(ContentTerms.Course, SystemTerms.Course) },
     { value: 'MEMBERSHIP', label: 'Membership' },
     { value: 'PRODUCT', label: 'Product' },
     { value: 'SERVICE', label: 'Service' },
@@ -125,11 +127,11 @@ export function BulkCreateTable({
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-neutral-800">
-                    Courses ({courses.length})
+                    {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)} ({courses.length})
                 </h3>
                 <Button onClick={onAddCourse} size="sm" className="h-8">
                     <Plus className="mr-1 size-4" />
-                    Add Course
+                    Add {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                 </Button>
             </div>
 
@@ -138,10 +140,10 @@ export function BulkCreateTable({
                     <TableHeader>
                         <TableRow className="bg-neutral-50">
                             <TableHead className="w-10 text-center text-xs">#</TableHead>
-                            <TableHead className="min-w-[200px] text-xs">Course Name *</TableHead>
+                            <TableHead className="min-w-[200px] text-xs">{getTerminology(ContentTerms.Course, SystemTerms.Course)} Name *</TableHead>
                             <TableHead className="w-[120px] text-xs">Type</TableHead>
                             <TableHead className="min-w-[280px] text-xs">
-                                Batches (with Payment)
+                                {getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)} (with Payment)
                             </TableHead>
                             <TableHead className="min-w-[150px] text-xs">Tags</TableHead>
                             <TableHead className="w-[100px] text-xs">Content</TableHead>
@@ -194,7 +196,7 @@ export function BulkCreateTable({
                                                     course_name: e.target.value,
                                                 })
                                             }
-                                            placeholder="Enter course name"
+                                            placeholder={`Enter ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()} name`}
                                             className={cn(
                                                 'h-8 text-sm',
                                                 rowErrors.some((e) => e.field === 'course_name') &&
@@ -215,7 +217,7 @@ export function BulkCreateTable({
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {COURSE_TYPES.map((type) => (
+                                                {getCourseTypes().map((type) => (
                                                     <SelectItem key={type.value} value={type.value}>
                                                         {type.label}
                                                     </SelectItem>
@@ -471,7 +473,7 @@ export function BulkCreateTable({
             <div className="flex justify-center">
                 <Button variant="outline" onClick={onAddCourse} className="w-full max-w-xs">
                     <Plus className="mr-2 size-4" />
-                    Add Another Course
+                    Add Another {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                 </Button>
             </div>
 
@@ -492,7 +494,7 @@ export function BulkCreateTable({
                 <CourseContentDialog
                     open={contentDialogOpen}
                     onOpenChange={setContentDialogOpen}
-                    courseName={activeCourse.course_name || 'Untitled Course'}
+                    courseName={activeCourse.course_name || `Untitled ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`}
                     initialData={{
                         why_learn_html: activeCourse.why_learn_html,
                         who_should_learn_html: activeCourse.who_should_learn_html,

@@ -30,4 +30,5 @@ public class DomainRoutingUpsertRequest {
     private String macAppLink;
     private Boolean convertUsernamePasswordToLowercase;
     private String subOrgId;
+    private String commaSeparatedPreferredCountry;
 }

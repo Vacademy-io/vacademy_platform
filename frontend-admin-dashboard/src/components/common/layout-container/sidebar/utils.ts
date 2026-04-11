@@ -20,7 +20,7 @@ import {
     Code,
 } from '@phosphor-icons/react';
 import { StorageKey } from '@/constants/storage/storage';
-import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { NamingSettingsType } from '@/routes/settings/-constants/terms';
 import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
 
@@ -59,29 +59,46 @@ export const getTerminology = (key: string, defaultValue: string): string => {
     return setting?.customValue || defaultValue;
 };
 
-// Utility function to get pluralized terminology
+// Utility function to get pluralized terminology — uses stored customPluralValue
 export const getTerminologyPlural = (key: string, defaultValue: string): string => {
-    const singular = getTerminology(key, defaultValue);
-    // Simple pluralization: add 's' or 'es' based on ending
-    if (
-        singular.endsWith('s') ||
-        singular.endsWith('x') ||
-        singular.endsWith('z') ||
-        singular.endsWith('ch') ||
-        singular.endsWith('sh')
-    ) {
-        return `${singular}es`;
+    const settings = getNamingSettings();
+
+    if (!Array.isArray(settings)) {
+        return defaultValue;
     }
-    if (
-        singular.endsWith('y') &&
-        !['a', 'e', 'i', 'o', 'u'].includes(singular.charAt(singular.length - 2).toLowerCase())
-    ) {
-        return `${singular.slice(0, -1)}ies`;
+
+    const setting = settings.find((item) => item.key === key);
+    if (setting?.customPluralValue) {
+        return setting.customPluralValue;
     }
-    return `${singular}s`;
+
+    // Fallback: naive pluralization of the singular custom value (or default)
+    const singular = setting?.customValue || defaultValue;
+    return naivePluralize(singular);
 };
 
-export const SidebarItemsData: SidebarItemsType[] = [
+// Fallback pluralization for when customPluralValue is not set
+const naivePluralize = (word: string): string => {
+    if (
+        word.endsWith('s') ||
+        word.endsWith('x') ||
+        word.endsWith('z') ||
+        word.endsWith('ch') ||
+        word.endsWith('sh')
+    ) {
+        return `${word}es`;
+    }
+    if (
+        word.endsWith('y') &&
+        !['a', 'e', 'i', 'o', 'u'].includes(word.charAt(word.length - 2).toLowerCase())
+    ) {
+        return `${word.slice(0, -1)}ies`;
+    }
+    return `${word}s`;
+};
+
+// Re-evaluates on each call so naming settings changes are reflected immediately
+export const getSidebarItemsData = (): SidebarItemsType[] => [
     // CRM with ERP
     {
         icon: House,
@@ -112,12 +129,12 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemId: 'teams',
             },
             {
-                subItem: 'Inventory Management',
+                subItem: `${getTerminology(OtherTerms.Inventory, SystemTerms.Inventory)} Management`,
                 subItemLink: '/manage-inventory',
                 subItemId: 'inventory-management',
             },
             {
-                subItem: 'Manage Packages',
+                subItem: `Manage ${getTerminologyPlural(ContentTerms.Package, SystemTerms.Package)}`,
                 subItemLink: '/admin-package-management',
                 subItemId: 'manage-packages',
                 adminOnly: true,
@@ -136,7 +153,7 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemId: 'all-contacts',
             },
             {
-                subItem: 'Linked Course Contacts',
+                subItem: `Linked ${getTerminology(ContentTerms.Course, SystemTerms.Course)} Contacts`,
                 subItemLink: '/manage-students/students-list',
                 subItemId: 'linked-contacts',
             },
@@ -151,7 +168,7 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemId: 'link-tag',
             },
             {
-                subItem: 'Invite Users',
+                subItem: `${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Users`,
                 subItemLink: '/manage-students/invite',
                 subItemId: 'invite',
             },
@@ -220,7 +237,7 @@ export const SidebarItemsData: SidebarItemsType[] = [
         category: 'CRM',
         subItems: [
             {
-                subItem: 'Lead List',
+                subItem: `${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)} List`,
                 subItemLink: '/audience-manager/list',
                 subItemId: 'lead-list',
             },
@@ -235,7 +252,7 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemId: 'membership-expiry-sub',
             },
             {
-                subItem: 'Enrollment Stats',
+                subItem: `${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Stats`,
                 subItemLink: '/membership-stats',
                 subItemId: 'membership-stats-sub',
             },
@@ -319,24 +336,24 @@ export const SidebarItemsData: SidebarItemsType[] = [
     // LMS
     {
         icon: Books,
-        title: 'Courses',
+        title: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
         id: 'courses',
         to: '/study-library/courses',
         category: 'LMS',
     },
     {
         icon: PlusCircle,
-        title: 'Course Creation',
+        title: `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Creation`,
         id: 'course-creation',
         category: 'LMS',
         subItems: [
             {
-                subItem: 'Create new course from scratch',
+                subItem: `Create new ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()} from scratch`,
                 subItemLink: '/study-library/courses?action=create',
                 subItemId: 'create-course-scratch',
             },
             {
-                subItem: 'Create course from AI',
+                subItem: `Create ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()} from AI`,
                 subItemLink: '/study-library/ai-copilot',
                 subItemId: 'create-course-ai',
             },
@@ -344,12 +361,12 @@ export const SidebarItemsData: SidebarItemsType[] = [
     },
     {
         icon: Video,
-        title: 'Live Sessions',
+        title: getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession),
         id: 'live-sessions',
         category: 'LMS',
         subItems: [
             {
-                subItem: 'Scheduled Sessions',
+                subItem: `Scheduled ${getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession)}`,
                 subItemLink: '/study-library/live-session',
                 subItemId: 'scheduled-sessions',
             },
@@ -359,7 +376,7 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemId: 'create-live-session',
             },
             {
-                subItem: 'Session Attendance',
+                subItem: `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} Attendance`,
                 subItemLink: '/study-library/attendance-tracker',
                 subItemId: 'session-attendance',
             },
@@ -367,7 +384,7 @@ export const SidebarItemsData: SidebarItemsType[] = [
     },
     {
         icon: CalendarCheck,
-        title: 'Course Planning and Logbook',
+        title: `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Planning and Logbook`,
         id: 'course-planning-logging',
         category: 'LMS',
         subItems: [
@@ -382,7 +399,7 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemId: 'ai-lecture-planning',
             },
             {
-                subItem: 'Log Course Progress',
+                subItem: `Log ${getTerminology(ContentTerms.Course, SystemTerms.Course)} Progress`,
                 subItemLink: '/planning/activity-logs',
                 subItemId: 'log-course-progress',
             },
@@ -483,7 +500,7 @@ export const SidebarItemsData: SidebarItemsType[] = [
     },
     {
         icon: Robot,
-        title: 'AI Course Creator',
+        title: `AI ${getTerminology(ContentTerms.Course, SystemTerms.Course)} Creator`,
         id: 'ai-copilot-tab',
         category: 'AI',
         to: '/study-library/ai-copilot',
@@ -503,3 +520,6 @@ export const SidebarItemsData: SidebarItemsType[] = [
         to: '/video-api-studio',
     },
 ];
+
+/** @deprecated Use getSidebarItemsData() instead — this static reference won't reflect naming changes */
+export const SidebarItemsData: SidebarItemsType[] = getSidebarItemsData();

@@ -26,10 +26,17 @@ import {
   parseDropdownOptions,
 } from "../-utils/custom-field-helpers";
 import { capitalise } from "@/utils/custom-field";
+
+const getPlaceholder = (name: string) => {
+  const lower = name.toLowerCase().trim();
+  if (lower === "name") return "Full Name";
+  return capitalise(name);
+};
 import {
   getCountryCode,
   findCountryFieldKey,
 } from "../-utils/country-code-mapping";
+import { getCachedPreferredCountries } from "@/services/domain-routing";
 import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
 // Replace heavy country-state-city with lightweight country-region-data
 // import { State, City } from "country-state-city";
@@ -180,15 +187,19 @@ const RegistrationStep = ({
     control: form.control,
   });
 
-  // Determine the phone country code based on country field value
+  // Determine the phone country code based on country field value.
+  // Falls back to the institute's first configured preferred country (from
+  // domain routing) so the phone input defaults match the institute settings.
   const getPhoneCountryCode = (): string => {
+    const preferred = getCachedPreferredCountries();
+    const fallback = preferred[0] ?? "gb";
     if (countryFieldKey && formValues) {
       const countryField = formValues[countryFieldKey];
       if (countryField && typeof countryField.value === "string") {
-        return getCountryCode(countryField.value, "in");
+        return getCountryCode(countryField.value, fallback);
       }
     }
-    return "gb"; // Default to United Kingdom
+    return fallback;
   };
 
   // Memoize state and city options to prevent recalculation on every render
@@ -574,7 +585,7 @@ const RegistrationStep = ({
                             <FormControl>
                               <MyInput
                                 inputType="email"
-                                inputPlaceholder={value.name}
+                                inputPlaceholder={getPlaceholder(value.name)}
                                 input={field.value}
                                 onChangeFunction={field.onChange}
                                 required={value.is_mandatory}
@@ -698,7 +709,7 @@ const RegistrationStep = ({
                           <FormControl>
                             <MyInput
                               inputType={getInputType(value.type, renderType)}
-                              inputPlaceholder={value.name}
+                              inputPlaceholder={getPlaceholder(value.name)}
                               input={field.value}
                               onChangeFunction={field.onChange}
                               required={value.is_mandatory}

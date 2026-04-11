@@ -11,8 +11,8 @@ import { InviteLinkDataInterface } from '@/schemas/study-library/invite-links-sc
 import { getDateFromUTCString } from '@/constants/helper';
 import { useState, useMemo, useCallback } from 'react';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { removeDefaultPrefix } from '@/utils/helpers/removeDefaultPrefix';
 import { Filters } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/myFilter';
 import { StudentSearchBox } from '@/components/common/student-search-box';
@@ -155,7 +155,7 @@ export const Invite = () => {
     return (
         <div className="flex w-full flex-col gap-10">
             <div className="flex items-center justify-between">
-                <p className="text-h3 font-semibold">Invite Link List</p>
+                <p className="text-h3 font-semibold">{`${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link List`}</p>
                 <CreateInvite />
             </div>
 

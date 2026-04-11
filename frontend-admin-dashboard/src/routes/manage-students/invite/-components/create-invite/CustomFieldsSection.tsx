@@ -6,6 +6,8 @@ import { useFieldArray, useFormContext } from 'react-hook-form';
 import { InviteForm } from '../../-schema/InviteFormSchema';
 import { MandatoryKeys } from '../../-utils/inviteLinkKeyChecks';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface CustomFieldsSectionProps {
     toggleIsRequired: (id: number) => void;
@@ -41,7 +43,7 @@ export const CustomFieldsSection = ({
 
     return (
         <div className="flex flex-col gap-4">
-            <p className="text-title font-semibold">Invite input field</p>
+            <p className="text-title font-semibold">{`${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} input field`}</p>
             <Sortable
                 value={fields}
                 onMove={({ activeIndex, overIndex }) => {

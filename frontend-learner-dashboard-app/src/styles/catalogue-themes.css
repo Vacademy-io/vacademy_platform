@@ -12,13 +12,12 @@
  */
 
 /* =============================================
-   THEME: default (Blue — no override needed, matches system default)
+   THEME: default — intentionally no overrides so the catalogue
+   inherits the institute's root --primary-* from index.css.
+   Previously hardcoded to blue; that caused every catalogue with
+   no explicit preset to ignore the institute's brand color.
    ============================================= */
 [data-catalogue-theme="default"] {
-  --primary-50: 219 100% 97%;
-  --primary-200: 213 94% 87%;
-  --primary-400: 217 91% 68%;
-  --primary-500: 217 91% 60%;
   --primary-foreground: 0 0% 100%;
 }
 

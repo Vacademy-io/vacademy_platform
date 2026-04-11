@@ -25,6 +25,8 @@ import CampaignLink from './CampaignLink';
 import { CampaignItem } from '../../-services/get-campaigns-list';
 import { getCampaignCustomFields } from '../../-utils/getCampaignCustomFields';
 import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const parseEmailsFromCsv = (value?: string | null) => {
     if (!value) return [];
@@ -954,7 +956,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             : 'Save Changes'
         : isSaving
           ? 'Creating...'
-          : 'Create Campaign';
+          : `Create ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)}`;
 
     // Show loading state while fetching campaign data
     if (isEditMode && isLoadingCampaign) {

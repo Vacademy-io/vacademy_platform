@@ -1,6 +1,8 @@
 import { MyButton } from '@/components/design-system/button';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import { DotsThree } from '@phosphor-icons/react';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface MenuOptionsProps {
     onDelete: () => void;
@@ -8,12 +10,14 @@ interface MenuOptionsProps {
 }
 
 export const MenuOptions = ({ onDelete, onEdit }: MenuOptionsProps) => {
-    const DropdownList = ['Edit Subject', 'Delete Subject'];
+    const editLabel = `Edit ${getTerminology(ContentTerms.Subject, SystemTerms.Subject)}`;
+    const deleteLabel = `Delete ${getTerminology(ContentTerms.Subject, SystemTerms.Subject)}`;
+    const DropdownList = [editLabel, deleteLabel];
 
     const handleMenuOptionsChange = (value: string) => {
-        if (value === 'Delete Subject') {
+        if (value === deleteLabel) {
             onDelete();
-        } else if (value === 'Edit Subject') {
+        } else if (value === editLabel) {
             onEdit();
         }
     };

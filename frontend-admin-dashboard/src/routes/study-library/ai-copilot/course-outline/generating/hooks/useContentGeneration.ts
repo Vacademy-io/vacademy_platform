@@ -679,7 +679,7 @@ export const useContentGeneration = (
                                         aiVideoData: aiVideoData ?? parsed[slideIndex].aiVideoData,
                                     };
 
-                                    localStorage.setItem('generatedSlides', JSON.stringify(parsed));
+                                  localStorage.setItem('generatedSlides', JSON.stringify(parsed)); 
                                     console.log(
                                         `✅ [${update.path}] Updated localStorage for slide: ${mappedSlide!.id}`
                                     );

@@ -345,7 +345,7 @@ function RouteComponent() {
                         });
 
                         if (hasChanges) {
-                            localStorage.setItem('generatedSlides', JSON.stringify(parsedSlides));
+                            try { localStorage.setItem('generatedSlides', JSON.stringify(parsedSlides)); } catch (e) { console.warn('localStorage quota exceeded for generatedSlides'); }
                             console.log('💾 Viewer: Updated localStorage with corrected slide statuses');
                         }
 

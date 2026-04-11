@@ -9,6 +9,8 @@ interface FileUploaderProps {
     onFileSelected: (file: File) => void;
     onUploadComplete?: (audioUrl: string) => void;
     maxSize?: number; // in MB
+    acceptFormats?: Record<string, string[]>;
+    acceptMsg?: string;
 }
 
 const ACCEPTED_FORMATS = {
@@ -24,6 +26,13 @@ export function FileUploader({
     onFileSelected,
     onUploadComplete,
     maxSize = 100,
+    acceptFormats = {
+        'audio/mpeg': ['.mp3'],
+        'audio/wav': ['.wav'],
+        'audio/mp4': ['.m4a'],
+        'audio/ogg': ['.ogg'],
+    },
+    acceptMsg = 'Supported formats: MP3, WAV, M4A, OGG',
 }: FileUploaderProps) {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -38,7 +47,7 @@ export function FileUploader({
                 if (rejection?.errors[0]?.code === 'file-too-large') {
                     setError(`File is too large. Maximum size is ${maxSize}MB.`);
                 } else if (rejection?.errors[0]?.code === 'file-invalid-type') {
-                    setError('Invalid file type. Please upload MP3, WAV, M4A, or OGG files.');
+                    setError(`Invalid file type. ${acceptMsg}`);
                 } else {
                     setError('Failed to upload file. Please try again.');
                 }
@@ -58,8 +67,8 @@ export function FileUploader({
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
-        accept: ACCEPTED_FORMATS,
-        maxSize: MAX_FILE_SIZE,
+        accept: acceptFormats,
+        maxSize: maxSize * 1024 * 1024,
         multiple: false,
     });
 
@@ -92,11 +101,11 @@ export function FileUploader({
                     <input {...getInputProps()} />
                     <UploadSimple size={48} className="mx-auto mb-4 text-gray-400" />
                     <p className="mb-2 text-lg font-medium text-gray-700">
-                        {isDragActive ? 'Drop the file here' : 'Drag & drop an audio file here'}
+                        {isDragActive ? 'Drop the file here' : 'Drag & drop a file here'}
                     </p>
                     <p className="mb-4 text-sm text-gray-500">or click to browse</p>
                     <p className="text-xs text-gray-400">
-                        Supported formats: MP3, WAV, M4A, OGG (Max {maxSize}MB)
+                        {acceptMsg} (Max {maxSize}MB)
                     </p>
                 </div>
             ) : (

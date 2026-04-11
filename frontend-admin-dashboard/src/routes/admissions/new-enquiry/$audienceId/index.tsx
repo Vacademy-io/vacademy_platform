@@ -19,6 +19,8 @@ import {
 import { ArrowLeft, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { MAX_LENGTH, isValidEmail, isValidPhone, isNonEmpty } from '@/utils/form-validation';
+import PhoneNumberInput from '@/components/design-system/phone-number-input';
 import { handleFetchEnquiriesList } from '../../enquiries/-services/get-enquiries-list';
 import {
     SubmitEnquiryRequest,
@@ -126,12 +128,28 @@ function NewEnquiryForm() {
         e.preventDefault();
 
         // Validation
-        if (!formData.parentEmail) {
+        if (!isNonEmpty(formData.childFullName)) {
+            toast.error('Child name is required');
+            return;
+        }
+        if (!isNonEmpty(formData.parentName)) {
+            toast.error('Parent name is required');
+            return;
+        }
+        if (!isNonEmpty(formData.parentEmail)) {
             toast.error('Parent email is required');
             return;
         }
-        if (!formData.childFullName) {
-            toast.error('Child name is required');
+        if (!isValidEmail(formData.parentEmail)) {
+            toast.error('Please enter a valid email address');
+            return;
+        }
+        if (!isNonEmpty(formData.parentMobile)) {
+            toast.error('Parent mobile is required');
+            return;
+        }
+        if (!isValidPhone(formData.parentMobile)) {
+            toast.error('Please enter a valid phone number');
             return;
         }
         if (!formData.parentRelationWithChild) {
@@ -243,6 +261,7 @@ function NewEnquiryForm() {
                                     }
                                     placeholder="Enter student's full name"
                                     required
+                                    maxLength={MAX_LENGTH.NAME}
                                 />
                             </div>
 
@@ -332,6 +351,7 @@ function NewEnquiryForm() {
                                     }
                                     placeholder="Enter parent name"
                                     required
+                                    maxLength={MAX_LENGTH.NAME}
                                 />
                             </div>
                             <div>
@@ -347,22 +367,23 @@ function NewEnquiryForm() {
                                     }
                                     placeholder="Enter parent email"
                                     required
+                                    maxLength={MAX_LENGTH.EMAIL}
+                                    className={formData.parentEmail && !isValidEmail(formData.parentEmail) ? 'border-red-400 focus:border-red-500 focus:ring-red-300' : ''}
                                 />
+                                {formData.parentEmail && !isValidEmail(formData.parentEmail) && (
+                                    <span className="text-xs text-red-500">Enter a valid email address</span>
+                                )}
                             </div>
-                            <div>
-                                <Label htmlFor="parentMobile">
-                                    Parent Mobile <span className="text-red-500">*</span>
-                                </Label>
-                                <Input
-                                    id="parentMobile"
-                                    value={formData.parentMobile}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, parentMobile: e.target.value })
-                                    }
-                                    placeholder="Enter parent mobile"
-                                    required
-                                />
-                            </div>
+                            <PhoneNumberInput
+                                name="parentMobile"
+                                value={formData.parentMobile}
+                                onChange={(_name, value) =>
+                                    setFormData({ ...formData, parentMobile: value })
+                                }
+                                label="Parent Mobile"
+                                required
+                                placeholder="Enter parent mobile"
+                            />
                             <div>
                                 <Label htmlFor="parentRelationWithChild">
                                     Relation with Child <span className="text-red-500">*</span>
@@ -399,6 +420,7 @@ function NewEnquiryForm() {
                                         setFormData({ ...formData, parentAddress: e.target.value })
                                     }
                                     placeholder="Enter complete address"
+                                    maxLength={MAX_LENGTH.ADDRESS}
                                 />
                             </div>
                         </div>
@@ -413,6 +435,7 @@ function NewEnquiryForm() {
                                         setFormData({ ...formData, parentCity: e.target.value })
                                     }
                                     placeholder="Enter city"
+                                    maxLength={MAX_LENGTH.GENERAL}
                                 />
                             </div>
                             <div>
@@ -424,6 +447,7 @@ function NewEnquiryForm() {
                                         setFormData({ ...formData, parentRegion: e.target.value })
                                     }
                                     placeholder="Enter state/region"
+                                    maxLength={MAX_LENGTH.GENERAL}
                                 />
                             </div>
                             <div>
@@ -431,10 +455,13 @@ function NewEnquiryForm() {
                                 <Input
                                     id="parentPinCode"
                                     value={formData.parentPinCode}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, parentPinCode: e.target.value })
-                                    }
+                                    onChange={(e) => {
+                                        const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+                                        setFormData({ ...formData, parentPinCode: digits });
+                                    }}
                                     placeholder="Enter pin code"
+                                    maxLength={MAX_LENGTH.PINCODE}
+                                    inputMode="numeric"
                                 />
                             </div>
                         </div>
@@ -509,6 +536,7 @@ function NewEnquiryForm() {
                                         })
                                     }
                                     placeholder="e.g., Friend's name, advertisement campaign"
+                                    maxLength={MAX_LENGTH.GENERAL}
                                 />
                             </div>
                             <div>
@@ -537,6 +565,7 @@ function NewEnquiryForm() {
                                         setFormData({ ...formData, feeExpectation: e.target.value })
                                     }
                                     placeholder="e.g., 50000-100000"
+                                    maxLength={MAX_LENGTH.GENERAL}
                                 />
                             </div>
                             <div>
@@ -639,6 +668,7 @@ function NewEnquiryForm() {
                                 }
                                 placeholder="Enter any additional notes or comments"
                                 rows={4}
+                                maxLength={MAX_LENGTH.NOTES}
                             />
                         </div>
                     </CardContent>

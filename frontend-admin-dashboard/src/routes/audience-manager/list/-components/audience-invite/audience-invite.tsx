@@ -27,6 +27,8 @@ import { Badge } from '@/components/ui/badge';
 import { ApiIntegrationDialog } from '../api-integration-dialog/ApiIntegrationDialog';
 import { EmbedCodeDialog } from '../embed-code-dialog/EmbedCodeDialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE' | 'DRAFT';
 
@@ -129,7 +131,7 @@ export const AudienceInvite = () => {
     return (
         <div className="flex w-full flex-col gap-6 md:gap-10">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xl font-semibold md:text-h3">Campaign List</p>
+                <p className="text-xl font-semibold md:text-h3">{`${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)} List`}</p>
 
                 <Button
                     onClick={() => {
@@ -138,7 +140,7 @@ export const AudienceInvite = () => {
                     }}
                     className="w-full sm:w-auto"
                 >
-                    <Plus className="mr-2 size-4" /> Add Campaign
+                    <Plus className="mr-2 size-4" /> {`Add ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)}`}
                 </Button>
             </div>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -148,11 +150,11 @@ export const AudienceInvite = () => {
                     </div>
                     <Input
                         type="text"
-                        placeholder="Search Campaign"
+                        placeholder={`Search ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)}`}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="h-10 w-full pl-10"
-                        aria-label="Search Campaign"
+                        aria-label={`Search ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)}`}
                     />
                 </div>
                 <div className="w-full sm:w-[180px]">

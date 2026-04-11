@@ -11,6 +11,8 @@ import { CourseFormData } from '@/components/common/study-library/add-course/add
 import { useCopyStudyMaterialFromSession } from '../../../manage-students/students-list/-services/copyStudyMaterialFromSession';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { Plus } from '@phosphor-icons/react';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface FormData {
     // Course step
@@ -277,12 +279,12 @@ export const CreateBatchDialog = () => {
         <CreateLevelStep key="level" />,
     ];
 
-    const stepTitles = ['Select Course', 'Select Session', 'Select Level'];
+    const stepTitles = [`Select ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`, `Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`, `Select ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`];
 
     return (
         <MyDialog
             trigger={triggerButton}
-            heading={`Create Batch - Step ${currentStep + 1}: ${stepTitles[currentStep]}`}
+            heading={`Create ${getTerminology(ContentTerms.Batch, SystemTerms.Batch)} - Step ${currentStep + 1}: ${stepTitles[currentStep]}`}
             footer={footer}
             dialogWidth="w-[600px]"
             open={openManageBatchDialog}

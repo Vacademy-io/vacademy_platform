@@ -1,6 +1,7 @@
 import { getUserId } from "@/constants/getUserId";
-import { GET_AI_PROCESSED_LOGS } from "@/constants/urls";
+import { GET_AI_PROCESSED_LOGS, LEARNER_REPORT_COMPARISON_URL } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { Preferences } from "@capacitor/preferences";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { AxiosResponse } from "axios";
 import { useEffect, useState } from "react";
@@ -13,6 +14,7 @@ import { addHours, format } from "date-fns";
 const aiReportParamsSchema = z.object({
   assessmentId: z.string(),
   assessmentName: z.string(),
+  attemptId: z.string().optional(),
 });
 
 export const Route = createFileRoute("/assessment/reports/ai-report/")({
@@ -39,29 +41,68 @@ interface ParsedProcessedJSON {
   flashcards: { front: string; back: string }[];
   weaknesses: Record<string, number>;
   strengths: Record<string, number>;
+  // New AI sections (optional — backward compatible)
+  confidence_estimation?: {
+    overall_confidence: number;
+    high_confidence_correct: number;
+    high_confidence_wrong: number;
+    low_confidence_correct: number;
+    guessed_correct: number;
+    insight: string;
+  };
+  topic_analysis?: {
+    topic: string;
+    questions_count: number;
+    correct: number;
+    accuracy: number;
+    avg_time_seconds: number;
+    mastery_level: string;
+  }[];
+  misconception_analysis?: {
+    question_summary: string;
+    student_answer: string;
+    correct_answer: string;
+    misconception: string;
+    remediation: string;
+  }[];
+  blooms_taxonomy?: Record<string, { total: number; correct: number }>;
+  behavioral_insights?: {
+    time_management?: string;
+    difficulty_response?: string;
+    fatigue_indicator?: string;
+    skip_pattern?: string;
+  };
+  recommended_learning_path?: {
+    priority: number;
+    topic: string;
+    current_level: string;
+    target_level: string;
+    suggestion: string;
+    estimated_time: string;
+  }[];
 }
 
 function RouteComponent() {
   const route = useRouter();
-  const { assessmentId, assessmentName } = route.state.location.search;
+  const { assessmentId, assessmentName, attemptId } = route.state.location.search;
   const [parsedProcessedJSON, setParsedProcessedJSON] =
     useState<ParsedProcessedJSON | null>(null);
+  const [comparisonData, setComparisonData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchAIReport() {
       try {
         const userId = await getUserId();
+
+        // Fetch AI processed data
         const response: AxiosResponse<{
           activity_logs: AIReportData[];
           count: number;
         }> = await authenticatedAxiosInstance({
           method: "GET",
           url: GET_AI_PROCESSED_LOGS,
-          params: {
-            userId: userId,
-            sourceId: assessmentId,
-          },
+          params: { userId, sourceId: assessmentId },
         });
         if (response.status !== 200) {
           throw new Error("Failed to fetch student report");
@@ -70,7 +111,22 @@ function RouteComponent() {
           response.data.activity_logs[0]?.processed_json || ""
         );
         setParsedProcessedJSON(json);
-        console.log("Student Report Data:", response.data);
+
+        // Fetch comparison data (rank, leaderboard, you vs class)
+        if (attemptId) {
+          try {
+            const stored = await Preferences.get({ key: "InstituteDetails" });
+            const instId = JSON.parse(stored.value || "{}").id || "";
+            const compRes = await authenticatedAxiosInstance({
+              method: "GET",
+              url: LEARNER_REPORT_COMPARISON_URL,
+              params: { assessmentId, attemptId, instituteId: instId },
+            });
+            if (compRes.status === 200) setComparisonData(compRes.data);
+          } catch (e) {
+            console.warn("Failed to fetch comparison data for AI report:", e);
+          }
+        }
       } catch (error) {
         console.error("Error fetching student report:", error);
       } finally {
@@ -118,6 +174,8 @@ function RouteComponent() {
             report={parsedProcessedJSON}
             assessmentId={assessmentId as string}
             assessmentName={assessmentName as string}
+            attemptId={attemptId as string}
+            comparisonData={comparisonData}
           />
         )}
       </LayoutContainer>

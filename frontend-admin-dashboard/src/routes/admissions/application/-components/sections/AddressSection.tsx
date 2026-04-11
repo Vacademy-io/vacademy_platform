@@ -1,7 +1,6 @@
 import React from 'react';
 import { Registration, AddressInfo } from '../../../-types/registration-types';
 import { MapPin } from '@phosphor-icons/react';
-import { Input } from '@/components/ui/input';
 import {
     Select,
     SelectContent,
@@ -9,8 +8,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { MAX_LENGTH, INDIAN_STATES, COUNTRY_OPTIONS } from '@/utils/form-validation';
 
 interface SectionProps {
     formData: Partial<Registration>;
@@ -60,8 +59,7 @@ export const AddressSection: React.FC<SectionProps> = ({ formData, updateFormDat
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                     <div>
                         <label className="mb-1 block text-sm font-medium text-neutral-700">
-                            House No / Flat No / Building Name{' '}
-                            <span className="text-red-500">*</span>
+                            House No / Flat No / Building Name
                         </label>
                         <input
                             type="text"
@@ -70,6 +68,7 @@ export const AddressSection: React.FC<SectionProps> = ({ formData, updateFormDat
                             value={data.houseNo || ''}
                             onChange={(e) => updateField('houseNo', e.target.value)}
                             disabled={disabled}
+                            maxLength={MAX_LENGTH.GENERAL}
                         />
                     </div>
                     <div>
@@ -83,6 +82,7 @@ export const AddressSection: React.FC<SectionProps> = ({ formData, updateFormDat
                             value={data.street || ''}
                             onChange={(e) => updateField('street', e.target.value)}
                             disabled={disabled}
+                            maxLength={MAX_LENGTH.ADDRESS}
                         />
                     </div>
                     <div>
@@ -96,6 +96,7 @@ export const AddressSection: React.FC<SectionProps> = ({ formData, updateFormDat
                             value={data.area || ''}
                             onChange={(e) => updateField('area', e.target.value)}
                             disabled={disabled}
+                            maxLength={MAX_LENGTH.ADDRESS}
                         />
                     </div>
                 </div>
@@ -112,6 +113,7 @@ export const AddressSection: React.FC<SectionProps> = ({ formData, updateFormDat
                             value={data.landmark || ''}
                             onChange={(e) => updateField('landmark', e.target.value)}
                             disabled={disabled}
+                            maxLength={MAX_LENGTH.GENERAL}
                         />
                     </div>
                     <div className="grid grid-cols-2 gap-6">
@@ -126,6 +128,7 @@ export const AddressSection: React.FC<SectionProps> = ({ formData, updateFormDat
                                 value={data.city || ''}
                                 onChange={(e) => updateField('city', e.target.value)}
                                 disabled={disabled}
+                                maxLength={MAX_LENGTH.GENERAL}
                             />
                         </div>
                         <div>
@@ -141,10 +144,11 @@ export const AddressSection: React.FC<SectionProps> = ({ formData, updateFormDat
                                     <SelectValue placeholder="Select state" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="Madhya Pradesh">Madhya Pradesh</SelectItem>
-                                    <SelectItem value="Maharashtra">Maharashtra</SelectItem>
-                                    <SelectItem value="Delhi">Delhi</SelectItem>
-                                    {/* Add more states as needed */}
+                                    {INDIAN_STATES.map((state) => (
+                                        <SelectItem key={state} value={state}>
+                                            {state}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -162,16 +166,19 @@ export const AddressSection: React.FC<SectionProps> = ({ formData, updateFormDat
                             placeholder="e.g., 462001"
                             value={data.pinCode || data.pincode || ''}
                             onChange={(e) => {
-                                updateField('pinCode', e.target.value);
-                                updateField('pincode', e.target.value);
+                                const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+                                updateField('pinCode', digits);
+                                updateField('pincode', digits);
                             }}
                             disabled={disabled}
+                            maxLength={MAX_LENGTH.PINCODE}
+                            inputMode="numeric"
                         />
                         <p className="mt-1 text-xs text-neutral-500">6 digits</p>
                     </div>
                     <div>
                         <Label className="mb-1 block text-sm font-medium text-neutral-700">
-                            Country
+                            Country <span className="text-red-500">*</span>
                         </Label>
                         <Select
                             value={data.country || 'India'}
@@ -182,8 +189,11 @@ export const AddressSection: React.FC<SectionProps> = ({ formData, updateFormDat
                                 <SelectValue placeholder="Select country" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="India">India</SelectItem>
-                                <SelectItem value="Other">Other</SelectItem>
+                                {COUNTRY_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt} value={opt}>
+                                        {opt}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>

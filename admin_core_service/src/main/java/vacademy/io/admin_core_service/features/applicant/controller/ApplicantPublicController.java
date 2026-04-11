@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.applicant.controller;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -43,7 +44,7 @@ public class ApplicantPublicController {
      * (direct) submissions. workflowType is hardcoded to APPLICATION on the backend.
      */
     @PostMapping("/apply")
-    public ResponseEntity<ApplyResponseDTO> submitApplication(@RequestBody ApplyRequestDTO request) {
+    public ResponseEntity<ApplyResponseDTO> submitApplication(@Valid @RequestBody ApplyRequestDTO request) {
         logger.info("Request to submit application. InstituteId: {}, Source: {}, SourceId: {}, EnquiryId: {}",
                 request.getInstituteId(), request.getSource(), request.getSourceId(), request.getEnquiryId());
         request.setWorkflowType("APPLICATION");

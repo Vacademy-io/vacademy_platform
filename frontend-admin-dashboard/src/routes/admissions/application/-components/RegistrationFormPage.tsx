@@ -34,6 +34,7 @@ import {
 } from '../../-services/applicant-services';
 import { getCustomFieldSettings } from '@/services/custom-field-settings';
 import { toast } from 'sonner';
+import { isValidEmail, isValidPincode, isNonEmpty, normalizePhoneForInput } from '@/utils/form-validation';
 
 interface FormSection {
     id: string;
@@ -276,7 +277,7 @@ export function RegistrationFormPage() {
                 
                 parentUpdates[infoKey] = {
                     name: parentData.name || '',
-                    mobile: parentData.phone || '',
+                    mobile: normalizePhoneForInput(parentData.phone),
                     email: parentData.email || '',
                     occupation: '',
                     annualIncome: '',
@@ -321,7 +322,7 @@ export function RegistrationFormPage() {
         if (type === 'father') {
             updates.fatherInfo = {
                 name: parentData.name || '',
-                mobile: parentData.phone || '',
+                mobile: normalizePhoneForInput(parentData.phone),
                 email: parentData.email || '',
                 occupation: '',
                 annualIncome: '',
@@ -329,7 +330,7 @@ export function RegistrationFormPage() {
         } else {
             updates.motherInfo = {
                 name: parentData.name || '',
-                mobile: parentData.phone || '',
+                mobile: normalizePhoneForInput(parentData.phone),
                 email: parentData.email || '',
                 occupation: '',
                 annualIncome: '',
@@ -397,10 +398,7 @@ export function RegistrationFormPage() {
             icon: <GraduationCap size={20} />,
             isComplete: Boolean(
                 formData.applyingForClass &&
-                formData.preferredBoard &&
-                formData.previousSchoolName &&
-                formData.previousSchoolBoard &&
-                formData.lastClassAttended
+                formData.preferredBoard
             ),
             hasErrors: false,
         },
@@ -421,12 +419,12 @@ export function RegistrationFormPage() {
             shortLabel: 'Address',
             icon: <MapPin size={20} />,
             isComplete: Boolean(
-                formData.currentAddress?.houseNo &&
                 formData.currentAddress?.street &&
                 formData.currentAddress?.area &&
                 formData.currentAddress?.city &&
                 formData.currentAddress?.state &&
-                (formData.currentAddress?.pincode || formData.currentAddress?.pinCode)
+                (formData.currentAddress?.pincode || formData.currentAddress?.pinCode) &&
+                (formData.currentAddress?.country)
             ),
             hasErrors: false,
         },
@@ -475,8 +473,89 @@ export function RegistrationFormPage() {
     const handleSubmit = async () => {
         setIsSaving(true);
         try {
+            // Validate all required fields (matching * markers in UI)
+            if (!isNonEmpty(formData.studentName)) {
+                toast.warning('Student name is required');
+                setActiveSection(0);
+                setIsSaving(false);
+                return;
+            }
+            if (!isNonEmpty(formData.dateOfBirth)) {
+                toast.warning('Date of birth is required');
+                setActiveSection(0);
+                setIsSaving(false);
+                return;
+            }
+            if (!formData.gender) {
+                toast.warning('Gender is required');
+                setActiveSection(0);
+                setIsSaving(false);
+                return;
+            }
+            if (!formData.nationality) {
+                toast.warning('Nationality is required');
+                setActiveSection(0);
+                setIsSaving(false);
+                return;
+            }
+            if (!formData.category) {
+                toast.warning('Category is required');
+                setActiveSection(0);
+                setIsSaving(false);
+                return;
+            }
             if (!formData.applyingForClass) {
                 toast.warning('Please select a class/grade from the Academic Info section');
+                setActiveSection(1);
+                setIsSaving(false);
+                return;
+            }
+            if (!formData.preferredBoard) {
+                toast.warning('Board preference is required');
+                setActiveSection(1);
+                setIsSaving(false);
+                return;
+            }
+            // Parent: at least one parent with name + mobile
+            const hasFather = isNonEmpty(formData.fatherInfo?.name) && isNonEmpty(formData.fatherInfo?.mobile);
+            const hasMother = isNonEmpty(formData.motherInfo?.name) && isNonEmpty(formData.motherInfo?.mobile);
+            if (!hasFather && !hasMother) {
+                toast.warning('At least one parent (father or mother) with name and mobile is required');
+                setActiveSection(2);
+                setIsSaving(false);
+                return;
+            }
+            // Email validation
+            if (formData.fatherInfo?.email && !isValidEmail(formData.fatherInfo.email)) {
+                toast.warning('Father email address is invalid');
+                setActiveSection(2);
+                setIsSaving(false);
+                return;
+            }
+            if (formData.motherInfo?.email && !isValidEmail(formData.motherInfo.email)) {
+                toast.warning('Mother email address is invalid');
+                setActiveSection(2);
+                setIsSaving(false);
+                return;
+            }
+            // Address validation (fields marked with *)
+            const addr = formData.currentAddress;
+            if (!isNonEmpty(addr?.street) || !isNonEmpty(addr?.area) || !isNonEmpty(addr?.city) || !isNonEmpty(addr?.state)) {
+                toast.warning('Please fill all required address fields (Street, Area, City, State)');
+                setActiveSection(3);
+                setIsSaving(false);
+                return;
+            }
+            if (!isNonEmpty(addr?.country)) {
+                toast.warning('Country is required');
+                setActiveSection(3);
+                setIsSaving(false);
+                return;
+            }
+            const pincode = addr?.pinCode || addr?.pincode || '';
+            if (!pincode || !isValidPincode(pincode)) {
+                toast.warning('Please enter a valid 6-digit pincode');
+                setActiveSection(3);
                 setIsSaving(false);
                 return;
             }

@@ -10,6 +10,17 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import {
+    MAX_LENGTH,
+    GENDER_OPTIONS,
+    NATIONALITY_OPTIONS,
+    RELIGION_OPTIONS,
+    CATEGORY_OPTIONS,
+    BLOOD_GROUP_OPTIONS,
+    MOTHER_TONGUE_OPTIONS,
+    ID_TYPE_OPTIONS,
+} from '@/utils/form-validation';
+import AadhaarInput from '@/components/design-system/aadhaar-input';
 
 interface SectionProps {
     formData: Partial<Registration>;
@@ -38,6 +49,7 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                         placeholder="Enter student's full name"
                         value={formData.studentName || ''}
                         onChange={(e) => updateFormData({ studentName: e.target.value })}
+                        maxLength={MAX_LENGTH.NAME}
                     />
                 </div>
 
@@ -57,7 +69,7 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                             Gender <span className="text-red-500">*</span>
                         </label>
                         <div className="flex gap-4 pt-2">
-                            {['MALE', 'FEMALE', 'OTHER'].map((gender) => (
+                            {GENDER_OPTIONS.map((gender) => (
                                 <label key={gender} className="flex items-center gap-2">
                                     <input
                                         type="radio"
@@ -93,8 +105,11 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                                 <SelectValue placeholder="Select nationality" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="Indian">Indian</SelectItem>
-                                <SelectItem value="Other">Other</SelectItem>
+                                {NATIONALITY_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt} value={opt}>
+                                        {opt}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -110,12 +125,11 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                                 <SelectValue placeholder="Select" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="Hindu">Hindu</SelectItem>
-                                <SelectItem value="Muslim">Muslim</SelectItem>
-                                <SelectItem value="Christian">Christian</SelectItem>
-                                <SelectItem value="Sikh">Sikh</SelectItem>
-                                <SelectItem value="Jain">Jain</SelectItem>
-                                <SelectItem value="Other">Other</SelectItem>
+                                {RELIGION_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt} value={opt}>
+                                        {opt}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -132,14 +146,16 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                                 <SelectValue placeholder="Select" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="General">General</SelectItem>
-                                <SelectItem value="OBC">OBC</SelectItem>
-                                <SelectItem value="SC">SC</SelectItem>
-                                <SelectItem value="ST">ST</SelectItem>
-                                <SelectItem value="EWS">EWS</SelectItem>
+                                {CATEGORY_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt} value={opt}>
+                                        {opt}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
-                        <p className="mt-1 text-xs text-neutral-500">(General/OBC/SC/ST/EWS)</p>
+                        <p className="mt-1 text-xs text-neutral-500">
+                            ({CATEGORY_OPTIONS.join('/')})
+                        </p>
                     </div>
                     <div>
                         <Label className="mb-1 block text-sm font-medium text-neutral-700">
@@ -153,17 +169,16 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                                 <SelectValue placeholder="Select" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="A+">A+</SelectItem>
-                                <SelectItem value="A-">A-</SelectItem>
-                                <SelectItem value="B+">B+</SelectItem>
-                                <SelectItem value="B-">B-</SelectItem>
-                                <SelectItem value="O+">O+</SelectItem>
-                                <SelectItem value="O-">O-</SelectItem>
-                                <SelectItem value="AB+">AB+</SelectItem>
-                                <SelectItem value="AB-">AB-</SelectItem>
+                                {BLOOD_GROUP_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt} value={opt}>
+                                        {opt}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
-                        <p className="mt-1 text-xs text-neutral-500">(A+/A-/B+/B-/O+/O-/AB+/AB-)</p>
+                        <p className="mt-1 text-xs text-neutral-500">
+                            ({BLOOD_GROUP_OPTIONS.join('/')})
+                        </p>
                     </div>
 
                     <div>
@@ -178,13 +193,11 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                                 <SelectValue placeholder="Select" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="Hindi">Hindi</SelectItem>
-                                <SelectItem value="English">English</SelectItem>
-                                <SelectItem value="Gujarati">Gujarati</SelectItem>
-                                <SelectItem value="Marathi">Marathi</SelectItem>
-                                <SelectItem value="Tamil">Tamil</SelectItem>
-                                <SelectItem value="Telugu">Telugu</SelectItem>
-                                <SelectItem value="Other">Other</SelectItem>
+                                {MOTHER_TONGUE_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt} value={opt}>
+                                        {opt}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -198,7 +211,6 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                                     <input
                                         type="checkbox"
                                         className="size-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
-                                        // Simple logic for this specific requirement
                                     />
                                     <span className="text-sm text-neutral-700">{lang}</span>
                                 </label>
@@ -221,30 +233,49 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                         </Label>
                         <Select
                             value={formData.idType || ''}
-                            onValueChange={(value) => updateFormData({ idType: value as any })}
+                            onValueChange={(value) => {
+                                updateFormData({ idType: value as any });
+                                // Clear ID number when type changes
+                                if (value !== formData.idType) {
+                                    updateFormData({ idType: value as any, idNumber: '' });
+                                }
+                            }}
                         >
                             <SelectTrigger>
                                 <SelectValue placeholder="Select ID Type" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="AADHAR_CARD">Aadhaar Card</SelectItem>
-                                <SelectItem value="BIRTH_CERTIFICATE">Birth Certificate</SelectItem>
-                                <SelectItem value="PASSPORT">Passport</SelectItem>
-                                <SelectItem value="OTHER">Other</SelectItem>
+                                {ID_TYPE_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
                     <div>
-                        <label className="mb-1 block text-sm font-medium text-neutral-700">
-                            ID Number
-                        </label>
-                        <input
-                            type="text"
-                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                            placeholder="Enter ID number"
-                            value={formData.idNumber || ''}
-                            onChange={(e) => updateFormData({ idNumber: e.target.value })}
-                        />
+                        {formData.idType === 'AADHAR_CARD' ? (
+                            <AadhaarInput
+                                name="idNumber"
+                                value={formData.idNumber || ''}
+                                onChange={(_name, value) => updateFormData({ idNumber: value })}
+                                label="Aadhaar Number"
+                            />
+                        ) : (
+                            <>
+                                <label className="mb-1 block text-sm font-medium text-neutral-700">
+                                    ID Number
+                                </label>
+                                <input
+                                    type="text"
+                                    className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                                    placeholder="Enter ID number"
+                                    value={formData.idNumber || ''}
+                                    onChange={(e) => updateFormData({ idNumber: e.target.value })}
+                                    maxLength={MAX_LENGTH.GENERAL}
+                                />
+                            </>
+                        )}
                     </div>
                     <div>
                         <label className="mb-1 block text-sm font-medium text-neutral-700">
@@ -258,6 +289,7 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                             onChange={(e) =>
                                 updateFormData({ languagesKnown: e.target.value.split(',') })
                             }
+                            maxLength={MAX_LENGTH.GENERAL}
                         />
                     </div>
                 </div>
@@ -280,6 +312,7 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                             placeholder="E.g., Asthma, Diabetes, Food allergies, etc."
                             value={formData.medicalConditions || ''}
                             onChange={(e) => updateFormData({ medicalConditions: e.target.value })}
+                            maxLength={MAX_LENGTH.TEXTAREA}
                         />
                     </div>
                     <div>
@@ -294,6 +327,7 @@ export const StudentDetailsSection: React.FC<SectionProps> = ({ formData, update
                             onChange={(e) =>
                                 updateFormData({ dietaryRestrictions: e.target.value })
                             }
+                            maxLength={MAX_LENGTH.TEXTAREA}
                         />
                     </div>
                 </div>

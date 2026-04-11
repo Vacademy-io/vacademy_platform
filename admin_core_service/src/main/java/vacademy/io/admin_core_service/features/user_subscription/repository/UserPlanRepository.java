@@ -49,12 +49,15 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                                    CASE
                                        WHEN up.end_date IS NULL THEN 'LIFETIME'
                                        WHEN up.end_date < CURRENT_TIMESTAMP THEN 'ENDED'
-                                       ELSE 'ABOUT_TO_END'
+                                       WHEN up.end_date <= CURRENT_TIMESTAMP + INTERVAL '30 days' THEN 'ABOUT_TO_END'
+                                       ELSE 'ACTIVE'
                                    END as computedStatus,
                                    up.end_date as actualEndDate
                             FROM user_plan up
                             JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
                             LEFT JOIN package_session_learner_invitation_to_payment_option ps_link ON ps_link.enroll_invite_id = ei.id AND ps_link.status = 'ACTIVE' AND ps_link.payment_option_id = up.payment_option_id
+                            LEFT JOIN package_session ps_tbl ON ps_tbl.id = ps_link.package_session_id
+                            LEFT JOIN package pkg ON pkg.id = ps_tbl.package_id
                             WHERE ei.institute_id = :instituteId
 
                             -- Explicit CAST to TIMESTAMP is still good practice for dynamic null checks
@@ -67,12 +70,18 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                             )
 
                             AND (
+                                :#{#packageTypes == null || #packageTypes.isEmpty() ? 1 : 0} = 1
+                                OR pkg.package_type IN (:packageTypes)
+                            )
+
+                            AND (
                                 :#{#statuses == null || #statuses.isEmpty() ? 1 : 0} = 1
                                 OR
                                 CASE
                                    WHEN up.end_date IS NULL THEN 'LIFETIME'
                                    WHEN up.end_date < CURRENT_TIMESTAMP THEN 'ENDED'
-                                   ELSE 'ABOUT_TO_END'
+                                   WHEN up.end_date <= CURRENT_TIMESTAMP + INTERVAL '30 days' THEN 'ABOUT_TO_END'
+                                   ELSE 'ACTIVE'
                                 END IN (:statuses)
                             )
                         """, countQuery = """
@@ -80,6 +89,8 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                             FROM user_plan up
                             JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
                             LEFT JOIN package_session_learner_invitation_to_payment_option ps_link ON ps_link.enroll_invite_id = ei.id AND ps_link.status = 'ACTIVE' AND ps_link.payment_option_id = up.payment_option_id
+                            LEFT JOIN package_session ps_tbl ON ps_tbl.id = ps_link.package_session_id
+                            LEFT JOIN package pkg ON pkg.id = ps_tbl.package_id
                             WHERE ei.institute_id = :instituteId
                             AND (CAST(:startDate AS TIMESTAMP) IS NULL OR up.end_date >= CAST(:startDate AS TIMESTAMP))
                             AND (CAST(:endDate AS TIMESTAMP) IS NULL OR up.end_date <= CAST(:endDate AS TIMESTAMP))
@@ -88,12 +99,17 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                                 OR ps_link.package_session_id IN (:packageSessionIds)
                             )
                             AND (
+                                :#{#packageTypes == null || #packageTypes.isEmpty() ? 1 : 0} = 1
+                                OR pkg.package_type IN (:packageTypes)
+                            )
+                            AND (
                                 :#{#statuses == null || #statuses.isEmpty() ? 1 : 0} = 1
                                 OR
                                 CASE
                                    WHEN up.end_date IS NULL THEN 'LIFETIME'
                                    WHEN up.end_date < CURRENT_TIMESTAMP THEN 'ENDED'
-                                   ELSE 'ABOUT_TO_END'
+                                   WHEN up.end_date <= CURRENT_TIMESTAMP + INTERVAL '30 days' THEN 'ABOUT_TO_END'
+                                   ELSE 'ACTIVE'
                                 END IN (:statuses)
                             )
                         """, nativeQuery = true)
@@ -103,6 +119,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("endDate") Timestamp endDate,
                         @Param("statuses") List<String> statuses,
                         @Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("packageTypes") List<String> packageTypes,
                         Pageable pageable);
 
         /**

@@ -26,6 +26,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { BatchSelectorDialog } from './batch-selector-dialog';
+import { TagSelectorDialog } from './tag-selector-dialog';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -60,15 +61,8 @@ export function GlobalDefaultsSection({
     onAddLevel,
     onAddSession,
 }: GlobalDefaultsSectionProps) {
-    const [tagInput, setTagInput] = useState('');
     const [showBatchDialog, setShowBatchDialog] = useState(false);
-
-    const handleAddTag = () => {
-        if (tagInput.trim() && !globalDefaults.tags.includes(tagInput.trim())) {
-            onUpdate({ tags: [...globalDefaults.tags, tagInput.trim()] });
-            setTagInput('');
-        }
-    };
+    const [showTagDialog, setShowTagDialog] = useState(false);
 
     const handleRemoveTag = (tag: string) => {
         onUpdate({ tags: globalDefaults.tags.filter((t) => t !== tag) });
@@ -262,39 +256,34 @@ export function GlobalDefaultsSection({
                     {/* Default Tags */}
                     <div className="space-y-1.5 md:col-span-2 lg:col-span-3">
                         <Label className="text-xs text-neutral-600">Default Tags</Label>
-                        <div className="flex gap-2">
-                            <Input
-                                className="h-8 text-xs"
-                                placeholder="Add tag..."
-                                value={tagInput}
-                                onChange={(e) => setTagInput(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
-                            />
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8"
-                                onClick={handleAddTag}
-                            >
-                                Add
-                            </Button>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 pt-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
                             {globalDefaults.tags.map((tag) => (
                                 <Badge
                                     key={tag}
                                     variant="outline"
-                                    className="flex items-center gap-1 text-xs"
+                                    className="flex items-center gap-1 rounded-full text-xs"
                                 >
                                     {tag}
                                     <button
+                                        type="button"
                                         onClick={() => handleRemoveTag(tag)}
                                         className="hover:text-red-500"
+                                        aria-label={`Remove ${tag}`}
                                     >
                                         <X className="size-3" />
                                     </button>
                                 </Badge>
                             ))}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7"
+                                onClick={() => setShowTagDialog(true)}
+                            >
+                                <Plus className="mr-1 size-3.5" />
+                                {globalDefaults.tags.length === 0 ? 'Add Tags' : 'Manage Tags'}
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -311,6 +300,15 @@ export function GlobalDefaultsSection({
                     onUpdate({ batches: [...globalDefaults.batches, batch] });
                     setShowBatchDialog(false);
                 }}
+            />
+
+            <TagSelectorDialog
+                open={showTagDialog}
+                onOpenChange={setShowTagDialog}
+                selectedTags={globalDefaults.tags}
+                onConfirm={(tags) => onUpdate({ tags })}
+                title="Default Tags"
+                description="These tags will be applied to every new course/book by default."
             />
         </div>
     );

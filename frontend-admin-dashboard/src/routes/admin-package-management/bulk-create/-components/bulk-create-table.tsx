@@ -30,6 +30,7 @@ import {
 } from '../-types/bulk-create-types';
 import { BatchSelectorDialog } from './batch-selector-dialog';
 import { CourseContentDialog } from './course-content-dialog';
+import { TagSelectorDialog } from './tag-selector-dialog';
 import { cn } from '@/lib/utils';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -70,8 +71,8 @@ export function BulkCreateTable({
 }: BulkCreateTableProps) {
     const [batchDialogOpen, setBatchDialogOpen] = useState(false);
     const [contentDialogOpen, setContentDialogOpen] = useState(false);
+    const [tagDialogOpen, setTagDialogOpen] = useState(false);
     const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
-    const [tagInputs, setTagInputs] = useState<Record<string, string>>({});
 
     const handleOpenBatchDialog = (courseId: string) => {
         setActiveCourseId(courseId);
@@ -103,15 +104,9 @@ export function BulkCreateTable({
         }
     };
 
-    const handleAddTag = (courseId: string) => {
-        const tagInput = tagInputs[courseId]?.trim();
-        if (!tagInput) return;
-
-        const course = courses.find((c) => c.id === courseId);
-        if (course && !course.tags.includes(tagInput)) {
-            onUpdateCourse(courseId, { tags: [...course.tags, tagInput] });
-        }
-        setTagInputs((prev) => ({ ...prev, [courseId]: '' }));
+    const handleOpenTagDialog = (courseId: string) => {
+        setActiveCourseId(courseId);
+        setTagDialogOpen(true);
     };
 
     const handleRemoveTag = (courseId: string, tag: string) => {
@@ -337,7 +332,7 @@ export function BulkCreateTable({
                                                 <Badge
                                                     key={tag}
                                                     variant="outline"
-                                                    className="text-[10px]"
+                                                    className="rounded-full text-[10px]"
                                                 >
                                                     {tag}
                                                     <button
@@ -351,26 +346,22 @@ export function BulkCreateTable({
                                                 </Badge>
                                             ))}
                                             {course.tags.length > 2 && (
-                                                <Badge variant="outline" className="text-[10px]">
+                                                <Badge
+                                                    variant="outline"
+                                                    className="rounded-full text-[10px]"
+                                                >
                                                     +{course.tags.length - 2}
                                                 </Badge>
                                             )}
-                                            <div className="flex items-center">
-                                                <Input
-                                                    value={tagInputs[course.id] || ''}
-                                                    onChange={(e) =>
-                                                        setTagInputs((prev) => ({
-                                                            ...prev,
-                                                            [course.id]: e.target.value,
-                                                        }))
-                                                    }
-                                                    onKeyDown={(e) =>
-                                                        e.key === 'Enter' && handleAddTag(course.id)
-                                                    }
-                                                    placeholder="Tag"
-                                                    className="h-6 w-16 text-[10px]"
-                                                />
-                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="size-6 p-0"
+                                                onClick={() => handleOpenTagDialog(course.id)}
+                                                aria-label="Manage tags"
+                                            >
+                                                <Plus className="size-3" />
+                                            </Button>
                                         </div>
                                     </TableCell>
 
@@ -508,6 +499,18 @@ export function BulkCreateTable({
                     onSave={(data) => {
                         onUpdateCourse(activeCourse.id, data);
                     }}
+                />
+            )}
+
+            {/* Tag Selector Dialog */}
+            {activeCourse && (
+                <TagSelectorDialog
+                    open={tagDialogOpen}
+                    onOpenChange={setTagDialogOpen}
+                    selectedTags={activeCourse.tags}
+                    onConfirm={(tags) => onUpdateCourse(activeCourse.id, { tags })}
+                    title={`Tags for ${activeCourse.course_name || 'Untitled'}`}
+                    description="Pick existing tags or add your own."
                 />
             )}
         </div>

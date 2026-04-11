@@ -200,6 +200,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/admissions/application',
                 subItemId: 'application',
             },
+            {
+                subItem: 'Concession Approvals',
+                subItemLink: '/admissions/concession-approvals',
+                subItemId: 'concession-approvals',
+                adminOnly: true,
+            },
         ],
     },
     {

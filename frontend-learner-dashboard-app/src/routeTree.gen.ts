@@ -14,6 +14,7 @@ import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-
 import { Route as SubOrgLearnersIndexRouteImport } from './routes/sub-org-learners/index'
 import { Route as StudyLibraryIndexRouteImport } from './routes/study-library/index'
 import { Route as SignupIndexRouteImport } from './routes/signup/index'
+import { Route as SessionTerminatedIndexRouteImport } from './routes/session-terminated/index'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
 import { Route as ReferralIndexRouteImport } from './routes/referral/index'
 import { Route as PrivacyPolicyIndexRouteImport } from './routes/privacy-policy/index'
@@ -38,6 +39,7 @@ import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
 import { Route as AiSettingsIndexRouteImport } from './routes/ai-settings/index'
 import { Route as TagNameIndexRouteImport } from './routes/$tagName/index'
 import { Route as ParentDocumentsRouteImport } from './routes/parent/documents'
+import { Route as AssignmentSlideIdRouteImport } from './routes/assignment/$slideId'
 import { Route as TagNamePageSlugRouteImport } from './routes/$tagName/$pageSlug'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
@@ -109,6 +111,11 @@ const StudyLibraryIndexRoute = StudyLibraryIndexRouteImport.update({
 const SignupIndexRoute = SignupIndexRouteImport.update({
   id: '/signup/',
   path: '/signup/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SessionTerminatedIndexRoute = SessionTerminatedIndexRouteImport.update({
+  id: '/session-terminated/',
+  path: '/session-terminated/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RegisterIndexRoute = RegisterIndexRouteImport.update({
@@ -230,6 +237,11 @@ const TagNameIndexRoute = TagNameIndexRouteImport.update({
 const ParentDocumentsRoute = ParentDocumentsRouteImport.update({
   id: '/parent/documents',
   path: '/parent/documents',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AssignmentSlideIdRoute = AssignmentSlideIdRouteImport.update({
+  id: '/assignment/$slideId',
+  path: '/assignment/$slideId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TagNamePageSlugRoute = TagNamePageSlugRouteImport.update({
@@ -502,6 +514,7 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
 
 export interface FileRoutesByFullPath {
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
+  '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
   '/$tagName': typeof TagNameIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
@@ -526,6 +539,7 @@ export interface FileRoutesByFullPath {
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
+  '/session-terminated': typeof SessionTerminatedIndexRoute
   '/signup': typeof SignupIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/sub-org-learners': typeof SubOrgLearnersIndexRoute
@@ -580,6 +594,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
+  '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/$tagName': typeof TagNameIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
@@ -603,6 +618,7 @@ export interface FileRoutesByTo {
   '/privacy-policy': typeof PrivacyPolicyIndexRoute
   '/referral': typeof ReferralIndexRoute
   '/register': typeof RegisterIndexRoute
+  '/session-terminated': typeof SessionTerminatedIndexRoute
   '/signup': typeof SignupIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/sub-org-learners': typeof SubOrgLearnersIndexRoute
@@ -658,6 +674,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
+  '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
   '/$tagName/': typeof TagNameIndexRoute
   '/ai-settings/': typeof AiSettingsIndexRoute
@@ -682,6 +699,7 @@ export interface FileRoutesById {
   '/privacy-policy/': typeof PrivacyPolicyIndexRoute
   '/referral/': typeof ReferralIndexRoute
   '/register/': typeof RegisterIndexRoute
+  '/session-terminated/': typeof SessionTerminatedIndexRoute
   '/signup/': typeof SignupIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
   '/sub-org-learners/': typeof SubOrgLearnersIndexRoute
@@ -738,6 +756,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/$tagName/$pageSlug'
+    | '/assignment/$slideId'
     | '/parent/documents'
     | '/$tagName'
     | '/ai-settings'
@@ -762,6 +781,7 @@ export interface FileRouteTypes {
     | '/privacy-policy'
     | '/referral'
     | '/register'
+    | '/session-terminated'
     | '/signup'
     | '/study-library'
     | '/sub-org-learners'
@@ -816,6 +836,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$tagName/$pageSlug'
+    | '/assignment/$slideId'
     | '/$tagName'
     | '/ai-settings'
     | '/assessment'
@@ -839,6 +860,7 @@ export interface FileRouteTypes {
     | '/privacy-policy'
     | '/referral'
     | '/register'
+    | '/session-terminated'
     | '/signup'
     | '/study-library'
     | '/sub-org-learners'
@@ -893,6 +915,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/$tagName/$pageSlug'
+    | '/assignment/$slideId'
     | '/parent/documents'
     | '/$tagName/'
     | '/ai-settings/'
@@ -917,6 +940,7 @@ export interface FileRouteTypes {
     | '/privacy-policy/'
     | '/referral/'
     | '/register/'
+    | '/session-terminated/'
     | '/signup/'
     | '/study-library/'
     | '/sub-org-learners/'
@@ -972,6 +996,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   TagNamePageSlugRoute: typeof TagNamePageSlugRoute
+  AssignmentSlideIdRoute: typeof AssignmentSlideIdRoute
   ParentDocumentsRoute: typeof ParentDocumentsRouteWithChildren
   TagNameIndexRoute: typeof TagNameIndexRoute
   AiSettingsIndexRoute: typeof AiSettingsIndexRoute
@@ -996,6 +1021,7 @@ export interface RootRouteChildren {
   PrivacyPolicyIndexRoute: typeof PrivacyPolicyIndexRoute
   ReferralIndexRoute: typeof ReferralIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
+  SessionTerminatedIndexRoute: typeof SessionTerminatedIndexRoute
   SignupIndexRoute: typeof SignupIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   SubOrgLearnersIndexRoute: typeof SubOrgLearnersIndexRoute
@@ -1083,6 +1109,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/session-terminated/': {
+      id: '/session-terminated/'
+      path: '/session-terminated'
+      fullPath: '/session-terminated'
+      preLoaderRoute: typeof SessionTerminatedIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register/': {
@@ -1251,6 +1284,13 @@ declare module '@tanstack/react-router' {
       path: '/parent/documents'
       fullPath: '/parent/documents'
       preLoaderRoute: typeof ParentDocumentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/assignment/$slideId': {
+      id: '/assignment/$slideId'
+      path: '/assignment/$slideId'
+      fullPath: '/assignment/$slideId'
+      preLoaderRoute: typeof AssignmentSlideIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$tagName/$pageSlug': {
@@ -1599,6 +1639,7 @@ const ParentDocumentsRouteWithChildren = ParentDocumentsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   TagNamePageSlugRoute: TagNamePageSlugRoute,
+  AssignmentSlideIdRoute: AssignmentSlideIdRoute,
   ParentDocumentsRoute: ParentDocumentsRouteWithChildren,
   TagNameIndexRoute: TagNameIndexRoute,
   AiSettingsIndexRoute: AiSettingsIndexRoute,
@@ -1623,6 +1664,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyPolicyIndexRoute: PrivacyPolicyIndexRoute,
   ReferralIndexRoute: ReferralIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,
+  SessionTerminatedIndexRoute: SessionTerminatedIndexRoute,
   SignupIndexRoute: SignupIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   SubOrgLearnersIndexRoute: SubOrgLearnersIndexRoute,

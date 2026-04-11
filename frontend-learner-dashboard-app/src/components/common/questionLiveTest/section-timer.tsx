@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { Preferences } from "@capacitor/preferences";
+import { safeParse } from "@/lib/storage";
 
 export function SectionTimer() {
   const {
@@ -22,9 +23,12 @@ export function SectionTimer() {
       const storedMode = await Preferences.get({
         key: "InstructionID_and_AboutID",
       });
-      if (storedMode.value) {
-        const parsedData = JSON.parse(storedMode.value);
-        setPlayMode(parsedData.play_mode);
+      const parsedData = safeParse<{ play_mode?: string } | null>(
+        storedMode.value,
+        null
+      );
+      if (parsedData) {
+        setPlayMode(parsedData.play_mode ?? null);
       }
     };
 
@@ -53,12 +57,24 @@ export function SectionTimer() {
 
   const minutes = Math.floor(currentTimer.timeLeft / 60000);
   const seconds = Math.floor((currentTimer.timeLeft % 60000) / 1000);
+  const isCritical = currentTimer.timeLeft < 60_000;
+  const isWarning = !isCritical && currentTimer.timeLeft < 5 * 60_000;
+  const colorClass = isCritical
+    ? "text-red-600 animate-pulse"
+    : isWarning
+      ? "text-amber-600"
+      : "text-gray-900";
 
   return (
     <div className="flex items-center gap-2 text-lg font-mono">
       <Clock className="h-5 w-5" />
       {playMode !== "PRACTICE" && playMode !== "SURVEY" && (
-        <span className={currentTimer.timeLeft < 60000 ? "text-red-500" : ""}>
+        <span
+          className={`transition-colors ${colorClass}`}
+          role="timer"
+          aria-live={isCritical ? "assertive" : "off"}
+          aria-label={`Section time remaining: ${minutes} minutes ${seconds} seconds`}
+        >
           {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
         </span>
       )}

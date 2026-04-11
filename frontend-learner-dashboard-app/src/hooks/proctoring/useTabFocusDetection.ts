@@ -91,47 +91,24 @@ export function useTabFocusDetection({ disabled }: Props = { disabled: false }) 
       return onVisible()
     }
 
+    const handleFocus = () => handleVisibilityChange(true)
+    const handleBlur = () => handleVisibilityChange(false)
+
     document.addEventListener(visibilityEventName, handleVisibilityChange, false)
-
     // extra event listeners for better behaviour
-    document.addEventListener(
-      'focus',
-      function () {
-        handleVisibilityChange(true)
-      },
-      false,
-    )
-
-    document.addEventListener(
-      'blur',
-      function () {
-        handleVisibilityChange(false)
-      },
-      false,
-    )
-
-    window.addEventListener(
-      'focus',
-      function () {
-        handleVisibilityChange(true)
-      },
-      false,
-    )
-
-    window.addEventListener(
-      'blur',
-      function () {
-        handleVisibilityChange(false)
-      },
-      false,
-    )
-
-    // document.addEventListener("visibilitychange", visibilityChange);
+    document.addEventListener('focus', handleFocus, false)
+    document.addEventListener('blur', handleBlur, false)
+    window.addEventListener('focus', handleFocus, false)
+    window.addEventListener('blur', handleBlur, false)
 
     return () => {
-      // document.removeEventListener("visibilitychange", visibilityChange);
+      document.removeEventListener(visibilityEventName, handleVisibilityChange, false)
+      document.removeEventListener('focus', handleFocus, false)
+      document.removeEventListener('blur', handleBlur, false)
+      window.removeEventListener('focus', handleFocus, false)
+      window.removeEventListener('blur', handleBlur, false)
     }
-  }, [])
+  }, [disabled])
 
   return { tabFocusStatus } as const
 }

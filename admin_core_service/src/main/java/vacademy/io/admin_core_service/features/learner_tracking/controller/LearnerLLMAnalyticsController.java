@@ -172,6 +172,35 @@ public class LearnerLLMAnalyticsController {
 
         // ==================== INTERNAL/MICROSERVICE APIs ====================
 
+        @GetMapping("/internal/processed-logs")
+        @Operation(summary = "Internal: Get processed logs (HMAC auth, no JWT)")
+        public ResponseEntity<?> getProcessedLogsInternal(
+                        @RequestParam("userId") String userId,
+                        @RequestParam(value = "sourceId", required = false) String sourceId) {
+                try {
+                        if (sourceId == null || sourceId.isEmpty()) {
+                                return ResponseEntity.badRequest().body(Map.of("status", "error", "message", "sourceId required"));
+                        }
+                        List<ActivityLog> activityLogs = activityLogRepository.findByUserIdAndSourceIdAndStatusProcessed(userId, sourceId);
+                        List<ProcessedActivityLogItem> items = activityLogs.stream()
+                                        .map(al -> ProcessedActivityLogItem.builder()
+                                                        .id(al.getId())
+                                                        .userId(al.getUserId())
+                                                        .slideId(al.getSlideId())
+                                                        .sourceId(al.getSourceId())
+                                                        .sourceType(al.getSourceType())
+                                                        .status(al.getStatus())
+                                                        .processedJson(al.getProcessedJson())
+                                                        .createdAt(al.getCreatedAt() != null ? al.getCreatedAt().toLocalDateTime() : null)
+                                                        .updatedAt(al.getUpdatedAt() != null ? al.getUpdatedAt().toLocalDateTime() : null)
+                                                        .build())
+                                        .toList();
+                        return ResponseEntity.ok(new ProcessedActivityLogsResponse(items, items.size()));
+                } catch (Exception e) {
+                        return ResponseEntity.internalServerError().body(Map.of("status", "error", "message", e.getMessage()));
+                }
+        }
+
         /**
          * Receive assessment submission data from assessment_service
          * This is called when a student submits an assessment

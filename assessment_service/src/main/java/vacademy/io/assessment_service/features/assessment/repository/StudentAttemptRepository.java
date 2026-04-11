@@ -14,6 +14,8 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.resp
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponseDto;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 
+import java.util.Optional;
+
 import java.util.List;
 
 @Repository
@@ -593,6 +595,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                                                                              Pageable pageable);
 
     List<StudentAttempt> findByStatusNotIn(List<String> name);
+
+    Optional<StudentAttempt> findTopByRegistrationOrderByCreatedAtDesc(vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration registration);
 }
 
 

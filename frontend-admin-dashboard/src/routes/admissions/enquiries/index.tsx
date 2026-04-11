@@ -524,7 +524,7 @@ function EnquiryPage() {
             <div className="fixed bottom-8 right-8 z-50">
                 <Button
                     onClick={() => setIsCreateDialogOpen(true)}
-                    className="h-12 rounded-full bg-[#f37033] px-6 text-white shadow-xl transition-all hover:-translate-y-1 hover:bg-[#d65f29] hover:shadow-2xl md:h-14"
+                    className="h-12 rounded-full bg-primary-500 px-6 text-white shadow-xl transition-all hover:-translate-y-1 hover:bg-primary-600 hover:shadow-2xl md:h-14"
                 >
                     <Plus className="mr-2 size-5" />
                     Create New Enquiry Form

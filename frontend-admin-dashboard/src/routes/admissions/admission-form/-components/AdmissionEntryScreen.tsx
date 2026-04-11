@@ -31,6 +31,7 @@ export interface StudentSearchResult {
     parentGender?: 'father' | 'mother';
     enquiryId?: string | null;
     applicationId?: string | null;
+    enquiryTrackingId?: string | null;
 }
 
 interface Props {
@@ -226,6 +227,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
             destinationPackageSessionId: '',
             enquiryId: enquiryData.enquiry_id || null,
             applicationId: null,
+            enquiryTrackingId: enquiryData.tracking_id || null,
         };
 
         // Auto-fill parent relation from enquiry data; show popup only if unknown
@@ -301,6 +303,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                 destinationPackageSessionId: item.destination_package_session_id || '',
                 enquiryId: null,
                 applicationId: resolvedApplicantId,
+                enquiryTrackingId: item.tracking_id || null,
             };
 
             setShowApplicationModal(false);
@@ -425,7 +428,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                     )}
                     <button
                         onClick={() => setShowAdmissionTypeModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-md hover:bg-orange-600 transition-colors shadow-sm"
+                        className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-md hover:bg-primary-600 transition-colors shadow-sm"
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>

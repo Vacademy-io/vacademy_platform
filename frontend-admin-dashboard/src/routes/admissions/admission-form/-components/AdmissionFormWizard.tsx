@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import Step1StudentDetails from './steps/Step1StudentDetails';
 import Step2PreviousSchool from './steps/Step2PreviousSchool';
 import Step3ParentDetails from './steps/Step3ParentDetails';
 import Step4AddressDetails from './steps/Step4AddressDetails';
 import Step5AFeeAssignment from './steps/Step5AFeeAssignment';
 import Step6Finish from './steps/Step6Finish';
+import AdmissionFormPrintTemplate from './AdmissionFormPrintTemplate';
 import type { StudentSearchResult } from './AdmissionEntryScreen';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { toast } from 'sonner';
@@ -145,11 +149,35 @@ export default function AdmissionFormWizard() {
     const [admissionId, setAdmissionId] = useState('');
     const [admissionSubmitResult, setAdmissionSubmitResult] =
         useState<AdmissionSubmitResult | null>(null);
+    const [sourceTrackingId, setSourceTrackingId] = useState<string | null>(null);
+    const [sourceTrackingLabel, setSourceTrackingLabel] = useState<string>('');
+    const [admissionTrackingId, setAdmissionTrackingId] = useState<string | null>(null);
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id || '';
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedSessionId, setSelectedSessionId] = useState(locationState?.sessionId || '');
     const allBatches = instituteDetails?.batches_for_sessions ?? [];
+    const { instituteLogo } = useInstituteLogoStore();
+    const instituteName = instituteDetails?.institute_name || '';
+    const [logoBase64, setLogoBase64] = useState('');
+
+    useEffect(() => {
+        if (!instituteLogo) return;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.drawImage(img, 0, 0);
+                setLogoBase64(canvas.toDataURL('image/png'));
+            }
+        };
+        img.onerror = () => setLogoBase64('');
+        img.src = instituteLogo;
+    }, [instituteLogo]);
 
     // Per-step validation errors
     const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
@@ -236,6 +264,99 @@ export default function AdmissionFormWizard() {
         const newId = `VAC-ADM-2026-${Math.floor(10000 + Math.random() * 90000)}`;
         setAdmissionId(newId);
     }, []);
+
+    const getPdfFilename = useCallback(() => {
+        const parts = [
+            'Admission',
+            formData.studentFirstName,
+            formData.studentLastName,
+            admissionTrackingId || sourceTrackingId,
+        ].filter(Boolean);
+        return parts.join('_').replace(/\s+/g, '-') + '.pdf';
+    }, [formData.studentFirstName, formData.studentLastName, admissionTrackingId, sourceTrackingId]);
+
+    const targetRef = useRef<HTMLDivElement>(null);
+    const printTemplateRef = useRef<HTMLDivElement>(null);
+    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+    const handleDownloadPdf = useCallback(async () => {
+        if (!targetRef.current) {
+            toast.error('PDF template not ready. Please try again.');
+            return;
+        }
+        setIsGeneratingPdf(true);
+        toast.info('Generating PDF...');
+        try {
+            const canvas = await html2canvas(targetRef.current, {
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+            });
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4',
+            });
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
+            const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+            const width = imgWidth * ratio;
+            const height = imgHeight * ratio;
+            pdf.addImage(imgData, 'PNG', 0, 0, width, height);
+
+            // If content overflows one page, add more pages
+            if (height > pdfHeight) {
+                let remainingHeight = imgHeight;
+                let position = 0;
+                pdf.deletePage(1);
+                while (remainingHeight > 0) {
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, position, width, height);
+                    remainingHeight -= imgHeight * (pdfHeight / height);
+                    position -= pdfHeight;
+                }
+            }
+
+            pdf.save(getPdfFilename());
+            toast.success('PDF downloaded!');
+        } catch (error) {
+            console.error('PDF generation failed:', error);
+            toast.error('Failed to generate PDF. Please try again.');
+        } finally {
+            setIsGeneratingPdf(false);
+        }
+    }, [getPdfFilename]);
+
+    const handlePrint = useCallback(() => {
+        if (!printTemplateRef.current) return;
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            toast.error('Pop-up blocked. Please allow pop-ups to print.');
+            return;
+        }
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Admission Form - ${formData.studentFirstName} ${formData.studentLastName}</title>
+                <style>
+                    @media print { body { margin: 0; } }
+                    body { margin: 0; padding: 0; }
+                </style>
+            </head>
+            <body>${printTemplateRef.current.innerHTML}</body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.onload = () => {
+            printWindow.print();
+            printWindow.close();
+        };
+    }, [formData.studentFirstName, formData.studentLastName]);
 
     const handleChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -375,6 +496,12 @@ export default function AdmissionFormWizard() {
                 enquiryId: data.enquiryId ?? null,
                 applicationId: data.applicationId ?? null,
             }));
+            if (data.enquiryTrackingId) {
+                setSourceTrackingId(data.enquiryTrackingId);
+                setSourceTrackingLabel(
+                    data.sourceType === 'APPLICATION' ? 'Application Tracking ID' : 'Enquiry Tracking ID'
+                );
+            }
         } else if (sessionId) {
             setFormData((prev) => ({ ...prev, sessionId }));
         }
@@ -477,6 +604,7 @@ export default function AdmissionFormWizard() {
             if (response.status >= 200 && response.status < 300) {
                 const data = response.data as AdmissionSubmitResult;
                 setAdmissionSubmitResult(data);
+                setAdmissionTrackingId(data.tracking_id || null);
                 toast.success(`Admission submitted successfully! ID: ${admissionId}`);
                 setCurrentStep(6);
             } else {
@@ -492,7 +620,7 @@ export default function AdmissionFormWizard() {
 
     return (
         <div className="flex h-full flex-col rounded-lg bg-gray-50/50 p-6 font-sans">
-            <div className="mb-6 flex flex-col gap-2">
+            <div className="mb-6 flex items-center justify-between">
                 <h1 className="flex items-center gap-3 text-2xl font-bold text-gray-800">
                     <button
                         onClick={() => navigate({ to: '/admissions/admission-list' })}
@@ -515,6 +643,31 @@ export default function AdmissionFormWizard() {
                     </button>
                     Admission Form
                 </h1>
+                <div className="flex items-center gap-2">
+                    <MyButton
+                        onClick={handleDownloadPdf}
+                        buttonType="secondary"
+                        scale="medium"
+                        disable={isGeneratingPdf}
+                        className="flex items-center gap-1.5"
+                    >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
+                    </MyButton>
+                    <MyButton
+                        onClick={handlePrint}
+                        buttonType="secondary"
+                        scale="medium"
+                        className="flex items-center gap-1.5"
+                    >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                        </svg>
+                        Print
+                    </MyButton>
+                </div>
             </div>
 
             {/* Stepper Tabs */}
@@ -630,6 +783,20 @@ export default function AdmissionFormWizard() {
                     )}
                 </div>
             )}
+
+            {/* Hidden print/PDF template rendered off-screen */}
+            <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+                <div ref={printTemplateRef}>
+                    <AdmissionFormPrintTemplate
+                        ref={targetRef}
+                        formData={formData}
+                        instituteName={instituteName}
+                        instituteLogo={logoBase64}
+                        trackingLabel={admissionTrackingId ? 'Admission Tracking ID' : sourceTrackingLabel}
+                        trackingId={admissionTrackingId || sourceTrackingId || ''}
+                    />
+                </div>
+            </div>
         </div>
     );
 }

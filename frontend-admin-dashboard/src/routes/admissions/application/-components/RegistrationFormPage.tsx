@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useNavigate } from '@tanstack/react-router';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import {
     User,
     GraduationCap,
@@ -15,6 +17,8 @@ import {
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
+import ApplicationFormPrintTemplate from './ApplicationFormPrintTemplate';
+import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
 import { StudentDetailsSection } from './sections/StudentDetailsSection';
 import { AcademicInfoSection } from './sections/AcademicInfoSection';
 import { ParentGuardianSection } from './sections/ParentGuardianSection';
@@ -162,6 +166,106 @@ export function RegistrationFormPage() {
     // Get institute details
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id || '';
+    const instituteName = instituteDetails?.institute_name || '';
+    const { instituteLogo } = useInstituteLogoStore();
+    const [logoBase64, setLogoBase64] = useState('');
+
+    useEffect(() => {
+        if (!instituteLogo) return;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.drawImage(img, 0, 0);
+                setLogoBase64(canvas.toDataURL('image/png'));
+            }
+        };
+        img.onerror = () => setLogoBase64('');
+        img.src = instituteLogo;
+    }, [instituteLogo]);
+
+    const pdfTargetRef = useRef<HTMLDivElement>(null);
+    const printTemplateRef = useRef<HTMLDivElement>(null);
+    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+    const getPdfFilename = useCallback(() => {
+        const parts = ['Application', formData.studentName, applicationTrackingId || enquiryTrackingId].filter(Boolean);
+        return parts.join('_').replace(/\s+/g, '-') + '.pdf';
+    }, [formData.studentName, applicationTrackingId, enquiryTrackingId]);
+
+    const handleDownloadPdf = useCallback(async () => {
+        if (!pdfTargetRef.current) {
+            toast.error('PDF template not ready. Please try again.');
+            return;
+        }
+        setIsGeneratingPdf(true);
+        toast.info('Generating PDF...');
+        try {
+            const canvas = await html2canvas(pdfTargetRef.current, {
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+            });
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const ratio = Math.min(pdfWidth / canvas.width, pdfHeight / canvas.height);
+            const width = canvas.width * ratio;
+            const height = canvas.height * ratio;
+            pdf.addImage(imgData, 'PNG', 0, 0, width, height);
+            if (height > pdfHeight) {
+                let remainingHeight = canvas.height;
+                let position = 0;
+                pdf.deletePage(1);
+                while (remainingHeight > 0) {
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, position, width, height);
+                    remainingHeight -= canvas.height * (pdfHeight / height);
+                    position -= pdfHeight;
+                }
+            }
+            pdf.save(getPdfFilename());
+            toast.success('PDF downloaded!');
+        } catch (error) {
+            console.error('PDF generation failed:', error);
+            toast.error('Failed to generate PDF. Please try again.');
+        } finally {
+            setIsGeneratingPdf(false);
+        }
+    }, [getPdfFilename]);
+
+    const handlePrint = useCallback(() => {
+        if (!printTemplateRef.current) return;
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            toast.error('Pop-up blocked. Please allow pop-ups to print.');
+            return;
+        }
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Application Form - ${formData.studentName || ''}</title>
+                <style>
+                    @media print { body { margin: 0; } }
+                    body { margin: 0; padding: 0; }
+                </style>
+            </head>
+            <body>${printTemplateRef.current.innerHTML}</body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.onload = () => {
+            printWindow.print();
+            printWindow.close();
+        };
+    }, [formData.studentName]);
 
     // Extract sessionId and enquiry data from URL on mount
     useEffect(() => {
@@ -176,6 +280,7 @@ export function RegistrationFormPage() {
                 const enquiryData = JSON.parse(decodeURIComponent(enquiryDataParam));
                 console.log('Parsed enquiry data:', enquiryData);
                 setEnquiryId(enquiryData.enquiry_id);
+                setEnquiryTrackingId(enquiryData.tracking_id || null);
                 prefillFormFromEnquiry(enquiryData);
             } catch (error) {
                 console.error('Failed to parse enquiry data:', error);
@@ -638,6 +743,7 @@ export function RegistrationFormPage() {
             const response = await applyForAdmission(payload);
             console.log('Registration submitted successfully:', response);
             setApplicantId(response?.applicant_id);
+            setApplicationTrackingId(response?.tracking_id || null);
 
             // Generate payment link using the paymentOptionId fetched at page load
             if (paymentOptionId) {
@@ -701,6 +807,29 @@ export function RegistrationFormPage() {
                         <h1 className="text-xl font-bold text-neutral-900">New Application</h1>
                     </div>
                     <div className="flex items-center gap-3">
+                        <MyButton
+                            onClick={handleDownloadPdf}
+                            buttonType="secondary"
+                            scale="medium"
+                            disable={isGeneratingPdf}
+                            className="flex items-center gap-1.5"
+                        >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
+                        </MyButton>
+                        <MyButton
+                            onClick={handlePrint}
+                            buttonType="secondary"
+                            scale="medium"
+                            className="flex items-center gap-1.5"
+                        >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                            </svg>
+                            Print
+                        </MyButton>
                         {/* Progress */}
                         <div className="flex items-center gap-2">
                             <div className="h-2 w-24 overflow-hidden rounded-full bg-neutral-200">

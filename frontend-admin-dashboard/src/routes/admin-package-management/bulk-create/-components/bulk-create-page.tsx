@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Eye, ArrowClockwise, CheckCircle } from '@phosphor-icons/react';
+import { ArrowLeft, Eye, ArrowClockwise, CheckCircle, MagnifyingGlass } from '@phosphor-icons/react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useBulkCreate } from '../-hooks/useBulkCreate';
@@ -12,6 +12,7 @@ import { FileCsv } from '@phosphor-icons/react';
 import { PreviewDialog } from './preview-dialog';
 import { createLevel, createSession } from '../-services/bulk-create-service';
 import { LevelOption, SessionOption } from '../-types/bulk-create-types';
+import { SimilarPackagesDialog } from './similar-packages-dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
@@ -23,6 +24,7 @@ export function BulkCreatePage() {
     const [localLevels, setLocalLevels] = useState<LevelOption[]>([]);
     const [localSessions, setLocalSessions] = useState<SessionOption[]>([]);
     const [showCsvImport, setShowCsvImport] = useState(false);
+    const [showSimilarPackages, setShowSimilarPackages] = useState(false);
 
     const {
         courses,
@@ -123,6 +125,15 @@ export function BulkCreatePage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowSimilarPackages(true)}
+                        className="h-9"
+                    >
+                        <MagnifyingGlass className="mr-1 size-4" />
+                        Search already added {getTerminologyPlural(ContentTerms.Package, SystemTerms.Package)}
+                    </Button>
                     <Button
                         variant="outline"
                         size="sm"
@@ -248,6 +259,11 @@ export function BulkCreatePage() {
                 levels={allLevels}
                 sessions={allSessions}
                 onImport={importCourses}
+            />
+
+            <SimilarPackagesDialog
+                open={showSimilarPackages}
+                onOpenChange={setShowSimilarPackages}
             />
         </section>
     );

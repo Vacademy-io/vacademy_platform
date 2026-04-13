@@ -1,4 +1,3 @@
-import { getFieldsForLocation } from '@/lib/custom-fields/utils';
 import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
 
 /**
@@ -36,50 +35,64 @@ const generateKeyFromName = (name: string): string =>
         .replace(/^_+|_+$/g, '');
 
 /**
- * Get dynamic campaign fields from settings cache
- * This reads from localStorage cache which is updated when settings are saved
+ * Get the institute's default custom fields, pre-selected for a brand-new
+ * audience campaign create dialog.
  *
- * @returns Array of campaign custom fields configured in settings with Campaign visibility
- *          Returns empty array if no settings found
+ * Custom Fields Revamp (2026-04): the previous implementation read fields
+ * from a stale "Campaign" visibility checkbox. Per-feature visibility was
+ * removed; admins now manage which fields are on a campaign from inside
+ * the campaign create/edit dialog itself. This function returns the
+ * institute's full default catalog (locked fixed fields + admin-created
+ * defaults) so the picker starts with everything pre-selected. The admin
+ * can untick before saving — only the ticked fields are persisted as
+ * AUDIENCE_FORM mappings.
+ *
+ * Edit-mode pre-selection should fetch the existing ACTIVE mappings via
+ * `GET /admin-core-service/common/custom-fields/feature-fields`
+ * (type=AUDIENCE_FORM, typeId=<audienceId>) instead of calling this.
  */
 export const getCampaignCustomFields = (): CampaignFormCustomField[] => {
     try {
-        // Get fields defined under "Campaign" location from settings cache
-        const customFields = getFieldsForLocation('Campaign') || [];
+        const settings = getCustomFieldSettingsFromCache();
+        if (!settings) return [];
 
-        if (!customFields.length) {
-            return [];
-        }
+        const all = [
+            ...(settings.fixedFields || []),
+            ...(settings.customFields || []),
+            ...(settings.instituteFields || []),
+        ];
+        if (all.length === 0) return [];
 
-        // Transform settings fields into form-compatible format
-        const transformedFields: CampaignFormCustomField[] = customFields.map((field, index) => {
-            const fieldKey = generateKeyFromName(field.name);
-
-            const transformed: CampaignFormCustomField = {
-                id: String(index),
-                type: mapFieldType(field.type || 'text'),
-                name: field.name,
-                isRequired: field.required || false,
-                key: fieldKey,
-                order: index,
-                _id: field.id,
-                status: 'ACTIVE',
-            };
-
-            if (field.type === 'dropdown' && field.options && field.options.length > 0) {
-                transformed.options = field.options.map((opt, i) => ({
-                    id: `${index}_opt_${i}`,
-                    value: opt,
-                    disabled: true,
-                }));
-            }
-
-            return transformed;
-        });
-
-        return transformedFields;
+        return all
+            .map((field, index): CampaignFormCustomField => {
+                const fieldType = mapFieldType((field.type as string) || 'text');
+                const transformed: CampaignFormCustomField = {
+                    id: String(index),
+                    type: fieldType,
+                    name: field.name,
+                    isRequired: field.required || false,
+                    key: generateKeyFromName(field.name),
+                    order: field.order ?? index,
+                    _id: field.id,
+                    status: 'ACTIVE',
+                };
+                if (
+                    fieldType === 'dropdown' &&
+                    'options' in field &&
+                    field.options &&
+                    field.options.length > 0
+                ) {
+                    transformed.options = field.options.map((opt, i) => ({
+                        id: `${index}_opt_${i}`,
+                        value: opt,
+                        disabled: true,
+                    }));
+                }
+                return transformed;
+            })
+            .sort((a, b) => a.order - b.order);
     } catch (err) {
-        console.error('❌ Error in getCampaignCustomFields:', err);
+        console.error('Error reading institute defaults for campaign picker:', err);
         return [];
     }
 };

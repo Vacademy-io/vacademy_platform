@@ -1,4 +1,4 @@
-import { getFieldsForLocation } from '@/lib/custom-fields/utils';
+import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
 
 /**
  * Interface for invite form custom field
@@ -40,50 +40,74 @@ const generateKeyFromName = (name: string): string => {
 };
 
 /**
- * Get custom fields for Invite List location from localStorage
- * Transforms them into the format expected by the invite form
+ * Get the institute's default custom fields, pre-selected for a brand-new
+ * invite create dialog.
+ *
+ * Custom Fields Revamp (2026-04): the previous implementation read from a
+ * stale "Invite List" visibility checkbox. The revamp moved per-feature
+ * field selection out of Settings and into each feature's create/edit
+ * dialog, so the picker is now seeded from the institute's default catalog
+ * (every CustomField + FixedField stored in `CUSTOM_FIELD_SETTING`). The
+ * admin can untick anything in the dialog before saving — only the ticked
+ * fields are persisted as ENROLL_INVITE mappings on save.
+ *
+ * Edit-mode pre-selection should fetch the existing ACTIVE mappings for
+ * the invite via `GET /admin-core-service/common/custom-fields/feature-fields`
+ * (type=ENROLL_INVITE, typeId=<inviteId>) instead of calling this function.
  */
 export const getInviteListCustomFields = (): InviteFormCustomField[] => {
     try {
-        // Get custom fields for "Invite List" location
-        const customFields = getFieldsForLocation('Invite List');
-
-        if (!customFields || customFields.length === 0) {
+        const settings = getCustomFieldSettingsFromCache();
+        if (!settings) {
             return getDefaultInviteFields();
         }
 
-        // Transform custom fields to invite form format
-        const transformedFields: InviteFormCustomField[] = customFields.map((field, index) => {
-            const isOldKey = false;
-            const fieldKey = generateKeyFromName(field.name);
+        // Combine fixed (locked seeded) + admin-created custom fields. The
+        // institute owns all of these as DEFAULT_CUSTOM_FIELD mappings, so
+        // pre-selecting all of them is the right starting state.
+        const all = [
+            ...(settings.fixedFields || []),
+            ...(settings.customFields || []),
+            ...(settings.instituteFields || []),
+        ];
 
-            const transformedField: InviteFormCustomField = {
-                id: String(index), // Use index as string ID for form
-                type: mapFieldType(field.type || 'text'),
-                name: field.name,
-                oldKey: isOldKey,
-                isRequired: field.required || false,
-                key: fieldKey,
-                order: index,
-                _id: field.id, // Store the actual custom field ID from localStorage
-                status: 'ACTIVE',
-            };
+        if (all.length === 0) {
+            return getDefaultInviteFields();
+        }
 
-            // Add options if it's a dropdown field
-            if (field.type === 'dropdown' && field.options && field.options.length > 0) {
-                transformedField.options = field.options.map((option, optIndex) => ({
-                    id: `${index}_option_${optIndex}`,
-                    value: option,
-                    disabled: true,
-                }));
-            }
-
-            return transformedField;
-        });
-
-        return transformedFields;
+        return all
+            .map((field, index): InviteFormCustomField => {
+                const fieldType = mapFieldType((field.type as string) || 'text');
+                const transformed: InviteFormCustomField = {
+                    id: String(index),
+                    type: fieldType,
+                    name: field.name,
+                    // System-locked fields stay marked oldKey: true so the
+                    // dialog hides their delete button.
+                    oldKey: !field.canBeDeleted,
+                    isRequired: field.required || false,
+                    key: generateKeyFromName(field.name),
+                    order: field.order ?? index,
+                    _id: field.id,
+                    status: 'ACTIVE',
+                };
+                if (
+                    fieldType === 'dropdown' &&
+                    'options' in field &&
+                    field.options &&
+                    field.options.length > 0
+                ) {
+                    transformed.options = field.options.map((option, optIndex) => ({
+                        id: `${index}_option_${optIndex}`,
+                        value: option,
+                        disabled: true,
+                    }));
+                }
+                return transformed;
+            })
+            .sort((a, b) => a.order - b.order);
     } catch (error) {
-        console.error('❌ Error getting invite list custom fields:', error);
+        console.error('Error reading institute defaults for invite picker:', error);
         return getDefaultInviteFields();
     }
 };

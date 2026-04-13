@@ -27,11 +27,86 @@ public class InstituteCustomFieldController {
     @Autowired
     private InstituteCustomFieldManager instituteCustomFieldManager;
 
+    /**
+     * Returns the institute's DEFAULT_CUSTOM_FIELD mappings — i.e. the catalog
+     * the admin manages from Settings → Custom Fields. The per-feature pickers
+     * (Enroll Invite, Audience, Live Session, Assessment) call this to know
+     * which fields to pre-select when an admin opens a brand-new create dialog.
+     */
     @GetMapping
     public ResponseEntity<List<InstituteCustomFieldDTO>> getInstituteCustomFields(
             @RequestParam("instituteId") String instituteId) {
         return ResponseEntity.ok(
                 instituteCustomFiledService.findActiveCustomFieldsWithNullTypeId(instituteId));
+    }
+
+    /**
+     * Returns every ACTIVE custom-field mapping for a single feature instance
+     * (e.g. one enroll invite, one live session, one audience). Used by the
+     * per-feature edit screens to pre-populate the picker with the fields
+     * that were saved last time.
+     *
+     * Pass {@code type} = ENROLL_INVITE / AUDIENCE_FORM / SESSION / ASSESSMENT
+     * and {@code typeId} = the feature instance UUID.
+     */
+    @GetMapping("/feature-fields")
+    public ResponseEntity<List<InstituteCustomFieldDTO>> getFeatureCustomFields(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("type") String type,
+            @RequestParam("typeId") String typeId) {
+        return ResponseEntity.ok(
+                instituteCustomFiledService.findCustomFieldsAsJson(instituteId, type, typeId));
+    }
+
+    /**
+     * Persist the full set of custom fields the admin selected for one feature
+     * instance. Idempotent: insert / reactivate / soft-delete in one call. Used
+     * by every feature flow that owns its own per-instance picker — Enroll
+     * Invite, Audience, Live Session, Assessment, …
+     *
+     * <p>This endpoint exists so the assessment-service (and any other
+     * downstream flow) can sync custom fields without needing to import the
+     * admin_core_service service classes — the frontend calls it directly
+     * after the parent feature has been created. Body is the FULL list of
+     * fields the admin picked (defaults pre-selected from the catalog plus
+     * any ad-hoc fields added in the dialog).
+     */
+    @PostMapping("/feature-fields")
+    public ResponseEntity<String> syncFeatureCustomFields(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("type") String type,
+            @RequestParam("typeId") String typeId,
+            @RequestBody List<InstituteCustomFieldDTO> fields) {
+        instituteCustomFiledService.syncFeatureCustomFields(instituteId, type, typeId, fields);
+        return ResponseEntity.ok("synced");
+    }
+
+    /**
+     * List every active mapping for one custom field across all feature
+     * instances (DEFAULT + ENROLL_INVITE + AUDIENCE_FORM + SESSION +
+     * ASSESSMENT). Used by the Settings → Custom Fields cascade-delete
+     * dialog so the admin can pick which mappings to soft-delete.
+     */
+    @GetMapping("/usages")
+    public ResponseEntity<List<vacademy.io.admin_core_service.features.common.dto.CustomFieldMappingUsageDTO>> getCustomFieldUsages(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("customFieldId") String customFieldId) {
+        return ResponseEntity.ok(
+                instituteCustomFiledService.getCustomFieldUsages(instituteId, customFieldId));
+    }
+
+    /**
+     * Soft-delete a list of {@code institute_custom_fields} rows by id.
+     * Returns the number of rows actually flipped to DELETED. The master
+     * {@code custom_fields} row and any {@code custom_field_values} answers
+     * are <strong>not</strong> touched — re-adding the same field later via
+     * the unified picker will reactivate the mapping and bring the answers
+     * back.
+     */
+    @DeleteMapping("/mappings")
+    public ResponseEntity<String> softDeleteMappings(@RequestBody List<String> mappingIds) {
+        int updated = instituteCustomFiledService.softDeleteMappingsByIds(mappingIds);
+        return ResponseEntity.ok(updated + " mapping(s) marked DELETED");
     }
 
     @DeleteMapping("/delete-bulk")

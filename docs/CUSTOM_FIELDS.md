@@ -2,6 +2,22 @@
 
 > Scope: complete walkthrough of how custom fields are modeled, persisted, exposed, and consumed across the Vacademy platform — from the `admin_core_service` database tables, through the admin dashboard configuration UI, into every feature flow that uses them (Invite, Audience, Live Class, Assessment), and finally how the learner dashboard renders and submits them.
 
+> ### ⚠ Custom Fields Revamp (2026‑04)
+>
+> This document describes the **post-revamp** model. The data shape on disk is largely unchanged, but several rules around how fields are created and managed are now different. If you are reading this from a branch that predates the revamp, several of the §3–§9 details will not match the running code.
+>
+> **What changed at a glance:**
+>
+> 1. **Visibility shrunk to 3 admin-side locations only**: Learner's List, Learner's Enrollment, Learner Profile. The 6 per-feature locations (Invite List, Enroll Request List, Assessment Registration, Live Session Registration, Campaign, Enquiry) are gone — per-feature visibility is now controlled by `institute_custom_fields` rows with the matching `type` / `type_id` instead of by checkboxes in Settings.
+> 2. **Per-feature pickers are the new source of truth.** Each create/edit dialog (Enroll Invite, Audience, Live Class Step 2, Assessment Step 3) loads the institute's default catalog with everything pre-selected, lets the admin untick what they don't want, and persists the picked list as `institute_custom_fields` rows scoped to that feature instance. Defaults are NOT auto-cloned by the backend on create — that responsibility moved to the frontend picker.
+> 3. **Settings → Custom Fields manages only `DEFAULT_CUSTOM_FIELD` rows.** It is the **only** place where institute defaults are created and removed. Per-feature dialogs may add ad-hoc fields scoped to that feature instance, but those do NOT get a `DEFAULT_CUSTOM_FIELD` mapping.
+> 4. **`institute_custom_fields.is_mandatory` (new column).** Required-state can now vary per (institute, field, type, type_id), so the same default field can be required in an Enroll Invite and optional in a Live Session.
+> 5. **`CustomFieldTypeEnum.ASSESSMENT` (new value)** for the new assessment per-instance mapping. `SESSION` continues to be used for live class mappings.
+> 6. **Reactivation-aware unified sync.** A new service method `InstituteCustomFiledService.syncFeatureCustomFields(instituteId, type, typeId, dtos)` handles the diff between the admin's picked list and what's currently in the DB: insert new, reactivate previously-DELETED rows, soft-delete anything no longer in the list. All four feature flows now route through this single method, so the duplicate-mapping inflation that affected pre-revamp data cannot recur.
+> 7. **Existing dirty data in production is NOT touched** by deploy. There is a separate per-institute runbook for cleaning historical garbage: see [CUSTOM_FIELDS_PROD_CLEANUP.md](CUSTOM_FIELDS_PROD_CLEANUP.md).
+>
+> Section 9 (Visibility & Settings Model) and §10 (Settings page) below are written against the new model. Sections 11–14 (Invite / Audience / Live Class / Assessment flows) describe the new picker pattern. The bug list in [CUSTOM_FIELDS_ADMIN_FLOWS_AND_ISSUES.md](CUSTOM_FIELDS_ADMIN_FLOWS_AND_ISSUES.md) is annotated with which bugs the revamp resolves.
+
 ---
 
 ## Table of Contents

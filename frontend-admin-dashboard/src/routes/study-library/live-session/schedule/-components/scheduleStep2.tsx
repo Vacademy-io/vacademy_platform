@@ -25,7 +25,7 @@ import QRCode from 'react-qr-code';
 import { handleDownloadQRCode } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { Checkbox } from '@/components/ui/checkbox';
 import { addCustomFiledSchema, addParticipantsSchema } from '../-schema/schema';
-import { getFieldsForLocation } from '@/lib/custom-fields/utils';
+import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { Switch } from '@/components/ui/switch';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -405,7 +405,13 @@ export default function ScheduleStep2() {
         }
         if (accessType === AccessType.PUBLIC) {
             // Load from settings, fallback to hardcoded defaults
-            const settingsFields = getFieldsForLocation('Live Session Registration Form');
+            // Custom Fields Revamp: read ALL institute defaults from cache
+            const settings = getCustomFieldSettingsFromCache();
+            const settingsFields = [
+                ...(settings?.fixedFields || []),
+                ...(settings?.customFields || []),
+                ...(settings?.instituteFields || []),
+            ];
             let allFields;
             if (settingsFields.length > 0) {
                 allFields = settingsFields.map((f) => ({

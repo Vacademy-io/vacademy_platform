@@ -66,7 +66,6 @@ const EnquiryCustomFieldsCard = ({
             ];
 
             const enquiryFields = allFields
-                .filter((field) => field.visibility?.enquiry === true)
                 .sort((a, b) => (a.order || 0) - (b.order || 0));
 
             // Convert to form format

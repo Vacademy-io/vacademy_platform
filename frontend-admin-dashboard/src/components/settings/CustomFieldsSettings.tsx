@@ -9,10 +9,7 @@ import {
     X,
     Settings,
     Users,
-    FileText,
-    Calendar,
     User,
-    ClipboardList,
     Trash2,
     FolderPlus,
     GripVertical,
@@ -20,7 +17,6 @@ import {
     AlertCircle,
     CheckCircle,
     Database,
-    Megaphone,
 } from 'lucide-react';
 import {
     DndContext,
@@ -78,6 +74,8 @@ import {
     type SystemField as ServiceSystemField,
 } from '@/services/custom-field-settings';
 import { SystemToCustomFieldMapping } from './SystemToCustomFieldMapping';
+import { CustomFieldDeleteDialog } from './CustomFieldDeleteDialog';
+import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
 
 // Use service types for the component
@@ -88,16 +86,15 @@ type FieldGroup = ServiceFieldGroup;
 type GroupField = ServiceGroupField;
 type SystemField = ServiceSystemField;
 
+// Custom Fields Revamp (2026-04): only the three admin-side locations remain.
+// Per-feature visibility (Invite, Enroll Request, Assessment, Live Session,
+// Campaign, Enquiry) is now controlled by the picker inside each feature's
+// own create/edit dialog and is persisted as institute_custom_fields rows
+// with the matching `type` and `type_id`.
 const visibilityLabels = [
     { key: 'learnersList', label: "Learner's List", icon: Users },
     { key: 'learnerEnrollment', label: "Learner's Enrollment", icon: Users },
-    { key: 'enrollRequestList', label: 'Enroll Request List', icon: ClipboardList },
-    { key: 'inviteList', label: 'Invite List', icon: Users },
-    { key: 'assessmentRegistration', label: 'Assessment Registration', icon: FileText },
-    { key: 'liveSessionRegistration', label: 'Live Session Registration', icon: Calendar },
     { key: 'learnerProfile', label: 'Learner Profile', icon: User },
-    { key: 'campaign', label: 'Campaign', icon: Megaphone },
-    { key: 'enquiry', label: 'Enquiry', icon: ClipboardList },
 ];
 
 // Sortable Item Components
@@ -204,6 +201,11 @@ const CustomFieldsSettings: React.FC = () => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [showGroupModal, setShowGroupModal] = useState(false);
     const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
+
+    // Cascade-delete dialog state
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [deleteDialogFieldId, setDeleteDialogFieldId] = useState('');
+    const [deleteDialogFieldName, setDeleteDialogFieldName] = useState('');
     const [newGroup, setNewGroup] = useState<Partial<FieldGroup>>({
         name: '',
         fields: [],
@@ -214,15 +216,9 @@ const CustomFieldsSettings: React.FC = () => {
         options: [],
         required: false,
         visibility: {
-            campaign: false,
             learnersList: false,
             learnerEnrollment: false,
-            enrollRequestList: false,
-            inviteList: false,
-            assessmentRegistration: false,
-            liveSessionRegistration: false,
             learnerProfile: false,
-            enquiry: false,
         },
     });
 
@@ -543,6 +539,16 @@ const CustomFieldsSettings: React.FC = () => {
         setCustomFields((prev) => prev.filter((field) => field.id !== fieldId));
     };
 
+    const openDeleteDialog = (fieldId: string, fieldName: string) => {
+        setDeleteDialogFieldId(fieldId);
+        setDeleteDialogFieldName(fieldName);
+        setDeleteDialogOpen(true);
+    };
+
+    const handleDeleteDialogComplete = () => {
+        loadSettings();
+    };
+
     const handleAddOption = (fieldId: string, optionValue: string) => {
         if (optionValue.trim()) {
             // Check if it's an institute field or custom field
@@ -669,15 +675,9 @@ const CustomFieldsSettings: React.FC = () => {
                 options: [],
                 required: false,
                 visibility: {
-                    campaign: false,
                     learnersList: false,
                     learnerEnrollment: false,
-                    enrollRequestList: false,
-                    inviteList: false,
-                    assessmentRegistration: false,
-                    liveSessionRegistration: false,
                     learnerProfile: false,
-                    enquiry: false,
                 },
             });
             setShowAddModal(false);
@@ -952,15 +952,9 @@ const CustomFieldsSettings: React.FC = () => {
                 options: [],
                 required: false,
                 visibility: {
-                    campaign: false,
                     learnersList: false,
                     learnerEnrollment: false,
-                    enrollRequestList: false,
-                    inviteList: false,
-                    assessmentRegistration: false,
-                    liveSessionRegistration: false,
                     learnerProfile: false,
-                    enquiry: false,
                 },
             });
         }
@@ -1475,6 +1469,9 @@ const CustomFieldsSettings: React.FC = () => {
                                                     <th className="px-4 py-3 text-center font-medium text-gray-700">
                                                         Required
                                                     </th>
+                                                    <th className="px-4 py-3 text-center font-medium text-gray-700">
+                                                        Delete
+                                                    </th>
                                                     {visibilityLabels.map(
                                                         ({ key, label, icon: Icon }) => (
                                                             <th
@@ -1521,8 +1518,11 @@ const CustomFieldsSettings: React.FC = () => {
                                                                         </span>
                                                                     )}
                                                                 </div>
-                                                                <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-500">
-                                                                    System Field
+                                                                <span
+                                                                    className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700"
+                                                                    title="Locked default field — created automatically when the institute was provisioned. Cannot be deleted, but its visibility and required state can be changed."
+                                                                >
+                                                                    DEFAULT
                                                                 </span>
                                                             </div>
                                                         </td>
@@ -1535,6 +1535,19 @@ const CustomFieldsSettings: React.FC = () => {
                                                                     )
                                                                 }
                                                             />
+                                                        </td>
+                                                        <td className="p-4 text-center">
+                                                            <Button
+                                                                onClick={() =>
+                                                                    openDeleteDialog(field.id, field.name)
+                                                                }
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                                                                title="Delete field — opens a dialog showing every place this field is used"
+                                                            >
+                                                                <Trash2 className="size-4" />
+                                                            </Button>
                                                         </td>
                                                         {visibilityLabels.map(({ key, label }) => (
                                                             <td
@@ -1636,12 +1649,12 @@ const CustomFieldsSettings: React.FC = () => {
                                                     </div>
                                                     <Button
                                                         onClick={() =>
-                                                            handleRemoveInstituteField(field.id)
+                                                            openDeleteDialog(field.id, field.name)
                                                         }
                                                         variant="destructive"
                                                         size="sm"
                                                         className="bg-red-500 px-3 py-2 text-white hover:bg-red-600"
-                                                        title="Delete field"
+                                                        title="Delete field — opens a dialog showing every place this field is used"
                                                     >
                                                         <Trash2 className="size-4" />
                                                     </Button>
@@ -1651,9 +1664,10 @@ const CustomFieldsSettings: React.FC = () => {
                                                 <div className="mb-3 ml-8 flex items-center gap-3">
                                                     <Badge
                                                         variant="outline"
-                                                        className="border-blue-200 bg-blue-50 text-[10px] text-blue-700 hover:bg-blue-100"
+                                                        className="border-blue-200 bg-blue-50 text-[10px] font-medium text-blue-700 hover:bg-blue-100"
+                                                        title="Institute-wide default field. Available for selection in every Enroll Invite, Audience, Live Class and Assessment create dialog."
                                                     >
-                                                        Custom Field
+                                                        DEFAULT
                                                     </Badge>
                                                     {field.usage && (
                                                         <>
@@ -1794,12 +1808,12 @@ const CustomFieldsSettings: React.FC = () => {
                                                     </div>
                                                     <Button
                                                         onClick={() =>
-                                                            handleRemoveCustomField(field.id)
+                                                            openDeleteDialog(field.id, field.name)
                                                         }
                                                         variant="destructive"
                                                         size="sm"
                                                         className="bg-red-500 px-3 py-2 text-white hover:bg-red-600"
-                                                        title="Delete field"
+                                                        title="Delete field — opens a dialog showing every place this field is used"
                                                     >
                                                         <Trash2 className="size-4" />
                                                     </Button>
@@ -1809,9 +1823,10 @@ const CustomFieldsSettings: React.FC = () => {
                                                 <div className="mb-3 ml-8 flex items-center gap-3">
                                                     <Badge
                                                         variant="outline"
-                                                        className="border-blue-200 bg-blue-50 text-[10px] text-blue-700 hover:bg-blue-100"
+                                                        className="border-blue-200 bg-blue-50 text-[10px] font-medium text-blue-700 hover:bg-blue-100"
+                                                        title="Institute-wide default field. Available for selection in every Enroll Invite, Audience, Live Class and Assessment create dialog."
                                                     >
-                                                        Custom Field
+                                                        DEFAULT
                                                     </Badge>
                                                     {field.usage && (
                                                         <>
@@ -2219,15 +2234,9 @@ const CustomFieldsSettings: React.FC = () => {
                                                     options: [],
                                                     required: false,
                                                     visibility: {
-                                                        campaign: false,
                                                         learnersList: false,
                                                         learnerEnrollment: false,
-                                                        enrollRequestList: false,
-                                                        inviteList: false,
-                                                        assessmentRegistration: false,
-                                                        liveSessionRegistration: false,
                                                         learnerProfile: false,
-                                                        enquiry: false,
                                                     },
                                                 });
                                             }
@@ -2538,6 +2547,16 @@ const CustomFieldsSettings: React.FC = () => {
 
                 {/* System Field Mapping Section */}
                 <SystemToCustomFieldMapping />
+
+                {/* Cascade Delete Dialog */}
+                <CustomFieldDeleteDialog
+                    open={deleteDialogOpen}
+                    onOpenChange={setDeleteDialogOpen}
+                    fieldName={deleteDialogFieldName}
+                    fieldId={deleteDialogFieldId}
+                    instituteId={getInstituteId() ?? ''}
+                    onDeleteComplete={handleDeleteDialogComplete}
+                />
             </div>
         </DndContext>
     );

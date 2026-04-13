@@ -46,6 +46,9 @@ public class InstituteCustomField {
     @Column(name = "individual_order")
     private Integer individualOrder;
 
+    @Column(name = "is_mandatory")
+    private Boolean isMandatory = false;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
@@ -80,6 +83,9 @@ public class InstituteCustomField {
 
         if (instituteCustomFieldDTO.getGroupInternalOrder() != null)
             this.groupInternalOrder = instituteCustomFieldDTO.getGroupInternalOrder();
+
+        if (instituteCustomFieldDTO.getIsMandatory() != null)
+            this.isMandatory = instituteCustomFieldDTO.getIsMandatory();
 
         if (StringUtils.hasText(instituteCustomFieldDTO.getStatus()))
             this.status = instituteCustomFieldDTO.getStatus();

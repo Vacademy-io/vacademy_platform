@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
-import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
@@ -119,12 +118,13 @@ public class EnrollInviteService {
 
         final EnrollInvite savedEnrollInvite = initialSavedEnrollInvite;
 
+        // Custom fields revamp: the frontend now sends the explicit list of fields
+        // (defaults the admin pre-selected + any ad-hoc fields they added) on every
+        // create / update. The previous "auto-copy all defaults to new invite" call
+        // is intentionally removed — defaults that the admin un-checks must NOT
+        // come back. See vacademy_platform/docs/CUSTOM_FIELDS.md.
         saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteId(),
                 enrollInviteDTO.getInstituteCustomFields());
-
-        // Automatically copy default custom fields to the new enroll invite
-        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(enrollInviteDTO.getInstituteId(),
-                savedEnrollInvite.getId());
 
         List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
                 .filter(Objects::nonNull)
@@ -387,73 +387,24 @@ public class EnrollInviteService {
         return "Enroll invites deleted successfully";
     }
 
+    /**
+     * Persist the full set of custom fields the admin selected for this enroll
+     * invite. Delegates to the unified per-feature sync — see
+     * {@link vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService#syncFeatureCustomFields}.
+     *
+     * The frontend always sends the complete picked list (defaults + ad-hoc).
+     * Anything not present here is soft-deleted; anything previously deleted
+     * is reactivated by id (so a re-tick brings the existing answers back).
+     */
     private void saveInstituteCustomFields(String inviteId, String instituteId, List<InstituteCustomFieldDTO> dtos) {
-        // Step 1: Mark existing custom fields as DELETED if they're not in the incoming
-        // array
-        if (StringUtils.hasText(instituteId) && StringUtils.hasText(inviteId)) {
-            markMissingCustomFieldsAsDeleted(instituteId, inviteId, dtos);
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(inviteId)) {
+            return;
         }
-
-        // Step 2: Save/update the custom fields from the incoming array
-        if (!CollectionUtils.isEmpty(dtos)) {
-            List<InstituteCustomFieldDTO> customFieldsToSave = dtos.stream()
-                    .filter(Objects::nonNull)
-                    .peek(cf -> {
-                        cf.setId(null);
-                        cf.setType(CustomFieldTypeEnum.ENROLL_INVITE.name());
-                        cf.setTypeId(inviteId);
-                        if (!StringUtils.hasText(cf.getInstituteId())) {
-                            cf.setInstituteId(instituteId);
-                        }
-                    })
-                    .collect(Collectors.toList());
-            instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
-        }
-    }
-
-    private void markMissingCustomFieldsAsDeleted(String instituteId, String enrollInviteId,
-            List<InstituteCustomFieldDTO> incomingDtos) {
-        // Fetch all existing ACTIVE custom fields for this enroll invite
-        List<InstituteCustomField> existingFields = instituteCustomFiledService.getCusFieldByInstituteAndTypeAndTypeId(
+        instituteCustomFiledService.syncFeatureCustomFields(
                 instituteId,
                 CustomFieldTypeEnum.ENROLL_INVITE.name(),
-                enrollInviteId,
-                List.of(StatusEnum.ACTIVE.name()));
-
-        if (CollectionUtils.isEmpty(existingFields)) {
-            return; // No existing fields to delete
-        }
-
-        // Extract customFieldIds from incoming DTOs
-        final Set<String> incomingCustomFieldIds;
-        if (!CollectionUtils.isEmpty(incomingDtos)) {
-            incomingCustomFieldIds = incomingDtos.stream()
-                    .filter(Objects::nonNull)
-                    .map(dto -> {
-                        if (dto.getCustomField() != null && StringUtils.hasText(dto.getCustomField().getId())) {
-                            return dto.getCustomField().getId();
-                        }
-                        if (StringUtils.hasText(dto.getFieldId())) {
-                            return dto.getFieldId();
-                        }
-                        return null;
-                    })
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toSet());
-        } else {
-            incomingCustomFieldIds = new HashSet<>();
-        }
-
-        // Find existing fields that are not in the incoming array
-        List<InstituteCustomField> fieldsToDelete = existingFields.stream()
-                .filter(existingField -> !incomingCustomFieldIds.contains(existingField.getCustomFieldId()))
-                .collect(Collectors.toList());
-
-        // Mark them as DELETED
-        if (!CollectionUtils.isEmpty(fieldsToDelete)) {
-            fieldsToDelete.forEach(field -> field.setStatus(StatusEnum.DELETED.name()));
-            instituteCustomFiledService.createOrUpdateMappings(fieldsToDelete);
-        }
+                inviteId,
+                dtos);
     }
 
     // ===================================================================================

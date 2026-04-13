@@ -162,18 +162,30 @@ public class AudienceService {
         return userIds;
     }
 
-    private void saveInstituteCustomFields(String audienceId, List<InstituteCustomFieldDTO> dtos) {
-        if (!CollectionUtils.isEmpty(dtos)) {
-            List<InstituteCustomFieldDTO> customFieldsToSave = dtos.stream()
-                    .filter(Objects::nonNull)
-                    .peek(cf -> {
-                        cf.setId(null); // Force creation of new mapping
-                        cf.setType(CustomFieldTypeEnum.AUDIENCE_FORM.name());
-                        cf.setTypeId(audienceId);
-                    })
-                    .collect(Collectors.toList());
-            instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
-            logger.info("Linked {} custom fields to audience {}", customFieldsToSave.size(), audienceId);
+    /**
+     * Persist the full set of custom fields the admin selected for this audience
+     * campaign. Delegates to the unified per-feature sync — see
+     * {@link vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService#syncFeatureCustomFields}.
+     *
+     * The frontend always sends the complete picked list (defaults pre-selected
+     * from the institute catalog + ad-hoc fields the admin added in the dialog).
+     * Anything not present here is soft-deleted; anything previously deleted is
+     * reactivated by id (so a re-tick brings the existing answers back). The
+     * institute_id is read from the audience entity itself, so the caller does
+     * not need to pass it.
+     */
+    private void saveInstituteCustomFields(String audienceId, String instituteId,
+                                           List<InstituteCustomFieldDTO> dtos) {
+        if (!StringUtils.hasText(audienceId) || !StringUtils.hasText(instituteId)) {
+            return;
+        }
+        instituteCustomFiledService.syncFeatureCustomFields(
+                instituteId,
+                CustomFieldTypeEnum.AUDIENCE_FORM.name(),
+                audienceId,
+                dtos);
+        if (dtos != null) {
+            logger.info("Synced {} custom field selections for audience {}", dtos.size(), audienceId);
         }
     }
 
@@ -207,8 +219,9 @@ public class AudienceService {
 
         logger.info("Saved audience with ID: {}", savedAudience.getId());
 
-        // 2. Link custom fields - EXACTLY like EnrollInvite!
-        saveInstituteCustomFields(savedAudience.getId(), audienceDTO.getInstituteCustomFields());
+        // 2. Link custom fields - admin's full picked list (defaults + ad-hoc).
+        saveInstituteCustomFields(savedAudience.getId(), savedAudience.getInstituteId(),
+                audienceDTO.getInstituteCustomFields());
 
         return savedAudience.getId();
     }
@@ -256,8 +269,10 @@ public class AudienceService {
 
         Audience updated = audienceRepository.save(audience);
 
-        // Update custom fields if provided
-        saveInstituteCustomFields(updated.getId(), audienceDTO.getInstituteCustomFields());
+        // Update custom fields — admin's full picked list, including any toggled-off
+        // entries which will be soft-deleted by the unified sync.
+        saveInstituteCustomFields(updated.getId(), updated.getInstituteId(),
+                audienceDTO.getInstituteCustomFields());
 
         logger.info("Updated audience: {}", updated.getId());
         return updated.getId();

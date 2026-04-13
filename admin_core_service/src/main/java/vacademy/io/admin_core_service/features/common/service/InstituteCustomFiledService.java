@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
+import vacademy.io.admin_core_service.features.common.dto.CustomFieldMappingUsageDTO;
 import vacademy.io.admin_core_service.features.common.util.CustomFieldKeyGenerator;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDeleteRequestDTO;
@@ -105,6 +106,9 @@ public class InstituteCustomFiledService {
                 if (dto.getIndividualOrder() != null) {
                     instCF.setIndividualOrder(dto.getIndividualOrder());
                 }
+                if (dto.getIsMandatory() != null) {
+                    instCF.setIsMandatory(dto.getIsMandatory());
+                }
             } else {
                 instCF = new InstituteCustomField(dto);
                 instCF.setCustomFieldId(cf.getId());
@@ -133,6 +137,86 @@ public class InstituteCustomFiledService {
         CustomFields newCF = new CustomFields(cfDto);
         newCF.setFieldKey(fieldKey);
         return customFieldRepository.save(newCF);
+    }
+
+    /**
+     * Unified per-feature custom-field sync.
+     *
+     * Used by every feature flow that owns its own list of custom fields
+     * (Enroll Invite, Audience, Live Session, Assessment). Semantics:
+     *
+     *   1. Load every existing ACTIVE mapping for the (institute, type, typeId) tuple.
+     *   2. Walk the incoming list:
+     *        - If the entry has a customFieldId → reuse the existing master
+     *          custom_fields row. Reactivate any matching DELETED mapping or
+     *          create a new ACTIVE one.
+     *        - If the entry has no customFieldId (an "ad-hoc" field added in
+     *          the feature dialog) → create a new master custom_fields row
+     *          AND a new mapping with the feature type/typeId. NO
+     *          DEFAULT_CUSTOM_FIELD mapping is created — defaults are managed
+     *          exclusively from Settings → Custom Fields.
+     *   3. Soft-delete every previously-ACTIVE mapping that is no longer in
+     *      the incoming list. Existing custom_field_values are untouched, so
+     *      a future re-add of the same field reactivates and the answers
+     *      come back.
+     *
+     * The caller is expected to have already persisted the parent entity
+     * (so typeId is non-null) before calling this method.
+     */
+    @Transactional
+    public void syncFeatureCustomFields(String instituteId,
+                                        String type,
+                                        String typeId,
+                                        List<InstituteCustomFieldDTO> incoming) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(type) || !StringUtils.hasText(typeId)) {
+            throw new VacademyException("instituteId, type and typeId are required for syncFeatureCustomFields");
+        }
+
+        List<InstituteCustomFieldDTO> safeIncoming = incoming == null ? new ArrayList<>() : incoming;
+
+        // Normalize: stamp every incoming DTO with the right institute/type/typeId,
+        // and clear any stale primary key so the upsert path can find or create
+        // the correct mapping.
+        safeIncoming.forEach(dto -> {
+            if (dto == null) return;
+            dto.setInstituteId(instituteId);
+            dto.setType(type);
+            dto.setTypeId(typeId);
+            dto.setId(null);
+        });
+
+        // 1. Persist (insert / reactivate / update) every incoming mapping.
+        List<InstituteCustomFieldDTO> toUpsert = safeIncoming.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        if (!toUpsert.isEmpty()) {
+            addOrUpdateCustomField(toUpsert);
+        }
+
+        // 2. Soft-delete every existing ACTIVE mapping that is not in the
+        //    incoming set. We compare by customFieldId because that is the
+        //    stable identifier of "which field is on this feature instance".
+        List<InstituteCustomField> existingActive = instituteCustomFieldRepository
+                .findByInstituteIdAndTypeAndTypeIdAndStatusIn(instituteId, type, typeId,
+                        List.of(StatusEnum.ACTIVE.name()));
+
+        if (CollectionUtils.isEmpty(existingActive)) {
+            return;
+        }
+
+        Set<String> incomingFieldIds = toUpsert.stream()
+                .map(dto -> dto.getCustomField() != null ? dto.getCustomField().getId() : dto.getFieldId())
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
+
+        List<InstituteCustomField> toDelete = existingActive.stream()
+                .filter(row -> !incomingFieldIds.contains(row.getCustomFieldId()))
+                .peek(row -> row.setStatus(StatusEnum.DELETED.name()))
+                .collect(Collectors.toList());
+
+        if (!toDelete.isEmpty()) {
+            instituteCustomFieldRepository.saveAll(toDelete);
+        }
     }
 
     public List<InstituteCustomFieldDTO> findCustomFieldsAsJson(String instituteId, String type, String typeId) {
@@ -171,6 +255,67 @@ public class InstituteCustomFiledService {
                     instituteId, entry.getType(), entry.getCustomFieldId(), StatusEnum.DELETED.name());
         }
         return total;
+    }
+
+    /**
+     * List every ACTIVE mapping for one custom field across all feature
+     * instances. Used by the Settings → Custom Fields cascade-delete dialog
+     * so the admin can pick which mappings to soft-delete (DEFAULT,
+     * individual ENROLL_INVITE rows, individual AUDIENCE_FORM rows, etc.).
+     *
+     * <p>Returns a flat list — the frontend groups by {@code type} for display.
+     */
+    public List<CustomFieldMappingUsageDTO> getCustomFieldUsages(String instituteId, String customFieldId) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(customFieldId)) {
+            return new ArrayList<>();
+        }
+        List<InstituteCustomField> rows = instituteCustomFieldRepository
+                .findByInstituteIdAndCustomFieldIdInAndStatusIn(
+                        instituteId,
+                        List.of(customFieldId),
+                        List.of(StatusEnum.ACTIVE.name()));
+        return rows.stream()
+                .map(row -> CustomFieldMappingUsageDTO.builder()
+                        .mappingId(row.getId())
+                        .type(row.getType())
+                        .typeId(row.getTypeId())
+                        .status(row.getStatus())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Soft-delete a list of {@code institute_custom_fields} rows by id.
+     *
+     * <p>"Delete" here means: status flipped to DELETED. Nothing else
+     * happens — the master {@code custom_fields} row stays intact, and any
+     * {@code custom_field_values} answers stored against the field stay in
+     * place. This is intentional: the unified {@code syncFeatureCustomFields}
+     * is reactivation-aware, so a future re-add of the same field on the
+     * same feature instance flips the row back to ACTIVE and the answers
+     * come back automatically.
+     *
+     * <p>Used by the Settings → Custom Fields cascade-delete dialog. Returns
+     * the number of rows actually flipped (rows already DELETED are
+     * skipped).
+     */
+    @Transactional
+    public int softDeleteMappingsByIds(List<String> mappingIds) {
+        if (CollectionUtils.isEmpty(mappingIds)) {
+            return 0;
+        }
+        List<InstituteCustomField> rows = instituteCustomFieldRepository.findAllById(mappingIds);
+        int flipped = 0;
+        for (InstituteCustomField row : rows) {
+            if (!StatusEnum.DELETED.name().equals(row.getStatus())) {
+                row.setStatus(StatusEnum.DELETED.name());
+                flipped++;
+            }
+        }
+        if (flipped > 0) {
+            instituteCustomFieldRepository.saveAll(rows);
+        }
+        return flipped;
     }
 
     public List<InstituteCustomFieldSetupDTO> findUniqueActiveCustomFieldsByInstituteId(String instituteId) {
@@ -219,6 +364,9 @@ public class InstituteCustomFiledService {
         instituteDTO.setType(icf.getType());
         instituteDTO.setTypeId(icf.getTypeId());
         instituteDTO.setGroupName(icf.getGroupName());
+        instituteDTO.setIndividualOrder(icf.getIndividualOrder());
+        instituteDTO.setGroupInternalOrder(icf.getGroupInternalOrder());
+        instituteDTO.setIsMandatory(icf.getIsMandatory());
         instituteDTO.setCustomField(customFieldDTO);
         instituteDTO.setStatus(icf.getStatus());
         return instituteDTO;
@@ -388,16 +536,29 @@ public class InstituteCustomFiledService {
     }
 
     /**
-     * Copy default custom fields for an institute to enroll invite type
+     * Copy default custom fields for an institute to enroll invite type.
+     *
+     * <p>Used only by <strong>system-generated</strong> enroll invite creation
+     * paths (e.g. bulk course import, default enroll invite generation) where
+     * there is no admin UI to pick fields. Admin-driven create / edit flows
+     * should call {@link #syncFeatureCustomFields(String, String, String, java.util.List)}
+     * directly with the explicit list the admin selected.
+     *
+     * <p>Routes through the unified sync so that re-runs are idempotent and
+     * any previously soft-deleted mappings are reactivated rather than
+     * duplicated.
      */
     public void copyDefaultCustomFieldsToEnrollInvite(String instituteId, String enrollInviteId) {
         if (instituteId == null || enrollInviteId == null) {
             return;
         }
-        
+
         List<InstituteCustomFieldDTO> defaultCustomFieldsToCopy = getDefaultCustomFieldsForEnrollInvite(instituteId, enrollInviteId);
         if (!defaultCustomFieldsToCopy.isEmpty()) {
-            addOrUpdateCustomField(defaultCustomFieldsToCopy);
+            syncFeatureCustomFields(instituteId,
+                    CustomFieldTypeEnum.ENROLL_INVITE.name(),
+                    enrollInviteId,
+                    defaultCustomFieldsToCopy);
         }
     }
 

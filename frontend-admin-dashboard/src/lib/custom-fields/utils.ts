@@ -6,16 +6,18 @@ import {
     type FieldVisibility,
 } from '../../services/custom-field-settings';
 
-// Location mapping for field visibility
+// Location mapping for field visibility.
+//
+// Custom Fields Revamp (2026-04): only the three admin-side locations remain.
+// Per-feature locations (Invite List, Enroll Request List, Assessment
+// Registration, Live Session Registration, Campaign, Enquiry) were removed —
+// they are now backed by per-feature institute_custom_fields rows. Callers
+// that previously used getFieldsForLocation('Invite List') etc. should now
+// fetch via the feature-fields endpoint instead.
 const LOCATION_TO_VISIBILITY_KEY: Record<string, keyof FieldVisibility> = {
     "Learner's List": 'learnersList',
-    Campaign: 'campaign',
-    'Enroll Request List': 'enrollRequestList',
-    'Invite List': 'inviteList',
-    'Assessment Registration Form': 'assessmentRegistration',
-    'Live Session Registration Form': 'liveSessionRegistration',
-    'Learner Profile': 'learnerProfile',
     "Learner's Enrollment": 'learnerEnrollment',
+    'Learner Profile': 'learnerProfile',
 };
 
 // Type for fields that can be returned (all field types have common properties we need)
@@ -34,10 +36,13 @@ export type FieldForLocation = {
 };
 
 /**
- * Get custom fields for a specific location from stored settings
+ * Get custom fields for a specific admin-side location from stored settings.
  *
- * @param location - The location/page where fields should be displayed
- *                   e.g., "Learner's List", "Enroll Request List", "Invite List", etc.
+ * @param location - One of: "Learner's List", "Learner's Enrollment", "Learner Profile".
+ *                   The previous per-feature locations (Invite List, Campaign,
+ *                   etc.) were removed in the custom fields revamp — fetch
+ *                   per-feature fields from the /feature-fields backend
+ *                   endpoint instead.
  * @returns Array of fields that are visible for the specified location, sorted by order
  */
 export const getFieldsForLocation = (location: string): FieldForLocation[] => {

@@ -7,8 +7,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
+import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
+import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.*;
 import vacademy.io.admin_core_service.features.live_session.enums.*;
@@ -49,6 +51,9 @@ public class Step2Service {
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
     @Autowired
+    private InstituteCustomFiledService instituteCustomFiledService;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
@@ -69,7 +74,7 @@ public class Step2Service {
         updateSessionAccessLevel(session, request);
         linkParticipants(request);
         processNotificationActions(request, session.getId());
-        processCustomFields(request);
+        processCustomFields(request, session);
 
         session.setStatus(LiveSessionStatus.LIVE.name());
         sessionRepository.save(session);
@@ -283,17 +288,33 @@ public class Step2Service {
         }
     }
 
-    private void processCustomFields(LiveSessionStep2RequestDTO request) {
+    private void processCustomFields(LiveSessionStep2RequestDTO request, LiveSession session) {
+        // Preferred path (custom fields revamp): the frontend sends the FULL set
+        // of custom fields the admin selected for this session as a single
+        // `instituteCustomFields` array. Defer to the unified per-feature sync
+        // which handles insert / reactivate / soft-delete in one call.
+        if (request.getInstituteCustomFields() != null) {
+            instituteCustomFiledService.syncFeatureCustomFields(
+                    session.getInstituteId(),
+                    CustomFieldTypeEnum.SESSION.name(),
+                    session.getId(),
+                    request.getInstituteCustomFields());
+            return;
+        }
+
+        // Legacy path — kept for backward compatibility with older frontend
+        // builds that still send addedFields / updatedFields / deletedFieldIds.
+        // These have several known correctness bugs (no institute_id on the
+        // mapping, hard-deletes that orphan answers, no reactivation). New
+        // clients must use `instituteCustomFields` above.
         int index = 0;
 
-        // Add
         if (request.getAddedFields() != null) {
             for (LiveSessionStep2RequestDTO.CustomFieldDTO dto : request.getAddedFields()) {
                 saveNewCustomField(dto, request.getSessionId(), index++);
             }
         }
 
-        // Update
         if (request.getUpdatedFields() != null) {
             for (LiveSessionStep2RequestDTO.CustomFieldDTO dto : request.getUpdatedFields()) {
                 CustomFields existing = customFieldRepository.findById(dto.getId())
@@ -303,7 +324,7 @@ public class Step2Service {
                 existing.setFieldKey(dto.getLabel().toLowerCase().replaceAll("\\s+", "_"));
                 existing.setFieldType(dto.getType());
                 existing.setIsMandatory(dto.isRequired());
-                existing.setIsHidden(false); // Default to false for existing fields
+                existing.setIsHidden(false);
 
                 try {
                     if (dto.getOptions() != null && !dto.getOptions().isEmpty()) {
@@ -317,7 +338,6 @@ public class Step2Service {
             }
         }
 
-        // Delete
         if (request.getDeletedFieldIds() != null) {
             for (String id : request.getDeletedFieldIds()) {
                 customFieldRepository.deleteById(id);

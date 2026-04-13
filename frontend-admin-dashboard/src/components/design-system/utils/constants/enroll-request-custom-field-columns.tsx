@@ -39,11 +39,16 @@ const EnrollRequestCustomFieldCell = ({
  * 3. Maps customFieldId from student.custom_fields to the field name from settings
  *
  * @returns Array of column definitions for custom fields
+ *
+ * Custom Fields Revamp (2026-04): the standalone "Enroll Request List"
+ * visibility location was removed from Settings → Custom Fields. This view
+ * now reuses the "Learner's List" visibility configuration, since enroll
+ * requests are essentially pending learners and the same columns are
+ * almost always desired in both places.
  */
 export const generateEnrollRequestCustomFieldColumns = (): ColumnDef<StudentTable>[] => {
     try {
-        // Get all fields that should be visible in Enroll Request
-        const customFields = getFieldsForLocation('Enroll Request List');
+        const customFields = getFieldsForLocation("Learner's List");
 
         if (!customFields || customFields.length === 0) {
             return [];
@@ -83,7 +88,7 @@ export const generateEnrollRequestCustomFieldColumns = (): ColumnDef<StudentTabl
  */
 export const getEnrollRequestCustomFieldColumnWidths = (): Record<string, string> => {
     try {
-        const customFields = getFieldsForLocation('Enroll Request');
+        const customFields = getFieldsForLocation("Learner's List");
 
         if (!customFields || customFields.length === 0) {
             return {};

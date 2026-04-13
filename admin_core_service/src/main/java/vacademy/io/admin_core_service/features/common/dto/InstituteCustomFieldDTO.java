@@ -31,5 +31,7 @@ public class InstituteCustomFieldDTO {
 
     private Integer groupInternalOrder;
 
+    private Boolean isMandatory;
+
     private String status;
 }

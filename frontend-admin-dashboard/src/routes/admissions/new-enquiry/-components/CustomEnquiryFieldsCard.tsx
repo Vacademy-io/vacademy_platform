@@ -54,15 +54,11 @@ const CustomEnquiryFieldsCard = ({
             ...(settings.fixedFields || []),
         ];
 
-        // Filter for enquiry visibility
-        const enquiryFields = allFields.filter((field) => field.visibility?.enquiry === true);
+        // Custom Fields Revamp: the per-feature enquiry visibility checkbox was
+        // removed from Settings. In create mode, pre-select ALL institute defaults.
+        const enquiryFields = allFields.sort((a, b) => (a.order || 0) - (b.order || 0));
 
-        // Get field groups that have enquiry visibility
         const enquiryGroups = (settings.fieldGroups || [])
-            .map((group) => ({
-                ...group,
-                fields: group.fields.filter((field) => field.visibility?.enquiry === true),
-            }))
             .filter((group) => group.fields.length > 0);
 
         // First, mark all fields that are in groups

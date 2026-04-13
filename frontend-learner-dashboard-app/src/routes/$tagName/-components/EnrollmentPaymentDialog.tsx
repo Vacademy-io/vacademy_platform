@@ -590,9 +590,9 @@ export const EnrollmentPaymentDialog: React.FC<
                     {phoneError && (
                       <p className="text-red-500 text-sm mt-1">{phoneError}</p>
                     )}
-                    <p className="text-gray-500 text-xs mt-1">
+                    {/* {<p className="text-gray-500 text-xs mt-1">
                       Include country code (e.g., +91 9876543210)
-                    </p>
+                    </p> } */}
                   </div>
 
                   {validationError && (

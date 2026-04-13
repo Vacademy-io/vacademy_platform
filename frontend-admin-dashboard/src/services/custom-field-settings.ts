@@ -129,16 +129,23 @@ export interface CustomFieldUsage {
 }
 
 // Field Visibility Interface
+//
+// Custom Fields Revamp (2026-04): the per-feature locations
+// (Invite List, Enroll Request List, Assessment Registration, Live Session
+// Registration, Campaign, Enquiry) were removed. Per-feature visibility is
+// now controlled by `institute_custom_fields` rows with the right `type`
+// and `type_id` (ENROLL_INVITE, AUDIENCE_FORM, SESSION, ASSESSMENT) created
+// from each feature's create/edit dialog.
+//
+// What remains here are only the institute-side admin views where the
+// settings page directly controls visibility:
+//   - learnersList     → admin learner table columns
+//   - learnerEnrollment → admin "enroll learner" form
+//   - learnerProfile   → admin learner profile drawer
 export interface FieldVisibility {
-    campaign: boolean;
     learnersList: boolean;
     learnerEnrollment: boolean;
-    enrollRequestList: boolean;
-    inviteList: boolean;
-    assessmentRegistration: boolean;
-    liveSessionRegistration: boolean;
     learnerProfile: boolean;
-    enquiry: boolean;
 }
 
 // Custom Field (fully editable)
@@ -230,29 +237,19 @@ interface CachedCustomFieldSettings {
     instituteId: string;
 }
 
-// Location mapping dictionary
+// Location mapping dictionary — only the three admin-side locations remain.
+// The six per-feature locations were removed in the custom fields revamp.
+// See FieldVisibility above for the rationale.
 const LOCATION_TO_VISIBILITY_MAP: Record<string, keyof FieldVisibility> = {
-    Campaign: 'campaign',
     "Learner's List": 'learnersList',
     "Learner's Enrollment": 'learnerEnrollment',
-    'Enroll Request List': 'enrollRequestList',
-    'Invite List': 'inviteList',
-    'Assessment Registration Form': 'assessmentRegistration',
-    'Live Session Registration Form': 'liveSessionRegistration',
     'Learner Profile': 'learnerProfile',
-    Enquiry: 'enquiry',
 };
 
 const VISIBILITY_TO_LOCATION_MAP: Record<keyof FieldVisibility, string> = {
-    campaign: 'Campaign',
     learnersList: "Learner's List",
     learnerEnrollment: "Learner's Enrollment",
-    enrollRequestList: 'Enroll Request List',
-    inviteList: 'Invite List',
-    assessmentRegistration: 'Assessment Registration Form',
-    liveSessionRegistration: 'Live Session Registration Form',
     learnerProfile: 'Learner Profile',
-    enquiry: 'Enquiry',
 };
 
 // System field identifiers (fieldName from API)
@@ -441,15 +438,9 @@ export const DEFAULT_SYSTEM_FIELDS: SystemField[] = [
  */
 const mapLocationsToVisibility = (locations: string[]): FieldVisibility => {
     const visibility: FieldVisibility = {
-        campaign: false,
         learnersList: false,
         learnerEnrollment: false,
-        enrollRequestList: false,
-        inviteList: false,
-        assessmentRegistration: false,
-        liveSessionRegistration: false,
         learnerProfile: false,
-        enquiry: false,
     };
 
     locations.forEach((location) => {
@@ -1640,15 +1631,9 @@ export const createNewCustomField = (
         type,
         options: type === 'dropdown' ? options || [] : undefined,
         visibility: {
-            campaign: false,
             learnersList: false,
             learnerEnrollment: false,
-            enrollRequestList: false,
-            inviteList: false,
-            assessmentRegistration: false,
-            liveSessionRegistration: false,
             learnerProfile: false,
-            enquiry: false,
         },
         required: false,
         order: 999, // Will be updated when added to settings
@@ -1681,15 +1666,9 @@ export const createTempCustomField = (
         type,
         options: type === 'dropdown' ? options || [] : undefined,
         visibility: {
-            campaign: false,
             learnersList: false,
             learnerEnrollment: false,
-            enrollRequestList: false,
-            inviteList: false,
-            assessmentRegistration: false,
-            liveSessionRegistration: false,
             learnerProfile: false,
-            enquiry: false,
         },
         required: false,
         canBeDeleted: true,

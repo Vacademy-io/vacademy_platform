@@ -4,6 +4,18 @@
 >
 > Read this if you are: an admin user who needs to understand the product, a PM scoping changes to custom fields, a QA writing test cases, or an engineer triaging custom-field bugs.
 
+> ### ⚠ Custom Fields Revamp (2026-04) — bug status update
+>
+> The custom fields system has been revamped. The bug list below is annotated with whether each item is **fixed**, **partially fixed**, **still open**, or **superseded** by the revamp. The revamp made the following structural changes:
+>
+> - **Visibility shrunk to 3 admin-side locations** (Learner's List, Learner's Enrollment, Learner Profile). Per-feature locations (Invite, Audience, Live Class, Assessment, Enquiry, Campaign) were removed.
+> - **Per-feature pickers** are the source of truth for which fields appear on each invite/audience/session/assessment instance. Each create/edit dialog seeds itself from the institute defaults, the admin un/ticks, and the new unified `syncFeatureCustomFields` backend service handles insert/reactivate/soft-delete in one transaction.
+> - **`institute_custom_fields.is_mandatory`** added — required state can vary per (institute, field, type, type_id).
+> - **`CustomFieldTypeEnum.ASSESSMENT`** added; `SESSION` continues to be used for live class.
+> - **No data cleanup** runs on deploy. The handful of production institutes with historical garbage are cleaned individually using the procedure in [CUSTOM_FIELDS_PROD_CLEANUP.md](CUSTOM_FIELDS_PROD_CLEANUP.md).
+>
+> Bug-by-bug status is shown in §4 below.
+
 ---
 
 ## Table of Contents
@@ -302,7 +314,9 @@ Bugs are tagged with severity, the file/line where the issue lives (cross-refere
 
 ### 4.1 Critical
 
-#### B-0. The Settings page shows duplicate fields and mis‑classified system fields
+#### B-0. The Settings page shows duplicate fields and mis‑classified system fields  ⚠ partially addressed by revamp
+
+> **Status after revamp:** the new code paths cannot create new duplicates (the unified `syncFeatureCustomFields` is reactivation-aware), and the "System Field" badge is no longer driven by the `SYSTEM_FIELD_NAMES` heuristic on locked rows — the seeded defaults now show the **DEFAULT** badge directly. Historical garbage in production institutes is **not** auto-cleaned; use the per-institute runbook in [CUSTOM_FIELDS_PROD_CLEANUP.md](CUSTOM_FIELDS_PROD_CLEANUP.md).
 
 **Where:** Combination of [B-23](#b-23-custom_fieldsfield_key-has-no-sql-unique-constraint--duplicates-accumulate) (no DB unique constraint on `field_key`) + [B-24](#b-24-system-field-badge-is-decided-by-a-frontend-name-match-heuristic) (frontend name-match heuristic for "System Field" badge).
 
@@ -361,7 +375,9 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Permanent fix:** apply both [B-23](#b-23-custom_fieldsfield_key-has-no-sql-unique-constraint--duplicates-accumulate) and [B-24](#b-24-system-field-badge-is-decided-by-a-frontend-name-match-heuristic).
 
-#### B-1. Cannot recreate a field after soft delete
+#### B-1. Cannot recreate a field after soft delete  ⚠ mitigated, NOT fully fixed
+
+> **Status after revamp:** the unified `syncFeatureCustomFields` reactivates a previously-DELETED `institute_custom_fields` row when the same `(institute, custom_field_id, type, type_id)` is sent again, which avoids the constraint violation in 99% of real-world cases. The underlying root cause — the missing `UNIQUE` index on `custom_fields.field_key` (B-23) — is **still open** so an admin who creates a field, deletes its master row, and recreates a fresh field with the same name in a different code path can still hit it. Add the partial unique index after running the production cleanup runbook.
 
 **Where:** [InstituteCustomFiledService.findOrCreateCustomFieldWithLock](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/service/InstituteCustomFiledService.java) (lines 127-136) and [CustomFields.java](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/entity/CustomFields.java) (`@Column(unique=true)` on `field_key`).
 
@@ -371,7 +387,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Either (a) reactivate the existing soft-deleted row when found, or (b) drop `unique=true` and rely on a partial unique index `WHERE status = 'ACTIVE'`.
 
-#### B-2. Default fields have inconsistent required state
+#### B-2. Default fields have inconsistent required state  ⚠ still open
 
 **Where:** [InstituteCustomFiledService.createDefaultCustomFieldsForInstitute](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/service/InstituteCustomFiledService.java#L246-L294).
 
@@ -381,7 +397,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Pick one source of truth. The cleanest path is to set `is_mandatory=true` on the seeded rows and remove the parallel `compulsoryCustomFields` mechanism, OR explicitly mark `is_mandatory` as deprecated for default fields and audit every reader.
 
-#### B-3. Partial failure during institute bootstrap
+#### B-3. Partial failure during institute bootstrap  ⚠ still open
 
 **Where:** [InstituteSettingService.createDefaultSettingsForInstitute](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/institute/service/setting/InstituteSettingService.java#L119-L143).
 
@@ -393,7 +409,9 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 ### 4.2 High
 
-#### B-4. EMAIL/PHONE renderer is inferred from the field name
+#### B-4. EMAIL/PHONE renderer is inferred from the field name  ⚠ still open
+
+> **Status after revamp:** unchanged. The learner-side `getFieldRenderType` heuristic is unchanged. Adding an explicit `renderType` enum is the right fix and is tracked as a follow-up.
 
 **Where:** [custom-field-helpers.ts `getFieldRenderType`](../../Vacademy_Frontend/frontend-learner-dashboard-app/src/components/common/enroll-by-invite/-utils/custom-field-helpers.ts).
 
@@ -403,7 +421,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Add an explicit `renderType` enum to the field definition (text / number / email / phone / dropdown) and stop inferring. Migrate existing fields with a one-shot job that sets `renderType` based on the current heuristic so behaviour doesn't regress.
 
-#### B-5. Key stays frozen when name changes
+#### B-5. Key stays frozen when name changes  ⚠ still open (low impact once B-4 is fixed)
 
 **Where:** [InstituteCustomFiledService.updateCustomField](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/service/InstituteCustomFiledService.java#L432-L465).
 
@@ -411,7 +429,9 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Acceptable to keep the key stable (it's an identifier) — but the renderer should not depend on it. Fix B-4 first, then this becomes a non-issue.
 
-#### B-6. Soft-delete leaves orphan answers
+#### B-6. Soft-delete leaves orphan answers  ⚠ still open (intentional, see revamp design notes)
+
+> **Status after revamp:** intentionally preserved. The reactivation semantics in `syncFeatureCustomFields` rely on `custom_field_values` rows surviving across delete/re-add cycles — that is what gives admins the "untick → re-tick brings the answers back" experience. A separate "Permanent Delete with answer purge" admin action is the right fix; tracked as a follow-up.
 
 **Where:** [InstituteCustomFiledService.softDeleteInstituteCustomField](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/service/InstituteCustomFiledService.java#L159-L162) and the absence of any `custom_field_values` cleanup.
 
@@ -419,7 +439,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Provide a "Permanent Delete" admin action that hard-deletes both the master row, the mappings, and the answers. Default soft-delete remains.
 
-#### B-7. Stale 24h cache across admin sessions
+#### B-7. Stale 24h cache across admin sessions  ⚠ still open (deferred per Q-11)
 
 **Where:** [custom-field-settings.ts](../../Vacademy_Frontend/frontend-admin-dashboard/src/services/custom-field-settings.ts) — `localStorage` cache with 24-hour TTL.
 
@@ -427,7 +447,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Drop TTL to ~5 minutes, add a "Refresh" button next to the Save button, and add an `If-Match` / `version` field to the save call so the backend can reject stale writes.
 
-#### B-8. No optimistic concurrency on save
+#### B-8. No optimistic concurrency on save  ⚠ still open
 
 **Where:** [InstituteCustomFieldSettingController.updateCustomFieldSetting](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/institute/controller/InstituteCustomFieldSettingController.java).
 
@@ -437,7 +457,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 ### 4.3 Medium
 
-#### B-9. Key generator strips unicode causing silent collisions
+#### B-9. Key generator strips unicode causing silent collisions  ⚠ still open
 
 **Where:** [CustomFieldKeyGenerator.generateFieldKey](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/util/CustomFieldKeyGenerator.java).
 
@@ -445,7 +465,9 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Use the field's UUID as the storage key and only use the human name for display. Or fall back to a short hash of the original name.
 
-#### B-10. Required flag cannot vary per location
+#### B-10. Required flag cannot vary per location  ✅ FIXED by revamp
+
+> **Status after revamp:** the new `institute_custom_fields.is_mandatory` column lets each per-feature mapping carry its own required state, so the same default field can be required in an Enroll Invite and optional in a Live Session. The Settings page still shows a single required toggle for the master row (which seeds the default for new mappings); the per-feature dialogs override it.
 
 **Where:** Top-level `compulsoryCustomFields` in [CustomFieldSettingRequest](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/institute/dto/settings/custom_field/CustomFieldSettingRequest.java).
 
@@ -453,7 +475,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Move `required` from a top-level array of field IDs to a property on each location's field reference. Migration: every existing required field becomes required in every location it's currently visible.
 
-#### B-11. `is_filter` & `is_sortable` not toggleable in the UI
+#### B-11. `is_filter` & `is_sortable` not toggleable in the UI  ⚠ still open (Q-1b deferred)
 
 **Where:** Master row defaults in [InstituteCustomFiledService.createCustomFieldFromRequest](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/service/InstituteCustomFiledService.java#L300-L318) — `is_filter` and `is_sortable` are not set from the UI form, so they default to false.
 
@@ -461,7 +483,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Add two checkboxes ("Filterable", "Sortable") to the Add/Edit Custom Field dialog and pipe them to the API.
 
-#### B-12. Numeric vs UUID id mismatch in invite form
+#### B-12. Numeric vs UUID id mismatch in invite form  ⚠ still open
 
 **Where:** [InviteFormSchema.tsx](../../Vacademy_Frontend/frontend-admin-dashboard/src/routes/manage-students/invite/-schema/InviteFormSchema.tsx) — `id: z.number()` for invite custom fields, but the backend uses UUID strings stored in `_id`.
 
@@ -469,7 +491,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Use the UUID directly. Drop `id: number`. The drag-drop library accepts strings.
 
-#### B-13. Groups are not visually rendered in all flows
+#### B-13. Groups are not visually rendered in all flows  ⚠ still open
 
 **Where:** Invite form & Audience form rendering — the field list is flat. Only the Settings page and the Live Class step honor groups visually.
 
@@ -477,7 +499,9 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Render group headers in the Invite and Audience forms.
 
-#### B-14. Live session option schema mismatch
+#### B-14. Live session option schema mismatch  ⚠ still open (legacy path only)
+
+> **Status after revamp:** the live session step 2 endpoint now accepts the unified `instituteCustomFields: List<InstituteCustomFieldDTO>` payload which uses the canonical option shape. The legacy `addedFields/updatedFields/deletedFieldIds` arrays are still accepted for backward compatibility and still use the broken schema, but new clients should send `instituteCustomFields` instead. Drop the legacy path once every frontend build is updated.
 
 **Where:** [scheduleStep2.tsx schema](../../Vacademy_Frontend/frontend-admin-dashboard/src/routes/study-library/live-session/schedule/-schema/schema.ts) — uses `{ optionField: string }` for dropdown options instead of the canonical `{ id, value, label }`. A transform layer maps between them at submit time.
 
@@ -485,7 +509,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Standardise on the canonical option shape across all flows.
 
-#### B-15. Step 3 transform fragility on edge data
+#### B-15. Step 3 transform fragility on edge data  ⚠ still open
 
 **Where:** [Step3 helper.ts](../../Vacademy_Frontend/frontend-admin-dashboard/src/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper.ts) — `transformAllBatchData` and `getCustomFieldsWhileEditStep3` perform several layers of conversion.
 
@@ -493,7 +517,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Add defensive defaults at every conversion step and a unit test per shape.
 
-#### B-16. Public open endpoints leak field configuration
+#### B-16. Public open endpoints leak field configuration  ⚠ still open
 
 **Where:** `/admin-core-service/open/common/custom-fields/setup?instituteId=…` and friends.
 
@@ -503,7 +527,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 ### 4.4 Low / Cosmetic
 
-#### B-17. Class name typo: `InstituteCustomFiledService`
+#### B-17. Class name typo: `InstituteCustomFiledService`  ⚠ still open (cosmetic)
 
 **Where:** [InstituteCustomFiledService.java](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/service/InstituteCustomFiledService.java) — class name has *Filed* instead of *Field*.
 
@@ -511,7 +535,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Rename the class and all imports in one PR.
 
-#### B-18. Endpoint URL typo: `insititute-settings`
+#### B-18. Endpoint URL typo: `insititute-settings`  ⚠ still open (cosmetic)
 
 **Where:** [src/constants/urls.ts](../../Vacademy_Frontend/frontend-admin-dashboard/src/constants/urls.ts) — `/admin-core-service/institute/v1/insititute-settings`.
 
@@ -519,7 +543,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Add a correctly-spelled route alias on the backend, switch the frontend, then deprecate the typo route after a release.
 
-#### B-19. `isPresent` query param is a String, not boolean
+#### B-19. `isPresent` query param is a String, not boolean  ⚠ still open (cosmetic)
 
 **Where:** [InstituteCustomFieldSettingController.updateCustomFieldSetting](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/institute/controller/InstituteCustomFieldSettingController.java) — `@RequestParam(value="isPresent", required=false) String isPresent`.
 
@@ -527,7 +551,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Change to `Boolean isPresent`.
 
-#### B-20. Two parallel custom-field tables (legacy `learner_invitation_custom_field`)
+#### B-20. Two parallel custom-field tables (legacy `learner_invitation_custom_field`)  ⚠ still open
 
 **Where:** [V1__Initial_schema.sql L1274](../admin_core_service/src/main/resources/db/migration/V1__Initial_schema.sql#L1274).
 
@@ -535,7 +559,7 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Document deprecation, audit usages, plan a migration to the unified system, then drop the legacy tables.
 
-#### B-21. `findCustomFieldUsageAggregation` does not filter master-row status
+#### B-21. `findCustomFieldUsageAggregation` does not filter master-row status  ⚠ still open (low impact)
 
 **Where:** [InstituteCustomFieldRepository.findCustomFieldUsageAggregation](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/common/repository/InstituteCustomFieldRepository.java).
 
@@ -543,7 +567,9 @@ The row with the highest `answer_count` is the "real" one — keep it. Soft‑de
 
 **Recommended fix:** Add `AND cf.status = 'ACTIVE'` to the JPQL query.
 
-#### B-23. `custom_fields.field_key` has no SQL UNIQUE constraint — duplicates accumulate
+#### B-23. `custom_fields.field_key` has no SQL UNIQUE constraint — duplicates accumulate  ⚠ deferred until production cleanup is done
+
+> **Status after revamp:** the new code paths cannot create duplicates because the unified `syncFeatureCustomFields` always goes through `findOrCreateCustomFieldWithLock`. The missing partial unique index is documented in the prod cleanup runbook ([CUSTOM_FIELDS_PROD_CLEANUP.md §14](CUSTOM_FIELDS_PROD_CLEANUP.md#14-optional-follow-ups)) and will be added once every affected institute has been cleaned — adding it before then would fail the migration.
 
 **Where:** [V1__Initial_schema.sql:163-179](../admin_core_service/src/main/resources/db/migration/V1__Initial_schema.sql#L163-L179) defines no UNIQUE on `field_key`. The entity has `@Column(unique=true)` but Hibernate only enforces that when it's the schema generator, not when Flyway is.
 
@@ -562,7 +588,9 @@ CREATE UNIQUE INDEX uq_custom_fields_field_key
 ```
 This makes `findOrCreateCustomFieldWithLock` actually safe under contention. Combine with the fix for [B-1](#b-1-cannot-recreate-a-field-after-soft-delete) so soft-deleted rows can be reactivated instead of triggering a constraint violation.
 
-#### B-24. "System Field" badge is decided by a frontend name-match heuristic
+#### B-24. "System Field" badge is decided by a frontend name-match heuristic  ✅ FIXED by revamp
+
+> **Status after revamp:** the locked seeded fields now show a **DEFAULT** badge driven by the same backend property (`canBeDeleted=false`) the seeder stamps, not by the `SYSTEM_FIELD_NAMES` keyword list. The "System Field" label is gone from the Settings UI; every row in the page is shown as DEFAULT (which is what they all are — `DEFAULT_CUSTOM_FIELD` mappings). Renaming a user-created field to "email" or "batch" no longer causes it to be silently locked.
 
 **Where:** [src/services/custom-field-settings.ts](../../Vacademy_Frontend/frontend-admin-dashboard/src/services/custom-field-settings.ts) line 259 (`SYSTEM_FIELD_NAMES`) and lines 596-610 (`mapApiResponseToUI`).
 
@@ -586,7 +614,7 @@ if (SYSTEM_FIELD_NAMES.includes(apiField.fieldName.toLowerCase()) || …) {
 2. Replace the `SYSTEM_FIELD_NAMES` heuristic with a check on the new column.
 3. Stop relying on `canBeDeleted` / `canBeEdited` / `canBeRenamed` flags travelling through the JSON blob — derive them from `kind` server-side.
 
-#### B-22. `hasPrefillAppliedRef` blocks repeat prefill
+#### B-22. `hasPrefillAppliedRef` blocks repeat prefill  ⚠ still open
 
 **Where:** [enroll-form.tsx](../../Vacademy_Frontend/frontend-learner-dashboard-app/src/components/common/enroll-by-invite/enroll-form.tsx) — a `useRef` guards prefill from running twice.
 

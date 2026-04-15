@@ -22,7 +22,11 @@ import {
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import type { QueryClient } from '@tanstack/react-query';
-import { getCachedInstituteBranding } from '@/services/domain-routing';
+import {
+    getCachedInstituteBranding,
+    parseRoutingRoles,
+    userMatchesRoutingRole,
+} from '@/services/domain-routing';
 import { getCourseSettings } from '@/services/course-settings';
 import {
     hasFacultyAssignedPermission,
@@ -101,38 +105,44 @@ export const handleLoginFlow = async (options: LoginFlowOptions): Promise<LoginF
         // Get user roles from token
         const userRoles = getUserRoles(accessToken);
 
-        // Check domain-specific role restrictions
+        // Check domain-specific role restrictions.
+        //
+        // Fully generic gate: the portal's routing role can be any value the
+        // institute configured via white-label settings (LEARNER, ADMIN,
+        // TEACHER, a custom role like "MANAGE_LEAD", or a comma-separated
+        // list like "ADMIN,MANAGE_LEAD"). The user passes if at least one of
+        // those role names is present in their JWT-derived auth roles.
         const cachedBranding = getCachedInstituteBranding();
-        if (cachedBranding?.role === 'ADMIN') {
-            // Domain requires ADMIN role - check if user has ADMIN role
-            const hasAdminRole = userRoles.includes('ADMIN');
+        const requiredRoles = parseRoutingRoles(cachedBranding?.role);
+        if (
+            requiredRoles.length > 0 &&
+            !userMatchesRoutingRole(cachedBranding?.role, userRoles)
+        ) {
+            // Track blocked login attempt
+            trackEvent('Login Blocked', {
+                login_method: loginMethod,
+                reason: 'portal_role_required',
+                user_roles: userRoles,
+                required_roles: requiredRoles,
+                timestamp: new Date().toISOString(),
+            });
 
-            if (!hasAdminRole) {
-                // Track blocked login attempt
-                trackEvent('Login Blocked', {
-                    login_method: loginMethod,
-                    reason: 'admin_role_required',
-                    user_roles: userRoles,
-                    required_role: 'ADMIN',
-                    timestamp: new Date().toISOString(),
-                });
+            // Clear tokens and show error
+            removeCookiesAndLogout();
 
-                // Clear tokens and show error
-                removeCookiesAndLogout();
+            toast.error('Access Denied', {
+                description: `This portal requires one of the following roles: ${requiredRoles.join(
+                    ', '
+                )}. Please contact your administrator.`,
+                className: 'error-toast',
+                duration: 5000,
+            });
 
-                toast.error('Access Denied', {
-                    description:
-                        'This portal requires ADMIN privileges. Please contact your administrator.',
-                    className: 'error-toast',
-                    duration: 5000,
-                });
-
-                return {
-                    success: false,
-                    error: 'admin_role_required',
-                    userRoles,
-                };
-            }
+            return {
+                success: false,
+                error: 'portal_role_required',
+                userRoles,
+            };
         }
 
         // Check if user should be blocked (only has STUDENT role)
@@ -394,27 +404,30 @@ export const handleInstituteSelection = async (instituteId: string): Promise<Log
         const hasAdminRole = selectedInstitute.roles.includes('ADMIN');
         const userRoles = getUserRoles(getTokenFromCookie(TokenKey.accessToken));
 
-        // Check domain-specific role restrictions
+        // Check domain-specific role restrictions (see comment in
+        // handleLoginSuccess — fully generic gate via routing role intersection
+        // with the user's auth roles).
         const cachedBranding = getCachedInstituteBranding(instituteId);
-        if (cachedBranding?.role === 'ADMIN') {
-            // Domain requires ADMIN role - check if user has ADMIN role
-            if (!hasAdminRole) {
-                // Track blocked login attempt
-                trackEvent('Login Blocked', {
-                    login_method: 'institute_selection',
-                    reason: 'admin_role_required',
-                    user_roles: userRoles,
-                    required_role: 'ADMIN',
-                    institute_id: instituteId,
-                    timestamp: new Date().toISOString(),
-                });
+        const requiredRoles = parseRoutingRoles(cachedBranding?.role);
+        if (
+            requiredRoles.length > 0 &&
+            !userMatchesRoutingRole(cachedBranding?.role, userRoles)
+        ) {
+            // Track blocked login attempt
+            trackEvent('Login Blocked', {
+                login_method: 'institute_selection',
+                reason: 'portal_role_required',
+                user_roles: userRoles,
+                required_roles: requiredRoles,
+                institute_id: instituteId,
+                timestamp: new Date().toISOString(),
+            });
 
-                return {
-                    success: false,
-                    error: 'admin_role_required',
-                    userRoles,
-                };
-            }
+            return {
+                success: false,
+                error: 'portal_role_required',
+                userRoles,
+            };
         }
 
         // Set the selected institute

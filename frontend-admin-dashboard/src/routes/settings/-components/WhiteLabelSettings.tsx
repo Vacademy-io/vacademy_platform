@@ -42,13 +42,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { UploadFileInS3Public } from '@/routes/signup/-services/signup-services';
 import { useFileUpload } from '@/hooks/use-file-upload';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -144,10 +137,15 @@ interface WhiteLabelStatusResponse {
     routing_entries: RoutingEntry[];
 }
 
-/** A single row in the setup form */
+/** A single row in the setup form.
+ *
+ * `role` is a string (not a strict union) so the form can hold custom roles
+ * returned from the backend without losing them. The standard three presets
+ * (LEARNER/ADMIN/TEACHER) are still offered in the dropdown.
+ */
 interface DomainFormEntry {
     id: string;
-    role: 'LEARNER' | 'ADMIN' | 'TEACHER';
+    role: string;
     domain: string;
     isPrimary: boolean;
     expanded: boolean;
@@ -157,6 +155,46 @@ interface DomainFormEntry {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const ROLES = ['LEARNER', 'ADMIN', 'TEACHER'] as const;
+
+const isStandardRole = (
+    role: string
+): role is 'LEARNER' | 'ADMIN' | 'TEACHER' =>
+    role === 'LEARNER' || role === 'ADMIN' || role === 'TEACHER';
+
+/**
+ * Normalizes a role string coming from the backend.
+ *
+ * Legacy rows can contain a comma-separated list like
+ * "ADMIN,EVALUATOR,COURSE CREATOR,TEACHER" — the setup endpoint rejects those
+ * wholesale, so we split and pick the first value that IS a standard role
+ * (LEARNER/ADMIN/TEACHER).
+ *
+ * A single custom role (e.g. just "EVALUATOR") is passed through unchanged so
+ * the form doesn't silently lose it. Whether the backend accepts it on save
+ * is enforced server-side; the frontend no longer rewrites non-standard
+ * single-role values.
+ */
+const normalizeRole = (raw: string | null | undefined): string => {
+    if (!raw) return 'LEARNER';
+    const parts = raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    if (parts.length === 0) return 'LEARNER';
+    if (parts.length === 1) {
+        const only = parts[0]!;
+        // Upper-case the standard roles so they match the preset enum, but
+        // leave custom roles as the operator stored them.
+        const upper = only.toUpperCase();
+        return isStandardRole(upper) ? upper : only;
+    }
+    // Comma-separated list: prefer a standard role, else first non-empty part.
+    for (const part of parts) {
+        const upper = part.toUpperCase();
+        if (isStandardRole(upper)) return upper;
+    }
+    return parts[0]!;
+};
 
 const roleLabel = (role: string): string => {
     switch (role?.toUpperCase()) {
@@ -640,17 +678,18 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
 
         const newEntries: DomainFormEntry[] = data.routing_entries.map((r) => {
             const fullDomain = fqdn(r);
+            const normalizedRole = normalizeRole(r.role);
             let isPrimary = false;
-            if (r.role === 'LEARNER' && data.learner_portal_url)
+            if (normalizedRole === 'LEARNER' && data.learner_portal_url)
                 isPrimary = data.learner_portal_url.replace(/^https?:\/\//, '') === fullDomain;
-            else if (r.role === 'ADMIN' && data.admin_portal_url)
+            else if (normalizedRole === 'ADMIN' && data.admin_portal_url)
                 isPrimary = data.admin_portal_url.replace(/^https?:\/\//, '') === fullDomain;
-            else if (r.role === 'TEACHER' && data.teacher_portal_url)
+            else if (normalizedRole === 'TEACHER' && data.teacher_portal_url)
                 isPrimary = data.teacher_portal_url.replace(/^https?:\/\//, '') === fullDomain;
 
             return {
                 id: makeFormId(),
-                role: r.role as 'LEARNER' | 'ADMIN' | 'TEACHER',
+                role: normalizedRole,
                 domain: fullDomain,
                 isPrimary,
                 expanded: false,
@@ -712,13 +751,15 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
         const nonEmpty = formEntries.filter(e => e.domain.trim());
         if (nonEmpty.length === 0) { toast.error('Add at least one domain entry'); return; }
 
-        for (const role of ROLES) {
-            const primaries = nonEmpty.filter(e => e.role === role && e.isPrimary);
-            if (primaries.length > 1) {
-                toast.error(`Only one primary domain allowed for ${roleLabel(role)}`);
-                return;
-            }
-        }
+        // NOTE: we intentionally do NOT duplicate the "one primary per portal"
+        // check on the frontend. The backend enforces it authoritatively
+        // (grouping by primaryRoleKey, which correctly handles custom and
+        // comma-separated roles), and having the check here too used to
+        // silently block valid multi-admin setups — e.g. main institute
+        // admin + sub-org admin with different domains — with only a toast,
+        // making it look like the Save button was broken. Any rule violation
+        // now surfaces as a real API error that tells the user exactly which
+        // portal has the conflict.
 
         setSetupLoading(true);
         setLastSetupResult(null);
@@ -932,15 +973,32 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                                     <div className="flex-1 grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-3">
                                         <div className="space-y-1">
                                             <Label className="text-xs text-slate-500">Role</Label>
-                                            <Select value={entry.role}
-                                                    onValueChange={v => updateEntry(entry.id, 'role', v)}>
-                                                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    {ROLES.map(r => (
-                                                        <SelectItem key={r} value={r}>{roleLabel(r)}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                            {/* Free-text so operators can enter any role the backend
+                                                accepts, including custom ones beyond the standard
+                                                LEARNER/ADMIN/TEACHER. The datalist provides the
+                                                presets as suggestions but doesn't restrict input. */}
+                                            <Input
+                                                list={`role-suggestions-${entry.id}`}
+                                                placeholder="LEARNER / ADMIN / TEACHER / custom"
+                                                value={entry.role}
+                                                onChange={(e) =>
+                                                    updateEntry(
+                                                        entry.id,
+                                                        'role',
+                                                        e.target.value
+                                                            .toUpperCase()
+                                                            .replace(/\s+/g, '_')
+                                                    )
+                                                }
+                                                className="h-9"
+                                            />
+                                            <datalist id={`role-suggestions-${entry.id}`}>
+                                                {ROLES.map((r) => (
+                                                    <option key={r} value={r}>
+                                                        {roleLabel(r)}
+                                                    </option>
+                                                ))}
+                                            </datalist>
                                         </div>
 
                                         <div className="space-y-1">

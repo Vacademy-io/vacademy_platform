@@ -38,6 +38,66 @@ export type DomainResolveResponse = {
 };
 
 /**
+ * Splits a routing role string (which may be custom like "MANAGE_LEAD" or a
+ * comma-separated list like "ADMIN,MANAGE_LEAD,EVALUATOR") into a normalized
+ * uppercase array. Empty / whitespace parts are dropped.
+ */
+export function parseRoutingRoles(role: string | null | undefined): string[] {
+    if (!role) return [];
+    return role
+        .split(',')
+        .map((r) => r.trim().toUpperCase())
+        .filter((r) => r.length > 0);
+}
+
+/**
+ * Returns true when the user's auth roles satisfy the portal's routing role
+ * requirement. The check is fully generic — it works for the standard three
+ * (LEARNER/ADMIN/TEACHER) and for any custom role configured via white-label
+ * settings (e.g. "MANAGE_LEAD") or any comma-separated combination
+ * ("ADMIN,MANAGE_LEAD").
+ *
+ * Semantics: the user passes if AT LEAST ONE of the routing role parts is
+ * present in their auth roles. An empty routing role means no restriction.
+ */
+export function userMatchesRoutingRole(
+    routingRole: string | null | undefined,
+    userRoles: string[],
+): boolean {
+    const required = parseRoutingRoles(routingRole);
+    if (required.length === 0) return true;
+    const userRoleSet = new Set(userRoles.map((r) => r.toUpperCase()));
+    return required.some((r) => userRoleSet.has(r));
+}
+
+/**
+ * Human-friendly display label for a routing role string.
+ *
+ * "ADMIN"               -> "Admin"
+ * "TEACHER"             -> "Teacher"
+ * "MANAGE_LEAD"         -> "Manage Lead"
+ * "ADMIN,EVALUATOR"     -> "Admin"  (uses the first part)
+ * null / empty          -> "Admin"  (safe default)
+ *
+ * No specific role names are hard-coded here — any value, custom or
+ * standard, is rendered by title-casing the first comma-separated part.
+ */
+export function formatRoutingRoleLabel(role: string | null | undefined): string {
+    if (!role) return 'Admin';
+    const first = role
+        .split(',')
+        .map((r) => r.trim())
+        .filter((r) => r.length > 0)[0];
+    if (!first) return 'Admin';
+    return first
+        .toLowerCase()
+        .split(/[_\s]+/)
+        .filter((w) => w.length > 0)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+}
+
+/**
  * Parses the institute's `commaSeparatedPreferredCountry` (from domain routing)
  * into a normalized lowercase array of ISO 3166-1 alpha-2 country codes.
  * Reads from the cached domain routing branding so callers don't need to refetch.

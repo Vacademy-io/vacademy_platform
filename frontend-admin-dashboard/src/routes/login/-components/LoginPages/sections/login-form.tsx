@@ -31,7 +31,7 @@ import { SubOrgSelection } from './SubOrgSelection';
 import { getInstituteSelectionResult, setSelectedInstitute } from '@/lib/auth/instituteUtils';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { handleLoginFlow } from '@/lib/auth/loginFlowHandler';
-import { getCachedInstituteBranding } from '@/services/domain-routing';
+import { getCachedInstituteBranding, formatRoutingRoleLabel } from '@/services/domain-routing';
 import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
@@ -45,7 +45,10 @@ export function LoginForm() {
     const { instituteLogo } = useInstituteLogoStore();
     const cachedBranding = getCachedInstituteBranding();
     const instituteName = cachedBranding?.instituteName;
-    const portalRoleLabel = cachedBranding?.role === 'TEACHER' ? 'Teacher' : 'Admin';
+    // Portal label is derived generically from whatever routing role the
+    // institute configured (standard or custom) — no role names are
+    // hard-coded. "MANAGE_LEAD" -> "Manage Lead", "ADMIN" -> "Admin", etc.
+    const portalRoleLabel = formatRoutingRoleLabel(cachedBranding?.role);
     const portalInstitute = instituteName || 'Vacademy';
     const [authMethod, setAuthMethod] = useState<'EMAIL' | 'USERNAME' | 'PHONE'>('USERNAME');
     const [providerFlags, setProviderFlags] = useState({

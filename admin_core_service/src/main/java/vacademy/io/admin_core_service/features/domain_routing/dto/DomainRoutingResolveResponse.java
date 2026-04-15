@@ -40,4 +40,10 @@ public class DomainRoutingResolveResponse {
     private boolean convertUsernamePasswordToLowercase;
     private String subOrgId;
     private String commaSeparatedPreferredCountry;
+    // White-label logo display overrides — consumed by the learner and admin
+    // frontends to hide the institute name and/or override the logo dimensions
+    // in the sidebar and on the login page.
+    private Boolean hideInstituteName;
+    private Integer logoWidthPx;
+    private Integer logoHeightPx;
 }

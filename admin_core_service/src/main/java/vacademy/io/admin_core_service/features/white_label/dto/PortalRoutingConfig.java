@@ -81,4 +81,21 @@ public class PortalRoutingConfig {
      */
     @JsonProperty("comma_separated_preferred_country")
     private String commaSeparatedPreferredCountry;
+
+    /**
+     * When true, the institute name is hidden alongside the logo on the login
+     * page and in the sidebar. Useful when the logo graphic already contains
+     * the institute name. Default (null / false) preserves the existing
+     * behavior (name visible).
+     */
+    @JsonProperty("hide_institute_name")
+    private Boolean hideInstituteName;
+
+    /** Optional explicit logo width in pixels. Null = default responsive sizing. */
+    @JsonProperty("logo_width_px")
+    private Integer logoWidthPx;
+
+    /** Optional explicit logo height in pixels. Null = default responsive sizing. */
+    @JsonProperty("logo_height_px")
+    private Integer logoHeightPx;
 }

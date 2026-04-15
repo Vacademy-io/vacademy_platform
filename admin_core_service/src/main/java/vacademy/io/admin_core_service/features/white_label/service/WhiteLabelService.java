@@ -84,10 +84,17 @@ public class WhiteLabelService {
             throw new VacademyException("At least one domain entry is required");
         }
 
-        // Validate roles and domains
+        // Validate roles and domains.
+        //
+        // Roles are intentionally NOT restricted to LEARNER/ADMIN/TEACHER — the
+        // three standard roles are preferred, but institutes can also configure
+        // domains for custom roles (e.g. "EVALUATOR", "MANAGE_LEAD") or legacy
+        // comma-separated role strings (e.g. "ADMIN,MANAGE_LEAD"). For routing
+        // purposes the non-standard roles are treated as ADMIN-portal variants
+        // via primaryRoleKey().
         for (WhiteLabelSetupRequest.DomainEntry e : entries) {
-            if (!StringUtils.hasText(e.getRole()) || !VALID_ROLES.contains(e.getRole().toUpperCase())) {
-                throw new VacademyException("Invalid role: " + e.getRole() + ". Must be LEARNER, ADMIN, or TEACHER");
+            if (!StringUtils.hasText(e.getRole())) {
+                throw new VacademyException("Role is required for each entry");
             }
             if (!StringUtils.hasText(e.getDomain())) {
                 throw new VacademyException("Domain is required for each entry");
@@ -98,14 +105,20 @@ public class WhiteLabelService {
                     .replaceFirst("/.*$", ""));
         }
 
-        // Validate: at most one primary per role
+        // Validate: at most one primary per portal key (LEARNER/ADMIN/TEACHER).
+        // Custom and comma-separated roles collapse to one of the three portal
+        // keys via primaryRoleKey, so two different custom admin-variant roles
+        // can't both claim the primary admin portal URL and silently
+        // overwrite each other's institute.adminPortalBaseUrl.
         Map<String, Long> primaryCounts = entries.stream()
                 .filter(WhiteLabelSetupRequest.DomainEntry::isPrimary)
-                .collect(Collectors.groupingBy(WhiteLabelSetupRequest.DomainEntry::getRole, Collectors.counting()));
+                .collect(Collectors.groupingBy(
+                        e -> primaryRoleKey(e.getRole()),
+                        Collectors.counting()));
         for (Map.Entry<String, Long> pc : primaryCounts.entrySet()) {
             if (pc.getValue() > 1) {
-                throw new VacademyException("At most one primary domain per role allowed. " +
-                        "Role '" + pc.getKey() + "' has " + pc.getValue() + " primary entries.");
+                throw new VacademyException("At most one primary domain per portal allowed. " +
+                        "Portal '" + pc.getKey() + "' has " + pc.getValue() + " primary entries.");
             }
         }
 
@@ -137,18 +150,21 @@ public class WhiteLabelService {
         for (WhiteLabelSetupRequest.DomainEntry entry : entries) {
             if (entry.isPrimary()) {
                 String url = "https://" + entry.getDomain();
-                switch (entry.getRole()) {
+                // Custom roles and comma-separated role strings are reduced to
+                // one of the three standard portal keys so the corresponding
+                // portal base URL is still updated on the institute record.
+                switch (primaryRoleKey(entry.getRole())) {
                     case ROLE_LEARNER -> {
                         institute.setLearnerPortalBaseUrl(url);
                         learnerUrl = url;
                     }
-                    case ROLE_ADMIN -> {
-                        institute.setAdminPortalBaseUrl(url);
-                        adminUrl = url;
-                    }
                     case ROLE_TEACHER -> {
                         institute.setTeacherPortalBaseUrl(url);
                         teacherUrl = url;
+                    }
+                    default -> {
+                        institute.setAdminPortalBaseUrl(url);
+                        adminUrl = url;
                     }
                 }
             }
@@ -238,6 +254,10 @@ public class WhiteLabelService {
                         .windowsAppLink(r.getWindowsAppLink())
                         .macAppLink(r.getMacAppLink())
                         .commaSeparatedPreferredCountry(r.getCommaSeparatedPreferredCountry())
+                        // White-label logo display overrides
+                        .hideInstituteName(r.getHideInstituteName())
+                        .logoWidthPx(r.getLogoWidthPx())
+                        .logoHeightPx(r.getLogoHeightPx())
                         .build())
                 .collect(Collectors.toList());
 
@@ -287,13 +307,38 @@ public class WhiteLabelService {
         }
     }
 
+    /**
+     * Reduces a stored role string (which may be custom like "MANAGE_LEAD" or a
+     * legacy comma-separated list like "ADMIN,MANAGE_LEAD,EVALUATOR") down to
+     * one of the three standard portal keys LEARNER/ADMIN/TEACHER.
+     *
+     * Resolution order:
+     *   1. If any comma-separated part equals one of the standard roles, use it
+     *      (preferring the first such match in the list).
+     *   2. Otherwise assume the role is an admin-portal variant and fall back
+     *      to ADMIN.
+     *
+     * Used both for Cloudflare CNAME target selection and for deciding which
+     * portal base URL to update on the institute record.
+     */
+    private String primaryRoleKey(String role) {
+        if (!StringUtils.hasText(role)) return ROLE_ADMIN;
+        String upper = role.toUpperCase();
+        for (String part : upper.split(",")) {
+            String trimmed = part.trim();
+            if (VALID_ROLES.contains(trimmed)) {
+                return trimmed;
+            }
+        }
+        return ROLE_ADMIN;
+    }
+
     /** Returns the Cloudflare CNAME target for a given role. */
     private String cnameTargetForRole(String role) {
-        return switch (role) {
+        return switch (primaryRoleKey(role)) {
             case ROLE_LEARNER -> learnerCnameTarget;
-            case ROLE_ADMIN -> adminCnameTarget;
             case ROLE_TEACHER -> teacherCnameTarget;
-            default -> throw new VacademyException("Unknown role: " + role);
+            default -> adminCnameTarget;
         };
     }
 
@@ -374,6 +419,9 @@ public class WhiteLabelService {
                             ? cfg.getConvertUsernamePasswordToLowercase()
                             : false);
             r.setCommaSeparatedPreferredCountry(cfg.getCommaSeparatedPreferredCountry());
+            r.setHideInstituteName(cfg.getHideInstituteName());
+            r.setLogoWidthPx(cfg.getLogoWidthPx());
+            r.setLogoHeightPx(cfg.getLogoHeightPx());
         } else {
             r.setAllowUsernamePasswordAuth(true);
             r.setConvertUsernamePasswordToLowercase(false);

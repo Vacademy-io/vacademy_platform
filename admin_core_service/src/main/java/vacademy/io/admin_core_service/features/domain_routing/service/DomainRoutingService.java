@@ -63,7 +63,10 @@ public class DomainRoutingService {
                 .windowsAppLink(mapping.getWindowsAppLink())
                 .macAppLink(mapping.getMacAppLink())
                 .convertUsernamePasswordToLowercase(mapping.isConvertUsernamePasswordToLowercase())
-                .commaSeparatedPreferredCountry(mapping.getCommaSeparatedPreferredCountry());
+                .commaSeparatedPreferredCountry(mapping.getCommaSeparatedPreferredCountry())
+                .hideInstituteName(mapping.getHideInstituteName())
+                .logoWidthPx(mapping.getLogoWidthPx())
+                .logoHeightPx(mapping.getLogoHeightPx());
 
         if (institute != null) {
             responseBuilder.instituteId(institute.getId())

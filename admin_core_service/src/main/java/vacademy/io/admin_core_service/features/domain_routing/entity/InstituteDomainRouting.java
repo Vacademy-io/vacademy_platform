@@ -101,4 +101,19 @@ public class InstituteDomainRouting {
 
     @Column(name = "comma_separated_preferred_country", length = 500)
     private String commaSeparatedPreferredCountry;
+
+    // ── White-label logo display settings ─────────────────────────────────────
+    // When true the institute name is hidden next to the logo (useful when the
+    // logo graphic already contains the name). NULL / false preserves the
+    // default: name visible.
+    @Column(name = "hide_institute_name")
+    private Boolean hideInstituteName;
+
+    // Optional pixel overrides for logo sizing in the sidebar and login page.
+    // NULL means the frontend falls back to its default responsive sizing.
+    @Column(name = "logo_width_px")
+    private Integer logoWidthPx;
+
+    @Column(name = "logo_height_px")
+    private Integer logoHeightPx;
 }

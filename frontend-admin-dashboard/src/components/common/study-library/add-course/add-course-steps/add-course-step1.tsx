@@ -22,10 +22,19 @@ import { MyButton } from '@/components/design-system/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { X } from 'lucide-react';
 import ImageCropperDialog from '@/components/design-system/image-cropper-dialog';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CourseSettingsData } from '@/types/course-settings';
@@ -96,8 +105,6 @@ export const AddCourseStep1 = ({
     const [youtubeError, setYoutubeError] = useState('');
     const [showYoutubeInput, setShowYoutubeInput] = useState(false);
     const youtubeInputRef = useRef<HTMLDivElement>(null);
-    const [showMediaMenu, setShowMediaMenu] = useState(false);
-    const mediaMenuRef = useRef<HTMLDivElement>(null);
 
     // Cropper dialog state
     const [isCropperOpen, setIsCropperOpen] = useState(false);
@@ -107,18 +114,6 @@ export const AddCourseStep1 = ({
         'coursePreview'
     );
     const cropOutputType = useRef<'image/jpeg' | 'image/png' | 'image/webp'>('image/jpeg');
-
-    // Hide menu when clicking outside
-    useEffect(() => {
-        if (!showMediaMenu) return;
-        function handleClick(e: MouseEvent) {
-            if (mediaMenuRef.current && !mediaMenuRef.current.contains(e.target as Node)) {
-                setShowMediaMenu(false);
-            }
-        }
-        document.addEventListener('mousedown', handleClick);
-        return () => document.removeEventListener('mousedown', handleClick);
-    }, [showMediaMenu]);
 
     // Hide YouTube input when clicking outside
     useEffect(() => {
@@ -563,7 +558,7 @@ export const AddCourseStep1 = ({
                             Step 1: {getTerminology(ContentTerms.Course, SystemTerms.Course)}{' '}
                             Overview
                         </h1>
-                        <div className="grid grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
                             {/* Left Column - Form Fields */}
                             <div className="space-y-6">
                                 <FormField
@@ -646,7 +641,7 @@ export const AddCourseStep1 = ({
                                                         addTag(e);
                                                     }
                                                 }}
-                                                className="h-9 border-gray-300"
+                                                className="h-9 border-neutral-300"
                                             />
 
                                             <MyButton
@@ -782,17 +777,17 @@ export const AddCourseStep1 = ({
                                             )}{' '}
                                             Preview Image
                                         </FormLabel>
-                                        <p className="text-sm text-gray-500">
+                                        <p className="text-sm text-neutral-500">
                                             This is the thumbnail that appears on the course card.
                                             Recommended size: 2:1 ratio
                                         </p>
                                         <div className="relative">
                                             {uploadingStates.coursePreview ? (
-                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
+                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-neutral-100">
                                                     <DashboardLoader />
                                                 </div>
                                             ) : form.watch('coursePreview') ? (
-                                                <div className="h-[200px] w-full rounded-lg bg-gray-100">
+                                                <div className="h-[200px] w-full rounded-lg bg-neutral-100">
                                                     <img
                                                         src={form.watch('coursePreviewBlob')}
                                                         alt="Course Preview"
@@ -800,9 +795,29 @@ export const AddCourseStep1 = ({
                                                     />
                                                 </div>
                                             ) : (
-                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
-                                                    <p className="text-white">
-                                                        <ImageSquare size={100} />
+                                                <div
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={() =>
+                                                        coursePreviewRef.current?.click()
+                                                    }
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            coursePreviewRef.current?.click();
+                                                        }
+                                                    }}
+                                                    className="flex h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
+                                                >
+                                                    <ImageSquare
+                                                        size={48}
+                                                        className="text-neutral-400"
+                                                    />
+                                                    <p className="text-sm font-medium text-neutral-600">
+                                                        Click to upload image
+                                                    </p>
+                                                    <p className="text-xs text-neutral-400">
+                                                        JPEG, PNG, SVG — 2:1 ratio recommended
                                                     </p>
                                                 </div>
                                             )}
@@ -836,17 +851,14 @@ export const AddCourseStep1 = ({
                                         </div>
                                         {/* Remove button for preview image */}
                                         {form.watch('coursePreview') && (
-                                            <MyButton
+                                            <button
                                                 type="button"
                                                 onClick={removeCoursePreview}
-                                                buttonType="secondary"
-                                                layoutVariant="default"
-                                                scale="small"
-                                                className="mt-2 w-full"
+                                                className="mt-1 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-600 hover:underline"
                                             >
-                                                <X className="mr-2 size-4" />
-                                                Remove Preview Image
-                                            </MyButton>
+                                                <X className="size-3" />
+                                                Remove image
+                                            </button>
                                         )}
                                     </div>
                                 )}
@@ -861,17 +873,17 @@ export const AddCourseStep1 = ({
                                             )}{' '}
                                             Banner Image
                                         </FormLabel>
-                                        <p className="text-sm text-gray-500">
+                                        <p className="text-sm text-neutral-500">
                                             A wide background image displayed on top of the course
                                             detail page. Recommended size: 2.64:1 ratio
                                         </p>
                                         <div className="relative">
                                             {uploadingStates.courseBanner ? (
-                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
+                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-neutral-100">
                                                     <DashboardLoader />
                                                 </div>
                                             ) : form.watch('courseBanner') ? (
-                                                <div className="h-[200px] w-full rounded-lg bg-gray-100">
+                                                <div className="h-[200px] w-full rounded-lg bg-neutral-100">
                                                     <img
                                                         src={form.watch('courseBannerBlob')}
                                                         alt="Course Banner"
@@ -879,9 +891,27 @@ export const AddCourseStep1 = ({
                                                     />
                                                 </div>
                                             ) : (
-                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
-                                                    <p className="text-white">
-                                                        <ImageSquare size={100} />
+                                                <div
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={() => courseBannerRef.current?.click()}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            courseBannerRef.current?.click();
+                                                        }
+                                                    }}
+                                                    className="flex h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
+                                                >
+                                                    <ImageSquare
+                                                        size={48}
+                                                        className="text-neutral-400"
+                                                    />
+                                                    <p className="text-sm font-medium text-neutral-600">
+                                                        Click to upload banner
+                                                    </p>
+                                                    <p className="text-xs text-neutral-400">
+                                                        JPEG, PNG, SVG — 2.64:1 ratio recommended
                                                     </p>
                                                 </div>
                                             )}
@@ -912,17 +942,14 @@ export const AddCourseStep1 = ({
                                         </div>
                                         {/* Remove button for banner image */}
                                         {form.watch('courseBanner') && (
-                                            <MyButton
+                                            <button
                                                 type="button"
                                                 onClick={removeCourseBanner}
-                                                buttonType="secondary"
-                                                layoutVariant="default"
-                                                scale="small"
-                                                className="mt-2 w-full"
+                                                className="mt-1 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-600 hover:underline"
                                             >
-                                                <X className="mr-2 size-4" />
-                                                Remove Banner Image
-                                            </MyButton>
+                                                <X className="size-3" />
+                                                Remove image
+                                            </button>
                                         )}
                                     </div>
                                 )}
@@ -937,21 +964,21 @@ export const AddCourseStep1 = ({
                                             )}{' '}
                                             Media (Image or Video)
                                         </FormLabel>
-                                        <p className="text-sm text-gray-500">
+                                        <p className="text-sm text-neutral-500">
                                             A featured media block within the course page; this can
                                             visually represent the content or offer a teaser. For
                                             videos, recommended format: MP4
                                         </p>
-                                        <div className="flex flex-col gap-2">
+                                        <div className="relative flex flex-col gap-2">
                                             {/* Preview logic remains unchanged */}
                                             {uploadingStates.courseMedia ? (
-                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
+                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-neutral-100">
                                                     <DashboardLoader />
                                                 </div>
                                             ) : form.watch('courseMedia')?.id &&
                                               form.watch('courseMedia')?.type !== 'youtube' ? (
                                                 form.watch('courseMedia')?.type === 'video' ? (
-                                                    <div className="h-[200px] w-full rounded-lg bg-gray-100">
+                                                    <div className="h-[200px] w-full rounded-lg bg-neutral-100">
                                                         <video
                                                             src={form.watch('courseMediaBlob')}
                                                             controls
@@ -965,7 +992,7 @@ export const AddCourseStep1 = ({
                                                         </video>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
+                                                    <div className="flex h-[200px] items-center justify-center rounded-lg bg-neutral-100">
                                                         <img
                                                             src={form.watch('courseMediaBlob')}
                                                             alt="Course Banner"
@@ -975,7 +1002,7 @@ export const AddCourseStep1 = ({
                                                 )
                                             ) : form.watch('courseMedia')?.type === 'youtube' &&
                                               form.watch('courseMedia')?.id ? (
-                                                <div className="mt-2 flex h-[200px] w-full items-center justify-center rounded-lg bg-gray-100">
+                                                <div className="mt-2 flex h-[200px] w-full items-center justify-center rounded-lg bg-neutral-100">
                                                     <iframe
                                                         width="100%"
                                                         height="100%"
@@ -988,59 +1015,78 @@ export const AddCourseStep1 = ({
                                                     />
                                                 </div>
                                             ) : (
-                                                <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
-                                                    <p className="text-white">
-                                                        <ImageSquare size={100} />
+                                                <div
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={() => {
+                                                        setShowYoutubeInput(false);
+                                                        courseMediaRef.current?.click();
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            setShowYoutubeInput(false);
+                                                            courseMediaRef.current?.click();
+                                                        }
+                                                    }}
+                                                    className="flex h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
+                                                >
+                                                    <ImageSquare
+                                                        size={48}
+                                                        className="text-neutral-400"
+                                                    />
+                                                    <p className="text-sm font-medium text-neutral-600">
+                                                        Click to upload image or video
+                                                    </p>
+                                                    <p className="text-xs text-neutral-400">
+                                                        Image, video (MP4), or YouTube URL
                                                     </p>
                                                 </div>
                                             )}
                                             {/* Pen icon and dropdown logic */}
-                                            <div className="-mt-10 mr-2 flex flex-col items-end justify-end">
-                                                <MyButton
-                                                    type="button"
-                                                    disabled={uploadingStates.courseMedia}
-                                                    buttonType="secondary"
-                                                    layoutVariant="icon"
-                                                    scale="small"
-                                                    className="z-10 bg-white hover:bg-white active:bg-white"
-                                                    onClick={() => {
-                                                        setShowMediaMenu((prev) => !prev);
-                                                        setShowYoutubeInput(false);
-                                                    }}
-                                                >
-                                                    <PencilSimpleLine />
-                                                </MyButton>
-                                                {showMediaMenu && (
-                                                    <div
-                                                        ref={mediaMenuRef}
-                                                        className="z-20 mt-1 flex w-48 flex-col gap-2 rounded bg-white p-2 shadow"
+                                            <div className="absolute bottom-2 right-2 flex flex-col items-end">
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <MyButton
+                                                            type="button"
+                                                            disabled={uploadingStates.courseMedia}
+                                                            buttonType="secondary"
+                                                            layoutVariant="icon"
+                                                            scale="small"
+                                                            className="z-10 bg-white hover:bg-white active:bg-white"
+                                                            onClick={() =>
+                                                                setShowYoutubeInput(false)
+                                                            }
+                                                        >
+                                                            <PencilSimpleLine />
+                                                        </MyButton>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent
+                                                        align="end"
+                                                        className="w-48"
                                                     >
-                                                        <button
-                                                            className="w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-100"
-                                                            onClick={() => {
-                                                                setShowMediaMenu(false);
-                                                                courseMediaRef.current?.click();
-                                                            }}
+                                                        <DropdownMenuItem
+                                                            onSelect={() =>
+                                                                courseMediaRef.current?.click()
+                                                            }
                                                         >
                                                             Upload Image/Video
-                                                        </button>
-                                                        <button
-                                                            className="w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-100"
-                                                            onClick={() => {
-                                                                setShowMediaMenu(false);
-                                                                setShowYoutubeInput(true);
-                                                            }}
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onSelect={() =>
+                                                                setShowYoutubeInput(true)
+                                                            }
                                                         >
                                                             YouTube Link
-                                                        </button>
-                                                    </div>
-                                                )}
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                                 {showYoutubeInput && (
                                                     <div
                                                         ref={youtubeInputRef}
                                                         className=" w-64 rounded bg-white p-4 shadow"
                                                     >
-                                                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                                                        <label className="mb-1 block text-sm font-medium text-neutral-700">
                                                             Paste YouTube Link
                                                         </label>
                                                         <Input
@@ -1118,17 +1164,14 @@ export const AddCourseStep1 = ({
                                         {/* Remove button for course media */}
                                         {(form.watch('courseMedia')?.id ||
                                             form.watch('courseMedia')?.type === 'youtube') && (
-                                            <MyButton
+                                            <button
                                                 type="button"
                                                 onClick={removeCourseMedia}
-                                                buttonType="secondary"
-                                                layoutVariant="default"
-                                                scale="small"
-                                                className="mt-2 w-full"
+                                                className="mt-1 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-600 hover:underline"
                                             >
-                                                <X className="mr-2 size-4" />
-                                                Remove Course Media
-                                            </MyButton>
+                                                <X className="size-3" />
+                                                Remove media
+                                            </button>
                                         )}
                                     </div>
                                 )}

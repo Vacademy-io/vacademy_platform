@@ -1,5 +1,6 @@
 import { StepsIcon } from '@phosphor-icons/react';
 import { useRouter } from '@tanstack/react-router';
+import { toast } from 'sonner';
 import {
     ChalkboardTeacher,
     Clock,
@@ -695,7 +696,7 @@ export const CourseDetailsPage = () => {
             setDripConditions(updatedConditions);
         } catch (error) {
             console.error('Error adding drip condition:', error);
-            alert('Failed to save drip condition. Please try again.');
+            toast.error('Failed to save drip condition. Please try again.');
         }
     };
 
@@ -715,7 +716,7 @@ export const CourseDetailsPage = () => {
             setDripConditions(updatedConditions);
         } catch (error) {
             console.error('Error updating drip condition:', error);
-            alert('Failed to update drip condition. Please try again.');
+            toast.error('Failed to update drip condition. Please try again.');
         }
     };
 
@@ -733,7 +734,7 @@ export const CourseDetailsPage = () => {
             setDripConditions(updatedConditions);
         } catch (error) {
             console.error('Error deleting drip condition:', error);
-            alert('Failed to delete drip condition. Please try again.');
+            toast.error('Failed to delete drip condition. Please try again.');
         }
     };
 
@@ -1153,7 +1154,7 @@ export const CourseDetailsPage = () => {
                     <div className="pointer-events-none absolute inset-0 z-10 bg-black/5" />
                 )}
                 {!form.watch('courseData')?.courseBannerMediaId ? (
-                    <div className="absolute inset-0 z-0 bg-gray-100" />
+                    <div className="absolute inset-0 z-0 bg-gradient-to-br from-primary-700 via-primary-800 to-primary-900" />
                 ) : (
                     <div className="absolute inset-0 z-0 opacity-70">
                         <img
@@ -1169,10 +1170,10 @@ export const CourseDetailsPage = () => {
                 )}
                 {/* Primary color overlay with 70% opacity */}
                 <div
-                    className={`container relative z-20 mx-auto px-3 sm:px-4 lg:px-6 ${form.watch('courseData')?.courseBannerMediaId
+                    className={`container relative z-20 mx-auto px-3 text-white sm:px-4 lg:px-6 ${form.watch('courseData')?.courseBannerMediaId
                             ? 'py-4 sm:py-5 lg:py-6'
-                            : 'py-3 sm:py-4 lg:py-5'
-                        } ${!form.watch('courseData')?.courseBannerMediaId ? 'text-black' : 'text-white'}`}
+                            : 'py-6 sm:py-8 lg:py-10'
+                        }`}
                 >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
                         {/* Left side - Title and Description */}
@@ -1188,9 +1189,9 @@ export const CourseDetailsPage = () => {
                                 <>
                                     <div className="flex items-start justify-between gap-4">
                                         <h1
-                                            className={`font-semibold leading-tight ${form.watch('courseData')?.courseBannerMediaId
+                                            className={`font-bold leading-tight tracking-tight ${form.watch('courseData')?.courseBannerMediaId
                                                     ? 'mb-2 text-lg sm:text-xl lg:text-2xl'
-                                                    : 'mb-1 text-base sm:text-lg lg:text-xl'
+                                                    : 'mb-2 text-2xl sm:text-3xl lg:text-4xl'
                                                 }`}
                                         >
                                             {form.getValues('courseData')?.title}
@@ -1472,7 +1473,7 @@ export const CourseDetailsPage = () => {
 
                         {/* What You'll Learn Section */}
                         {extractTextFromHTML(form.getValues('courseData').whatYoullLearn) && (
-                            <div className="mb-4 mt-3 rounded-md bg-white p-3 shadow-sm lg:mb-6 lg:mt-4 lg:p-4">
+                            <div className="mb-4 mt-3 rounded-md border-l-4 border-emerald-400 bg-white p-3 shadow-sm lg:mb-6 lg:mt-4 lg:p-4">
                                 <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
                                     What you&apos;ll learn?
                                 </h2>
@@ -1490,7 +1491,7 @@ export const CourseDetailsPage = () => {
 
                         {/* About Content Section */}
                         {extractTextFromHTML(form.getValues('courseData').aboutTheCourse) && (
-                            <div className="mb-4 rounded-md bg-white p-3 shadow-sm lg:mb-6 lg:p-4">
+                            <div className="mb-4 rounded-md border-l-4 border-blue-400 bg-white p-3 shadow-sm lg:mb-6 lg:p-4">
                                 <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
                                     About this{' '}
                                     {getTerminology(
@@ -1512,7 +1513,7 @@ export const CourseDetailsPage = () => {
 
                         {/* Who Should Join Section */}
                         {extractTextFromHTML(form.getValues('courseData').whoShouldLearn) && (
-                            <div className="mb-4 rounded-md bg-white p-3 shadow-sm lg:mb-6 lg:p-4">
+                            <div className="mb-4 rounded-md border-l-4 border-purple-400 bg-white p-3 shadow-sm lg:mb-6 lg:p-4">
                                 <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
                                     Who should join?
                                 </h2>
@@ -1530,7 +1531,7 @@ export const CourseDetailsPage = () => {
 
                         {/* Instructors Section - only visible for ADMIN or TEACHER roles */}
                         {instructors && instructors.length > 0 && isAdminOrTeacher && (
-                            <div className="mb-4 flex flex-col gap-2 rounded-md bg-white p-3 shadow-sm lg:mb-6 lg:p-4">
+                            <div className="mb-4 flex flex-col gap-2 rounded-md border-l-4 border-orange-400 bg-white p-3 shadow-sm lg:mb-6 lg:p-4">
                                 <h2 className="text-lg font-semibold text-gray-900">Authors</h2>
                                 {loadingInstructors ? (
                                     <div className="text-sm text-gray-600">

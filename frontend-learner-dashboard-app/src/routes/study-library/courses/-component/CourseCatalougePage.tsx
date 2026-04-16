@@ -156,6 +156,10 @@ const CourseCatalougePage: React.FC = () => {
         return { createdAt: "DESC" };
       case "Oldest":
         return { createdAt: "ASC" };
+      case "HighestRated":
+        return { rating: "DESC" };
+      case "Shortest":
+        return { readTimeInMinutes: "ASC" };
       default:
         return { createdAt: "DESC" };
     }
@@ -166,6 +170,10 @@ const CourseCatalougePage: React.FC = () => {
     switch (sort) {
       case "Oldest":
         return { created_at: "ASC" };
+      case "HighestRated":
+        return { rating: "DESC" };
+      case "Shortest":
+        return { read_time_in_minutes: "ASC" };
       default:
         return { created_at: "DESC" };
     }
@@ -521,13 +529,22 @@ const CourseCatalougePage: React.FC = () => {
           {/* Tab Navigation */}
           <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md mb-3">
             <div className="p-2 sm:p-3">
-              <TabsList className="bg-muted/50 dark:bg-neutral-900 justify-start p-0.5 w-full grid grid-cols-3 gap-0.5 sm:w-auto sm:flex sm:flex-row [.ui-play_&]:!bg-white [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-2xl [.ui-play_&]:p-1.5 [.ui-play_&]:gap-1.5 [.ui-play_&]:shadow-[0_3px_0_hsl(var(--primary-200))]">
-                {visibleTabs.map((t) => (
+              <TabsList className="bg-muted/50 dark:bg-neutral-900 justify-start p-1 w-full grid grid-cols-3 gap-1 sm:w-auto sm:flex sm:flex-row rounded-full [.ui-play_&]:!bg-white [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-2xl [.ui-play_&]:p-1.5 [.ui-play_&]:gap-1.5 [.ui-play_&]:shadow-[0_3px_0_hsl(var(--primary-200))]">
+                {visibleTabs.map((t) => {
+                  const count =
+                    t.value === "ALL"
+                      ? allCourses.totalElements
+                      : t.value === "PROGRESS"
+                        ? progressCourses.totalElements
+                        : t.value === "COMPLETED"
+                          ? completedCourses.totalElements
+                          : 0;
+                  return (
                   <TabsTrigger
                     key={t.value}
                     value={t.value}
                     className={cn(
-                      "flex-1 sm:flex-none px-1.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-neutral-800 data-[state=active]:shadow-sm",
+                      "flex-1 sm:flex-none px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 data-[state=active]:bg-primary-100 data-[state=active]:text-primary-700 data-[state=active]:font-semibold data-[state=active]:shadow-sm dark:data-[state=active]:bg-primary-900/40 dark:data-[state=active]:text-primary-200",
                       // Vibrant Styles - Flat Pastel
                       t.value === "COMPLETED" &&
                       "[.ui-vibrant_&]:data-[state=active]:bg-emerald-100/50 [.ui-vibrant_&]:data-[state=active]:text-emerald-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-emerald-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-emerald-300",
@@ -547,25 +564,32 @@ const CourseCatalougePage: React.FC = () => {
                       "[.ui-play_&]:data-[state=active]:!bg-[#ce82ff] [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-[0_3px_0_#a568cc]"
                     )}
                   >
-                    <span className="inline-flex items-center gap-1">
-                      {/* Icon (visible only in vibrant mode via CSS) */}
-                      <span className="hidden [.ui-vibrant_&]:inline [.ui-play_&]:inline">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-flex shrink-0">
                         {t.value === "ALL" && <IconBooks size={14} />}
                         {t.value === "PROGRESS" && <IconChartBar size={14} />}
                         {t.value === "COMPLETED" && <IconCheck size={14} />}
                       </span>
-                      {t.label ||
-                        (t.value === "ALL"
-                          ? `All ${getTerminology(
-                            ContentTerms.Course,
-                            SystemTerms.Course
-                          )}s`
-                          : t.value === "PROGRESS"
-                            ? "In Progress"
-                            : "Completed")}
+                      <span className="truncate">
+                        {t.label ||
+                          (t.value === "ALL"
+                            ? `All ${getTerminology(
+                              ContentTerms.Course,
+                              SystemTerms.Course
+                            )}s`
+                            : t.value === "PROGRESS"
+                              ? "In Progress"
+                              : "Completed")}
+                      </span>
+                      {count > 0 && (
+                        <span className="ml-0.5 hidden sm:inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-neutral-200/80 text-[10px] font-semibold text-neutral-700 data-[state=active]:bg-primary-200 dark:bg-neutral-700 dark:text-neutral-200">
+                          {count}
+                        </span>
+                      )}
                     </span>
                   </TabsTrigger>
-                ))}
+                  );
+                })}
               </TabsList>
             </div>
           </div>

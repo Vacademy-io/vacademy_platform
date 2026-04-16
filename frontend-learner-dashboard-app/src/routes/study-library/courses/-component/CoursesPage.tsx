@@ -255,43 +255,45 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         </div>
                     ) : courseData.content.length === 0 ? (
                         <div className={cn(
-                            "bg-card border rounded-md shadow-sm p-5 sm:p-6 text-center",
-                            // Vibrant Styles
+                            "relative overflow-hidden bg-card border rounded-lg shadow-sm px-6 py-12 sm:py-16 text-center",
                             "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
                             "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
-                            // Play Styles — solid, bold, Duolingo-style
                             "[.ui-play_&]:!bg-primary-50 [.ui-play_&]:border-2 [.ui-play_&]:!border-primary-200 [.ui-play_&]:rounded-2xl",
                             "[.ui-play_&]:shadow-[0_4px_0_hsl(var(--primary-200))]"
                         )}>
-                            <div className={cn(
-                                "w-12 h-12 sm:w-16 sm:h-16 bg-muted rounded-md mx-auto mb-3 sm:mb-4 flex items-center justify-center",
-                                "[.ui-vibrant_&]:bg-primary/10",
-                                // Play Styles
-                                "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:rounded-xl"
-                            )}>
-                                <Search
-                                    size={20}
-                                    className={cn(
-                                        "text-muted-foreground sm:w-6 sm:h-6",
-                                        "[.ui-vibrant_&]:text-primary",
-                                        // Play Styles
-                                        "[.ui-play_&]:text-white"
-                                    )}
-                                />
+                            {/* Decorative background blobs */}
+                            <div className="pointer-events-none absolute -top-16 -left-10 w-48 h-48 rounded-full bg-primary-100/50 blur-3xl" aria-hidden="true" />
+                            <div className="pointer-events-none absolute -bottom-12 -right-8 w-40 h-40 rounded-full bg-primary-200/40 blur-3xl" aria-hidden="true" />
+
+                            <div className="relative">
+                                {/* Illustrated icon stack */}
+                                <div className="relative w-24 h-24 sm:w-28 sm:h-28 mx-auto mb-5">
+                                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary-100 to-primary-200 rotate-6 [.ui-play_&]:bg-[#58cc02]/30" aria-hidden="true" />
+                                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white to-primary-50 -rotate-3 border border-primary-100 flex items-center justify-center shadow-sm">
+                                        <Search
+                                            size={36}
+                                            className="text-primary-500 [.ui-play_&]:text-[#58cc02]"
+                                            strokeWidth={2.25}
+                                        />
+                                    </div>
+                                </div>
+                                <h3 className="text-lg sm:text-xl font-bold text-foreground mb-2">
+                                    No{" "}
+                                    {getTerminology(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ).toLocaleLowerCase()}
+                                    s found
+                                </h3>
+                                <p className="text-muted-foreground text-sm max-w-md mx-auto leading-relaxed">
+                                    We couldn&apos;t find anything matching your search. Try different keywords, adjust your filters, or clear them to see all available{" "}
+                                    {getTerminology(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ).toLocaleLowerCase()}
+                                    s.
+                                </p>
                             </div>
-                            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">
-                                No{" "}
-                                {getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                ).toLocaleLowerCase()}
-                                s found
-                            </h3>
-                            <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                                Try adjusting your search criteria or browse our
-                                popular categories to discover learning
-                                opportunities.
-                            </p>
                         </div>
                     ) : (
                         <div className="space-y-3 sm:space-y-4">

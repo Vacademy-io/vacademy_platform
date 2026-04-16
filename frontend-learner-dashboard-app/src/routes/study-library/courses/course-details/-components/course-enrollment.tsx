@@ -111,28 +111,28 @@ export const CourseEnrollment = ({
       {/* Floating orb effect */}
       <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3 pointer-events-none"></div>
 
-      <CardHeader className="pb-3 md:pb-4 space-y-0">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-primary/10 rounded-lg shadow-sm ring-1 ring-primary/20">
+      <CardHeader className="p-3 pb-2 space-y-0">
+        <div className="flex items-center space-x-2">
+          <div className="p-1 bg-primary/10 rounded-md shadow-sm ring-1 ring-primary/20">
             <GraduationCap
-              size={20}
+              size={16}
               className="text-primary"
               weight="duotone"
             />
           </div>
-          <CardTitle className="text-base md:text-lg font-bold">
+          <CardTitle className="text-sm font-bold">
             {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
             Configuration
           </CardTitle>
         </div>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="p-3 pt-0">
         {sessionOptions && sessionOptions.length > 0 ? (
-          <div className="space-y-4">
+          <div className="space-y-2.5">
             {/* Preview notice for ALL tab - only show if user is not enrolled */}
             {selectedTab === "ALL" && !isEnrolledInCourse && (
-              <div className="p-3 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
+              <div className="p-2 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md text-sm">
                 <div className="flex items-center space-x-2 text-blue-700 dark:text-blue-300 font-medium mb-1">
                   <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                   <span>
@@ -151,7 +151,7 @@ export const CourseEnrollment = ({
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Session Selector */}
               {sessionOptions &&
                 sessionOptions.length > 0 &&

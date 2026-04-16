@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search } from "lucide-react";
+import { Search, ArrowUpDown } from "lucide-react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { Input } from "@/components/ui/input";
@@ -72,20 +72,25 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                 </div>
 
                 {/* Sort Section */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 min-w-0">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
                     <label className="text-sm font-medium whitespace-nowrap hidden sm:block">
                         Sort by:
                     </label>
-                    <div className="w-full sm:w-[150px]">
+                    <ArrowUpDown
+                        size={16}
+                        className="text-muted-foreground shrink-0 sm:hidden"
+                        aria-hidden="true"
+                    />
+                    <div className="flex-1 sm:w-[170px] sm:flex-none">
                         <Select value={sortOption} onValueChange={onSortChange}>
-                            <SelectTrigger>
+                            <SelectTrigger aria-label="Sort courses">
                                 <SelectValue placeholder="Sort order" />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Newest">Newest First</SelectItem>
                                 <SelectItem value="Oldest">Oldest First</SelectItem>
-                                {/* <SelectItem value="Popularity">Most Popular</SelectItem>
-                <SelectItem value="Rating">Highest Rated</SelectItem> */}
+                                <SelectItem value="HighestRated">Highest Rated</SelectItem>
+                                <SelectItem value="Shortest">Shortest First</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

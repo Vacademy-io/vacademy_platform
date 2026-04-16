@@ -17,7 +17,7 @@ import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 // Internal reusable component for individual filter sections
 interface FilterListProps {
-    items: { id: string; name: string }[];
+    items: { id: string; name: string; count?: number }[];
     selectedItems: string[];
     handleChange: (itemId: string) => void;
     disabled?: boolean;
@@ -42,22 +42,30 @@ const FilterList: React.FC<FilterListProps> = ({
                 </div>
             )}
             {items.map((item) => (
-                <div key={item.id} className="flex items-center space-x-2">
-                    <Checkbox
-                        id={item.id}
-                        checked={selectedItems.includes(item.id)}
-                        onCheckedChange={() => handleChange(item.id)}
-                        disabled={disabled}
-                    />
-                    <Label
-                        htmlFor={item.id}
-                        className={cn(
-                            "text-sm cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-                            selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold [.ui-play_&]:font-extrabold [.ui-play_&]:text-[#58cc02]" : "font-normal [.ui-play_&]:font-bold"
-                        )}
-                    >
-                        {item.name}
-                    </Label>
+                <div key={item.id} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2 min-w-0 flex-1">
+                        <Checkbox
+                            id={item.id}
+                            checked={selectedItems.includes(item.id)}
+                            onCheckedChange={() => handleChange(item.id)}
+                            disabled={disabled}
+                        />
+                        <Label
+                            htmlFor={item.id}
+                            title={item.name}
+                            className={cn(
+                                "text-sm cursor-pointer leading-none truncate peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+                                selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold [.ui-play_&]:font-extrabold [.ui-play_&]:text-[#58cc02]" : "font-normal [.ui-play_&]:font-bold"
+                            )}
+                        >
+                            {item.name}
+                        </Label>
+                    </div>
+                    {typeof item.count === "number" && (
+                        <span className="shrink-0 text-[11px] font-medium text-muted-foreground tabular-nums">
+                            {item.count}
+                        </span>
+                    )}
                 </div>
             ))}
         </div>

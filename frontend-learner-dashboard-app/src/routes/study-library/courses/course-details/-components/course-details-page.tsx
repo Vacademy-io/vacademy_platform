@@ -1979,17 +1979,17 @@ export const CourseDetailsPage = () => {
                 /> */}
 
         {/* Main Content Container */}
-        <div className="relative z-10 w-full px-2 sm:px-0 py-3 lg:py-4">
+        <div className="relative z-10 w-full px-2 sm:px-0 py-2 lg:py-3">
           <div
             className={`grid grid-cols-1 ${
               hasRightSidebar ? "lg:grid-cols-3" : ""
-            } gap-3 lg:gap-4`}
+            } gap-3`}
           >
             {/* Left Column - Course Content (3/4) */}
             <div
               className={`${
                 hasRightSidebar ? "lg:col-span-2" : ""
-              } space-y-3 lg:space-y-4`}
+              } space-y-3`}
             >
               {/* Certificate Completion Banner - Show above course structure if threshold is met */}
               <CertificateCompletionBanner
@@ -2085,9 +2085,8 @@ export const CourseDetailsPage = () => {
 
             {/* Right Column - Course Stats Sidebar (1/4) */}
             <div className="lg:col-span-1">
-              <div className="sticky top-24 self-start h-fit">
-                <div className="max-h-[calc(100vh-6rem)] overflow-auto pt-2">
-                  <CourseSidebar
+              <div className="sticky top-24 self-start">
+                <CourseSidebar
                     hasRightSidebar={hasRightSidebar}
                     levelOptions={levelOptions}
                     selectedLevel={selectedLevel}
@@ -2191,7 +2190,6 @@ export const CourseDetailsPage = () => {
                     }}
                     onRatingsLoadingChange={handleRatingsLoadingChange}
                   />
-                </div>
               </div>
             </div>
           </div>

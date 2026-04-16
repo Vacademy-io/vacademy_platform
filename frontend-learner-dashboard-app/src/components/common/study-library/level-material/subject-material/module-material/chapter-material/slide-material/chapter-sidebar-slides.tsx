@@ -559,20 +559,20 @@ const SlideItem = ({
           >
             <div
               className={`
-                flex w-full items-center gap-2 rounded-md px-2 py-2
+                flex w-full items-center gap-2 rounded-md py-2
                 transition-all duration-150
                 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary-100 [.ui-play_&]:my-1.5 [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))] [.ui-play_&]:transition-all [.ui-play_&]:hover:border-primary-200 [.ui-play_&]:hover:shadow-[0_3px_0_hsl(var(--primary-200))]
                 ${
                   isActive
-                    ? "text-primary-700 bg-primary-50 border border-primary-200/60 [.ui-play_&]:!bg-primary-50 [.ui-play_&]:!border-primary-300 [.ui-play_&]:!shadow-[0_3px_0_hsl(var(--primary-300))]"
-                    : "bg-white text-gray-700 hover:bg-gray-50 border border-transparent"
+                    ? "pl-1 pr-2 text-primary-700 bg-primary-50 border border-primary-200/60 border-l-4 border-l-primary-500 [.ui-play_&]:!bg-primary-50 [.ui-play_&]:!border-primary-300 [.ui-play_&]:!shadow-[0_3px_0_hsl(var(--primary-300))]"
+                    : "px-2 bg-white text-gray-700 hover:bg-gray-50 border border-transparent"
                 }
               `}
             >
               {/* Slide Number */}
               <div
                 className={`
-                  flex w-5 h-5 shrink-0 items-center justify-center rounded text-[11px] font-bold
+                  flex w-6 h-6 shrink-0 items-center justify-center rounded text-xs font-bold
                   [.ui-play_&]:rounded-lg [.ui-play_&]:font-black [.ui-play_&]:border-2
                   ${
                     isActive
@@ -589,11 +589,11 @@ const SlideItem = ({
 
               {/* Title + type on one compact block */}
               <div className="min-w-0 flex-1">
-                <h4 className="text-[13px] font-medium leading-tight truncate [.ui-play_&]:font-bold">
+                <h4 className="text-sm font-medium leading-tight truncate [.ui-play_&]:font-bold">
                   {getSlideTitle()}
                 </h4>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium [.ui-play_&]:font-semibold ${typeColors.text}`}>
+                  <span className={`inline-flex items-center gap-0.5 text-xs font-medium [.ui-play_&]:font-semibold ${typeColors.text}`}>
                     <span className={`w-1 h-1 rounded-full ${typeColors.dot}`}></span>
                     {slide.source_type === "VIDEO" && mediaKind === "audio"
                       ? "Audio"
@@ -611,24 +611,27 @@ const SlideItem = ({
               <div className="shrink-0 flex items-center gap-1">
                 {isLocked ? (
                   <LockedBadge size="sm" unlockMessage={unlockMessage} className="[.ui-play_&]:rounded-full [.ui-play_&]:bg-gray-200" />
-                ) : slide.percentage_completed != null ? (
+                ) : slide.percentage_completed != null && !isCompleted ? (
                   <span
                     className={`text-[10px] font-semibold [.ui-play_&]:font-black ${
-                      isCompleted
-                        ? "text-success-600"
-                        : isActive
-                        ? "text-primary-600"
-                        : "text-gray-400"
+                      isActive ? "text-primary-600" : "text-gray-400"
                     }`}
                   >
                     {Math.min(slide.percentage_completed > 100 ? 100 : Math.round(slide.percentage_completed), 100)}%
                   </span>
                 ) : null}
-                {!isLocked && (
-                  <StatusIcon
-                    className={`w-3.5 h-3.5 ${statusDetails.color} ${isCompleted ? '[.ui-play_&]:text-[#58CC02]' : ''}`}
-                    weight="duotone"
+                {!isLocked && isCompleted ? (
+                  <CheckCircle
+                    className="w-4 h-4 text-success-600 [.ui-play_&]:text-[#58CC02]"
+                    weight="fill"
                   />
+                ) : (
+                  !isLocked && (
+                    <StatusIcon
+                      className={`w-3.5 h-3.5 ${statusDetails.color}`}
+                      weight="duotone"
+                    />
+                  )
                 )}
               </div>
             </div>

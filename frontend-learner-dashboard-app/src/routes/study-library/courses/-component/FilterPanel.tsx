@@ -224,7 +224,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
             <ScrollArea className="h-[calc(100vh-300px)] min-h-[200px] lg:h-[min(600px,calc(100vh-14rem))] lg:min-h-[240px]">
                 <div className="p-4">
-                    <Accordion type="multiple" defaultValue={["levels", "tags", "instructors"]} className="w-full">
+                    <Accordion type="multiple" defaultValue={[]} className="w-full">
                         <AccordionItem value="levels" className="border-b-0">
                             <AccordionTrigger className="hover:no-underline py-3">
                                 <span className="text-sm font-semibold">{getTerminology(ContentTerms.Level, SystemTerms.Level)}</span>
@@ -367,7 +367,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                         </SheetHeader>
 
                         <div className="flex-1 overflow-auto p-4">
-                            <Accordion type="multiple" defaultValue={["levels", "tags"]} className="w-full">
+                            <Accordion type="multiple" defaultValue={[]} className="w-full">
                                 <AccordionItem value="levels" className="border-b-0 mb-4">
                                     <h4 className="font-semibold mb-3 text-sm flex items-center justify-between">
                                         {getTerminology(ContentTerms.Level, SystemTerms.Level)}

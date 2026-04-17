@@ -3148,7 +3148,7 @@ export const CourseStructureDetails = ({
             className="w-full"
           >
             {renderTabs.length > 1 && (
-              <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0 flex flex-row flex-wrap items-center justify-start gap-2 overflow-x-auto w-full">
+              <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0 flex flex-row flex-wrap items-center justify-start gap-2 w-full">
                 {renderTabs.map((tab: { label: string; value: string }) => (
                   <TabsTrigger
                     key={tab.value}

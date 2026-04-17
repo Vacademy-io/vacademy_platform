@@ -36,6 +36,10 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { GET_COURSE_DETAILS } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { handleGetCourseInit } from "@/routes/study-library/courses/course-details/-services/get-course-details";
+import { getInstituteId } from "@/constants/helper";
+import { fetchModulesWithChapters, fetchModulesWithChaptersPublic } from "@/services/study-library/getModulesWithChapters";
+import { toast } from "sonner";
 import FeedbackPage from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/FeedbackPage";
 import { FiEdit } from "react-icons/fi";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
@@ -179,7 +183,7 @@ function Slides() {
     useContentStore();
   const { slides } = useSlides(chapterId || "");
   const { studyLibraryData } = useStudyLibraryStore();
-  const { modulesWithChaptersData } = useModulesWithChaptersStore();
+  const { modulesWithChaptersData, setModulesWithChaptersData } = useModulesWithChaptersStore();
 
   // Get drip conditions from store or fetch from API
   const {
@@ -207,6 +211,26 @@ function Slides() {
     enabled: !!courseId && !storedDripCondition, // Only fetch if not in store
     staleTime: 3600000, // 1 hour
   });
+
+  // Course-init response (same endpoint the outer course page uses) so the
+  // breadcrumb subject picker reads from the authoritative sessions →
+  // levelDetails → subjects tree. Resolves instituteId asynchronously.
+  const [instituteId, setInstituteId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getInstituteId().then((id) => {
+      if (!cancelled) setInstituteId(id || null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const { data: courseInitData } = useQuery(
+    handleGetCourseInit({
+      courseId: courseId || "",
+      instituteId: instituteId || "",
+    })
+  );
 
   // Save fetched drip condition to store
   useEffect(() => {
@@ -530,6 +554,101 @@ function Slides() {
   const [homeIconClickRoute, setHomeIconClickRoute] = useState<string | null>(
     null
   );
+
+  // Subjects for the breadcrumb picker. Reads from both known shapes of the
+  // course payload (`level_with_details` from package-detail, `levelDetails`
+  // from course-init) and falls back to `studyLibraryData` or the current
+  // subject so the crumb always populates.
+  const courseSubjects = useMemo<Array<{ id: string; subject_name: string; subject_order?: number | null }>>(() => {
+    type BreadcrumbSubject = { id: string; subject_name: string; subject_order?: number | null };
+    type LoosenedLevel = { subjects?: BreadcrumbSubject[] };
+    type LoosenedSession = { level_with_details?: LoosenedLevel[]; levelDetails?: LoosenedLevel[] };
+    const sources: Array<{ sessions?: LoosenedSession[] } | null | undefined> = [
+      courseInitData as { sessions?: LoosenedSession[] } | null | undefined,
+      courseDetails as { sessions?: LoosenedSession[] } | null | undefined,
+    ];
+    for (const src of sources) {
+      const sessions = src?.sessions;
+      if (!sessions?.length) continue;
+      for (const sess of sessions) {
+        const levels = sess.level_with_details ?? sess.levelDetails ?? [];
+        for (const level of levels) {
+          if (level.subjects?.some((s) => s.id === subjectId)) {
+            return level.subjects || [];
+          }
+        }
+      }
+      const firstSession = sessions[0];
+      const firstLevelSubjects = (firstSession?.level_with_details ?? firstSession?.levelDetails ?? [])[0]?.subjects;
+      if (firstLevelSubjects?.length) return firstLevelSubjects;
+    }
+    if (studyLibraryData?.length) {
+      return studyLibraryData.map((s) => ({
+        id: s.id,
+        subject_name: s.subject_name,
+        subject_order: s.subject_order,
+      }));
+    }
+    if (subjectId && subjectName) {
+      return [{ id: subjectId, subject_name: subjectName }];
+    }
+    return [];
+  }, [courseInitData, courseDetails, subjectId, studyLibraryData, subjectName]);
+
+  // Switch to a different subject: fetch that subject's modules/chapters
+  // and drop the learner on the first chapter's slides view. If the target
+  // subject has no content yet (or the fetch fails), route to the modules
+  // landing as a graceful fallback so the learner still arrives at the
+  // right place instead of a dead-end. `sessionId` from the URL is the
+  // same value the API calls "packageSessionId".
+  const [switchingSubjectId, setSwitchingSubjectId] = useState<string | null>(null);
+  const handleSubjectSelect = useCallback(
+    async (targetSubjectId: string) => {
+      if (!targetSubjectId || targetSubjectId === subjectId) return;
+      setSwitchingSubjectId(targetSubjectId);
+      try {
+        const pkgSessionId = sessionId || "";
+        // Try authenticated fetch first; the public variant is a fallback
+        // for unenrolled/public browsing contexts.
+        let modules: ModulesWithChapters[] | null = null;
+        try {
+          modules = await fetchModulesWithChapters(targetSubjectId, pkgSessionId);
+        } catch {
+          modules = await fetchModulesWithChaptersPublic(targetSubjectId, pkgSessionId);
+        }
+        const firstModule = (modules || []).find((m) => (m.chapters || []).length > 0) || modules?.[0];
+        const firstChapter = firstModule?.chapters?.[0];
+        if (firstModule && firstChapter) {
+          // Prime the store with the target subject's modules BEFORE
+          // navigating so the module popover doesn't briefly show the
+          // previous subject's list during the route transition.
+          if (modules) setModulesWithChaptersData(modules);
+          navigate({
+            to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+            search: {
+              courseId,
+              subjectId: targetSubjectId,
+              moduleId: firstModule.module.id,
+              chapterId: firstChapter.id,
+              slideId: "",
+              sessionId,
+            },
+          });
+          return;
+        }
+      } catch {
+        toast.error("Couldn't open that subject. Please try again.");
+      } finally {
+        setSwitchingSubjectId(null);
+      }
+      navigate({
+        to: "/study-library/courses/course-details/subjects/modules",
+        search: { courseId, subjectId: targetSubjectId, moduleId: "" },
+      });
+    },
+    [subjectId, sessionId, courseId, navigate, setModulesWithChaptersData]
+  );
+
   // truncatedChapterName removed (unused)
   const handleInstituteLogoClick = useCallback(() => {
     if (homeIconClickRoute) {
@@ -540,13 +659,16 @@ function Slides() {
   useEffect(() => {
     setModuleName(getModuleName(moduleId, modulesWithChaptersData));
     setChapterName(getChapterName(chapterId, modulesWithChaptersData) || "");
-    setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
+    const nameFromStore = getSubjectName(subjectId, studyLibraryData);
+    const nameFromCourse = courseSubjects.find((s) => s.id === subjectId)?.subject_name;
+    setSubjectName(nameFromStore || nameFromCourse || "");
   }, [
     chapterId,
     moduleId,
     subjectId,
     modulesWithChaptersData,
     studyLibraryData,
+    courseSubjects,
   ]);
 
   // Get course and level names, and institute logo
@@ -786,12 +908,84 @@ function Slides() {
           </div>
         </div>
 
-        {/* Breadcrumb: Module Switcher > Current Chapter */}
+        {/* Breadcrumb: [Subject >] Module Switcher > Current Chapter.
+            Subject crumb is only rendered when the course structure actually
+            has subjects (`subjectId` set + studyLibraryData populated) —
+            otherwise the crumb collapses to Module > Chapter as before. */}
         {showLearningPath && (
           <div
             className="flex items-center gap-1.5 text-xs text-gray-500 font-medium min-w-0"
             id="slides-breadcrumb-row"
           >
+            {/* Subject — tapping opens a picker listing all subjects in the
+                course. Selecting one routes to that subject's modules view
+                (we don't know its first chapter yet, so we drop the learner
+                at the modules list per HIG's "show the landing, don't guess"). */}
+            {!!subjectId && courseSubjects.length > 0 && (
+              <>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
+                      title={subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
+                    >
+                      <span className="truncate max-w-[90px] sm:max-w-[130px]">
+                        {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
+                      </span>
+                      <ChevronDownIcon className="w-3 h-3 flex-shrink-0 text-gray-400 group-hover:text-primary-400 transition-colors" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-64 p-0 shadow-md border border-gray-200 rounded-lg overflow-hidden"
+                    align="start"
+                    sideOffset={6}
+                  >
+                    <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/80">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}s
+                      </p>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                      {courseSubjects.map((s) => {
+                        const isCurrent = s.id === subjectId;
+                        const isSwitching = switchingSubjectId === s.id;
+                        return (
+                          <button
+                            key={s.id}
+                            disabled={!!switchingSubjectId && !isSwitching}
+                            onClick={() => handleSubjectSelect(s.id)}
+                            className={`w-full text-left px-3 py-2 text-[11px] transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
+                              isCurrent
+                                ? "bg-primary-50 text-primary-700 font-semibold"
+                                : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                            }`}
+                          >
+                            <div
+                              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                isCurrent ? "bg-primary-500" : "bg-gray-300"
+                              }`}
+                            />
+                            <span className="truncate flex-1">
+                              {toTitleCase(s.subject_name)}
+                            </span>
+                            {isSwitching ? (
+                              <div className="w-3 h-3 border-2 border-primary-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                            ) : isCurrent ? (
+                              <span className="text-[9px] font-bold text-primary-500 uppercase tracking-wide flex-shrink-0">
+                                Now
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+              </>
+            )}
+
             {/* Module — tapping opens a full course-content accordion popover
                 so the learner can jump to any module/chapter without navigating
                 back through multiple screens (MD3: contextual menu; HIG: drill-down). */}
@@ -814,7 +1008,9 @@ function Slides() {
               >
                 <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/80">
                   <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                    {getTerminology(ContentTerms.Course, SystemTerms.Course)} Content
+                    {subjectName
+                      ? `${toTitleCase(subjectName)} · ${getTerminology(ContentTerms.Modules, SystemTerms.Modules)}s`
+                      : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Content`}
                   </p>
                 </div>
                 <div className="max-h-72 overflow-y-auto custom-scrollbar">

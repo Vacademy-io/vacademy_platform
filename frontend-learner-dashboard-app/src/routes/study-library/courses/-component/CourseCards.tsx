@@ -222,7 +222,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                             className="text-primary/60 transition-transform duration-500 group-hover:scale-110"
                         />
                         <span className="text-xs font-medium text-primary/70 px-3 text-center line-clamp-1">
-                            {toTitleCase(package_name)}
+                            {package_name}
                         </span>
                     </div>
                 )}
@@ -233,9 +233,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 <div className="flex justify-between items-start gap-3">
                     <h3
                         className="text-lg font-bold leading-tight group-hover:text-primary transition-colors duration-200 line-clamp-2"
-                        title={toTitleCase(package_name)}
+                        title={package_name}
                     >
-                        {toTitleCase(package_name)}
+                        {package_name}
                     </h3>
 
                     <Badge

@@ -58,6 +58,9 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     const [isSticky, setIsSticky] = useState(false);
     const [filterPanelWidth, setFilterPanelWidth] = useState(0);
     const [filterPanelLeft, setFilterPanelLeft] = useState(0);
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+    const activeFiltersCount = selectedLevels.length + selectedTags.length + selectedInstructors.length;
 
     // Smooth scroll on page change and dev log
     useEffect(() => {
@@ -169,11 +172,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
             <div
                 className={`flex flex-col lg:flex-row lg:items-start ${showFilters ? "gap-4 lg:gap-6" : ""} mx-auto relative`}
             >
-                {/* Sidebar - Only show if showFilters is true */}
+                {/* Sidebar — always rendered so mobile Sheet trigger is accessible */}
                 {showFilters && (
                     <>
                         {/* Spacer to maintain layout when filter panel becomes fixed */}
-                        {isSticky && (
+                        {isSticky && isFilterOpen && (
                             <div
                                 className="hidden lg:block flex-shrink-0"
                                 style={{ width: '20rem' }}
@@ -181,8 +184,13 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         )}
                         <aside
                             ref={filterPanelRef}
-                            className="w-full flex-shrink-0"
-                            style={{
+                            className={cn(
+                                "w-full flex-shrink-0",
+                                // Hide the desktop column when filter is closed;
+                                // mobile Sheet trigger inside is already lg:hidden so unaffected
+                                !isFilterOpen && "lg:hidden"
+                            )}
+                            style={isFilterOpen ? {
                                 position: isSticky ? 'fixed' : 'static',
                                 top: isSticky ? '5rem' : 'auto',
                                 left: isSticky ? `${filterPanelLeft}px` : 'auto',
@@ -191,9 +199,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 maxHeight: isSticky ? 'calc(100vh - 6rem)' : 'none',
                                 overflowY: isSticky ? 'auto' : 'visible',
                                 zIndex: isSticky ? 10 : 'auto'
-                            }}
+                            } : {}}
                         >
                             <FilterPanel
+                                isDesktopOpen={isFilterOpen}
+                                onClose={() => setIsFilterOpen(false)}
                                 selectedLevels={selectedLevels}
                                 onLevelChange={(id) =>
                                     toggleItem(
@@ -228,6 +238,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         onSearchChange={onSearchChange}
                         sortOption={sortOption}
                         onSortChange={onSortChange}
+                        showFilterToggle={showFilters}
+                        isFilterOpen={isFilterOpen}
+                        onFilterToggle={() => setIsFilterOpen((prev) => !prev)}
+                        activeFiltersCount={activeFiltersCount}
                     />
 
                     {isLoading ? (
@@ -242,7 +256,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         )}>
                             <div className="animate-pulse space-y-3 sm:space-y-4">
                                 <div className="h-4 bg-muted rounded w-1/3"></div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3 sm:gap-4">
+                                <div className={cn(
+                                    "grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4",
+                                    isFilterOpen ? "lg:grid-cols-2" : "lg:grid-cols-3"
+                                )}>
                                     {Array.from({ length: 4 }).map((_, i) => (
                                         <div key={i} className="bg-muted/10 border rounded-md p-3 sm:p-4">
                                             <div className="h-32 sm:h-36 bg-muted rounded mb-3"></div>
@@ -308,16 +325,21 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             </div>
 
                             {/* Course Grid */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-3 sm:gap-4">
+                            <div className={cn(
+                                "grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4",
+                                isFilterOpen
+                                    ? "lg:grid-cols-2 xl:grid-cols-2"
+                                    : "lg:grid-cols-3 xl:grid-cols-3"
+                            )}>
                                 {courseData.content.map((course, index) => {
                                     return (
                                         <CourseCard
                                             key={`${course.id || "no-id"}-${index}`}
                                             courseId={course.id}
-                                            package_name={toTitleCase(
+                                            package_name={
                                                 course.package_name ||
                                                 "Untitled Package"
-                                            )}
+                                            }
                                             level_name={toTitleCase(
                                                 course.level_name || "Beginner"
                                             )}

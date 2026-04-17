@@ -6,7 +6,7 @@ import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { urlCourseDetails } from "@/constants/urls";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import { Filter, ChevronDown, ChevronUp, Search, SortAsc, ShoppingCart, Plus, Minus } from "lucide-react";
+import { Filter, ChevronDown, ChevronUp, Search, SortAsc, ShoppingCart, Plus, Minus, BookOpen } from "lucide-react";
 import { toTitleCase } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
@@ -23,22 +23,26 @@ interface CourseImageProps {
   className?: string;
 }
 
+const CoursePlaceholder: React.FC<{ title: string }> = ({ title }) => (
+  <div className="aspect-video w-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
+    <BookOpen size={40} className="text-primary/60" />
+    <span className="text-xs font-medium text-primary/70 px-3 text-center line-clamp-1">
+      {title}
+    </span>
+  </div>
+);
+
 const CourseImage: React.FC<CourseImageProps> = ({ previewImageUrl, alt, className }) => {
-  // Check if this is a placeholder or invalid URL
   const isPlaceholder = !previewImageUrl ||
-    previewImageUrl === null ||
-    previewImageUrl === undefined ||
     previewImageUrl.includes('/api/placeholder/') ||
     previewImageUrl.trim() === '' ||
     previewImageUrl === 'null' ||
     previewImageUrl === 'undefined';
 
-  // Don't render anything if it's a placeholder or invalid URL
   if (isPlaceholder) {
-    return null;
+    return <CoursePlaceholder title={alt} />;
   }
 
-  // For valid URLs, use the full component with state management
   return <CourseImageWithState previewImageUrl={previewImageUrl} alt={alt} className={className} />;
 };
 
@@ -87,9 +91,8 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt
     };
   }, [previewImageUrl]);
 
-  // Don't render anything if there's an error or no valid image
   if (imageError || (!loadingImage && !courseImageUrl)) {
-    return null;
+    return <CoursePlaceholder title={alt} />;
   }
 
   // Show loading placeholder while loading

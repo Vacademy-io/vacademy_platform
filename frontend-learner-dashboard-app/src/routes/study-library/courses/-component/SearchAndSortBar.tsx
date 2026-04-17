@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, ArrowUpDown } from "lucide-react";
+import { Search, ArrowUpDown, SlidersHorizontal } from "lucide-react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface SearchAndSortBarProps {
@@ -17,6 +19,10 @@ interface SearchAndSortBarProps {
     onSearchChange: (value: string) => void;
     sortOption: string;
     onSortChange: (value: string) => void;
+    showFilterToggle?: boolean;
+    isFilterOpen?: boolean;
+    onFilterToggle?: () => void;
+    activeFiltersCount?: number;
 }
 
 const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
@@ -24,6 +30,10 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
     onSearchChange,
     sortOption,
     onSortChange,
+    showFilterToggle = false,
+    isFilterOpen = false,
+    onFilterToggle,
+    activeFiltersCount = 0,
 }) => {
     const [inputValue, setInputValue] = useState(searchTerm);
 
@@ -49,6 +59,26 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
             "[.ui-play_&]:shadow-[0_4px_0_hsl(var(--primary-200))]"
         )}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {/* Filter toggle — desktop only, only shown when filter is closed */}
+                {showFilterToggle && onFilterToggle && !isFilterOpen && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onFilterToggle}
+                        className={cn(
+                            "hidden lg:flex items-center gap-1.5 shrink-0 h-9",
+                            "[.ui-vibrant_&]:border-primary/30 [.ui-vibrant_&]:hover:bg-primary/5",
+                        )}
+                    >
+                        <SlidersHorizontal size={15} />
+                        <span className="text-sm">Filters</span>
+                        {activeFiltersCount > 0 && (
+                            <Badge variant="secondary" className="h-4 px-1 text-[10px] leading-none ml-0.5">
+                                {activeFiltersCount}
+                            </Badge>
+                        )}
+                    </Button>
+                )}
                 {/* Search Section */}
                 <div className="flex-1 min-w-0">
                     <div className="relative">

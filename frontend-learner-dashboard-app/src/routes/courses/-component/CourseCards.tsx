@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { StarIcon } from "lucide-react";
+import { StarIcon, BookOpen } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { toTitleCase } from "@/lib/utils";
@@ -93,18 +93,28 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
     return (
         <div className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col h-fit hover:shadow-xl transition-shadow duration-300">
-            {courseImageUrl && (
-                <div className="w-full h-40 sm:h-48 bg-gray-200 flex items-center justify-center relative">
+            <div className="w-full h-40 sm:h-48 relative overflow-hidden bg-gray-100 flex items-center justify-center">
+                {loadingImage ? (
+                    <div className="absolute inset-0 animate-pulse bg-gray-200" />
+                ) : courseImageUrl ? (
                     <img
                         src={courseImageUrl}
                         alt={toTitleCase(package_name)}
                         loading="lazy"
-                        className={`w-full h-full object-cover transition-opacity duration-300 ${
-                            loadingImage ? "opacity-0" : "opacity-100"
-                        }`}
+                        className="w-full h-full object-cover transition-opacity duration-300 opacity-100"
                     />
-                </div>
-            )}
+                ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
+                        <BookOpen
+                            size={40}
+                            className="text-primary/60"
+                        />
+                        <span className="text-xs font-medium text-primary/70 px-3 text-center line-clamp-1">
+                            {toTitleCase(package_name)}
+                        </span>
+                    </div>
+                )}
+            </div>
 
             <div className="p-3 sm:p-4 flex flex-col flex-grow">
                 <div className="flex justify-between items-start mb-2 sm:mb-3 gap-2">

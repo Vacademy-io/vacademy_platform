@@ -85,6 +85,8 @@ interface FilterPanelProps {
     levelsDisabled?: boolean;
     tagsDisabled?: boolean;
     instructorsDisabled?: boolean;
+    isDesktopOpen?: boolean;
+    onClose?: () => void;
 }
 
 const FilterPanel: React.FC<FilterPanelProps> = ({
@@ -99,6 +101,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     levelsDisabled = false,
     tagsDisabled = false,
     instructorsDisabled = false,
+    isDesktopOpen = true,
+    onClose,
 }) => {
     const instructor = useCatalogStore((state) => state.instructor);
 
@@ -185,17 +189,29 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     <Filter size={18} className={cn("text-muted-foreground", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-[#ffc800]")} />
                     <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide")}>Filters</h2>
                 </div>
-                {hasActiveFilters && (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearAllFilters}
-                        className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
-                    >
-                        <X size={14} className="mr-1" />
-                        Clear All
-                    </Button>
-                )}
+                <div className="flex items-center gap-1">
+                    {hasActiveFilters && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={clearAllFilters}
+                            className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
+                        >
+                            <X size={14} className="mr-1" />
+                            Clear All
+                        </Button>
+                    )}
+                    {onClose && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onClose}
+                            className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
+                        >
+                            Close
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {hasActiveFilters && (
@@ -293,10 +309,12 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
     return (
         <>
-            {/* Desktop View */}
-            <div className="hidden lg:block sticky top-4">
-                <FilterContent />
-            </div>
+            {/* Desktop View — only when isDesktopOpen */}
+            {isDesktopOpen && (
+                <div className="hidden lg:block sticky top-4">
+                    <FilterContent />
+                </div>
+            )}
 
             {/* Mobile View with Sheet */}
             <div className="lg:hidden mb-4">

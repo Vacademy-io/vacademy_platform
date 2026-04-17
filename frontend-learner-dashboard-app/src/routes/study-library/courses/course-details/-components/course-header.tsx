@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { cn, toTitleCase } from "@/lib/utils";
 import { VideoPlayer } from "../components/media/video-player";
 import { Badge } from "@/components/ui/badge";
@@ -18,8 +19,24 @@ export const CourseHeader = ({
   courseData,
   showConfetti = false,
 }: CourseHeaderProps) => {
-  const hasVideo = !!courseData.courseMediaId;
-  const hasBanner = !!courseData.courseBannerMediaId;
+  const isImageUrl = (url: string) =>
+    /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?.*)?$/i.test(url);
+  const hasVideo =
+    !!courseData.courseMediaId && !isImageUrl(courseData.courseMediaId);
+  const hasBanner =
+    !!courseData.courseBannerMediaId ||
+    (!!courseData.courseMediaId && isImageUrl(courseData.courseMediaId));
+  const bannerSrc = courseData.courseBannerMediaId ||
+    (isImageUrl(courseData.courseMediaId) ? courseData.courseMediaId : "");
+  const [isDescExpanded, setIsDescExpanded] = useState(false);
+  const [isDescClamped, setIsDescClamped] = useState(false);
+  const descRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = descRef.current;
+    if (!el) return;
+    setIsDescClamped(el.scrollHeight > el.clientHeight);
+  }, [courseData.description]);
 
   return (
     <div className="relative w-full bg-background">
@@ -81,17 +98,29 @@ export const CourseHeader = ({
                   "[.ui-vibrant_&]:text-slate-900 dark:[.ui-vibrant_&]:text-slate-50",
                 )}
               >
-                {toTitleCase(courseData.title)}
+                {courseData.title}
               </h1>
 
               {/* Description */}
               {courseData.description && (
-                <div
-                  className="text-sm sm:text-base text-muted-foreground leading-relaxed line-clamp-4"
-                  dangerouslySetInnerHTML={{
-                    __html: courseData.description || "",
-                  }}
-                />
+                <div>
+                  <div
+                    ref={descRef}
+                    className={cn(
+                      "text-sm sm:text-base text-muted-foreground leading-relaxed",
+                      !isDescExpanded && "line-clamp-4"
+                    )}
+                    dangerouslySetInnerHTML={{ __html: courseData.description }}
+                  />
+                  {(isDescClamped || isDescExpanded) && (
+                    <button
+                      onClick={() => setIsDescExpanded((prev) => !prev)}
+                      className="mt-1 text-sm font-medium text-primary hover:underline focus:outline-none"
+                    >
+                      {isDescExpanded ? "View less" : "View more"}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -112,7 +141,7 @@ export const CourseHeader = ({
               >
                 <div className="relative w-full overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5 border border-border/50">
                   <img
-                    src={courseData.courseBannerMediaId}
+                    src={bannerSrc}
                     alt={toTitleCase(courseData.title || "Course Banner")}
                     className="w-full h-[180px] sm:h-[220px] lg:h-[260px] object-cover"
                     onError={(e) => {

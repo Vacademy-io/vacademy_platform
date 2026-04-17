@@ -16,7 +16,7 @@ import {
 import { MyInput } from '@/components/design-system/input';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { ImageSquare, PencilSimpleLine } from '@phosphor-icons/react';
+import { PencilSimpleLine, UploadSimple } from '@phosphor-icons/react';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { MyButton } from '@/components/design-system/button';
 import { Label } from '@/components/ui/label';
@@ -616,13 +616,13 @@ export const AddCourseStep1 = ({
                                 {/* Tags Section */}
                                 {courseSettings?.courseInformation?.popularTopicsEnabled && (
                                     <div className="space-y-2 pt-10">
-                                        <Label className="text-base font-medium text-gray-900">
+                                        <Label className="text-base font-medium text-neutral-900">
                                             {getTerminologyPlural(
                                                 ContentTerms.PopularTag,
                                                 SystemTerms.PopularTag
                                             )}
                                         </Label>
-                                        <p className="text-sm text-gray-600">
+                                        <p className="text-sm text-neutral-600">
                                             Add tags to help categorize and find your{' '}
                                             {getTerminology(
                                                 ContentTerms.Course,
@@ -787,12 +787,31 @@ export const AddCourseStep1 = ({
                                                     <DashboardLoader />
                                                 </div>
                                             ) : form.watch('coursePreview') ? (
-                                                <div className="h-[200px] w-full rounded-lg bg-neutral-100">
+                                                <div
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={() =>
+                                                        coursePreviewRef.current?.click()
+                                                    }
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            coursePreviewRef.current?.click();
+                                                        }
+                                                    }}
+                                                    className="group relative h-[200px] w-full cursor-pointer overflow-hidden rounded-lg bg-neutral-100"
+                                                >
                                                     <img
                                                         src={form.watch('coursePreviewBlob')}
                                                         alt="Course Preview"
                                                         className="size-full rounded-lg object-contain"
                                                     />
+                                                    <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/0 transition-colors group-hover:bg-black/40">
+                                                        <PencilSimpleLine
+                                                            size={28}
+                                                            className="text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                                        />
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <div
@@ -809,8 +828,8 @@ export const AddCourseStep1 = ({
                                                     }}
                                                     className="flex h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
                                                 >
-                                                    <ImageSquare
-                                                        size={48}
+                                                    <UploadSimple
+                                                        size={40}
                                                         className="text-neutral-400"
                                                     />
                                                     <p className="text-sm font-medium text-neutral-600">
@@ -837,17 +856,6 @@ export const AddCourseStep1 = ({
                                                     'image/svg+xml',
                                                 ]}
                                             />
-                                            <MyButton
-                                                type="button"
-                                                onClick={() => coursePreviewRef.current?.click()}
-                                                disabled={uploadingStates.coursePreview}
-                                                buttonType="secondary"
-                                                layoutVariant="icon"
-                                                scale="small"
-                                                className="absolute bottom-2 right-2 bg-white"
-                                            >
-                                                <PencilSimpleLine />
-                                            </MyButton>
                                         </div>
                                         {/* Remove button for preview image */}
                                         {form.watch('coursePreview') && (
@@ -883,12 +891,29 @@ export const AddCourseStep1 = ({
                                                     <DashboardLoader />
                                                 </div>
                                             ) : form.watch('courseBanner') ? (
-                                                <div className="h-[200px] w-full rounded-lg bg-neutral-100">
+                                                <div
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={() => courseBannerRef.current?.click()}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            courseBannerRef.current?.click();
+                                                        }
+                                                    }}
+                                                    className="group relative h-[200px] w-full cursor-pointer overflow-hidden rounded-lg bg-neutral-100"
+                                                >
                                                     <img
                                                         src={form.watch('courseBannerBlob')}
                                                         alt="Course Banner"
                                                         className="size-full rounded-lg object-contain"
                                                     />
+                                                    <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/0 transition-colors group-hover:bg-black/40">
+                                                        <PencilSimpleLine
+                                                            size={28}
+                                                            className="text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                                        />
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <div
@@ -903,8 +928,8 @@ export const AddCourseStep1 = ({
                                                     }}
                                                     className="flex h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
                                                 >
-                                                    <ImageSquare
-                                                        size={48}
+                                                    <UploadSimple
+                                                        size={40}
                                                         className="text-neutral-400"
                                                     />
                                                     <p className="text-sm font-medium text-neutral-600">
@@ -928,17 +953,6 @@ export const AddCourseStep1 = ({
                                                     'image/svg+xml',
                                                 ]}
                                             />
-                                            <MyButton
-                                                type="button"
-                                                onClick={() => courseBannerRef.current?.click()}
-                                                disabled={uploadingStates.courseBanner}
-                                                buttonType="secondary"
-                                                layoutVariant="icon"
-                                                scale="small"
-                                                className="absolute bottom-2 right-2 bg-white"
-                                            >
-                                                <PencilSimpleLine />
-                                            </MyButton>
                                         </div>
                                         {/* Remove button for banner image */}
                                         {form.watch('courseBanner') && (
@@ -1031,8 +1045,8 @@ export const AddCourseStep1 = ({
                                                     }}
                                                     className="flex h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-primary-400 hover:bg-primary-50"
                                                 >
-                                                    <ImageSquare
-                                                        size={48}
+                                                    <UploadSimple
+                                                        size={40}
                                                         className="text-neutral-400"
                                                     />
                                                     <p className="text-sm font-medium text-neutral-600">
@@ -1084,7 +1098,7 @@ export const AddCourseStep1 = ({
                                                 {showYoutubeInput && (
                                                     <div
                                                         ref={youtubeInputRef}
-                                                        className=" w-64 rounded bg-white p-4 shadow"
+                                                        className="z-20 mt-2 w-64 rounded-md border border-neutral-200 bg-white p-4 shadow-lg"
                                                     >
                                                         <label className="mb-1 block text-sm font-medium text-neutral-700">
                                                             Paste YouTube Link
@@ -1181,7 +1195,7 @@ export const AddCourseStep1 = ({
                 </div>
 
                 {/* Fixed Footer */}
-                <div className="sticky bottom-0 mt-auto border-t bg-white px-8 py-4">
+                <div className="sticky bottom-0 mt-auto border-t bg-white px-8 py-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
                     <div className="flex justify-end">
                         <MyButton
                             type="submit"

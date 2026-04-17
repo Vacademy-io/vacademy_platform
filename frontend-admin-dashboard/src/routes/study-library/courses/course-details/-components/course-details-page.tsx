@@ -403,7 +403,7 @@ export const CourseDetailsPage = () => {
     // Resolve the effective courseId to use for mapping calls. This prefers the
     // id coming back from course-init (courseDetailsData.course.id), but falls
     // back to the raw search param when necessary.
-    const effectiveCourseId = courseDetailsData?.course.id ?? (searchParams.courseId ?? '');
+    const effectiveCourseId = courseDetailsData?.course.id ?? searchParams.courseId ?? '';
 
     // Try to get packageSessionId from course-init API first (new approach)
     const packageSessionIdFromCourseInit = useGetPackageSessionIdFromCourseInit(
@@ -814,11 +814,17 @@ export const CourseDetailsPage = () => {
                             const courseName = (courseDetailsData.course.package_name ?? '').trim();
                             // Backend may not always populate `is_parent`. Prefer it when present,
                             // but fall back to `parent_id === null` to identify parent rows.
-                            const parents = batchesList.filter((b: { is_parent?: boolean; parent_id?: string | null }) =>
-                                b.is_parent === true || (b.parent_id == null && b.is_parent !== false)
+                            const parents = batchesList.filter(
+                                (b: { is_parent?: boolean; parent_id?: string | null }) =>
+                                    b.is_parent === true ||
+                                    (b.parent_id == null && b.is_parent !== false)
                             );
                             parents.forEach(
-                                (p: { id: string; session: { id: string }; level: { id: string } }) => {
+                                (p: {
+                                    id: string;
+                                    session: { id: string };
+                                    level: { id: string };
+                                }) => {
                                     const key = `${p.session.id}|${p.level.id}`;
                                     parentMap.set(key, p.id);
                                     if (!subgroupsMap.has(key)) subgroupsMap.set(key, []);
@@ -828,7 +834,8 @@ export const CourseDetailsPage = () => {
                             // Child rows: either explicitly marked, or anything with a parent_id.
                             const children = batchesList.filter(
                                 (b: { is_parent?: boolean; parent_id?: string | null }) =>
-                                    b.is_parent === false || (b.parent_id != null && b.is_parent !== true)
+                                    b.is_parent === false ||
+                                    (b.parent_id != null && b.is_parent !== true)
                             );
                             children.forEach(
                                 (child: {
@@ -846,20 +853,26 @@ export const CourseDetailsPage = () => {
                                         parentMap.set(key, child.parent_id);
                                     }
 
-                                const pkgSessionName = (child as CourseBatch).package_session_name;
-                                const subName =
-                                    (child.name && child.name.trim()) ||
-                                    (typeof pkgSessionName === 'string'
-                                        ? pkgSessionName.replace(
-                                              new RegExp(`^${courseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+`, 'i'),
-                                              ''
-                                          ).trim() || pkgSessionName
-                                        : '');
-                                if (subName) {
-                                    const arr = subgroupsMap.get(key) ?? [];
-                                    arr.push({ id: child.id, name: subName });
-                                    subgroupsMap.set(key, arr);
-                                }
+                                    const pkgSessionName = (child as CourseBatch)
+                                        .package_session_name;
+                                    const subName =
+                                        (child.name && child.name.trim()) ||
+                                        (typeof pkgSessionName === 'string'
+                                            ? pkgSessionName
+                                                  .replace(
+                                                      new RegExp(
+                                                          `^${courseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+`,
+                                                          'i'
+                                                      ),
+                                                      ''
+                                                  )
+                                                  .trim() || pkgSessionName
+                                            : '');
+                                    if (subName) {
+                                        const arr = subgroupsMap.get(key) ?? [];
+                                        arr.push({ id: child.id, name: subName });
+                                        subgroupsMap.set(key, arr);
+                                    }
                                 }
                             );
                             parentBatchIdRef.current = parentMap;
@@ -869,13 +882,28 @@ export const CourseDetailsPage = () => {
 
                         // Merge subgroups (with batch id for existing) and parent id into each level for edit UI
                         const sessionsToMerge = transformedData.sessions ?? [];
-                        sessionsToMerge.forEach((session: { sessionDetails: { id: string }; levelDetails: Array<{ id: string; subgroups?: { id?: string; name: string }[]; parentPackageSessionId?: string }> }) => {
-                            (session.levelDetails ?? []).forEach((level: { id: string; subgroups?: { id?: string; name: string }[]; parentPackageSessionId?: string }) => {
-                                const key = `${session.sessionDetails.id}|${level.id}`;
-                                level.subgroups = subgroupsMap.get(key) ?? [];
-                                level.parentPackageSessionId = parentMap.get(key);
-                            });
-                        });
+                        sessionsToMerge.forEach(
+                            (session: {
+                                sessionDetails: { id: string };
+                                levelDetails: Array<{
+                                    id: string;
+                                    subgroups?: { id?: string; name: string }[];
+                                    parentPackageSessionId?: string;
+                                }>;
+                            }) => {
+                                (session.levelDetails ?? []).forEach(
+                                    (level: {
+                                        id: string;
+                                        subgroups?: { id?: string; name: string }[];
+                                        parentPackageSessionId?: string;
+                                    }) => {
+                                        const key = `${session.sessionDetails.id}|${level.id}`;
+                                        level.subgroups = subgroupsMap.get(key) ?? [];
+                                        level.parentPackageSessionId = parentMap.get(key);
+                                    }
+                                );
+                            }
+                        );
 
                         form.reset({
                             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -899,8 +927,10 @@ export const CourseDetailsPage = () => {
                         if (sessionToRestore) {
                             // Check if preserved session still exists in the new data
                             const matchingSession = transformedData.sessions?.find(
-                                (session: { sessionDetails: { id: string }; levelDetails: { id: string }[] }) =>
-                                    session.sessionDetails.id === sessionToRestore
+                                (session: {
+                                    sessionDetails: { id: string };
+                                    levelDetails: { id: string }[];
+                                }) => session.sessionDetails.id === sessionToRestore
                             );
 
                             if (matchingSession) {
@@ -1104,9 +1134,7 @@ export const CourseDetailsPage = () => {
 
     const { instituteDetails } = useInstituteDetailsStore();
     // Show restriction message for non-editable courses
-    const shouldShowRestriction =
-        !isAdmin &&
-        (isPublishedCourse || isInReviewCourse);
+    const shouldShowRestriction = !isAdmin && (isPublishedCourse || isInReviewCourse);
 
     // Show dashboard loader while loading
     if (isLoading) {
@@ -1138,14 +1166,15 @@ export const CourseDetailsPage = () => {
 
             {/* Top Banner - More Compact */}
             <div
-                className={`relative ${form.watch('courseData')?.courseBannerMediaId
+                className={`relative ${
+                    form.watch('courseData')?.courseBannerMediaId
                         ? form.getValues('courseData')?.isCoursePublishedToCatalaouge
                             ? 'min-h-[200px] sm:min-h-[220px] lg:min-h-[240px]'
                             : 'min-h-[180px] sm:min-h-[200px] lg:min-h-[220px]'
                         : form.getValues('courseData')?.isCoursePublishedToCatalaouge
-                            ? 'min-h-[140px] sm:min-h-[160px] lg:min-h-[180px]'
-                            : 'min-h-[120px] sm:min-h-[140px] lg:min-h-[160px]'
-                    }`}
+                          ? 'min-h-[140px] sm:min-h-[160px] lg:min-h-[180px]'
+                          : 'min-h-[120px] sm:min-h-[140px] lg:min-h-[160px]'
+                }`}
             >
                 {/* Transparent black overlay */}
                 {form.watch('courseData')?.courseBannerMediaId ? (
@@ -1154,7 +1183,7 @@ export const CourseDetailsPage = () => {
                     <div className="pointer-events-none absolute inset-0 z-10 bg-black/5" />
                 )}
                 {!form.watch('courseData')?.courseBannerMediaId ? (
-                    <div className="absolute inset-0 z-0 bg-gradient-to-br from-primary-700 via-primary-800 to-primary-900" />
+                    <div className="absolute inset-0 z-0 bg-gradient-to-br from-primary-100 via-primary-200 to-primary-300" />
                 ) : (
                     <div className="absolute inset-0 z-0 opacity-70">
                         <img
@@ -1170,10 +1199,11 @@ export const CourseDetailsPage = () => {
                 )}
                 {/* Primary color overlay with 70% opacity */}
                 <div
-                    className={`container relative z-20 mx-auto px-3 text-white sm:px-4 lg:px-6 ${form.watch('courseData')?.courseBannerMediaId
-                            ? 'py-4 sm:py-5 lg:py-6'
-                            : 'py-6 sm:py-8 lg:py-10'
-                        }`}
+                    className={`relative z-20 w-full px-2 text-white sm:px-4 lg:px-6 ${
+                        form.watch('courseData')?.courseBannerMediaId
+                            ? 'py-3 lg:py-4'
+                            : 'py-4 sm:py-5 lg:py-6'
+                    }`}
                 >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
                         {/* Left side - Title and Description */}
@@ -1189,34 +1219,36 @@ export const CourseDetailsPage = () => {
                                 <>
                                     <div className="flex items-start justify-between gap-4">
                                         <h1
-                                            className={`font-bold leading-tight tracking-tight ${form.watch('courseData')?.courseBannerMediaId
+                                            className={`font-bold leading-tight tracking-tight ${
+                                                form.watch('courseData')?.courseBannerMediaId
                                                     ? 'mb-2 text-lg sm:text-xl lg:text-2xl'
                                                     : 'mb-2 text-2xl sm:text-3xl lg:text-4xl'
-                                                }`}
+                                            }`}
                                         >
                                             {form.getValues('courseData')?.title}
                                         </h1>
                                     </div>
                                     <p
-                                        className={`leading-snug opacity-90 ${form.watch('courseData')?.courseBannerMediaId
+                                        className={`leading-snug opacity-90 ${
+                                            form.watch('courseData')?.courseBannerMediaId
                                                 ? 'mb-2 text-xs sm:text-sm'
                                                 : 'mb-1 text-xs'
-                                            }`}
+                                        }`}
                                         dangerouslySetInnerHTML={{
                                             __html: form.getValues('courseData')?.description || '',
                                         }}
                                     />
                                     {form.getValues('courseData')
                                         ?.isCoursePublishedToCatalaouge && (
-                                            <MyButton
-                                                type="button"
-                                                scale="small"
-                                                buttonType="primary"
-                                                className="mb-2 rounded-md bg-success-100 font-medium !text-black hover:bg-success-100 focus:bg-success-100 active:bg-success-100"
-                                            >
-                                                Added to catalog
-                                            </MyButton>
-                                        )}
+                                        <MyButton
+                                            type="button"
+                                            scale="small"
+                                            buttonType="primary"
+                                            className="mb-2 rounded-md bg-success-100 font-medium !text-black hover:bg-success-100 focus:bg-success-100 active:bg-success-100"
+                                        >
+                                            Added to catalog
+                                        </MyButton>
+                                    )}
                                     {canEdit && (
                                         <div className="mb-2">
                                             <AddCourseForm
@@ -1229,7 +1261,9 @@ export const CourseDetailsPage = () => {
                                                     sessionId: string;
                                                     levelId: string;
                                                 }) =>
-                                                    parentBatchIdRef.current.get(`${sessionId}|${levelId}`) ?? ''
+                                                    parentBatchIdRef.current.get(
+                                                        `${sessionId}|${levelId}`
+                                                    ) ?? ''
                                                 }
                                             />
                                         </div>
@@ -1256,10 +1290,11 @@ export const CourseDetailsPage = () => {
                         {form.watch('courseData')?.courseMediaId?.id &&
                             (form.watch('courseData')?.courseMediaId?.type === 'youtube' ? (
                                 <div
-                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${form.watch('courseData')?.courseBannerMediaId
+                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${
+                                        form.watch('courseData')?.courseBannerMediaId
                                             ? 'w-full lg:w-[280px] xl:w-[320px]'
                                             : 'w-full lg:w-[240px] xl:w-[280px]'
-                                        }`}
+                                    }`}
                                 >
                                     <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-black">
                                         <iframe
@@ -1276,10 +1311,11 @@ export const CourseDetailsPage = () => {
                                 </div>
                             ) : form.watch('courseData')?.courseMediaId?.type === 'video' ? (
                                 <div
-                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${form.watch('courseData')?.courseBannerMediaId
+                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${
+                                        form.watch('courseData')?.courseBannerMediaId
                                             ? 'w-full lg:w-[280px] xl:w-[320px]'
                                             : 'w-full lg:w-[240px] xl:w-[280px]'
-                                        }`}
+                                    }`}
                                 >
                                     <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
                                         <video
@@ -1302,10 +1338,11 @@ export const CourseDetailsPage = () => {
                                 </div>
                             ) : (
                                 <div
-                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${form.watch('courseData')?.courseBannerMediaId
+                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${
+                                        form.watch('courseData')?.courseBannerMediaId
                                             ? 'w-full lg:w-[280px] xl:w-[320px]'
                                             : 'w-full lg:w-[240px] xl:w-[280px]'
-                                        }`}
+                                    }`}
                                 >
                                     <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
                                         <img
@@ -1321,17 +1358,17 @@ export const CourseDetailsPage = () => {
             </div>
 
             {/* Main Content */}
-            <div className="container mx-auto px-3 py-4 sm:px-4 lg:p-6">
-                <div className="flex flex-col gap-4 lg:gap-6 xl:flex-row">
+            <div className="w-full px-2 py-2 sm:px-4 lg:px-6 lg:py-3">
+                <div className="flex flex-col gap-3 xl:flex-row">
                     {/* Left Column - 2/3 width */}
                     <div className="flex w-full grow flex-col xl:w-2/3">
                         {/* Session and Level Selectors */}
-                        <div className="container mx-auto px-0 pb-3 lg:pb-4">
+                        <div className="w-full px-0 pb-2 lg:pb-3">
                             {showSelectors && (
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:gap-4">
                                     {sessionOptions.length === 1 ? (
                                         sessionOptions[0]?.label.toLocaleLowerCase() !==
-                                        'default' && (
+                                            'default' && (
                                             <div className="flex flex-col gap-1">
                                                 <label className="text-xs font-medium text-gray-700">
                                                     {sessionOptions[0]?.label}
@@ -1375,7 +1412,7 @@ export const CourseDetailsPage = () => {
                                     )}
                                     {levelOptions.length === 1 ? (
                                         levelOptions[0]?.label.toLocaleLowerCase() !==
-                                        'default' && (
+                                            'default' && (
                                             <div className="flex flex-col gap-1">
                                                 <label className="text-xs font-medium text-gray-700">
                                                     {levelOptions[0]?.label}
@@ -1473,7 +1510,7 @@ export const CourseDetailsPage = () => {
 
                         {/* What You'll Learn Section */}
                         {extractTextFromHTML(form.getValues('courseData').whatYoullLearn) && (
-                            <div className="mb-4 mt-3 rounded-md border-l-4 border-emerald-400 bg-white p-3 shadow-sm lg:mb-6 lg:mt-4 lg:p-4">
+                            <div className="mb-3 mt-2 rounded-md border-l-4 border-emerald-400 bg-white p-3 shadow-sm lg:mb-4 lg:mt-3">
                                 <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
                                     What you&apos;ll learn?
                                 </h2>
@@ -1491,7 +1528,7 @@ export const CourseDetailsPage = () => {
 
                         {/* About Content Section */}
                         {extractTextFromHTML(form.getValues('courseData').aboutTheCourse) && (
-                            <div className="mb-4 rounded-md border-l-4 border-blue-400 bg-white p-3 shadow-sm lg:mb-6 lg:p-4">
+                            <div className="mb-3 rounded-md border-l-4 border-blue-400 bg-white p-3 shadow-sm lg:mb-4">
                                 <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
                                     About this{' '}
                                     {getTerminology(
@@ -1513,7 +1550,7 @@ export const CourseDetailsPage = () => {
 
                         {/* Who Should Join Section */}
                         {extractTextFromHTML(form.getValues('courseData').whoShouldLearn) && (
-                            <div className="mb-4 rounded-md border-l-4 border-purple-400 bg-white p-3 shadow-sm lg:mb-6 lg:p-4">
+                            <div className="mb-3 rounded-md border-l-4 border-purple-400 bg-white p-3 shadow-sm lg:mb-4">
                                 <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
                                     Who should join?
                                 </h2>
@@ -1531,7 +1568,7 @@ export const CourseDetailsPage = () => {
 
                         {/* Instructors Section - only visible for ADMIN or TEACHER roles */}
                         {instructors && instructors.length > 0 && isAdminOrTeacher && (
-                            <div className="mb-4 flex flex-col gap-2 rounded-md border-l-4 border-orange-400 bg-white p-3 shadow-sm lg:mb-6 lg:p-4">
+                            <div className="mb-3 flex flex-col gap-2 rounded-md border-l-4 border-orange-400 bg-white p-3 shadow-sm lg:mb-4">
                                 <h2 className="text-lg font-semibold text-gray-900">Authors</h2>
                                 {loadingInstructors ? (
                                     <div className="text-sm text-gray-600">
@@ -1551,7 +1588,7 @@ export const CourseDetailsPage = () => {
                                                             alt={instructor.email}
                                                         />
                                                     ) : (
-                                                        <AvatarFallback className="bg-[#3B82F6] text-xs font-medium text-white">
+                                                        <AvatarFallback className="bg-primary-500 text-xs font-medium text-white">
                                                             {getInitials(instructor.email)}
                                                         </AvatarFallback>
                                                     )}
@@ -1596,18 +1633,18 @@ export const CourseDetailsPage = () => {
                                             <span className="text-sm text-gray-700">
                                                 {form.getValues('courseData').sessions.length >
                                                     1 && (
-                                                        <span>
-                                                            {
-                                                                form.getValues('courseData').sessions
-                                                                    .length
-                                                            }{' '}
-                                                            {getTerminology(
-                                                                ContentTerms.Session,
-                                                                SystemTerms.Session
-                                                            )}
-                                                            s
-                                                        </span>
-                                                    )}
+                                                    <span>
+                                                        {
+                                                            form.getValues('courseData').sessions
+                                                                .length
+                                                        }{' '}
+                                                        {getTerminology(
+                                                            ContentTerms.Session,
+                                                            SystemTerms.Session
+                                                        )}
+                                                        s
+                                                    </span>
+                                                )}
                                                 {form.getValues('courseData').sessions.length > 1 &&
                                                     levelOptions.length > 1 &&
                                                     ' • '}
@@ -1671,12 +1708,12 @@ export const CourseDetailsPage = () => {
                                 ) : (
                                     <>
                                         {coursePage?.viewCourseOverviewItem !== false &&
-                                            slideCountQuery.data &&
-                                            (calculateTotalTimeForCourseDuration(slideCountQuery.data)
-                                                .hours ||
-                                                calculateTotalTimeForCourseDuration(
-                                                    slideCountQuery.data
-                                                ).minutes) ? (
+                                        slideCountQuery.data &&
+                                        (calculateTotalTimeForCourseDuration(slideCountQuery.data)
+                                            .hours ||
+                                            calculateTotalTimeForCourseDuration(
+                                                slideCountQuery.data
+                                            ).minutes) ? (
                                             <div className="flex items-center gap-2">
                                                 <Clock
                                                     size={16}
@@ -1699,169 +1736,186 @@ export const CourseDetailsPage = () => {
                                             </div>
                                         ) : null}
                                         {coursePage?.viewCourseOverviewItem !== false &&
-                                            slideCountQuery.data?.map((count: SlideCountType, countIndex: number) => {
-                                                // Helper function to get slide type display name and icon
-                                                const getSlideTypeInfo = (sourceType: string | null | undefined) => {
-                                                    const safeType = sourceType && typeof sourceType === 'string' ? sourceType : '';
-                                                    switch (safeType) {
-                                                        case 'HTML_VIDEO':
-                                                            return {
-                                                                icon: (
-                                                                    <VideoCamera
-                                                                        size={16}
-                                                                        className="shrink-0 text-purple-600"
-                                                                    />
-                                                                ),
-                                                                name: 'AI Content',
-                                                                color: 'text-purple-600',
-                                                            };
-                                                        case 'VIDEO':
-                                                            return {
-                                                                icon: (
-                                                                    <PlayCircle
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: 'Video',
-                                                                color: 'text-green-500',
-                                                            };
-                                                        case 'CODE':
-                                                            return {
-                                                                icon: (
-                                                                    <Code
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: 'Code Editor',
-                                                                color: 'text-green-500',
-                                                            };
-                                                        case 'PDF':
-                                                            return {
-                                                                icon: (
-                                                                    <FilePdf
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: 'PDF Document',
-                                                                color: 'text-red-500',
-                                                            };
-                                                        case 'DOCUMENT':
-                                                            return {
-                                                                icon: (
-                                                                    <FileDoc
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: 'Document',
-                                                                color: 'text-blue-600',
-                                                            };
-                                                        case 'PRESENTATION':
-                                                            return {
-                                                                icon: (
-                                                                    <PresentationChart
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: 'Presentation',
-                                                                color: 'text-orange-500',
-                                                            };
-                                                        case 'JUPYTER':
-                                                            return {
-                                                                icon: (
-                                                                    <BookOpen
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: 'Jupyter Notebook',
-                                                                color: 'text-violet-500',
-                                                            };
-                                                        case 'SCRATCH':
-                                                            return {
-                                                                icon: (
-                                                                    <GameController
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: 'Scratch Project',
-                                                                color: 'text-yellow-500',
-                                                            };
-                                                        case 'QUESTION':
-                                                            return {
-                                                                icon: (
-                                                                    <Question
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: 'Question',
-                                                                color: 'text-purple-500',
-                                                            };
-                                                        case 'QUIZ':
-                                                            return {
-                                                                icon: (
-                                                                    <ClipboardText
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: 'Quiz',
-                                                                color: 'text-orange-500',
-                                                            };
-                                                        case 'ASSIGNMENT':
-                                                            return {
-                                                                icon: (
-                                                                    <File
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: 'Assignment',
-                                                                color: 'text-blue-500',
-                                                            };
-                                                        default:
-                                                            return {
-                                                                icon: (
-                                                                    <FileDoc
-                                                                        size={16}
-                                                                        className="shrink-0 text-gray-600"
-                                                                    />
-                                                                ),
-                                                                name: safeType
-                                                                    ? safeType.charAt(0).toUpperCase() + safeType.slice(1).toLowerCase()
-                                                                    : 'Slide',
-                                                                color: 'text-gray-500',
-                                                            };
-                                                    }
-                                                };
+                                            slideCountQuery.data?.map(
+                                                (count: SlideCountType, countIndex: number) => {
+                                                    // Helper function to get slide type display name and icon
+                                                    const getSlideTypeInfo = (
+                                                        sourceType: string | null | undefined
+                                                    ) => {
+                                                        const safeType =
+                                                            sourceType &&
+                                                            typeof sourceType === 'string'
+                                                                ? sourceType
+                                                                : '';
+                                                        switch (safeType) {
+                                                            case 'HTML_VIDEO':
+                                                                return {
+                                                                    icon: (
+                                                                        <VideoCamera
+                                                                            size={16}
+                                                                            className="shrink-0 text-purple-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'AI Content',
+                                                                    color: 'text-purple-600',
+                                                                };
+                                                            case 'VIDEO':
+                                                                return {
+                                                                    icon: (
+                                                                        <PlayCircle
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'Video',
+                                                                    color: 'text-green-500',
+                                                                };
+                                                            case 'CODE':
+                                                                return {
+                                                                    icon: (
+                                                                        <Code
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'Code Editor',
+                                                                    color: 'text-green-500',
+                                                                };
+                                                            case 'PDF':
+                                                                return {
+                                                                    icon: (
+                                                                        <FilePdf
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'PDF Document',
+                                                                    color: 'text-red-500',
+                                                                };
+                                                            case 'DOCUMENT':
+                                                                return {
+                                                                    icon: (
+                                                                        <FileDoc
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'Document',
+                                                                    color: 'text-blue-600',
+                                                                };
+                                                            case 'PRESENTATION':
+                                                                return {
+                                                                    icon: (
+                                                                        <PresentationChart
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'Presentation',
+                                                                    color: 'text-orange-500',
+                                                                };
+                                                            case 'JUPYTER':
+                                                                return {
+                                                                    icon: (
+                                                                        <BookOpen
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'Jupyter Notebook',
+                                                                    color: 'text-violet-500',
+                                                                };
+                                                            case 'SCRATCH':
+                                                                return {
+                                                                    icon: (
+                                                                        <GameController
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'Scratch Project',
+                                                                    color: 'text-yellow-500',
+                                                                };
+                                                            case 'QUESTION':
+                                                                return {
+                                                                    icon: (
+                                                                        <Question
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'Question',
+                                                                    color: 'text-purple-500',
+                                                                };
+                                                            case 'QUIZ':
+                                                                return {
+                                                                    icon: (
+                                                                        <ClipboardText
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'Quiz',
+                                                                    color: 'text-orange-500',
+                                                                };
+                                                            case 'ASSIGNMENT':
+                                                                return {
+                                                                    icon: (
+                                                                        <File
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: 'Assignment',
+                                                                    color: 'text-blue-500',
+                                                                };
+                                                            default:
+                                                                return {
+                                                                    icon: (
+                                                                        <FileDoc
+                                                                            size={16}
+                                                                            className="shrink-0 text-gray-600"
+                                                                        />
+                                                                    ),
+                                                                    name: safeType
+                                                                        ? safeType
+                                                                              .charAt(0)
+                                                                              .toUpperCase() +
+                                                                          safeType
+                                                                              .slice(1)
+                                                                              .toLowerCase()
+                                                                        : 'Slide',
+                                                                    color: 'text-gray-500',
+                                                                };
+                                                        }
+                                                    };
 
-                                                const slideTypeInfo = getSlideTypeInfo(
-                                                    count.source_type
-                                                );
+                                                    const slideTypeInfo = getSlideTypeInfo(
+                                                        count.source_type
+                                                    );
 
-                                                return (
-                                                    <div
-                                                        key={count.source_type ?? `slide-type-${countIndex}`}
-                                                        className="flex items-center gap-2"
-                                                    >
-                                                        {slideTypeInfo.icon}
-                                                        <span className="text-sm text-gray-700">
-                                                            {count.slide_count} {slideTypeInfo.name}{' '}
-                                                            {getTerminology(
-                                                                ContentTerms.Slides,
-                                                                SystemTerms.Slides
-                                                            ).toLocaleLowerCase()}
-                                                            {count.slide_count !== 1 ? 's' : ''}
-                                                        </span>
-                                                    </div>
-                                                );
-                                            })}
+                                                    return (
+                                                        <div
+                                                            key={
+                                                                count.source_type ??
+                                                                `slide-type-${countIndex}`
+                                                            }
+                                                            className="flex items-center gap-2"
+                                                        >
+                                                            {slideTypeInfo.icon}
+                                                            <span className="text-sm text-gray-700">
+                                                                {count.slide_count}{' '}
+                                                                {slideTypeInfo.name}{' '}
+                                                                {getTerminology(
+                                                                    ContentTerms.Slides,
+                                                                    SystemTerms.Slides
+                                                                ).toLocaleLowerCase()}
+                                                                {count.slide_count !== 1 ? 's' : ''}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                }
+                                            )}
 
                                         {form.getValues('courseData').instructors.length > 0 && (
                                             <div className="flex items-center gap-2">

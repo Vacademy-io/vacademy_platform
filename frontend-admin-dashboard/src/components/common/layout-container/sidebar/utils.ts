@@ -247,6 +247,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/financial-management/pay-installments',
                 subItemId: 'pay-installments',
             },
+            {
+                subItem: 'Adjustment Approvals',
+                subItemLink: '/financial-management/adjustment-approvals',
+                subItemId: 'adjustment-approvals',
+            },
         ],
     },
     {

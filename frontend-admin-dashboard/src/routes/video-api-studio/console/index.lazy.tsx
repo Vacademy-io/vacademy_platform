@@ -101,8 +101,9 @@ function VideoConsole() {
     const [isLoadingKeys, setIsLoadingKeys] = useState(true);
     const [isAutoGenerating, setIsAutoGenerating] = useState(false);
     const [history, setHistory] = useState<HistoryItem[]>([]);
+    const [historyPage, setHistoryPage] = useState(0);
     const [historyHasMore, setHistoryHasMore] = useState(true);
-    const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
     const [consoleState, setConsoleState] = useState<ConsoleState>('idle');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -190,72 +191,41 @@ function VideoConsole() {
 
     const HISTORY_PAGE_SIZE = 20;
 
-    // Load history (first page) and poll for updates
-    useEffect(() => {
-        const fetchFirstPage = async () => {
-            if (!activeApiKey) return;
-            try {
-                const freshItems = await getRemoteHistory(activeApiKey, HISTORY_PAGE_SIZE, 0);
-                setHistory((prev) => {
-                    if (prev.length <= HISTORY_PAGE_SIZE) {
-                        // No pagination yet — just replace
-                        return freshItems;
-                    }
-                    // Merge: update existing items from fresh page, prepend new ones, keep older paginated items
-                    const freshMap = new Map(freshItems.map((i) => [i.video_id, i]));
-                    const olderItems = prev.slice(HISTORY_PAGE_SIZE); // items loaded via "load more"
-                    const merged = freshItems.map((fi) => fi); // start with fresh first page
-                    // Append older paginated items, deduplicating
-                    for (const item of olderItems) {
-                        if (!freshMap.has(item.video_id)) {
-                            merged.push(item);
-                        }
-                    }
-                    return merged;
-                });
-                if (freshItems.length < HISTORY_PAGE_SIZE) {
-                    setHistoryHasMore(false);
-                }
-            } catch (error) {
-                console.error('Failed to load history:', error);
-            }
-        };
-
-        fetchFirstPage();
-
-        // Poll for updates every 10 seconds (first page only)
-        const interval = setInterval(() => {
-            fetchFirstPage();
-        }, 10000);
-
-        return () => clearInterval(interval);
+    // Fetch history for the current page
+    const fetchHistoryPage = useCallback(async (page: number) => {
+        if (!activeApiKey) return;
+        setIsLoadingHistory(true);
+        try {
+            const items = await getRemoteHistory(activeApiKey, HISTORY_PAGE_SIZE, page * HISTORY_PAGE_SIZE);
+            setHistory(items);
+            setHistoryHasMore(items.length >= HISTORY_PAGE_SIZE);
+        } catch (error) {
+            console.error('Failed to load history:', error);
+        } finally {
+            setIsLoadingHistory(false);
+        }
     }, [activeApiKey]);
 
-    // Load more history (infinite scroll)
-    // Use a ref to track the current offset to avoid stale closure issues with history.length
-    const historyOffsetRef = useRef(0);
-    useEffect(() => { historyOffsetRef.current = history.length; }, [history.length]);
+    // Load history on mount and when page changes
+    useEffect(() => {
+        fetchHistoryPage(historyPage);
+    }, [historyPage, fetchHistoryPage]);
 
-    const loadMoreHistory = useCallback(async () => {
-        if (!activeApiKey || isLoadingMoreHistory || !historyHasMore) return;
-        setIsLoadingMoreHistory(true);
-        try {
-            const offset = historyOffsetRef.current;
-            const moreItems = await getRemoteHistory(activeApiKey, HISTORY_PAGE_SIZE, offset);
-            if (moreItems.length < HISTORY_PAGE_SIZE) setHistoryHasMore(false);
-            if (moreItems.length > 0) {
-                setHistory((prev) => {
-                    const existingIds = new Set(prev.map((h) => h.video_id));
-                    const newItems = moreItems.filter((m) => !existingIds.has(m.video_id));
-                    return [...prev, ...newItems];
-                });
-            }
-        } catch (error) {
-            console.error('Failed to load more history:', error);
-        } finally {
-            setIsLoadingMoreHistory(false);
-        }
-    }, [activeApiKey, isLoadingMoreHistory, historyHasMore]);
+    // Poll current page for status updates every 10 seconds
+    useEffect(() => {
+        if (!activeApiKey) return;
+        const interval = setInterval(() => {
+            fetchHistoryPage(historyPage);
+        }, 10000);
+        return () => clearInterval(interval);
+    }, [activeApiKey, historyPage, fetchHistoryPage]);
+
+    const handlePageChange = useCallback((page: number) => {
+        setHistoryPage(page);
+    }, []);
+
+    // Estimate total pages (we know there are more if current page is full)
+    const historyTotalPages = historyHasMore ? historyPage + 2 : historyPage + 1;
 
     // Cleanup on unmount
     useEffect(() => {
@@ -1102,9 +1072,10 @@ function VideoConsole() {
                         }}
                         isCollapsed={false}
                         onToggleCollapse={() => setIsMobileHistoryOpen(false)}
-                        onLoadMore={loadMoreHistory}
-                        isLoadingMore={isLoadingMoreHistory}
-                        hasMore={historyHasMore}
+                        currentPage={historyPage}
+                        totalPages={historyTotalPages}
+                        onPageChange={handlePageChange}
+                        isLoadingHistory={isLoadingHistory}
                     />
                 </SheetContent>
             </Sheet>
@@ -1126,9 +1097,10 @@ function VideoConsole() {
                     onNewVideo={handleNewVideo}
                     isCollapsed={!isSidebarOpen}
                     onToggleCollapse={() => setIsSidebarOpen((prev) => !prev)}
-                    onLoadMore={loadMoreHistory}
-                    isLoadingMore={isLoadingMoreHistory}
-                    hasMore={historyHasMore}
+                    currentPage={historyPage}
+                    totalPages={historyTotalPages}
+                    onPageChange={handlePageChange}
+                    isLoadingHistory={isLoadingHistory}
                 />
             </div>
 

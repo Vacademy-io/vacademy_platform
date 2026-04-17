@@ -376,65 +376,75 @@ export function Navbar({
   // const isAllTimeUp = entireTestTimer === 0;
 
   const handleSubmit = async () => {
-    let attemptCount = 0;
     const state = useAssessmentStore.getState();
     const attemptId = state.assessment?.attempt_id;
 
     if (!attemptId) {
       console.error("Attempt ID is missing. Cannot proceed with submission.");
       toast.error("Submission failed: Attempt ID is missing.");
-      return;
+      throw new Error("Attempt ID missing");
     }
 
-    const submitData = async () => {
-      const success = await sendFormattedData();
-      console.log("Success:", success);
-      if (!success && attemptCount < 5) {
-        attemptCount++;
-        const retryInterval = 10000 + attemptCount * 5000; // 10, 15, 20, 25, 30 seconds
+    const MAX_ATTEMPTS = 3;
+    let lastError: unknown;
 
-        setTimeout(submitData, retryInterval);
-        toast.error("Failed to submit assessment. Retrying...");
-      } else if (success) {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const data = await sendFormattedData();
+        if (!data) {
+          throw new Error("Submission returned no data");
+        }
+
         submitAssessment();
         toast.success("Assessment submitted successfully!");
-
         resetAssessment();
+
+        // Clean up attempt-scoped local storage before navigating away.
+        try {
+          const { value } = await Storage.get({ key: "Assessment_questions" });
+          if (value) {
+            const parsedData = JSON.parse(value);
+            const innerAttemptId = parsedData?.attempt_id;
+            if (innerAttemptId) {
+              await Storage.remove({
+                key: `ASSESSMENT_STATE_${innerAttemptId}`,
+              });
+            }
+          }
+        } catch (cleanupError) {
+          console.error("Error cleaning assessment storage:", cleanupError);
+        }
+
+        if (document.fullscreenElement) {
+          await document.exitFullscreen().catch(() => {});
+        }
 
         navigate({
           to: "/assessment/examination",
           replace: true,
         });
 
-        setTimeout(async () => {
-          const { value } = await Storage.get({ key: "Assessment_questions" });
-
-          if (value) {
-            try {
-              const parsedData = JSON.parse(value);
-              const attemptId = parsedData?.attempt_id;
-
-              if (attemptId) {
-                const storageKey = `ASSESSMENT_STATE_${attemptId}`;
-
-                // Remove from Capacitor Storage
-                await Storage.remove({ key: storageKey });
-                console.log(`${storageKey} removed from Capacitor Storage`);
-              } else {
-                console.error("Attempt ID not found in Assessment_questions.");
-              }
-            } catch (error) {
-              console.error("Error parsing Assessment_questions:", error);
-            }
-          }
-        }, 2000);
+        return;
+      } catch (err) {
+        lastError = err;
+        console.error(
+          `Submission attempt ${attempt}/${MAX_ATTEMPTS} failed:`,
+          err,
+        );
+        if (attempt < MAX_ATTEMPTS) {
+          toast.error(
+            `Submission failed. Retrying (${attempt}/${MAX_ATTEMPTS})...`,
+          );
+          const delay = 3000 * attempt;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
       }
-    };
-
-    submitData();
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
     }
+
+    toast.error(
+      "Failed to submit your assessment. Please check your connection and try again.",
+    );
+    throw lastError;
   };
 
   const handleDocumentLoad = (e: DocumentLoadEvent) => {

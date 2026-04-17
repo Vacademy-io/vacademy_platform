@@ -7,7 +7,20 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CheckCircle } from '@phosphor-icons/react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+    CheckCircle2,
+    FileText,
+    Clock,
+    Gauge,
+    TrendingDown,
+    Sigma,
+    Target,
+    Shuffle,
+    Award,
+    ListChecks,
+} from 'lucide-react';
 import { Section } from '@/types/assessments/assessment-data-type';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Route } from '..';
@@ -81,6 +94,65 @@ const useAdaptiveMarking = (questionsForSection: QuestionData[]) => {
     }, [questionsForSection]);
 };
 
+const StatTile = ({
+    icon: Icon,
+    label,
+    value,
+    accent = 'primary',
+}: {
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+    value: string | number;
+    accent?: 'primary' | 'rose' | 'amber' | 'emerald';
+}) => {
+    const accentMap = {
+        primary: 'bg-primary-50 text-primary-500',
+        rose: 'bg-rose-50 text-rose-500',
+        amber: 'bg-amber-50 text-amber-600',
+        emerald: 'bg-emerald-50 text-emerald-600',
+    } as const;
+    return (
+        <Card className="border-slate-200 shadow-sm">
+            <CardContent className="flex items-start gap-3 p-4">
+                <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${accentMap[accent]}`}
+                >
+                    <Icon className="h-4 w-4" />
+                </div>
+                <div className="flex min-w-0 flex-col">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                        {label}
+                    </p>
+                    <p className="truncate text-lg font-bold tabular-nums text-slate-900">
+                        {value}
+                    </p>
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
+
+const FeatureBadge = ({
+    icon: Icon,
+    label,
+    value,
+}: {
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+    value?: string | number;
+}) => (
+    <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
+        <Icon className="h-3.5 w-3.5" />
+        <span>{label}</span>
+        {value !== undefined && (
+            <span className="rounded-full bg-white/70 px-1.5 py-0.5 font-semibold tabular-nums">
+                {value}
+            </span>
+        )}
+        <CheckCircle2 className="h-3.5 w-3.5" />
+    </div>
+);
+
 // Component for section info display
 const SectionInfo = ({
     section,
@@ -93,74 +165,90 @@ const SectionInfo = ({
     examType: string;
     assessmentDetails: any;
 }) => {
+    const avgMarks = calculateAverageMarks(adaptiveMarking);
+    const totalMarks = calculateTotalMarks(adaptiveMarking);
+    const avgPenalty = calculateAveragePenalty(adaptiveMarking);
+    const showSectionDuration =
+        assessmentDetails[1]?.saved_data?.duration_distribution === 'SECTION' && section.duration;
+
     return (
-        <>
+        <div className="flex flex-col gap-4">
             {section?.description?.content && (
-                <div className="flex flex-col gap-2">
-                    <h1>Section Description</h1>
-                    <p
-                        className="font-thin"
-                        dangerouslySetInnerHTML={{
-                            __html: section.description.content || '',
-                        }}
-                    />
-                </div>
-            )}
-            {assessmentDetails[1]?.saved_data?.duration_distribution === 'SECTION' &&
-                section.duration && (
-                    <div className="flex flex-col justify-start gap-2 text-sm font-thin sm:flex-row sm:items-center sm:gap-8">
-                        <h1 className="font-normal">Section Duration:</h1>
-                        <div className="flex items-center gap-1">
-                            <span>{section.duration}</span>
-                            <span>minutes</span>
+                <Card className="border-slate-200 shadow-sm">
+                    <CardContent className="p-4">
+                        <div className="mb-2 flex items-center gap-2">
+                            <FileText className="h-3.5 w-3.5 text-slate-500" />
+                            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                                Section Description
+                            </h4>
                         </div>
-                    </div>
-                )}
-            {examType !== 'SURVEY' && (
-                <div className="flex flex-col gap-2 text-sm font-thin sm:flex-row sm:items-start sm:gap-8">
-                    <h1 className="font-normal">Marks Per Question (Default):</h1>
-                    <span>{calculateAverageMarks(adaptiveMarking)}</span>
+                        <div
+                            className="custom-html-content prose prose-sm max-w-none text-sm text-slate-700"
+                            dangerouslySetInnerHTML={{
+                                __html: section.description.content || '',
+                            }}
+                        />
+                    </CardContent>
+                </Card>
+            )}
+
+            {(showSectionDuration || examType !== 'SURVEY') && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {showSectionDuration && (
+                        <StatTile
+                            icon={Clock}
+                            label="Section Duration"
+                            value={`${section.duration} min`}
+                            accent="primary"
+                        />
+                    )}
+                    {examType !== 'SURVEY' && (
+                        <StatTile
+                            icon={Gauge}
+                            label="Avg. Marks / Question"
+                            value={avgMarks}
+                            accent="primary"
+                        />
+                    )}
+                    {examType !== 'SURVEY' && (
+                        <StatTile
+                            icon={Sigma}
+                            label="Total Marks"
+                            value={totalMarks}
+                            accent="amber"
+                        />
+                    )}
+                    {avgPenalty > 0 && (
+                        <StatTile
+                            icon={TrendingDown}
+                            label="Negative Marking"
+                            value={avgPenalty}
+                            accent="rose"
+                        />
+                    )}
                 </div>
             )}
-            {examType !== 'SURVEY' && (
-                <div className="flex flex-col gap-2 text-sm font-thin sm:flex-row sm:items-start sm:gap-8">
-                    <h1 className="font-normal">Total Marks:</h1>
-                    <span>{calculateTotalMarks(adaptiveMarking)}</span>
+
+            {(section.partial_marking ||
+                section.cutoff_marks > 0 ||
+                section.problem_randomization) && (
+                <div className="flex flex-wrap gap-2">
+                    {section.partial_marking && (
+                        <FeatureBadge icon={Award} label="Partial Marking" />
+                    )}
+                    {section.cutoff_marks > 0 && (
+                        <FeatureBadge
+                            icon={Target}
+                            label="Cutoff Marks"
+                            value={section.cutoff_marks}
+                        />
+                    )}
+                    {section.problem_randomization && (
+                        <FeatureBadge icon={Shuffle} label="Problem Randomization" />
+                    )}
                 </div>
             )}
-            {calculateAveragePenalty(adaptiveMarking) > 0 && (
-                <div className="flex w-1/2 items-center justify-between">
-                    <div className="flex w-52 items-center justify-start gap-8">
-                        <h1>Negative Marking:</h1>
-                        <span className="font-thin">
-                            {calculateAveragePenalty(adaptiveMarking)}
-                        </span>
-                    </div>
-                    <CheckCircle size={22} weight="fill" className="text-success-600" />
-                </div>
-            )}
-            {section.partial_marking && (
-                <div className="flex w-1/2 items-center justify-between">
-                    <h1>Partial Marking:</h1>
-                    <CheckCircle size={22} weight="fill" className="text-success-600" />
-                </div>
-            )}
-            {section.cutoff_marks > 0 && (
-                <div className="flex w-1/2 items-center justify-between">
-                    <div className="flex w-52 items-center justify-start gap-8">
-                        <h1>Cutoff Marking:</h1>
-                        <span className="font-thin">{section.cutoff_marks}</span>
-                    </div>
-                    <CheckCircle size={22} weight="fill" className="text-success-600" />
-                </div>
-            )}
-            {section.problem_randomization && (
-                <div className="flex w-1/2 items-center justify-between">
-                    <h1>Problem Randomization:</h1>
-                    <CheckCircle size={22} weight="fill" className="text-success-600" />
-                </div>
-            )}
-        </>
+        </div>
     );
 };
 
@@ -225,81 +313,134 @@ const QuestionsTable = ({
 
     return (
         <div>
-            <h1 className="mb-4 text-primary-500">
-                {examType === 'SURVEY' ? 'Survey Questions' : 'Adaptive Marking Rules'}
-            </h1>
-            <div className="scrollbar-hide overflow-x-auto">
-                <Table>
-                    <TableHeader className="bg-primary-200">
-                        <TableRow>
-                            <TableHead>Q.No.</TableHead>
-                            <TableHead>Question</TableHead>
-                            <TableHead>Question Type</TableHead>
-                            {examType !== 'SURVEY' && <TableHead>Marks</TableHead>}
-                            {examType !== 'SURVEY' && <TableHead>Penalty</TableHead>}
-                            {examType !== 'SURVEY' && <TableHead>Criteria</TableHead>}
-                            {assessmentDetails[1]?.saved_data?.duration_distribution ===
-                                'QUESTION' && <TableHead>Time</TableHead>}
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody className="bg-neutral-50">
-                        {localAdaptiveMarking.map((question: Question, index: number) => {
-                            return (
-                                <TableRow key={index}>
-                                    <TableCell>{index + 1}</TableCell>
-                                    <TableCell>
-                                        <TipTapEditor
-                                            value={question.questionName || ''}
-                                            onChange={() => {}}
-                                            editable={false}
-                                        />
-                                    </TableCell>
-                                    <TableCell>{question.questionType}</TableCell>
-                                    {examType !== 'SURVEY' && (
-                                        <TableCell>{question.questionMark}</TableCell>
-                                    )}
-                                    {examType !== 'SURVEY' && (
-                                        <TableCell>{question.questionPenalty}</TableCell>
-                                    )}
-                                    {examType !== 'SURVEY' && (
-                                        <TableCell>
-                                            {question.evaluation_criteria_json ? (
-                                                <CriteriaStatusBadge
-                                                    status={
-                                                        question.criteria_template_id
-                                                            ? 'template'
-                                                            : 'manual'
-                                                    }
-                                                    onClick={() => handleEditCriteria(index)}
-                                                    onPreview={() =>
-                                                        handlePreviewCriteria(
-                                                            question.evaluation_criteria_json
-                                                        )
-                                                    }
-                                                />
-                                            ) : (
-                                                <span className="text-sm text-neutral-400">
-                                                    Not set
-                                                </span>
-                                            )}
-                                        </TableCell>
-                                    )}
-                                    {assessmentDetails[1]?.saved_data?.duration_distribution ===
-                                        'QUESTION' && (
-                                        <TableCell>
-                                            <div className="flex items-center gap-2">
-                                                {question.questionDuration.hrs}
-                                                <span>:</span>
-                                                {question.questionDuration.min}
+            <div className="mb-3 flex items-center gap-2">
+                <ListChecks className="h-4 w-4 text-slate-500" />
+                <h3 className="text-sm font-semibold text-slate-900">
+                    {examType === 'SURVEY' ? 'Survey Questions' : 'Adaptive Marking Rules'}
+                </h3>
+                <Badge
+                    variant="secondary"
+                    className="bg-slate-100 font-semibold tabular-nums text-slate-600 hover:bg-slate-100"
+                >
+                    {localAdaptiveMarking.length}
+                </Badge>
+            </div>
+            <Card className="overflow-hidden border-slate-200 shadow-sm">
+                <div className="scrollbar-hide overflow-x-auto">
+                    <Table>
+                        <TableHeader className="bg-slate-50">
+                            <TableRow className="border-b border-slate-200 hover:bg-slate-50">
+                                <TableHead className="w-16 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                                    #
+                                </TableHead>
+                                <TableHead className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                                    Question
+                                </TableHead>
+                                <TableHead className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                                    Type
+                                </TableHead>
+                                {examType !== 'SURVEY' && (
+                                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                                        Marks
+                                    </TableHead>
+                                )}
+                                {examType !== 'SURVEY' && (
+                                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                                        Penalty
+                                    </TableHead>
+                                )}
+                                {examType !== 'SURVEY' && (
+                                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                                        Criteria
+                                    </TableHead>
+                                )}
+                                {assessmentDetails[1]?.saved_data?.duration_distribution ===
+                                    'QUESTION' && (
+                                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                                        Time
+                                    </TableHead>
+                                )}
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {localAdaptiveMarking.map((question: Question, index: number) => {
+                                return (
+                                    <TableRow
+                                        key={index}
+                                        className="border-b border-slate-100 transition-colors hover:bg-primary-50/30"
+                                    >
+                                        <TableCell className="align-top">
+                                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-50 text-xs font-semibold text-primary-600">
+                                                {index + 1}
                                             </div>
                                         </TableCell>
-                                    )}
-                                </TableRow>
-                            );
-                        })}
-                    </TableBody>
-                </Table>
-            </div>
+                                        <TableCell className="max-w-md align-top text-sm text-slate-900">
+                                            <TipTapEditor
+                                                value={question.questionName || ''}
+                                                onChange={() => {}}
+                                                editable={false}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="align-top">
+                                            <Badge
+                                                variant="secondary"
+                                                className="bg-slate-100 font-medium text-slate-700 hover:bg-slate-100"
+                                            >
+                                                {question.questionType}
+                                            </Badge>
+                                        </TableCell>
+                                        {examType !== 'SURVEY' && (
+                                            <TableCell className="align-top text-sm font-semibold tabular-nums text-slate-900">
+                                                {question.questionMark}
+                                            </TableCell>
+                                        )}
+                                        {examType !== 'SURVEY' && (
+                                            <TableCell className="align-top text-sm tabular-nums text-rose-600">
+                                                {Number(question.questionPenalty) > 0
+                                                    ? `-${question.questionPenalty}`
+                                                    : question.questionPenalty}
+                                            </TableCell>
+                                        )}
+                                        {examType !== 'SURVEY' && (
+                                            <TableCell className="align-top">
+                                                {question.evaluation_criteria_json ? (
+                                                    <CriteriaStatusBadge
+                                                        status={
+                                                            question.criteria_template_id
+                                                                ? 'template'
+                                                                : 'manual'
+                                                        }
+                                                        onClick={() => handleEditCriteria(index)}
+                                                        onPreview={() =>
+                                                            handlePreviewCriteria(
+                                                                question.evaluation_criteria_json
+                                                            )
+                                                        }
+                                                    />
+                                                ) : (
+                                                    <span className="text-xs italic text-slate-400">
+                                                        Not set
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                        )}
+                                        {assessmentDetails[1]?.saved_data?.duration_distribution ===
+                                            'QUESTION' && (
+                                            <TableCell className="align-top">
+                                                <div className="flex items-center gap-1 text-sm tabular-nums text-slate-700">
+                                                    <Clock className="h-3.5 w-3.5 text-slate-400" />
+                                                    {question.questionDuration.hrs}:
+                                                    {question.questionDuration.min}
+                                                </div>
+                                            </TableCell>
+                                        )}
+                                    </TableRow>
+                                );
+                            })}
+                        </TableBody>
+                    </Table>
+                </div>
+            </Card>
 
             {/* Criteria Preview Dialog */}
             <CriteriaPreviewDialog
@@ -351,26 +492,54 @@ const AssessmentQuestionsSection = ({ section, index }: { section: Section; inde
 
     if (isLoading || isAssessmentDetailsLoading) return <DashboardLoader />;
 
+    const counts = getQuestionTypeCounts(adaptiveMarking);
+
     return (
-        <AccordionItem value={`section-${index}`} key={index}>
-            <AccordionTrigger className="flex items-center justify-between">
-                <div className="flex w-full items-center justify-between">
-                    <div className="flex flex-col justify-start gap-1 text-primary-500 sm:flex-row sm:items-center sm:gap-2">
-                        <h1 className="!ml-0 min-w-0 flex-shrink-0 border-none !pl-0 text-primary-500">
-                            {section.name}
-                        </h1>
-                        <span className="text-sm font-thin !text-neutral-600">
-                            (MCQ(Single Correct):&nbsp;
-                            {getQuestionTypeCounts(adaptiveMarking).MCQS}
-                            ,&nbsp; MCQ(Multiple Correct):&nbsp;
-                            {getQuestionTypeCounts(adaptiveMarking).MCQM}
-                            ,&nbsp; <span className="font-semibold">Total:&nbsp;</span>
-                            {getQuestionTypeCounts(adaptiveMarking).totalQuestions})
-                        </span>
+        <AccordionItem
+            value={`section-${index}`}
+            key={index}
+            className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm last:mb-0"
+        >
+            <AccordionTrigger className="px-5 py-4 hover:no-underline [&[data-state=open]]:border-b [&[data-state=open]]:border-slate-100">
+                <div className="flex w-full items-center justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-sm font-bold text-primary-600">
+                            {index + 1}
+                        </div>
+                        <div className="flex min-w-0 flex-col items-start">
+                            <h3 className="truncate text-base font-semibold text-slate-900">
+                                {section.name}
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                                {counts.totalQuestions} question
+                                {counts.totalQuestions === 1 ? '' : 's'}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="hidden flex-wrap items-center gap-2 pr-2 sm:flex">
+                        {counts.MCQS > 0 && (
+                            <Badge
+                                variant="secondary"
+                                className="bg-sky-50 font-medium text-sky-700 hover:bg-sky-50"
+                            >
+                                MCQ · Single {counts.MCQS}
+                            </Badge>
+                        )}
+                        {counts.MCQM > 0 && (
+                            <Badge
+                                variant="secondary"
+                                className="bg-violet-50 font-medium text-violet-700 hover:bg-violet-50"
+                            >
+                                MCQ · Multiple {counts.MCQM}
+                            </Badge>
+                        )}
+                        <Badge className="bg-primary-500 font-semibold tabular-nums text-white hover:bg-primary-500">
+                            Total {counts.totalQuestions}
+                        </Badge>
                     </div>
                 </div>
             </AccordionTrigger>
-            <AccordionContent className="flex flex-col gap-8">
+            <AccordionContent className="flex flex-col gap-6 bg-slate-50/40 px-5 py-5">
                 <SectionInfo
                     section={section}
                     adaptiveMarking={adaptiveMarking}
@@ -382,11 +551,17 @@ const AssessmentQuestionsSection = ({ section, index }: { section: Section; inde
                     examType={examType}
                     assessmentDetails={assessmentDetails}
                 />
-                {adaptiveMarking.length > 0 && (
-                    <div className="flex items-center justify-end gap-1">
-                        <span>Total Marks</span>
-                        <span>:</span>
-                        <h1>{calculateTotalMarks(adaptiveMarking)}</h1>
+                {adaptiveMarking.length > 0 && examType !== 'SURVEY' && (
+                    <div className="flex items-center justify-end">
+                        <div className="flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2">
+                            <Sigma className="h-4 w-4 text-primary-600" />
+                            <span className="text-xs font-medium uppercase tracking-wider text-primary-700">
+                                Section Total
+                            </span>
+                            <span className="text-lg font-bold tabular-nums text-primary-700">
+                                {calculateTotalMarks(adaptiveMarking)}
+                            </span>
+                        </div>
                     </div>
                 )}
             </AccordionContent>

@@ -47,11 +47,28 @@ const Step2GenerateQuestionsFromAI = ({
     } = useAIQuestionDialogStore();
     return (
         <AlertDialog open={isAIQuestionDialog6} onOpenChange={setIsAIQuestionDialog6}>
-            <AlertDialogTrigger>
-                <MyButton type="button" scale="large" buttonType="secondary" className="font-thin">
-                    <StarFour weight="fill" className="text-primary-500" />
-                    Create From AI <span className="text-xs">(Vacademy AI)</span>
-                </MyButton>
+            <AlertDialogTrigger asChild>
+                <button
+                    type="button"
+                    className="group relative flex w-full items-center gap-3 overflow-hidden rounded-xl border border-neutral-200 bg-gradient-to-br from-primary-50/60 via-white to-purple-50/40 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary-400 hover:shadow-md"
+                >
+                    <div className="flex size-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-purple-500 text-white shadow-sm">
+                        <StarFour size={20} weight="fill" />
+                    </div>
+                    <div className="flex-1">
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-semibold text-neutral-800">
+                                Create From AI
+                            </span>
+                            <span className="rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-600">
+                                Vacademy AI
+                            </span>
+                        </div>
+                        <div className="text-xs text-neutral-500">
+                            Generate questions automatically
+                        </div>
+                    </div>
+                </button>
             </AlertDialogTrigger>
             <AlertDialogContent className="p-0">
                 <div className="flex items-center justify-between rounded-md bg-primary-50">

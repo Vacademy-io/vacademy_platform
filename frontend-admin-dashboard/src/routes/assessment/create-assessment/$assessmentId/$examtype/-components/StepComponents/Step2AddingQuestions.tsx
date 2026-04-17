@@ -3,9 +3,10 @@ import { z } from 'zod';
 import sectionDetailsSchema from '../../-utils/section-details-schema';
 import { FormProvider, useFieldArray, useForm } from 'react-hook-form';
 import { MyButton } from '@/components/design-system/button';
-import { Separator } from '@/components/ui/separator';
-import { Plus } from '@phosphor-icons/react';
+import { Plus, Clock, ListPlus, Timer, ArrowRight } from '@phosphor-icons/react';
 import { Accordion } from '@/components/ui/accordion';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { StepContentProps } from '@/types/assessments/step-content-props';
 import { getAssessmentDetails, handlePostStep2Data } from '../../-services/assessment-services';
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
@@ -344,21 +345,29 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
 
     return (
         <FormProvider {...form}>
-            <form>
+            <form className="flex flex-col gap-6">
                 {allSections.length > 0 && (
                     <>
-                        <div className="m-0 flex items-center justify-between p-0">
-                            <div>
-                                <h1>Add Questions</h1>
-                                <p className="mt-1 text-sm text-muted-foreground">
-                                    Add sections and questions to your assessment. You can
-                                    upload a question paper or create questions manually.
-                                </p>
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-3">
+                                <div className="flex size-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-400 text-white shadow-sm">
+                                    <ListPlus size={22} weight="bold" />
+                                </div>
+                                <div>
+                                    <h1 className="text-h2-semibold tracking-tight">
+                                        Add Questions
+                                    </h1>
+                                    <p className="mt-1 text-sm text-neutral-500">
+                                        Add sections and questions to your assessment. Upload
+                                        a paper, create manually, or generate with AI.
+                                    </p>
+                                </div>
                             </div>
                             <MyButton
                                 type="button"
                                 scale="large"
                                 buttonType="primary"
+                                className="group gap-2 shadow-sm hover:shadow-md"
                                 disable={
                                     assessmentId === 'defaultId'
                                         ? allSections.some((section) => {
@@ -415,12 +424,29 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                                 onClick={handleSubmit(onSubmit, onInvalid)}
                             >
                                 {assessmentId !== 'defaultId' ? 'Update' : 'Next'}
+                                <ArrowRight
+                                    size={18}
+                                    weight="bold"
+                                    className="transition-transform group-hover:translate-x-0.5"
+                                />
                             </MyButton>
                         </div>
                         {(examType === 'EXAM' || examType === 'MOCK') && (
-                            <>
-                                <Separator className="my-4" />
-                                <div id="duration-settings">
+                            <Card className="border-neutral-200/80 shadow-sm">
+                                <CardHeader className="flex flex-row items-start gap-3 space-y-0 pb-4">
+                                    <div className="flex size-9 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                                        <Timer size={18} weight="bold" />
+                                    </div>
+                                    <div>
+                                        <CardTitle className="text-subtitle font-semibold">
+                                            Duration Settings
+                                        </CardTitle>
+                                        <CardDescription>
+                                            Choose how time is distributed across your assessment.
+                                        </CardDescription>
+                                    </div>
+                                </CardHeader>
+                                <CardContent id="duration-settings">
                                     {getStepKey({
                                         assessmentDetails,
                                         currentStep,
@@ -454,7 +480,7 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                                                                       ? 'SECTION'
                                                                       : 'QUESTION'
                                                             }
-                                                            className="flex items-start gap-6"
+                                                            className="grid grid-cols-1 gap-3 sm:grid-cols-3"
                                                         >
                                                             {getFieldOptions({
                                                                 assessmentDetails,
@@ -462,13 +488,27 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                                                                 key: 'duration_distribution',
                                                                 value: 'ASSESSMENT',
                                                             }) && (
-                                                                <FormItem className="flex items-center space-x-3 space-y-0">
-                                                                    <FormControl>
-                                                                        <RadioGroupItem value="ASSESSMENT" />
-                                                                    </FormControl>
-                                                                    <FormLabel className="font-thin">
-                                                                        {(examType as string) === 'SURVEY' ? 'Entire Survey Duration' : 'Entire Assessment Duration'}
-                                                                    </FormLabel>
+                                                                <FormItem className="space-y-0">
+                                                                    <label
+                                                                        className={cn(
+                                                                            'flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-all hover:border-primary-300 hover:bg-primary-50/30',
+                                                                            field.value
+                                                                                ?.entireTestDuration
+                                                                                ?.checked
+                                                                                ? 'border-primary-500 bg-primary-50/60 shadow-sm ring-1 ring-primary-200'
+                                                                                : 'border-neutral-200'
+                                                                        )}
+                                                                    >
+                                                                        <FormControl>
+                                                                            <RadioGroupItem value="ASSESSMENT" />
+                                                                        </FormControl>
+                                                                        <FormLabel className="flex-1 cursor-pointer text-sm font-medium text-neutral-700">
+                                                                            {(examType as string) ===
+                                                                            'SURVEY'
+                                                                                ? 'Entire Survey'
+                                                                                : 'Entire Assessment'}
+                                                                        </FormLabel>
+                                                                    </label>
                                                                 </FormItem>
                                                             )}
                                                             {getFieldOptions({
@@ -477,13 +517,23 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                                                                 key: 'duration_distribution',
                                                                 value: 'SECTION',
                                                             }) && (
-                                                                <FormItem className="flex items-center space-x-3 space-y-0">
-                                                                    <FormControl>
-                                                                        <RadioGroupItem value="SECTION" />
-                                                                    </FormControl>
-                                                                    <FormLabel className="font-thin">
-                                                                        Section-Wise Duration
-                                                                    </FormLabel>
+                                                                <FormItem className="space-y-0">
+                                                                    <label
+                                                                        className={cn(
+                                                                            'flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-all hover:border-primary-300 hover:bg-primary-50/30',
+                                                                            field.value
+                                                                                ?.sectionWiseDuration
+                                                                                ? 'border-primary-500 bg-primary-50/60 shadow-sm ring-1 ring-primary-200'
+                                                                                : 'border-neutral-200'
+                                                                        )}
+                                                                    >
+                                                                        <FormControl>
+                                                                            <RadioGroupItem value="SECTION" />
+                                                                        </FormControl>
+                                                                        <FormLabel className="flex-1 cursor-pointer text-sm font-medium text-neutral-700">
+                                                                            Section-Wise
+                                                                        </FormLabel>
+                                                                    </label>
                                                                 </FormItem>
                                                             )}
                                                             {getFieldOptions({
@@ -492,13 +542,23 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                                                                 key: 'duration_distribution',
                                                                 value: 'QUESTION',
                                                             }) && (
-                                                                <FormItem className="flex items-center space-x-3 space-y-0">
-                                                                    <FormControl>
-                                                                        <RadioGroupItem value="QUESTION" />
-                                                                    </FormControl>
-                                                                    <FormLabel className="font-thin">
-                                                                        Question-Wise Duration
-                                                                    </FormLabel>
+                                                                <FormItem className="space-y-0">
+                                                                    <label
+                                                                        className={cn(
+                                                                            'flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-all hover:border-primary-300 hover:bg-primary-50/30',
+                                                                            field.value
+                                                                                ?.questionWiseDuration
+                                                                                ? 'border-primary-500 bg-primary-50/60 shadow-sm ring-1 ring-primary-200'
+                                                                                : 'border-neutral-200'
+                                                                        )}
+                                                                    >
+                                                                        <FormControl>
+                                                                            <RadioGroupItem value="QUESTION" />
+                                                                        </FormControl>
+                                                                        <FormLabel className="flex-1 cursor-pointer text-sm font-medium text-neutral-700">
+                                                                            Question-Wise
+                                                                        </FormLabel>
+                                                                    </label>
                                                                 </FormItem>
                                                             )}
                                                         </RadioGroup>
@@ -508,38 +568,24 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                                         />
                                     )}
                                     {form.getValues('testDuration.entireTestDuration.checked') && (
-                                        <div className="mt-3 text-sm">
-                                            <p>
-                                                {(examType as string) === 'SURVEY' ? 'Entire Survey Duration' : 'Entire Assessment Duration'} –{' '}
-                                                <span className="font-light">
-                                                    Set a single time limit for the whole
-                                                    {(examType as string) === 'SURVEY' ? 'survey.' : 'assessment.'}
-                                                </span>
-                                            </p>
+                                        <div className="mt-4 rounded-lg border border-primary-100 bg-primary-50/40 px-4 py-3 text-sm text-neutral-600">
+                                            Set a single time limit for the whole{' '}
+                                            {(examType as string) === 'SURVEY'
+                                                ? 'survey.'
+                                                : 'assessment.'}
                                         </div>
                                     )}
                                     {form.getValues('testDuration.sectionWiseDuration') && (
-                                        <div className="mt-3 text-sm">
-                                            <p>
-                                                Section-wise Duration –{' '}
-                                                <span className="font-light">
-                                                    Assign a specific time for each section in the
-                                                    Sections tab. The total assessment duration will
-                                                    be the sum of all section times.
-                                                </span>
-                                            </p>
+                                        <div className="mt-4 rounded-lg border border-primary-100 bg-primary-50/40 px-4 py-3 text-sm text-neutral-600">
+                                            Assign a specific time for each section. The total
+                                            assessment duration will be the sum of all section
+                                            times.
                                         </div>
                                     )}
                                     {form.getValues('testDuration.questionWiseDuration') && (
-                                        <div className="mt-3 text-sm">
-                                            <p>
-                                                Question-wise Duration –{' '}
-                                                <span className="font-light">
-                                                    Define individual time limits for each question
-                                                    in the Sections tab, where a time input field is
-                                                    available next to each question.
-                                                </span>
-                                            </p>
+                                        <div className="mt-4 rounded-lg border border-primary-100 bg-primary-50/40 px-4 py-3 text-sm text-neutral-600">
+                                            Define individual time limits for each question in the
+                                            Sections tab.
                                         </div>
                                     )}
                                     {form.watch('testDuration')?.entireTestDuration?.checked &&
@@ -548,19 +594,27 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                                             currentStep,
                                             key: 'duration',
                                         }) && (
-                                            <div className="mt-4 flex items-center gap-4 text-sm font-thin">
-                                                <h1>
-                                                    Entire Test Duration
-                                                    {getStepKey({
-                                                        assessmentDetails,
-                                                        currentStep,
-                                                        key: 'duration',
-                                                    }) === 'REQUIRED' && (
-                                                        <span className="text-subtitle text-danger-600">
-                                                            *
-                                                        </span>
-                                                    )}
-                                                </h1>
+                                            <div className="mt-5 flex flex-wrap items-center gap-4 text-sm">
+                                                <div className="flex items-center gap-2 text-neutral-700">
+                                                    <Clock
+                                                        size={16}
+                                                        weight="bold"
+                                                        className="text-primary-500"
+                                                    />
+                                                    <span className="font-medium">
+                                                        Entire Test Duration
+                                                        {getStepKey({
+                                                            assessmentDetails,
+                                                            currentStep,
+                                                            key: 'duration',
+                                                        }) === 'REQUIRED' && (
+                                                            <span className="ml-0.5 text-danger-600">
+                                                                *
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white p-1 shadow-sm">
                                                 <FormField
                                                     control={control}
                                                     name="testDuration.entireTestDuration.testDuration.hrs"
@@ -596,14 +650,16 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                                                                     }
                                                                     size="large"
                                                                     {...field}
-                                                                    className="w-11"
+                                                                    className="w-12 border-none text-center focus-visible:ring-0"
                                                                 />
                                                             </FormControl>
                                                         </FormItem>
                                                     )}
                                                 />
-                                                <span>hrs</span>
-                                                <span>:</span>
+                                                <span className="text-xs font-medium uppercase text-neutral-500">
+                                                    hrs
+                                                </span>
+                                                <span className="text-neutral-300">:</span>
                                                 <FormField
                                                     control={control}
                                                     name="testDuration.entireTestDuration.testDuration.min"
@@ -639,20 +695,27 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                                                                     }
                                                                     size="large"
                                                                     {...field}
-                                                                    className="w-11"
+                                                                    className="w-12 border-none text-center focus-visible:ring-0"
                                                                 />
                                                             </FormControl>
                                                         </FormItem>
                                                     )}
                                                 />
-                                                <span>minutes</span>
+                                                <span className="pr-2 text-xs font-medium uppercase text-neutral-500">
+                                                    min
+                                                </span>
+                                                </div>
                                             </div>
                                         )}
-                                </div>
-                            </>
+                                </CardContent>
+                            </Card>
                         )}
-                        <Separator className="my-4" />
-                        <Accordion type="single" collapsible defaultValue={`section-0`}>
+                        <Accordion
+                            type="single"
+                            collapsible
+                            defaultValue={`section-0`}
+                            className="flex flex-col gap-4"
+                        >
                             {allSections.map((_, index) => (
                                 <Step2SectionInfo
                                     key={index}
@@ -665,17 +728,22 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                         </Accordion>
                     </>
                 )}
-                <MyButton
+                <button
                     type="button"
-                    scale="large"
-                    buttonType="secondary"
                     id="add-section"
-                    className={`${allSections.length > 0 ? 'mt-8' : ''} font-thin`}
                     onClick={handleAddSection}
+                    className={cn(
+                        'group flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50/40 px-4 py-4 text-sm font-medium text-neutral-500 transition-all hover:border-primary-400 hover:bg-primary-50/40 hover:text-primary-500',
+                        allSections.length > 0 && 'mt-2'
+                    )}
                 >
-                    <Plus size={32} />
+                    <Plus
+                        size={18}
+                        weight="bold"
+                        className="transition-transform group-hover:scale-110"
+                    />
                     Add Section
-                </MyButton>
+                </button>
             </form>
         </FormProvider>
     );

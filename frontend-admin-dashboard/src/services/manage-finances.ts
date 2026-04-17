@@ -132,32 +132,97 @@ export const allocateSelectedPayment = async (
     return response.data;
 };
 
-// ─── Apply Manual Discount (per installment) ─────────────────────────────
+// ─── Adjustment APIs (submit / review / retract / pending) ────────────────
 
-export interface ApplyManualDiscountRequest {
+export interface AdjustmentSubmitRequest {
     student_fee_payment_id: string;
     user_id: string;
-    discount_amount: number;
-    discount_reason?: string;
+    adjustment_amount: number;
+    adjustment_type: 'CONCESSION' | 'PENALTY';
+    adjustment_reason?: string;
 }
 
-export interface ApplyManualDiscountResponse {
+export interface AdjustmentResponse {
     student_fee_payment_id: string;
     user_id: string;
-    discount_amount: number;
-    discount_reason?: string;
+    adjustment_amount: number;
+    adjustment_type: string | null;
+    adjustment_status: string | null;
+    adjustment_reason: string | null;
     status: string;
     amount_due: number;
 }
 
-export const applyManualDiscount = async (
-    body: ApplyManualDiscountRequest
-): Promise<ApplyManualDiscountResponse> => {
-    const response = await authenticatedAxiosInstance.patch<ApplyManualDiscountResponse>(
-        `${BASE_URL}/admin-core-service/v1/admin/student-fee/discount/apply`,
-        body
+export const submitAdjustment = async (
+    body: AdjustmentSubmitRequest
+): Promise<AdjustmentResponse> => {
+    const instituteId = getInstituteId();
+    const response = await authenticatedAxiosInstance.patch<AdjustmentResponse>(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/adjustment/submit`,
+        body,
+        { params: { instituteId } }
     );
     return response.data;
+};
+
+export interface AdjustmentReviewRequest {
+    student_fee_payment_id: string;
+    action: 'APPROVED' | 'REJECTED';
+}
+
+export const reviewAdjustment = async (
+    body: AdjustmentReviewRequest
+): Promise<AdjustmentResponse> => {
+    const instituteId = getInstituteId();
+    const response = await authenticatedAxiosInstance.patch<AdjustmentResponse>(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/adjustment/review`,
+        body,
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+export interface AdjustmentRetractRequest {
+    student_fee_payment_id: string;
+}
+
+export const retractAdjustment = async (
+    body: AdjustmentRetractRequest
+): Promise<AdjustmentResponse> => {
+    const instituteId = getInstituteId();
+    const response = await authenticatedAxiosInstance.patch<AdjustmentResponse>(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/adjustment/retract`,
+        body,
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+export const getPendingAdjustmentsQueryKey = () => ['PENDING_ADJUSTMENTS'];
+
+export const fetchPendingAdjustments = async (): Promise<StudentFeeDueDTO[]> => {
+    const instituteId = getInstituteId();
+    if (!instituteId) throw new Error('Institute ID not found');
+
+    const response = await authenticatedAxiosInstance.post<StudentFeeDueDTO[]>(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/adjustment/pending`,
+        {},
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+// ─── Fee Adjustment Settings ──────────────────────────────────────────────
+
+export const fetchFeeAdjustmentSettings = async (): Promise<{ approvalRoles?: string[] }> => {
+    const instituteId = getInstituteId();
+    if (!instituteId) throw new Error('Institute ID not found');
+
+    const response = await authenticatedAxiosInstance.get(
+        `${BASE_URL}/admin-core-service/institute/setting/v1/get`,
+        { params: { instituteId, settingKey: 'FEE_ADJUSTMENT_SETTINGS' } }
+    );
+    return response.data?.data ?? {};
 };
 
 // ─── Generate Invoice for Selected Installments ────────────────────────────

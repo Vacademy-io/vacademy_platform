@@ -102,30 +102,23 @@ const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: str
       }
     });
 
-    // Enhance attachment links with file icons and better styling
-    const attachmentLinks = ref.current.querySelectorAll('a[data-attachment="true"]');
-    attachmentLinks.forEach((link) => {
-      if (link.getAttribute("data-enhanced")) return;
-      link.setAttribute("data-enhanced", "true");
-
-      const anchor = link as HTMLAnchorElement;
-      const fileName = anchor.getAttribute("name") || anchor.textContent?.trim() || "File";
-      const mimeType = anchor.getAttribute("type") || "";
+    // Helper: style an anchor as a file download card
+    const enhanceAnchorAsFileCard = (anchor: HTMLAnchorElement, fileName: string, mimeType: string) => {
       const typeLabel = getFileTypeLabel(fileName, mimeType);
       const iconSvg = getFileIconSvg(fileName, mimeType);
 
-      // Replace inline styles with a clean card-like look
+      anchor.setAttribute("target", "_blank");
+      anchor.setAttribute("rel", "noopener noreferrer");
       anchor.removeAttribute("style");
       anchor.style.cssText = `
         display: flex; align-items: center; gap: 12px;
-        background: #f9fafb; padding: 12px 16px; border-radius: 10px;
+        background: #f9fafb; padding: 14px 18px; border-radius: 10px;
         border: 1px solid #e5e7eb; text-decoration: none; color: #111827;
-        transition: all 0.15s ease; cursor: pointer; max-width: 400px;
+        transition: all 0.15s ease; cursor: pointer; max-width: 480px;
+        margin: 8px 0;
       `;
-
-      // Build enhanced inner HTML
       anchor.innerHTML = `
-        <span style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 8px; background: #f3f4f6; flex-shrink: 0;">
+        <span style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 8px; background: #f3f4f6; flex-shrink: 0;">
           ${iconSvg}
         </span>
         <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1;">
@@ -133,15 +126,14 @@ const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: str
             ${fileName}
           </span>
           <span style="font-size: 12px; color: #6b7280;">
-            ${typeLabel}
+            ${typeLabel} Document
           </span>
         </span>
-        <span style="flex-shrink: 0; display: flex; align-items: center;">
-          ${downloadIconSvg}
+        <span style="flex-shrink: 0; display: flex; align-items: center; gap: 6px; background: #111827; color: #ffffff; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;">
+          ${downloadIconSvg.replace('stroke="#6b7280"', 'stroke="#ffffff"')}
+          Download
         </span>
       `;
-
-      // Hover effect
       anchor.addEventListener("mouseenter", () => {
         anchor.style.background = "#f3f4f6";
         anchor.style.borderColor = "#d1d5db";
@@ -150,6 +142,92 @@ const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: str
         anchor.style.background = "#f9fafb";
         anchor.style.borderColor = "#e5e7eb";
       });
+    };
+
+    // 1. Enhance existing attachment links and file links
+    const allLinks = ref.current.querySelectorAll('a[data-attachment="true"], a[href]');
+    allLinks.forEach((link) => {
+      if (link.getAttribute("data-enhanced")) return;
+
+      const anchor = link as HTMLAnchorElement;
+      const href = anchor.getAttribute("href") || "";
+      const isAttachment = anchor.getAttribute("data-attachment") === "true";
+      const fileName = anchor.getAttribute("name") || anchor.textContent?.trim() || "File";
+
+      const fileExtPattern = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|csv|zip|rar|7z|tar|gz|mp4|mp3|wav|jpg|jpeg|png|gif|svg)$/i;
+      const isFileLink = fileExtPattern.test(href) || fileExtPattern.test(fileName);
+
+      if (!isAttachment && !isFileLink) return;
+
+      link.setAttribute("data-enhanced", "true");
+      const mimeType = anchor.getAttribute("type") || "";
+      enhanceAnchorAsFileCard(anchor, fileName, mimeType);
+    });
+
+    // 2. Detect plain text that looks like file references (UUID-filename.ext pattern)
+    // e.g. "71862984-686c-4f50-a9d6-a3a798006508-3._thesis_montreal_protocol_and_the_uae_(2).pdf"
+    const fileIdPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[-_](.+\.(pdf|doc|docx|xls|xlsx|ppt|pptx|csv|zip|rar|jpg|jpeg|png|gif|mp4|mp3))/i;
+    const walker = document.createTreeWalker(ref.current, NodeFilter.SHOW_TEXT, null);
+    const textNodesToReplace: { node: Text; fileId: string; displayName: string }[] = [];
+
+    let textNode: Text | null;
+    while ((textNode = walker.nextNode() as Text | null)) {
+      // Skip if already inside an enhanced element
+      if (textNode.parentElement?.closest('[data-enhanced]')) continue;
+
+      const text = textNode.textContent || "";
+      const match = text.match(fileIdPattern);
+      if (match) {
+        const fileId = match[0];
+        // Extract display name: remove UUID prefix and clean up underscores
+        const rawName = match[1] || fileId;
+        const displayName = rawName
+          .replace(/^[\d]+\.?\s*_?/, (m) => m.replace(/_/g, ' '))
+          .replace(/_/g, ' ')
+          .replace(/\(\s*/g, '(')
+          .replace(/\s*\)/g, ')');
+        textNodesToReplace.push({ node: textNode, fileId, displayName });
+      }
+    }
+
+    textNodesToReplace.forEach(({ node, fileId, displayName }) => {
+      const anchor = document.createElement("a");
+      anchor.setAttribute("href", "#");
+      anchor.setAttribute("data-enhanced", "true");
+      anchor.setAttribute("data-file-id", fileId);
+
+      // Extract extension for mime type detection
+      const ext = displayName.split('.').pop() || "";
+
+      enhanceAnchorAsFileCard(anchor, displayName, ext);
+
+      // Override click to use getPublicUrl
+      anchor.addEventListener("click", async (e) => {
+        e.preventDefault();
+        try {
+          const url = await getPublicUrl(fileId);
+          if (url) window.open(url, "_blank");
+          else toast.error("Could not load file URL");
+        } catch {
+          toast.error("Failed to download file");
+        }
+      });
+
+      // Replace the text node with the anchor
+      const parent = node.parentNode;
+      if (parent) {
+        const fullText = node.textContent || "";
+        const matchIndex = fullText.indexOf(fileId);
+        if (matchIndex >= 0) {
+          const before = fullText.substring(0, matchIndex);
+          const after = fullText.substring(matchIndex + fileId.length);
+          const fragment = document.createDocumentFragment();
+          if (before.trim()) fragment.appendChild(document.createTextNode(before));
+          fragment.appendChild(anchor);
+          if (after.trim()) fragment.appendChild(document.createTextNode(after));
+          parent.replaceChild(fragment, node);
+        }
+      }
     });
   }, [html]);
 
@@ -204,6 +282,7 @@ interface AssignmentSlideProps {
     re_attempt_count: number;
     total_marks?: number | null;
     passing_marks?: number | null;
+    comma_separated_media_ids?: string;
     questions?: Question[];
   };
   onUpload: (
@@ -681,14 +760,18 @@ const AssignmentSlide = ({
           </CardTitle>
           <CardDescription className="text-sm sm:text-base text-gray-600">
             <div className="flex flex-col space-y-1 mt-2">
-              <span>
-                <strong className="font-medium">Start Date:</strong>{" "}
-                {formatDate(assignmentData.live_date)}
-              </span>
-              <span>
-                <strong className="font-medium">Due Date:</strong>{" "}
-                {formatDate(assignmentData.end_date)}
-              </span>
+              {assignmentData.live_date && (
+                <span>
+                  <strong className="font-medium">Start Date:</strong>{" "}
+                  {formatDate(assignmentData.live_date)}
+                </span>
+              )}
+              {assignmentData.end_date && (
+                <span>
+                  <strong className="font-medium">Due Date:</strong>{" "}
+                  {formatDate(assignmentData.end_date)}
+                </span>
+              )}
               <span>
                 <strong className="font-medium">Attempts Allowed:</strong>{" "}
                 {assignmentData.re_attempt_count || "Unlimited"}
@@ -705,6 +788,46 @@ const AssignmentSlide = ({
           )}
         </CardContent>
       </Card>
+
+      {/* Attached Documents Section */}
+      {assignmentData.comma_separated_media_ids && assignmentData.comma_separated_media_ids.trim() !== '' && (
+        <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
+              Attached Documents
+            </CardTitle>
+            <CardDescription className="text-sm sm:text-base text-gray-600">
+              Documents attached to this assignment
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3">
+              {assignmentData.comma_separated_media_ids.split(',').filter(Boolean).map((fileId: string, idx: number) => (
+                <button
+                  key={fileId}
+                  onClick={async () => {
+                    try {
+                      const url = await getPublicUrl(fileId.trim());
+                      if (url) window.open(url, '_blank');
+                    } catch { /* ignore */ }
+                  }}
+                  className="flex items-center gap-3 w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <span
+                    className="flex-shrink-0"
+                    dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12l-2 4h4l-2 4"/></svg>` }}
+                  />
+                  <span className="flex-1 font-medium">Document {idx + 1}</span>
+                  <span className="flex-shrink-0 flex items-center gap-1.5 bg-gray-900 text-white px-3 py-1.5 rounded-md text-xs font-medium">
+                    <span dangerouslySetInnerHTML={{ __html: downloadIconSvg.replace('stroke="#6b7280"', 'stroke="#ffffff"') }} />
+                    Download
+                  </span>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Questions Section */}
       {assignmentData.questions && assignmentData.questions.length > 0 && (

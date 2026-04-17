@@ -73,6 +73,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const [addressError, setAddressError] = useState("");
 
     const [paymentPlanData, setPaymentPlanData] = useState<any>(null);
+    // Per-item plan data: maps enrollInviteId -> { planId, paymentOptionId }
+    const [perItemPlanData, setPerItemPlanData] = useState<Record<string, { planId: string; paymentOptionId: string }>>({});
     const otpInputRef = React.useRef<HTMLInputElement>(null);
 
     const targetInviteId = membershipPlan?.enrollInviteId ||
@@ -145,41 +147,75 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         }
     }, [open]);
 
-    // Fetch enrollment details to get valid plan_id and payment_option_id
+    // Fetch enrollment details for each unique enrollInviteId to get per-item plan_id and payment_option_id
     useEffect(() => {
-        if (!open || !targetInviteId || isInitializing) return;
+        if (!open || isInitializing) return;
 
-        console.log("[CheckoutForm] Fetching enrollment details for invite:", targetInviteId);
+        // Collect unique enrollInviteIds from all cart items
+        const inviteIds = isRentMode && targetInviteId
+            ? [targetInviteId]
+            : [...new Set(items.map(item => item.enrollInviteId).filter(Boolean))];
+
+        if (inviteIds.length === 0) return;
+
+        console.log("[CheckoutForm] Fetching enrollment details for invites:", inviteIds);
         setIsInitializing(true);
-        const enrollmentUrl = `${ENROLLMENT_INVITE_URL}/${instituteId}/${targetInviteId}`;
-        console.log("[CheckoutForm] Fetching from URL:", enrollmentUrl);
-        axios.get(enrollmentUrl)
-            .then(response => {
-                const data = response.data;
-                console.log("[CheckoutForm] Enrollment details fetched:", data);
-                if (data.package_session_to_payment_options?.length > 0) {
-                    const firstOption = data.package_session_to_payment_options[0];
-                    const plans = firstOption.payment_option.payment_plans;
-                    if (plans?.length > 0) {
-                        setPaymentPlanData({
-                            planId: plans[0].id,
-                            paymentOptionId: firstOption.payment_option.id,
-                            enrollInviteId: firstOption.enroll_invite_id || data.id,
-                            vendorId: data.vendor_id || "RAZORPAY"
-                        });
+
+        Promise.all(
+            inviteIds.map(inviteId =>
+                axios.get(`${ENROLLMENT_INVITE_URL}/${instituteId}/${inviteId}`)
+                    .then(response => ({ inviteId, data: response.data }))
+                    .catch(err => {
+                        console.error(`[CheckoutForm] Failed to fetch enrollment details for invite ${inviteId}:`, err);
+                        return null;
+                    })
+            )
+        )
+            .then(results => {
+                const perItemData: Record<string, { planId: string; paymentOptionId: string }> = {};
+                let firstPlanData: any = null;
+
+                for (const result of results) {
+                    if (!result) continue;
+                    const { inviteId, data } = result;
+
+                    if (data.package_session_to_payment_options?.length > 0) {
+                        const firstOption = data.package_session_to_payment_options[0];
+                        const plans = firstOption.payment_option.payment_plans;
+                        if (plans?.length > 0) {
+                            perItemData[inviteId] = {
+                                planId: plans[0].id,
+                                paymentOptionId: firstOption.payment_option.id,
+                            };
+
+                            // Use first result as the shared paymentPlanData (for vendorId, rent mode, etc.)
+                            if (!firstPlanData) {
+                                firstPlanData = {
+                                    planId: plans[0].id,
+                                    paymentOptionId: firstOption.payment_option.id,
+                                    enrollInviteId: firstOption.enroll_invite_id || data.id,
+                                    vendorId: data.vendor_id || "RAZORPAY"
+                                };
+                            }
+                        }
                     }
+                }
+
+                console.log("[CheckoutForm] Per-item plan data resolved:", perItemData);
+                setPerItemPlanData(perItemData);
+                if (firstPlanData) {
+                    setPaymentPlanData(firstPlanData);
                 }
             })
             .catch(err => {
                 console.error("[CheckoutForm] Failed to fetch enrollment details:", err);
-                const errorMessage = err.response?.data?.message || err.message || "Failed to load payment options. Please try again.";
-                toast.error(errorMessage);
+                toast.error("Failed to load payment options. Please try again.");
             })
             .finally(() => {
                 setIsInitializing(false);
             });
 
-    }, [open, targetInviteId, instituteId]);
+    }, [open, targetInviteId, instituteId, items.length]);
 
     const validateEmail = (email: string): boolean => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -391,12 +427,16 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 console.log("[CheckoutForm] Processing BUY mode checkout");
 
                 // Build learner_package_session_enrollments array for each item
-                const learnerPackageSessionEnrollments = items.map(item => ({
-                    package_session_id: item.packageSessionId || item.id,
-                    plan_id: paymentPlanData?.planId || item.planId || item.id,
-                    payment_option_id: paymentPlanData?.paymentOptionId || item.paymentOptionId || "default",
-                    enroll_invite_id: item.enrollInviteId || item.id
-                }));
+                // Use per-item plan data resolved from each book's own enroll invite
+                const learnerPackageSessionEnrollments = items.map(item => {
+                    const itemPlan = perItemPlanData[item.enrollInviteId];
+                    return {
+                        package_session_id: item.packageSessionId || item.id,
+                        plan_id: itemPlan?.planId || paymentPlanData?.planId || item.planId || item.id,
+                        payment_option_id: itemPlan?.paymentOptionId || paymentPlanData?.paymentOptionId || item.paymentOptionId || "default",
+                        enroll_invite_id: item.enrollInviteId || item.id
+                    };
+                });
 
                 // Calculate total amount as sum of all package sessions
                 const calculatedTotalAmount = items.reduce(

@@ -1128,4 +1128,55 @@ public class AssessmentParticipantsManager {
                 assessment.getId(), List.of("DELETED"));
         createParticipantsReportAndSendEmail(attemptList, assessment, instituteId);
     }
+
+    /**
+     * Fetches a single participant's registration details, including the
+     * answers they gave to the assessment's custom form fields. Used by the
+     * admin dashboard to populate the "External Participant" side sheet where
+     * the regular student profile API returns empty (externals don't have a
+     * StudentSessionInstituteGroupMapping).
+     */
+    public ResponseEntity<ParticipantRegistrationDetailDto> getParticipantRegistrationDetails(
+            String registrationId) {
+        AssessmentUserRegistration registration = assessmentUserRegistrationRepository
+                .findById(registrationId)
+                .orElseThrow(() -> new VacademyException(
+                        "Registration not found with id: " + registrationId));
+
+        List<ParticipantRegistrationDetailDto.CustomFieldAnswer> customFields = registration
+                .getAssessmentRegistrationCustomFieldResponseList().stream()
+                .sorted(Comparator.comparingInt(cfr -> {
+                    Integer order = cfr.getAssessmentCustomField() != null
+                            ? cfr.getAssessmentCustomField().getFieldOrder()
+                            : null;
+                    return order != null ? order : Integer.MAX_VALUE;
+                }))
+                .map(cfr -> {
+                    var field = cfr.getAssessmentCustomField();
+                    return ParticipantRegistrationDetailDto.CustomFieldAnswer.builder()
+                            .fieldId(field != null ? field.getId() : null)
+                            .fieldName(field != null ? field.getFieldName() : null)
+                            .fieldKey(field != null ? field.getFieldKey() : null)
+                            .fieldType(field != null ? field.getFieldType() : null)
+                            .fieldOrder(field != null ? field.getFieldOrder() : null)
+                            .isMandatory(field != null ? field.getIsMandatory() : null)
+                            .answer(cfr.getAnswer())
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        ParticipantRegistrationDetailDto dto = ParticipantRegistrationDetailDto.builder()
+                .registrationId(registration.getId())
+                .userId(registration.getUserId())
+                .participantName(registration.getParticipantName())
+                .email(registration.getUserEmail())
+                .phoneNumber(registration.getPhoneNumber())
+                .source(registration.getSource())
+                .status(registration.getStatus())
+                .registrationTime(registration.getRegistrationTime())
+                .customFields(customFields)
+                .build();
+
+        return ResponseEntity.ok(dto);
+    }
 }

@@ -37,15 +37,15 @@ public class CollectionDashboardRepositoryImpl implements CollectionDashboardRep
 
     private static final String SUMMARY_SELECT =
             "SELECT " +
-            "  COALESCE(SUM(sfp.amount_expected - COALESCE(sfp.discount_amount,0)),0), " +
+            "  COALESCE(SUM(sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)),0), " +
             "  COALESCE(SUM(CASE WHEN sfp.due_date <= CURRENT_DATE " +
-            "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) ELSE 0 END),0), " +
+            "    THEN (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) ELSE 0 END),0), " +
             "  COALESCE(SUM(sfp.amount_paid),0), " +
             "  COALESCE(SUM(CASE " +
             "    WHEN sfp.due_date <= CURRENT_DATE " +
             "      AND sfp.status NOT IN ('WAIVED') " +
-            "      AND sfp.amount_paid < (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) " +
-            "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) - sfp.amount_paid " +
+            "      AND sfp.amount_paid < (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) " +
+            "    THEN (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) - sfp.amount_paid " +
             "    ELSE 0 END),0) ";
 
     // Class-wise breakdown resolves each student_fee_payment row to the actual
@@ -63,15 +63,15 @@ public class CollectionDashboardRepositoryImpl implements CollectionDashboardRep
             "      || ' - ' || s.session_name," +
             "    'Unassigned'" +
             "  ), " +
-            "  COALESCE(SUM(sfp.amount_expected - COALESCE(sfp.discount_amount,0)),0), " +
+            "  COALESCE(SUM(sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)),0), " +
             "  COALESCE(SUM(CASE WHEN sfp.due_date <= CURRENT_DATE " +
-            "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) ELSE 0 END),0), " +
+            "    THEN (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) ELSE 0 END),0), " +
             "  COALESCE(SUM(sfp.amount_paid),0), " +
             "  COALESCE(SUM(CASE " +
             "    WHEN sfp.due_date <= CURRENT_DATE " +
             "      AND sfp.status NOT IN ('WAIVED') " +
-            "      AND sfp.amount_paid < (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) " +
-            "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) - sfp.amount_paid " +
+            "      AND sfp.amount_paid < (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) " +
+            "    THEN (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) - sfp.amount_paid " +
             "    ELSE 0 END),0) ";
 
     private static final String CLASS_WISE_FROM_WHERE =

@@ -6,8 +6,9 @@ export const assignmentFormSchema = z.object({
     taskDescription: z.string().optional(),
     parentRichTextId: z.string().optional(),
     textDataId: z.string().optional(),
-    startDate: z.string(),
-    endDate: z.string(),
+    hasDateRange: z.boolean().optional(),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
     reattemptCount: z.string(),
     uploaded_question_paper: z.string().nullable(),
     adaptive_marking_for_each_question: z.array(

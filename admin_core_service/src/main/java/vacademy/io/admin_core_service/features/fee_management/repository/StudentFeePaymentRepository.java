@@ -53,5 +53,7 @@ public interface StudentFeePaymentRepository extends JpaRepository<StudentFeePay
             @Param("windowStart") Date windowStart,
             @Param("windowEnd") Date windowEnd
     );
+
+    List<StudentFeePayment> findByInstituteIdAndAdjustmentStatus(String instituteId, String adjustmentStatus);
 }
 

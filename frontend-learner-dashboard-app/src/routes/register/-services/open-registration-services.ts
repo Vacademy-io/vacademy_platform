@@ -2,6 +2,7 @@ import {
   GET_OPEN_REGISTRATION_DETAILS,
   GET_PARTICIPANTS_STATUS,
   GET_USERID_URL,
+  PUBLIC_INSTITUTE_BRANDING_URL,
   REGISTER_PARTICIPANT_URL,
   STUDENT_DETAIL,
 } from "@/constants/urls";
@@ -89,6 +90,23 @@ export const handleGetStudentDetailsOfInstitute = async (
     params: {
       instituteId,
     },
+  });
+  return response?.data;
+};
+
+export interface PublicInstituteBranding {
+  institute_id: string;
+  institute_name: string;
+  logo_file_id: string | null;
+  institute_theme_code: string | null;
+}
+
+export const handleGetPublicInstituteBranding = async (
+  instituteId: string
+): Promise<PublicInstituteBranding> => {
+  const response = await axios({
+    method: "GET",
+    url: `${PUBLIC_INSTITUTE_BRANDING_URL}/${instituteId}`,
   });
   return response?.data;
 };

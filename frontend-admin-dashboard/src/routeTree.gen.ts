@@ -73,6 +73,7 @@ import { Route as FinancialManagementPayInstallmentsIndexRouteImport } from "./r
 import { Route as FinancialManagementManageFinancesIndexRouteImport } from "./routes/financial-management/manage-finances/index"
 import { Route as FinancialManagementFeePlansIndexRouteImport } from "./routes/financial-management/fee-plans/index"
 import { Route as FinancialManagementCollectionDashboardIndexRouteImport } from "./routes/financial-management/collection-dashboard/index"
+import { Route as FinancialManagementAdjustmentApprovalsIndexRouteImport } from "./routes/financial-management/adjustment-approvals/index"
 import { Route as EvaluatorAiStudentsIndexRouteImport } from "./routes/evaluator-ai/students/index"
 import { Route as EvaluatorAiEvaluationIndexRouteImport } from "./routes/evaluator-ai/evaluation/index"
 import { Route as EvaluatorAiAssessmentIndexRouteImport } from "./routes/evaluator-ai/assessment/index"
@@ -642,6 +643,16 @@ const FinancialManagementCollectionDashboardIndexRoute =
   } as any).lazy(() =>
     import(
       "./routes/financial-management/collection-dashboard/index.lazy"
+    ).then((d) => d.Route),
+  )
+const FinancialManagementAdjustmentApprovalsIndexRoute =
+  FinancialManagementAdjustmentApprovalsIndexRouteImport.update({
+    id: "/financial-management/adjustment-approvals/",
+    path: "/financial-management/adjustment-approvals/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import(
+      "./routes/financial-management/adjustment-approvals/index.lazy"
     ).then((d) => d.Route),
   )
 const EvaluatorAiStudentsIndexRoute =
@@ -1388,6 +1399,7 @@ export interface FileRoutesByFullPath {
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
   "/evaluator-ai/evaluation/": typeof EvaluatorAiEvaluationIndexRoute
   "/evaluator-ai/students/": typeof EvaluatorAiStudentsIndexRoute
+  "/financial-management/adjustment-approvals/": typeof FinancialManagementAdjustmentApprovalsIndexRoute
   "/financial-management/collection-dashboard/": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans/": typeof FinancialManagementFeePlansIndexRoute
   "/financial-management/manage-finances/": typeof FinancialManagementManageFinancesIndexRoute
@@ -1535,6 +1547,7 @@ export interface FileRoutesByTo {
   "/evaluator-ai/assessment": typeof EvaluatorAiAssessmentIndexRoute
   "/evaluator-ai/evaluation": typeof EvaluatorAiEvaluationIndexRoute
   "/evaluator-ai/students": typeof EvaluatorAiStudentsIndexRoute
+  "/financial-management/adjustment-approvals": typeof FinancialManagementAdjustmentApprovalsIndexRoute
   "/financial-management/collection-dashboard": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans": typeof FinancialManagementFeePlansIndexRoute
   "/financial-management/manage-finances": typeof FinancialManagementManageFinancesIndexRoute
@@ -1684,6 +1697,7 @@ export interface FileRoutesById {
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
   "/evaluator-ai/evaluation/": typeof EvaluatorAiEvaluationIndexRoute
   "/evaluator-ai/students/": typeof EvaluatorAiStudentsIndexRoute
+  "/financial-management/adjustment-approvals/": typeof FinancialManagementAdjustmentApprovalsIndexRoute
   "/financial-management/collection-dashboard/": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans/": typeof FinancialManagementFeePlansIndexRoute
   "/financial-management/manage-finances/": typeof FinancialManagementManageFinancesIndexRoute
@@ -1834,6 +1848,7 @@ export interface FileRouteTypes {
     | "/evaluator-ai/assessment/"
     | "/evaluator-ai/evaluation/"
     | "/evaluator-ai/students/"
+    | "/financial-management/adjustment-approvals/"
     | "/financial-management/collection-dashboard/"
     | "/financial-management/fee-plans/"
     | "/financial-management/manage-finances/"
@@ -1981,6 +1996,7 @@ export interface FileRouteTypes {
     | "/evaluator-ai/assessment"
     | "/evaluator-ai/evaluation"
     | "/evaluator-ai/students"
+    | "/financial-management/adjustment-approvals"
     | "/financial-management/collection-dashboard"
     | "/financial-management/fee-plans"
     | "/financial-management/manage-finances"
@@ -2129,6 +2145,7 @@ export interface FileRouteTypes {
     | "/evaluator-ai/assessment/"
     | "/evaluator-ai/evaluation/"
     | "/evaluator-ai/students/"
+    | "/financial-management/adjustment-approvals/"
     | "/financial-management/collection-dashboard/"
     | "/financial-management/fee-plans/"
     | "/financial-management/manage-finances/"
@@ -2277,6 +2294,7 @@ export interface RootRouteChildren {
   EvaluatorAiAssessmentIndexRoute: typeof EvaluatorAiAssessmentIndexRoute
   EvaluatorAiEvaluationIndexRoute: typeof EvaluatorAiEvaluationIndexRoute
   EvaluatorAiStudentsIndexRoute: typeof EvaluatorAiStudentsIndexRoute
+  FinancialManagementAdjustmentApprovalsIndexRoute: typeof FinancialManagementAdjustmentApprovalsIndexRoute
   FinancialManagementCollectionDashboardIndexRoute: typeof FinancialManagementCollectionDashboardIndexRoute
   FinancialManagementFeePlansIndexRoute: typeof FinancialManagementFeePlansIndexRoute
   FinancialManagementManageFinancesIndexRoute: typeof FinancialManagementManageFinancesIndexRoute
@@ -2817,6 +2835,13 @@ declare module "@tanstack/react-router" {
       path: "/financial-management/collection-dashboard"
       fullPath: "/financial-management/collection-dashboard/"
       preLoaderRoute: typeof FinancialManagementCollectionDashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/financial-management/adjustment-approvals/": {
+      id: "/financial-management/adjustment-approvals/"
+      path: "/financial-management/adjustment-approvals"
+      fullPath: "/financial-management/adjustment-approvals/"
+      preLoaderRoute: typeof FinancialManagementAdjustmentApprovalsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/evaluator-ai/students/": {
@@ -3467,6 +3492,8 @@ const rootRouteChildren: RootRouteChildren = {
   EvaluatorAiAssessmentIndexRoute: EvaluatorAiAssessmentIndexRoute,
   EvaluatorAiEvaluationIndexRoute: EvaluatorAiEvaluationIndexRoute,
   EvaluatorAiStudentsIndexRoute: EvaluatorAiStudentsIndexRoute,
+  FinancialManagementAdjustmentApprovalsIndexRoute:
+    FinancialManagementAdjustmentApprovalsIndexRoute,
   FinancialManagementCollectionDashboardIndexRoute:
     FinancialManagementCollectionDashboardIndexRoute,
   FinancialManagementFeePlansIndexRoute: FinancialManagementFeePlansIndexRoute,

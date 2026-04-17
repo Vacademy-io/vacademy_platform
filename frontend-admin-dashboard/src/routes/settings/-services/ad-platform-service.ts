@@ -1,7 +1,8 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { BASE_URL } from '@/constants/urls';
 
-const BASE = '/admin-core-service/v1/oauth/meta';
-const WEBHOOK_BASE = '/admin-core-service/api/v1/webhook';
+const BASE = `${BASE_URL}/admin-core-service/v1/oauth/meta`;
+const WEBHOOK_BASE = `${BASE_URL}/admin-core-service/api/v1/webhook`;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -119,4 +120,4 @@ export const deactivateConnector = async (connectorId: string): Promise<void> =>
 
 /** Build the full Google webhook URL for display. */
 export const buildGoogleWebhookUrl = (googleKey: string): string =>
-    `${window.location.origin}${WEBHOOK_BASE}/google/${googleKey}`;
+    `${WEBHOOK_BASE}/google/${googleKey}`;

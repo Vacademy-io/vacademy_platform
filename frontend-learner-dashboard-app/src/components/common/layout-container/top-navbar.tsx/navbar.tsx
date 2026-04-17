@@ -19,7 +19,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { TokenKey } from "@/constants/auth/tokens";
 import { SystemAlertsBar } from "@/components/announcements";
 import { handleGetPublicInstituteDetails } from "../services/navbar-services";
-import { useRouter } from "@tanstack/react-router";
+import { useRouter, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { getInstituteLogoQuery } from "@/services/institute-logo";
 import { useIsIOS } from "@/hooks/useIsIOS";
@@ -72,6 +72,8 @@ export function Navbar() {
   } = useStore();
   const router = useRouter();
   const [canGoBack, setCanGoBack] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isDashboard = pathname.startsWith("/dashboard");
 
   const handleNavigateToAdmin = () => {
     const accessToken = localStorage.getItem(TokenKey.accessToken);
@@ -175,7 +177,7 @@ export function Navbar() {
 
         {/* Left Section */}
         <div className="flex items-center gap-2 md:gap-4 shrink-0">
-          {canGoBack && (
+          {canGoBack && !isDashboard && (
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <button
@@ -305,7 +307,7 @@ export function Navbar() {
 
       {/* Left Section */}
       <div className="flex items-center gap-2 md:gap-4 shrink-0">
-        {canGoBack && (
+        {canGoBack && !isDashboard && (
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
               <button

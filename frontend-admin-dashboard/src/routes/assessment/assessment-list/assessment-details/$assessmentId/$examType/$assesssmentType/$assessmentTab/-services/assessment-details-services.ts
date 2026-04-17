@@ -16,6 +16,7 @@ import {
     GET_INDIVIDUAL_STUDENT_DETAILS_URL,
     GET_LEADERBOARD_URL,
     GET_OVERVIEW_URL,
+    GET_PARTICIPANT_REGISTRATION_DETAILS,
     GET_PARTICIPANTS_QUESTION_WISE,
     GET_QUESTIONS_INSIGHTS_URL,
     GET_RELEASE_STUDENT_RESULT,
@@ -423,6 +424,46 @@ export const handleAdminParticipantsData = ({
         queryFn: () =>
             getAdminParticipants(assessmentId, instituteId, pageNo, pageSize, selectedFilter),
         staleTime: 60 * 60 * 1000,
+    };
+};
+
+export interface ParticipantRegistrationDetail {
+    registration_id: string;
+    user_id: string;
+    participant_name: string;
+    email: string | null;
+    phone_number: string | null;
+    source: string | null;
+    status: string | null;
+    registration_time: string | null;
+    custom_fields: Array<{
+        field_id: string | null;
+        field_name: string | null;
+        field_key: string | null;
+        field_type: string | null;
+        field_order: number | null;
+        is_mandatory: boolean | null;
+        answer: string | null;
+    }>;
+}
+
+export const getParticipantRegistrationDetails = async (
+    registrationId: string
+): Promise<ParticipantRegistrationDetail> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_PARTICIPANT_REGISTRATION_DETAILS,
+        params: { registrationId },
+    });
+    return response?.data;
+};
+
+export const handleGetParticipantRegistrationDetails = (registrationId: string | undefined) => {
+    return {
+        queryKey: ['GET_PARTICIPANT_REGISTRATION_DETAILS', registrationId],
+        queryFn: () => getParticipantRegistrationDetails(registrationId as string),
+        enabled: !!registrationId,
+        staleTime: 60 * 1000,
     };
 };
 

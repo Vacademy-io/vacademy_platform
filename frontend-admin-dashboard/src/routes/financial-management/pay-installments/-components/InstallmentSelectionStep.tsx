@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CurrencyInr, DownloadSimple, Spinner, Wallet, WarningCircle, X } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, ArrowLeft, CurrencyInr, DownloadSimple, PencilSimple, Spinner, Wallet, WarningCircle, X } from '@phosphor-icons/react';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -9,12 +9,12 @@ import {
     fetchStudentDues,
     getStudentDuesQueryKey,
     generateInvoiceForInstallments,
-    applyManualDiscount,
     sendInvoiceEmail,
     getReceiptUrlForInstallment,
 } from '@/services/manage-finances';
 import { useTheme } from '@/providers/theme/theme-provider';
 import { InvoiceActionDialog } from './InvoiceActionDialog';
+import { AdjustmentDialog } from './AdjustmentDialog';
 import { cn } from '@/lib/utils';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ export function InstallmentSelectionStep({
     const { getPrimaryColorCode } = useTheme();
     const queryClient = useQueryClient();
 
-    const { data: dues, isLoading, error } = useQuery({
+    const { data: dues, isLoading, error, refetch, isFetching } = useQuery({
         queryKey: getStudentDuesQueryKey(student.student_id),
         queryFn: () => fetchStudentDues(student.student_id),
         staleTime: 30000,
@@ -155,8 +155,7 @@ export function InstallmentSelectionStep({
         }
     };
 
-    const [discountDrafts, setDiscountDrafts] = useState<Record<string, string>>({});
-    const [reasonDrafts, setReasonDrafts] = useState<Record<string, string>>({});
+    const [adjustmentDialogInstallment, setAdjustmentDialogInstallment] = useState<StudentFeeDueDTO | null>(null);
     const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
 
     const handleDownloadReceipt = async (installmentId: string, e: React.MouseEvent) => {
@@ -171,41 +170,6 @@ export function InstallmentSelectionStep({
             setDownloadingReceiptId(null);
         }
     };
-
-    const discountMutation = useMutation({
-        mutationFn: ({
-            studentFeePaymentId,
-            userId,
-            discountAmount,
-            discountReason,
-        }: {
-            studentFeePaymentId: string;
-            userId: string;
-            discountAmount: number;
-            discountReason?: string;
-        }) =>
-            applyManualDiscount({
-                student_fee_payment_id: studentFeePaymentId,
-                user_id: userId,
-                discount_amount: discountAmount,
-                discount_reason: discountReason,
-            }),
-        onSuccess: (_data, variables) => {
-            // Auto-select the installment so it is included in allocate-selected receipts
-            setSelectedIds((prev) => {
-                const next = new Set(prev);
-                next.add(variables.studentFeePaymentId);
-                return next;
-            });
-            toast.success('Discount applied');
-            queryClient.invalidateQueries({ queryKey: getStudentDuesQueryKey(student.student_id) });
-            setDiscountDrafts((prev) => ({ ...prev, [variables.studentFeePaymentId]: '' }));
-            setReasonDrafts((prev) => ({ ...prev, [variables.studentFeePaymentId]: '' }));
-        },
-        onError: (err: any) => {
-            toast.error(err?.response?.data?.ex || err?.message || 'Failed to apply discount');
-        },
-    });
 
     const invoiceMutation = useMutation({
         mutationFn: () =>
@@ -404,7 +368,18 @@ export function InstallmentSelectionStep({
                         </div>
                     </div>
 
-                    {/* ── Scrollable table ── */}
+                    {/* ── Refresh + Table ── */}
+                    <div className="flex justify-end mb-2">
+                        <button
+                            type="button"
+                            onClick={() => refetch()}
+                            disabled={isFetching}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                        >
+                            <ArrowCounterClockwise size={14} className={isFetching ? 'animate-spin' : ''} />
+                            Refresh
+                        </button>
+                    </div>
                     <div className="flex-1 min-h-0 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
                         <div className="overflow-auto h-full">
                             <table className="w-full text-left border-collapse min-w-[900px]">
@@ -421,7 +396,7 @@ export function InstallmentSelectionStep({
                                         <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Fee Type</th>
                                         <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">CPO / Plan</th>
                                         <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Expected</th>
-                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Discount</th>
+                                        <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Adjustment</th>
                                         <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Paid</th>
                                         <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Due</th>
                                         <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Due / Overdue</th>
@@ -465,66 +440,41 @@ export function InstallmentSelectionStep({
                                                 <td className="py-3 px-4 text-gray-600">{inst.cpo_name || '\u2014'}</td>
                                                 <td className="py-3 px-4 text-gray-700">{formatCurrency(inst.amount_expected)}</td>
                                                 <td className="py-3 px-4 text-gray-500">
-                                                    <div className="flex flex-col gap-2">
-                                                        <div>
-                                                            {inst.discount_amount > 0 ? `-${formatCurrency(inst.discount_amount)}` : '\u2014'}
-                                                        </div>
-
-                                                        <div className="flex items-center gap-2">
-                                                            <input
-                                                                type="number"
-                                                                inputMode="decimal"
-                                                                min={0}
-                                                                step={1}
-                                                                placeholder="Add"
-                                                                value={discountDrafts[inst.id] ?? ''}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                onChange={(e) =>
-                                                                    setDiscountDrafts((prev) => ({
-                                                                        ...prev,
-                                                                        [inst.id]: e.target.value,
-                                                                    }))
-                                                                }
-                                                                className="w-24 rounded-lg border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                            />
+                                                    <div className="flex items-center gap-2">
+                                                        {inst.adjustment_status ? (
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className={cn(
+                                                                    'text-xs font-medium',
+                                                                    inst.adjustment_type === 'PENALTY' ? 'text-red-600' : 'text-emerald-600'
+                                                                )}>
+                                                                    {inst.adjustment_type === 'PENALTY' ? '+' : '-'}
+                                                                    {formatCurrency(inst.adjustment_amount)}
+                                                                </span>
+                                                                <span className={cn(
+                                                                    'inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase w-fit',
+                                                                    inst.adjustment_status === 'APPROVED' && 'bg-emerald-100 text-emerald-700',
+                                                                    inst.adjustment_status === 'PENDING_FOR_APPROVAL' && 'bg-amber-100 text-amber-700',
+                                                                    inst.adjustment_status === 'REJECTED' && 'bg-red-100 text-red-700',
+                                                                )}>
+                                                                    {inst.adjustment_status === 'PENDING_FOR_APPROVAL' ? 'Pending' : inst.adjustment_status}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span>{'\u2014'}</span>
+                                                        )}
+                                                        {isSelectable && (
                                                             <button
                                                                 type="button"
+                                                                title="Adjust"
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    const raw = discountDrafts[inst.id] ?? '';
-                                                                    const amt = Number(raw);
-                                                                    if (!raw || Number.isNaN(amt) || amt <= 0) {
-                                                                        toast.error('Enter a valid discount amount');
-                                                                        return;
-                                                                    }
-                                                                    const reason = (reasonDrafts[inst.id] ?? '').trim();
-                                                                    discountMutation.mutate({
-                                                                        studentFeePaymentId: inst.id,
-                                                                        userId: student.student_id,
-                                                                        discountAmount: amt,
-                                                                        discountReason: reason || undefined,
-                                                                    });
+                                                                    setAdjustmentDialogInstallment(inst);
                                                                 }}
-                                                                disabled={!isSelectable || discountMutation.isPending}
-                                                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                className="flex items-center justify-center h-6 w-6 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                                                             >
-                                                                Apply
+                                                                <PencilSimple size={13} weight="bold" />
                                                             </button>
-                                                        </div>
-
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Reason (optional)"
-                                                            value={reasonDrafts[inst.id] ?? ''}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            onChange={(e) =>
-                                                                setReasonDrafts((prev) => ({
-                                                                    ...prev,
-                                                                    [inst.id]: e.target.value,
-                                                                }))
-                                                            }
-                                                            className="w-full rounded-lg border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                        />
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="py-3 px-4 text-emerald-700 font-semibold">{formatCurrency(inst.amount_paid)}</td>
@@ -628,6 +578,17 @@ export function InstallmentSelectionStep({
                 onDownload={() => invoiceMutation.mutate()}
                 onSendEmail={(email) => emailInvoiceMutation.mutate(email)}
             />
+
+            {adjustmentDialogInstallment && (
+                <AdjustmentDialog
+                    open={!!adjustmentDialogInstallment}
+                    onOpenChange={(open) => {
+                        if (!open) setAdjustmentDialogInstallment(null);
+                    }}
+                    installment={adjustmentDialogInstallment}
+                    studentId={student.student_id}
+                />
+            )}
         </div>
     );
 }

@@ -369,8 +369,8 @@ public class PaymentLogService {
             throw new RuntimeException("Payment log not found with ID/Order: " + orderId);
         }
 
-        // --- Atomic Update of ALL found logs (Parent + Children) ---
-        log.info("Starting atomic update for {} total logs (Parent + Children) for ID/Order {}", allLogsToUpdate.size(),
+        // --- Pass 1: Update status of ALL found logs (Parent + Children) ---
+        log.info("Starting status update for {} total logs (Parent + Children) for ID/Order {}", allLogsToUpdate.size(),
                 orderId);
         for (PaymentLog paymentLog : allLogsToUpdate) {
             try {
@@ -382,13 +382,26 @@ public class PaymentLogService {
 
                 paymentLog.setPaymentStatus(paymentStatus);
                 paymentLogRepository.saveAndFlush(paymentLog); // Flush immediately to ensure DB update
+            } catch (Exception e) {
+                log.error("Failed to update status for log {}: {}. Continuing with remaining logs.",
+                        paymentLog.getId(), e.getMessage());
+                SentryLogger.logError(e, "Payment status update failure", Map.of(
+                        "payment.log.id", paymentLog.getId(),
+                        "order.id", orderId,
+                        "payment.status", paymentStatus));
+            }
+        }
 
-                // Trigger post-payment operations if status is PAID
+        // --- Pass 2: Run post-payment logic AFTER all statuses are updated ---
+        // This ensures that when invoice generation checks for related PAID logs,
+        // all sibling logs are already marked as PAID and can be grouped into one invoice.
+        for (PaymentLog paymentLog : allLogsToUpdate) {
+            try {
                 handlePostPaymentLogic(paymentLog, paymentStatus, instituteId);
             } catch (Exception e) {
-                log.error("Failed to process atomic update for log {}: {}. Continuing with remaining logs.",
+                log.error("Failed post-payment logic for log {}: {}. Continuing with remaining logs.",
                         paymentLog.getId(), e.getMessage());
-                SentryLogger.logError(e, "Post-payment logic failure in atomic update", Map.of(
+                SentryLogger.logError(e, "Post-payment logic failure", Map.of(
                         "payment.log.id", paymentLog.getId(),
                         "order.id", orderId,
                         "payment.status", paymentStatus));

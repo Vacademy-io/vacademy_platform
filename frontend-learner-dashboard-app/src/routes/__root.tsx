@@ -5,7 +5,8 @@ import {
   redirect,
   useRouterState,
 } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import * as Sentry from "@sentry/react";
+import { useEffect, useRef, useState } from "react";
 import {
   AppUpdate,
   AppUpdateAvailability,
@@ -575,6 +576,26 @@ const RootComponent = () => {
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hideChatbot = pathname.startsWith("/admission");
+
+  // ── Sentry: track route navigation as breadcrumbs ──
+  const prevPathRef = useRef(pathname);
+  useEffect(() => {
+    if (import.meta.env.VITE_ENABLE_SENTRY !== "true") return;
+    if (pathname !== prevPathRef.current) {
+      Sentry.addBreadcrumb({
+        category: "navigation",
+        message: `${prevPathRef.current} → ${pathname}`,
+        level: "info",
+        data: {
+          from: prevPathRef.current,
+          to: pathname,
+          domain: window.location.hostname,
+        },
+      });
+      Sentry.setTag("route", pathname);
+      prevPathRef.current = pathname;
+    }
+  }, [pathname]);
 
   return (
     <ChatbotProvider>

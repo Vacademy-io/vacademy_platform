@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowCounterClockwise, Clock } from '@phosphor-icons/react';
-import { Crown, Person } from '@/svgs';
+import { Crown } from '@/svgs';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MyPagination } from '@/components/design-system/pagination';
 import { AssessmentDetailsSearchComponent } from './SearchComponent';
 import { MyButton } from '@/components/design-system/button';
@@ -261,14 +262,23 @@ const AssessmentStudentLeaderboard = () => {
                                 >
                                     <div className="flex items-center gap-4">
                                         <span>{student.rank}</span>
-                                        {student.rank === 1 ? (
-                                            <div>
-                                                <Crown />
-                                                <Person />
-                                            </div>
-                                        ) : (
-                                            <Person />
-                                        )}
+                                        <div className="relative">
+                                            {student.rank === 1 && (
+                                                <Crown className="absolute -top-3 left-1/2 -translate-x-1/2" />
+                                            )}
+                                            <Avatar className="h-10 w-10 border border-slate-200">
+                                                <AvatarImage
+                                                    src={student.face_file_url || undefined}
+                                                    alt={student.student_name}
+                                                />
+                                                <AvatarFallback className="bg-primary-100 text-sm font-semibold text-primary-600">
+                                                    {student.student_name
+                                                        ?.trim()
+                                                        .charAt(0)
+                                                        .toUpperCase() || '?'}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                        </div>
                                         <div className="flex flex-col">
                                             <span>{student.student_name}</span>
                                             <span className="text-[12px]">

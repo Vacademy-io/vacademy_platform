@@ -1,6 +1,7 @@
 import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
 import axios from "axios";
+import * as Sentry from "@sentry/react";
 import { isTokenExpired, removeTokensAndLogout, getTokenFromStorage } from "./sessionUtility";
 import { REFRESH_TOKEN_URL, VALIDATE_SESSION } from "@/constants/urls";
 import { maybeServeFromCache, maybeStoreInCache } from "@/lib/http/clientCache";
@@ -183,11 +184,46 @@ authenticatedAxiosInstance.interceptors.response.use(
       "/public/domain-routing/"
     );
 
+    const status = error?.response?.status;
+
+    // ── Sentry: capture server errors (5xx) and notable client errors ──
+    if (
+      import.meta.env.VITE_ENABLE_SENTRY === "true" &&
+      status &&
+      status >= 500
+    ) {
+      Sentry.withScope((scope) => {
+        scope.setTag("http.status_code", String(status));
+        scope.setTag("http.method", error?.config?.method?.toUpperCase() || "UNKNOWN");
+        scope.setTag("api.url", requestUrl);
+        scope.setLevel("error");
+        scope.setContext("API Response", {
+          status,
+          statusText: error?.response?.statusText,
+          url: requestUrl,
+          method: error?.config?.method?.toUpperCase(),
+          responseData:
+            typeof error?.response?.data === "string"
+              ? error.response.data.substring(0, 1000)
+              : JSON.stringify(error?.response?.data)?.substring(0, 1000),
+        });
+        scope.setContext("API Request", {
+          baseURL: error?.config?.baseURL,
+          url: error?.config?.url,
+          method: error?.config?.method,
+          params: error?.config?.params,
+        });
+        Sentry.captureException(
+          new Error(`API ${status}: ${error?.config?.method?.toUpperCase()} ${requestUrl}`)
+        );
+      });
+    }
+
     // Handle session-terminated (460) — distinct from normal 401
     if (
       !isPublicDomainRouting &&
       error.response &&
-      error.response.status === 460 &&
+      status === 460 &&
       !isHandlingSessionTermination
     ) {
       isHandlingSessionTermination = true;
@@ -200,7 +236,7 @@ authenticatedAxiosInstance.interceptors.response.use(
     if (
       !isPublicDomainRouting &&
       error.response &&
-      error.response.status === 401
+      status === 401
     ) {
       console.warn("[Axios] Received 401 Unauthorized. Not performing auto-logout to avoid session recovery race conditions. Route guards will handle redirection if needed.");
     }
@@ -209,7 +245,7 @@ authenticatedAxiosInstance.interceptors.response.use(
     if (
       !isPublicDomainRouting &&
       error.response &&
-      error.response.status === 403
+      status === 403
     ) {
       // Handle 403 errors silently
     }

@@ -564,6 +564,32 @@ export const SlideMaterial = ({
                 }
             }
 
+            // Guard Yoopta block `value` array — this becomes the `children` of
+            // the block's internal Slate editor.  If it is empty or missing,
+            // every Slate operation (Editor.start, Editor.point, …) throws
+            // "Cannot get the start point … because it has no start text node."
+            // That error fires inside Yoopta's own selection-sync useEffect,
+            // which means our code never sees it — it just explodes on the next
+            // user click.  Inject a single empty paragraph so Slate always has
+            // a valid, non-empty document root.
+            if (newNode.value !== undefined && Array.isArray(newNode.value)) {
+                if (newNode.value.length === 0) {
+                    newNode.value = [{ type: 'paragraph', children: [{ text: '' }] }];
+                } else {
+                    newNode.value = newNode.value.map((slateEl: any) => {
+                        if (!slateEl) return { type: 'paragraph', children: [{ text: '' }] };
+                        if (
+                            !slateEl.children ||
+                            !Array.isArray(slateEl.children) ||
+                            slateEl.children.length === 0
+                        ) {
+                            return { ...slateEl, children: [{ text: '' }] };
+                        }
+                        return slateEl;
+                    });
+                }
+            }
+
             if (newNode.children && Array.isArray(newNode.children)) {
                 newNode.children = newNode.children.map(processNode);
             }

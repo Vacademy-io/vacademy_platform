@@ -1,5 +1,4 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
 import { useEffect, useState } from 'react';
 import { TabsContent } from '@radix-ui/react-tabs';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -7,7 +6,7 @@ import { StudentListTab } from './StudentListTab';
 import testAccessSchema from '../-utils/add-participants-schema';
 import { z } from 'zod';
 import { UseFormReturn } from 'react-hook-form';
-import { CheckCircle } from '@phosphor-icons/react';
+import { UsersThree, User, Stack } from '@phosphor-icons/react';
 import { Route } from '..';
 import {
     Select,
@@ -16,7 +15,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { convertCapitalToTitleCase } from '@/lib/utils';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { cn, convertCapitalToTitleCase } from '@/lib/utils';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -67,60 +67,62 @@ export function AddingParticipantsTab({
     }, [selectedTab]);
 
     return (
-        <>
-            <Tabs value={selectedTab} onValueChange={handleChange}>
-                <TabsList className="mt-4 flex h-auto w-fit flex-wrap justify-start border border-neutral-500 !bg-transparent p-0">
-                    <TabsTrigger
-                        value="Batch"
-                        className={`flex gap-1.5 rounded-l-lg rounded-r-none p-2 pr-4 ${
-                            selectedTab === 'Batch'
-                                ? '!bg-primary-100 !text-neutral-500'
-                                : 'bg-transparent px-4'
-                        }`}
-                    >
-                        {selectedTab === 'Batch' && (
-                            <CheckCircle size={18} className="text-teal-800 dark:text-teal-400" />
-                        )}
-                        <span className={`${selectedTab === 'Batch' ? 'text-neutral-600' : ''}`}>
-                            Select Batch
-                        </span>
-                    </TabsTrigger>
-                    <Separator className="!h-9 bg-neutral-600" orientation="vertical" />
-                    <TabsTrigger
-                        value="Individually"
-                        className={`flex gap-1.5 rounded-l-none rounded-r-lg p-2 ${
-                            selectedTab === 'Individually'
-                                ? '!bg-primary-100 pr-4'
-                                : 'bg-transparent px-4'
-                        }`}
-                    >
-                        {selectedTab === 'Individually' && (
-                            <CheckCircle size={18} className="text-teal-800 dark:text-teal-400" />
-                        )}
-                        <span
-                            className={`${
-                                selectedTab === 'Individually' ? 'text-neutral-600' : ''
-                            }`}
+        <Card className="border-neutral-200/80 shadow-sm">
+            <CardHeader className="flex flex-row items-start gap-3 space-y-0 pb-4">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                    <UsersThree size={18} weight="bold" />
+                </div>
+                <div>
+                    <CardTitle className="text-subtitle font-semibold">
+                        Participant Selection
+                    </CardTitle>
+                    <CardDescription>
+                        Pick entire batches or hand-select individual learners.
+                    </CardDescription>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <Tabs value={selectedTab} onValueChange={handleChange}>
+                    <TabsList className="inline-flex h-auto w-auto items-center gap-1 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
+                        <TabsTrigger
+                            value="Batch"
+                            className={cn(
+                                'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                                'data-[state=active]:bg-white data-[state=active]:text-primary-600 data-[state=active]:shadow-sm',
+                                'data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:text-neutral-700'
+                            )}
                         >
+                            <Stack size={16} weight="bold" />
+                            Select Batch
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="Individually"
+                            className={cn(
+                                'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                                'data-[state=active]:bg-white data-[state=active]:text-primary-600 data-[state=active]:shadow-sm',
+                                'data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:text-neutral-700'
+                            )}
+                        >
+                            <User size={16} weight="bold" />
                             Select Individually
-                        </span>
-                    </TabsTrigger>
-                </TabsList>
-                <TabsContent value="Batch" className="mt-6 flex justify-between">
-                    <Step3BatchList
-                        batchData={batches}
-                        form={form}
-                        totalBatches={totalBatches}
-                        selectedSection={selectedSection}
-                        setSelectedSection={setSelectedSection}
-                        sectionsInfo={sectionsInfo}
-                    />
-                </TabsContent>
-                <TabsContent value="Individually">
-                    <StudentListTab form={form} />
-                </TabsContent>
-            </Tabs>
-        </>
+                        </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="Batch" className="mt-6">
+                        <Step3BatchList
+                            batchData={batches}
+                            form={form}
+                            totalBatches={totalBatches}
+                            selectedSection={selectedSection}
+                            setSelectedSection={setSelectedSection}
+                            sectionsInfo={sectionsInfo}
+                        />
+                    </TabsContent>
+                    <TabsContent value="Individually" className="mt-6">
+                        <StudentListTab form={form} />
+                    </TabsContent>
+                </Tabs>
+            </CardContent>
+        </Card>
     );
 }
 
@@ -153,10 +155,8 @@ const Step3BatchList = ({
         assessmentId === 'defaultId' ? {} : transformedBatches
     );
 
-    // Watch for changes in form state
     watch('select_batch.batch_details');
 
-    // Handle parent checkbox toggle
     const handleParentToggle = (parentId: string, isChecked: boolean) => {
         setCheckedState((prev) => ({
             ...prev,
@@ -164,7 +164,6 @@ const Step3BatchList = ({
         }));
     };
 
-    // Handle child checkbox toggle
     const handleChildToggle = (parentId: string, childId: string, isChecked: boolean) => {
         setCheckedState((prev) => {
             const currentChildren = prev[parentId] || [];
@@ -177,7 +176,6 @@ const Step3BatchList = ({
         });
     };
 
-    // Check if all children are selected
     const isAllChildrenSelected = (parentId: string) => {
         const currentChildren = totalBatches[parentId]?.map((item) => item.id) || [];
         return (
@@ -186,7 +184,10 @@ const Step3BatchList = ({
         );
     };
 
-    // Ensure form value updates immediately
+    const getSelectedCount = (parentId: string) => {
+        return checkedState[parentId]?.length || 0;
+    };
+
     useEffect(() => {
         setValue('select_batch.batch_details', checkedState);
     }, [checkedState, setValue, selectedSection]);
@@ -196,7 +197,7 @@ const Step3BatchList = ({
             <div className="flex items-center gap-2">
                 <span>{getTerminology(ContentTerms.Session, SystemTerms.Session)}</span>
                 <Select value={selectedSection} onValueChange={setSelectedSection}>
-                    <SelectTrigger className="w-[180px] text-[1rem]">
+                    <SelectTrigger className="h-9 w-[200px] rounded-lg border-neutral-200 bg-white text-sm font-medium shadow-sm">
                         <SelectValue placeholder="Select Section" />
                     </SelectTrigger>
                     <SelectContent>
@@ -208,48 +209,82 @@ const Step3BatchList = ({
                     </SelectContent>
                 </Select>
             </div>
-            <div className="flex w-full flex-wrap justify-between gap-4">
-                {Object.entries(totalBatches).map(([batchName, packages]) => (
-                    <div key={batchName}>
-                        {/* Parent Checkbox */}
-                        <label>
-                            <Checkbox
-                                checked={isAllChildrenSelected(batchName)}
-                                onCheckedChange={(isChecked) =>
-                                    handleParentToggle(batchName, !!isChecked)
-                                }
-                                className={`size-4 rounded-sm border-2 shadow-none ${
-                                    isAllChildrenSelected(batchName)
-                                        ? 'border-none bg-primary-500 text-white'
-                                        : ''
-                                }`}
-                            />
-                            <span className="ml-2 font-thin">{batchName}</span>
-                        </label>
-
-                        {/* Child Checkboxes */}
-                        <ul className="ml-4 mt-3 flex flex-col gap-3">
-                            {packages.map((pkg) => (
-                                <li key={pkg.id}>
-                                    <label>
-                                        <Checkbox
-                                            checked={checkedState[batchName]?.includes(pkg.id)}
-                                            onCheckedChange={(isChecked) =>
-                                                handleChildToggle(batchName, pkg.id, !!isChecked)
-                                            }
-                                            className={`size-4 rounded-sm border-2 shadow-none ${
-                                                checkedState[batchName]?.includes(pkg.id)
-                                                    ? 'border-none bg-primary-500 text-white'
-                                                    : ''
-                                            }`}
-                                        />
-                                        <span className="ml-2 font-thin">{pkg.name}</span>
-                                    </label>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                ))}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(totalBatches).map(([batchName, packages]) => {
+                    const selectedCount = getSelectedCount(batchName);
+                    const totalCount = packages.length;
+                    const allSelected = isAllChildrenSelected(batchName);
+                    return (
+                        <div
+                            key={batchName}
+                            className={cn(
+                                'flex flex-col gap-3 rounded-xl border p-4 transition-all',
+                                allSelected
+                                    ? 'border-primary-400 bg-primary-50/40 shadow-sm ring-1 ring-primary-200'
+                                    : selectedCount > 0
+                                      ? 'border-primary-200 bg-white shadow-sm'
+                                      : 'border-neutral-200 bg-white hover:border-primary-200 hover:shadow-sm'
+                            )}
+                        >
+                            <label className="flex cursor-pointer items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        checked={allSelected}
+                                        onCheckedChange={(isChecked) =>
+                                            handleParentToggle(batchName, !!isChecked)
+                                        }
+                                        className={cn(
+                                            'size-4 rounded-sm border-2 shadow-none',
+                                            allSelected &&
+                                                'border-none bg-primary-500 text-white'
+                                        )}
+                                    />
+                                    <span className="text-sm font-semibold text-neutral-800">
+                                        {batchName}
+                                    </span>
+                                </div>
+                                {selectedCount > 0 && (
+                                    <span className="rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-semibold text-primary-600">
+                                        {selectedCount}/{totalCount}
+                                    </span>
+                                )}
+                            </label>
+                            {packages.length > 0 && (
+                                <div className="flex flex-col gap-2 border-t border-neutral-100 pt-3">
+                                    {packages.map((pkg) => {
+                                        const checked =
+                                            checkedState[batchName]?.includes(pkg.id) ?? false;
+                                        return (
+                                            <label
+                                                key={pkg.id}
+                                                className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-neutral-50"
+                                            >
+                                                <Checkbox
+                                                    checked={checked}
+                                                    onCheckedChange={(isChecked) =>
+                                                        handleChildToggle(
+                                                            batchName,
+                                                            pkg.id,
+                                                            !!isChecked
+                                                        )
+                                                    }
+                                                    className={cn(
+                                                        'size-4 rounded-sm border-2 shadow-none',
+                                                        checked &&
+                                                            'border-none bg-primary-500 text-white'
+                                                    )}
+                                                />
+                                                <span className="text-sm text-neutral-600">
+                                                    {pkg.name}
+                                                </span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

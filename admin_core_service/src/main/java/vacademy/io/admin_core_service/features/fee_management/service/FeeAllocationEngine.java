@@ -203,9 +203,17 @@ public class FeeAllocationEngine {
 
     private BigDecimal computeAmountDue(StudentFeePayment bill) {
         BigDecimal expected = bill.getAmountExpected() != null ? bill.getAmountExpected() : BigDecimal.ZERO;
-        BigDecimal discount = bill.getDiscountAmount() != null ? bill.getDiscountAmount() : BigDecimal.ZERO;
         BigDecimal paid = bill.getAmountPaid() != null ? bill.getAmountPaid() : BigDecimal.ZERO;
-        return expected.subtract(discount).subtract(paid);
+        BigDecimal adjustment = BigDecimal.ZERO;
+        if ("APPROVED".equals(bill.getAdjustmentStatus())) {
+            BigDecimal amt = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+            if ("PENALTY".equals(bill.getAdjustmentType())) {
+                adjustment = amt;
+            } else if ("CONCESSION".equals(bill.getAdjustmentType())) {
+                adjustment = amt.negate();
+            }
+        }
+        return expected.add(adjustment).subtract(paid);
     }
 
     private String buildRemark(AllocationScope scope, boolean hasPriorityConfig) {

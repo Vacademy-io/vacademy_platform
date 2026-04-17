@@ -1,5 +1,7 @@
 import { MyButton } from '@/components/design-system/button';
 import { Separator } from '@/components/ui/separator';
+import { Card, CardContent } from '@/components/ui/card';
+import { Info, CalendarRange, Settings2, Eye, ArrowLeftRight } from 'lucide-react';
 import { StepContentProps } from '@/types/assessments/step-content-props';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
@@ -41,6 +43,35 @@ export function convertDateFormat(dateStr: string) {
     // Format it properly for datetime-local input
     return date.toISOString().slice(0, 16);
 }
+
+const SectionCard = ({
+    icon: Icon,
+    title,
+    description,
+    children,
+}: {
+    icon: React.ComponentType<{ className?: string }>;
+    title: string;
+    description?: string;
+    children: React.ReactNode;
+}) => (
+    <Card className="border-slate-200 shadow-sm">
+        <CardContent className="p-5 sm:p-6">
+            <div className="mb-5 flex items-start gap-3 border-b border-slate-100 pb-4">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                    <Icon className="h-4 w-4" />
+                </div>
+                <div className="flex flex-col">
+                    <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+                    {description && (
+                        <p className="text-xs text-slate-500">{description}</p>
+                    )}
+                </div>
+            </div>
+            <div className="flex flex-col gap-5">{children}</div>
+        </CardContent>
+    </Card>
+);
 
 // Helper component for navigation header
 const NavigationHeader = ({ examType, isUpdate = false }: { examType: string; isUpdate?: boolean }) => {
@@ -710,14 +741,21 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                     </MyButton>
                 </div>
                 <Separator className="my-4" />
-                <div className="flex flex-col gap-6">
-                    <div className="flex w-full items-start justify-start gap-4">
-                        <div className="" id={'assessment-details'}>
+                <div className="flex flex-col gap-5">
+                    <SectionCard
+                        icon={Info}
+                        title={examType === 'SURVEY' ? 'Survey Information' : 'Basic Information'}
+                        description="Name, subject, and instructions shown to participants."
+                    >
+                        <div
+                            className="flex flex-wrap items-start gap-4"
+                            id={'assessment-details'}
+                        >
                             <FormField
                                 control={control}
                                 name="testCreation.assessmentName"
                                 render={({ field: { ...field } }) => (
-                                    <FormItem>
+                                    <FormItem className="w-full sm:w-80">
                                         <FormControl>
                                             <MyInput
                                                 inputType="text"
@@ -731,137 +769,168 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                 }
                                                 required={true}
                                                 size="large"
-                                                label={examType === 'SURVEY' ? 'Survey Name' : 'Assessment Name'}
+                                                label={
+                                                    examType === 'SURVEY'
+                                                        ? 'Survey Name'
+                                                        : 'Assessment Name'
+                                                }
                                                 {...field}
+                                                className="!w-full"
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                            <div className="w-full sm:w-72">
+                                <SelectField
+                                    label={getTerminology(
+                                        ContentTerms.Subjects,
+                                        SystemTerms.Subjects
+                                    )}
+                                    name="testCreation.subject"
+                                    labelStyle="font-thin"
+                                    options={SubjectFilterData.map((option, index) => ({
+                                        value: option.name,
+                                        label: convertCapitalToTitleCase(option.name),
+                                        _id: index,
+                                    }))}
+                                    control={form.control}
+                                    className="!w-full font-thin"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-2" id="assessment-instructions">
+                            <label className="text-sm font-medium text-slate-700">
+                                {examType === 'SURVEY'
+                                    ? 'Survey Instructions'
+                                    : 'Assessment Instructions'}
+                            </label>
+                            <FormField
+                                control={control}
+                                name="testCreation.assessmentInstructions"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormControl>
+                                            <RichTextEditor
+                                                onChange={field.onChange}
+                                                onBlur={field.onBlur}
+                                                value={field.value}
+                                                placeholder={
+                                                    examType === 'SURVEY'
+                                                        ? 'Write the survey instructions'
+                                                        : 'Write the assessment instructions'
+                                                }
+                                                minHeight={160}
                                             />
                                         </FormControl>
                                     </FormItem>
                                 )}
                             />
                         </div>
+                    </SectionCard>
 
-                        <SelectField
-                            label={getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
-                            name="testCreation.subject"
-                            labelStyle="font-thin"
-                            options={SubjectFilterData.map((option, index) => ({
-                                value: option.name,
-                                label: convertCapitalToTitleCase(option.name),
-                                _id: index,
-                            }))}
-                            control={form.control}
-                            className="mt-[8px] w-56 font-thin"
-                        />
-                    </div>
-                    <div className="flex flex-col gap-6" id="assessment-instructions">
-                        <h1 className="-mb-5 font-thin">{examType === 'SURVEY' ? 'Survey Instructions' : 'Assessment Instructions'}</h1>
-                        <FormField
-                            control={control}
-                            name="testCreation.assessmentInstructions"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormControl>
-                                        <RichTextEditor
-                                            onChange={field.onChange}
-                                            onBlur={field.onBlur}
-                                            value={field.value}
-                                            placeholder={examType === 'SURVEY' ? 'Write the survey instructions' : 'Write the assessment instructions'}
-                                            minHeight={160}
-                                        />
-                                    </FormControl>
-                                </FormItem>
-                            )}
-                        />
-                    </div>
-
-                    {getStepKey({
+                    {(getStepKey({
                         assessmentDetails,
                         currentStep,
                         key: 'boundation_start_date',
-                    }) &&
+                    }) ||
                         getStepKey({
                             assessmentDetails,
                             currentStep,
                             key: 'boundation_end_date',
-                        }) && <h1>Live Date Range</h1>}
-                    <div className="-mt-2 flex items-start gap-4" id="date-range">
-                        {getStepKey({
-                            assessmentDetails,
-                            currentStep,
-                            key: 'boundation_start_date',
-                        }) && (
-                            <FormField
-                                control={control}
-                                name="testCreation.liveDateRange.startDate"
-                                render={({ field: { ...field } }) => (
-                                    <FormItem>
-                                        <FormControl>
-                                            <MyInput
-                                                inputType="datetime-local"
-                                                input={field.value}
-                                                onChangeFunction={field.onChange}
-                                                error={
-                                                    form.formState.errors.testCreation
-                                                        ?.liveDateRange?.startDate?.message
-                                                }
-                                                required={
-                                                    getStepKey({
-                                                        assessmentDetails,
-                                                        currentStep,
-                                                        key: 'boundation_start_date',
-                                                    }) === 'REQUIRED'
-                                                }
-                                                size="large"
-                                                label="Start Date & Time"
-                                                labelStyle="font-thin"
-                                                {...field}
-                                                className="w-full"
-                                            />
-                                        </FormControl>
-                                    </FormItem>
+                        })) && (
+                        <SectionCard
+                            icon={CalendarRange}
+                            title="Live Date Range"
+                            description="When participants can start and must finish the assessment."
+                        >
+                            <div
+                                className="flex flex-wrap items-start gap-4"
+                                id="date-range"
+                            >
+                                {getStepKey({
+                                    assessmentDetails,
+                                    currentStep,
+                                    key: 'boundation_start_date',
+                                }) && (
+                                    <FormField
+                                        control={control}
+                                        name="testCreation.liveDateRange.startDate"
+                                        render={({ field: { ...field } }) => (
+                                            <FormItem className="w-full sm:w-72">
+                                                <FormControl>
+                                                    <MyInput
+                                                        inputType="datetime-local"
+                                                        input={field.value}
+                                                        onChangeFunction={field.onChange}
+                                                        error={
+                                                            form.formState.errors.testCreation
+                                                                ?.liveDateRange?.startDate?.message
+                                                        }
+                                                        required={
+                                                            getStepKey({
+                                                                assessmentDetails,
+                                                                currentStep,
+                                                                key: 'boundation_start_date',
+                                                            }) === 'REQUIRED'
+                                                        }
+                                                        size="large"
+                                                        label="Start Date & Time"
+                                                        labelStyle="font-thin"
+                                                        {...field}
+                                                        className="!w-full"
+                                                    />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
                                 )}
-                            />
-                        )}
-                        {getStepKey({
-                            assessmentDetails,
-                            currentStep,
-                            key: 'boundation_end_date',
-                        }) && (
-                            <FormField
-                                control={control}
-                                name="testCreation.liveDateRange.endDate"
-                                render={({ field: { ...field } }) => (
-                                    <FormItem>
-                                        <FormControl>
-                                            <MyInput
-                                                inputType="datetime-local"
-                                                input={field.value}
-                                                onChangeFunction={field.onChange}
-                                                error={
-                                                    form.formState.errors.testCreation
-                                                        ?.liveDateRange?.endDate?.message
-                                                }
-                                                required={
-                                                    getStepKey({
-                                                        assessmentDetails,
-                                                        currentStep,
-                                                        key: 'boundation_end_date',
-                                                    }) === 'REQUIRED'
-                                                }
-                                                size="large"
-                                                label="End Date & Time"
-                                                labelStyle="font-thin"
-                                                {...field}
-                                                className="w-full"
-                                            />
-                                        </FormControl>
-                                    </FormItem>
+                                {getStepKey({
+                                    assessmentDetails,
+                                    currentStep,
+                                    key: 'boundation_end_date',
+                                }) && (
+                                    <FormField
+                                        control={control}
+                                        name="testCreation.liveDateRange.endDate"
+                                        render={({ field: { ...field } }) => (
+                                            <FormItem className="w-full sm:w-72">
+                                                <FormControl>
+                                                    <MyInput
+                                                        inputType="datetime-local"
+                                                        input={field.value}
+                                                        onChangeFunction={field.onChange}
+                                                        error={
+                                                            form.formState.errors.testCreation
+                                                                ?.liveDateRange?.endDate?.message
+                                                        }
+                                                        required={
+                                                            getStepKey({
+                                                                assessmentDetails,
+                                                                currentStep,
+                                                                key: 'boundation_end_date',
+                                                            }) === 'REQUIRED'
+                                                        }
+                                                        size="large"
+                                                        label="End Date & Time"
+                                                        labelStyle="font-thin"
+                                                        {...field}
+                                                        className="!w-full"
+                                                    />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
                                 )}
-                            />
-                        )}
-                    </div>
-                    <Separator />
-                    <h1>Attempt Settings</h1>
+                            </div>
+                        </SectionCard>
+                    )}
+
+                    <SectionCard
+                        icon={Settings2}
+                        title="Attempt Settings"
+                        description="Control how participants take this assessment."
+                    >
                     {(examType === 'EXAM' || examType === 'SURVEY') && (
                         <FormField
                             control={control}
@@ -977,19 +1046,32 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                 control={form.control}
                                 name="assessmentPreview.checked"
                                 render={({ field }) => (
-                                    <FormItem className="flex w-1/2 items-center justify-between">
-                                        <FormLabel>
-                                            {examType === 'SURVEY' ? 'Allow Survey Preview' : 'Allow Assessment Preview'}
-                                            {getStepKey({
-                                                assessmentDetails,
-                                                currentStep,
-                                                key: 'assessment_preview',
-                                            }) === 'REQUIRED' && (
-                                                <span className="text-subtitle text-danger-600">
-                                                    *
+                                    <FormItem className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-primary-200 hover:bg-primary-50/20 space-y-0">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                                                <Eye className="h-4 w-4" />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <FormLabel className="text-sm font-semibold text-slate-900">
+                                                    {examType === 'SURVEY'
+                                                        ? 'Allow Survey Preview'
+                                                        : 'Allow Assessment Preview'}
+                                                    {getStepKey({
+                                                        assessmentDetails,
+                                                        currentStep,
+                                                        key: 'assessment_preview',
+                                                    }) === 'REQUIRED' && (
+                                                        <span className="ml-0.5 text-danger-600">
+                                                            *
+                                                        </span>
+                                                    )}
+                                                </FormLabel>
+                                                <span className="text-xs text-slate-500">
+                                                    Let participants preview the assessment before
+                                                    starting.
                                                 </span>
-                                            )}
-                                        </FormLabel>
+                                            </div>
+                                        </div>
                                         <FormControl>
                                             <Switch
                                                 checked={field.value}
@@ -1024,24 +1106,35 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                 control={form.control}
                                 name="switchSections"
                                 render={({ field }) => (
-                                    <FormItem className="flex w-1/2 items-center justify-between">
-                                        <FormLabel>
-                                            Allow{' '}
-                                            {getTerminology(
-                                                RoleTerms.Learner,
-                                                SystemTerms.Learner
-                                            ).toLocaleLowerCase()}
-                                            s to switch between sections
-                                            {getStepKey({
-                                                assessmentDetails,
-                                                currentStep,
-                                                key: 'can_switch_section',
-                                            }) === 'REQUIRED' && (
-                                                <span className="text-subtitle text-danger-600">
-                                                    *
+                                    <FormItem className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-primary-200 hover:bg-primary-50/20 space-y-0">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                                                <ArrowLeftRight className="h-4 w-4" />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <FormLabel className="text-sm font-semibold text-slate-900">
+                                                    Allow{' '}
+                                                    {getTerminology(
+                                                        RoleTerms.Learner,
+                                                        SystemTerms.Learner
+                                                    ).toLocaleLowerCase()}
+                                                    s to switch between sections
+                                                    {getStepKey({
+                                                        assessmentDetails,
+                                                        currentStep,
+                                                        key: 'can_switch_section',
+                                                    }) === 'REQUIRED' && (
+                                                        <span className="ml-0.5 text-danger-600">
+                                                            *
+                                                        </span>
+                                                    )}
+                                                </FormLabel>
+                                                <span className="text-xs text-slate-500">
+                                                    Participants can jump back and forth between
+                                                    sections.
                                                 </span>
-                                            )}
-                                        </FormLabel>
+                                            </div>
+                                        </div>
                                         <FormControl>
                                             <Switch
                                                 checked={field.value}
@@ -1118,6 +1211,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                             />
                         )} */}
                     </div>
+                    </SectionCard>
                 </div>
             </form>
         </FormProvider>

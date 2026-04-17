@@ -19,17 +19,6 @@ export function createAssignmentSlidePayload(
         generateUniqueAssignmentSlideTitle(allSlides) ||
         'Untitled Assignment';
 
-    const date = new Date();
-    const isoDate = date.toISOString();
-
-    console.log('[Assignment Payload] Creating assignment slide payload:', {
-        title,
-        live_date: isoDate,
-        end_date: isoDate,
-        dateType: typeof isoDate,
-        isValidISO: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(isoDate),
-    });
-
     const slideStatus = getSlideStatusForUser();
 
     return {
@@ -56,8 +45,8 @@ export function createAssignmentSlidePayload(
                 type: 'TEXT',
                 content: '',
             },
-            live_date: isoDate,
-            end_date: isoDate,
+            live_date: '',
+            end_date: '',
             re_attempt_count: 0,
             comma_separated_media_ids: '',
             questions: [],

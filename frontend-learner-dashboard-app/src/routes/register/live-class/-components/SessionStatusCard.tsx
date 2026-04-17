@@ -12,6 +12,13 @@ import {
   formatSessionTimeInUserTimezone,
 } from "@/utils/timezone";
 import { format } from "date-fns";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 interface SessionStatusCardProps {
   sessionDetails: SessionDetailsResponse;
@@ -31,12 +38,11 @@ export default function SessionStatusCard({
   const { mutateAsync: markAttendance } = useMarkAttendance();
   const hasNavigated = useRef(false);
 
-  // Helper function to get timezone-aware session times
   const getSessionTimes = useCallback(() => {
     const sessionTimezone =
       "timezone" in sessionDetails
         ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
-          .timezone
+            .timezone
         : undefined;
 
     if (sessionTimezone) {
@@ -45,14 +51,12 @@ export default function SessionStatusCard({
         sessionDetails.scheduleStartTime,
         sessionTimezone
       );
-
       const waitingRoomStart = new Date(sessionDate);
       waitingRoomStart.setMinutes(
         waitingRoomStart.getMinutes() - (sessionDetails.waitingRoomTime ?? 0)
       );
       return { sessionDate, waitingRoomStart };
     } else {
-      // Fallback to original logic
       const sessionDate = new Date(
         `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
       );
@@ -66,11 +70,9 @@ export default function SessionStatusCard({
 
   useEffect(() => {
     setCurrentTime(new Date());
-
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 10000);
-
     return () => clearInterval(timer);
   }, []);
 
@@ -78,14 +80,13 @@ export default function SessionStatusCard({
     if (sessionDetails && registrationResponse) {
       const now = currentTime;
       const { sessionDate, waitingRoomStart } = getSessionTimes();
-
       const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
       const isInMainSession = now >= sessionDate;
 
       const handleSessionNavigation = async () => {
         if (hasNavigated.current) return;
-
-        const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
+        const streamingType =
+          sessionDetails.sessionStreamingServiceType?.toLowerCase();
         if (isInWaitingRoom) {
           hasNavigated.current = true;
           await navigate({
@@ -110,21 +111,26 @@ export default function SessionStatusCard({
               details: "Guest joined live class from waiting room",
             });
           } catch (err) {
-            console.error("Attendance marking failed, but proceeding to embed:", err);
+            console.error(
+              "Attendance marking failed, but proceeding to embed:",
+              err
+            );
           }
           navigate({
             to: "/live-class-guest/embed",
-            search: {
-              sessionId: earliestScheduleId || "",
-            },
+            search: { sessionId: earliestScheduleId || "" },
           });
         } else if (
           isInMainSession &&
           sessionDetails?.defaultMeetLink &&
-          (streamingType === SessionStreamingServiceType.REDIRECT.toLowerCase() || !streamingType)
+          (streamingType ===
+            SessionStreamingServiceType.REDIRECT.toLowerCase() ||
+            !streamingType)
         ) {
           hasNavigated.current = true;
-          const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+          const joinLink =
+            sessionDetails.customMeetingLink ||
+            sessionDetails.defaultMeetLink;
           window.open(joinLink, "_blank", "noopener,noreferrer");
         }
       };
@@ -146,15 +152,13 @@ export default function SessionStatusCard({
     return dayjs(dateStr).format("hh:mm A");
   };
 
-  // Helper function to get session timezone
   const getSessionTimezone = useCallback(() => {
     return "timezone" in sessionDetails
       ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
-        .timezone
+          .timezone
       : undefined;
   }, [sessionDetails]);
 
-  // Helper function to format start time using existing timezone utility
   const formatStartTime = useCallback(() => {
     const sessionTimezone = getSessionTimezone();
     if (sessionTimezone) {
@@ -174,33 +178,26 @@ export default function SessionStatusCard({
     sessionDetails.scheduleStartTime,
   ]);
 
-  // Helper function to format waiting room time
   const formatWaitingRoomTime = useCallback(() => {
     const sessionTimezone = getSessionTimezone();
-
     if (sessionTimezone) {
-      // Convert session start time to user timezone first
       const sessionStartInUserTz = convertSessionTimeToUserTimezone(
         sessionDetails.meetingDate,
         sessionDetails.scheduleStartTime,
         sessionTimezone
       );
-
-      // Subtract waiting room time
       const waitingRoomStartTime = new Date(
         sessionStartInUserTz.getTime() -
-        sessionDetails.waitingRoomTime! * 60 * 1000
+          sessionDetails.waitingRoomTime! * 60 * 1000
       );
-
       return format(waitingRoomStartTime, "h:mm aa");
     } else {
-      // Fallback to original logic
       return formatDateTime(
         new Date(
           new Date(
             `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
           ).getTime() -
-          sessionDetails.waitingRoomTime! * 60 * 1000
+            sessionDetails.waitingRoomTime! * 60 * 1000
         ).toISOString()
       );
     }
@@ -211,9 +208,9 @@ export default function SessionStatusCard({
     sessionDetails.waitingRoomTime,
   ]);
 
-  // Helper functions for session actions
   const handleJoinLiveSession = async () => {
-    const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
+    const streamingType =
+      sessionDetails.sessionStreamingServiceType?.toLowerCase();
     if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
       await markAttendance({
         sessionId: sessionDetails.sessionId,
@@ -224,12 +221,11 @@ export default function SessionStatusCard({
       });
       navigate({
         to: "/live-class-guest/embed",
-        search: {
-          sessionId: earliestScheduleId || "",
-        },
+        search: { sessionId: earliestScheduleId || "" },
       });
     } else {
-      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      const joinLink =
+        sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
       window.open(joinLink, "_blank", "noopener,noreferrer");
     }
   };
@@ -244,17 +240,22 @@ export default function SessionStatusCard({
     });
   };
 
-  // Helper function to render session status
-  const renderSessionStatus = () => {
+  const now = currentTime;
+  const { sessionDate, waitingRoomStart } = getSessionTimes();
+  const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
+  const isInMainSession = now >= sessionDate;
+
+  const renderSessionAction = () => {
     if (isInMainSession) {
       return (
-        <div className="mt-3 sm:mt-4">
-          <div className="text-green-600 text-sm sm:text-base mb-2 font-medium">
-            {getTerminology(ContentTerms.Session, SystemTerms.Session)} is Live!
-          </div>
+        <div className="space-y-3">
+          <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            {getTerminology(ContentTerms.Session, SystemTerms.Session)} is Live
+          </Badge>
           <MyButton
             buttonType="primary"
-            className="w-full h-10 sm:h-12 text-sm sm:text-base"
+            className="w-full h-11 text-sm font-semibold rounded-lg"
             onClick={handleJoinLiveSession}
           >
             Join Live{" "}
@@ -264,13 +265,14 @@ export default function SessionStatusCard({
       );
     } else if (isInWaitingRoom) {
       return (
-        <div className="mt-3 sm:mt-4">
-          <div className="text-orange-600 text-sm sm:text-base mb-2 font-medium">
-            Waiting Room is Open
-          </div>
+        <div className="space-y-3">
+          <Badge className="bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-50">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            Waiting Room Open
+          </Badge>
           <MyButton
             buttonType="primary"
-            className="w-full h-10 sm:h-12 text-sm sm:text-base"
+            className="w-full h-11 text-sm font-semibold rounded-lg"
             onClick={handleEnterWaitingRoom}
           >
             Enter Waiting Room
@@ -279,15 +281,18 @@ export default function SessionStatusCard({
       );
     } else {
       return (
-        <div className="mt-3 sm:mt-4">
-          <div className="text-gray-500 text-sm sm:text-base mb-2 font-medium">
+        <div className="space-y-3">
+          <Badge
+            variant="outline"
+            className="text-gray-500 border-gray-200 bg-gray-50"
+          >
             {getTerminology(ContentTerms.Session, SystemTerms.Session)} hasn't
             started yet
-          </div>
+          </Badge>
           <MyButton
             buttonType="secondary"
-            className="w-full h-10 sm:h-12 text-sm sm:text-base"
-            disabled
+            className="w-full h-11 text-sm font-medium rounded-lg"
+            disable={true}
           >
             {getTerminology(ContentTerms.Session, SystemTerms.Session)} will
             start soon
@@ -297,42 +302,52 @@ export default function SessionStatusCard({
     }
   };
 
-  const now = currentTime;
-  const { sessionDate, waitingRoomStart } = getSessionTimes();
-
-  const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
-  const isInMainSession = now >= sessionDate;
-
   return (
-    <div className="flex flex-col gap-4 sm:gap-6 justify-center items-center p-4 sm:p-6 text-center">
-      <div className="flex flex-col gap-3 sm:gap-4">
-        <div className="w-12 h-12 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-          <span className="text-xl sm:text-2xl text-green-600">✓</span>
+    <Card className="w-full border-primary-100/60 shadow-lg">
+      <CardHeader className="pb-0 pt-6 px-6 items-center">
+        {/* Success icon */}
+        <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center mb-2 border border-green-100">
+          <svg
+            className="w-7 h-7 text-green-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
         </div>
-        <div className="font-bold text-lg sm:text-xl text-green-700">
+        <h3 className="text-lg font-bold text-green-700">
           Already Registered!
+        </h3>
+        <p className="text-sm text-gray-500 text-center">
+          You're registered for this session with:
+        </p>
+        <div className="bg-primary-50 border border-primary-100 rounded-lg px-4 py-2 mt-1">
+          <span className="text-sm font-medium text-primary-500 break-all">
+            {alreadyRegisteredEmail}
+          </span>
         </div>
-        <div className="text-sm sm:text-base text-gray-600">
-          You're already registered for this session with email:
-        </div>
-        <div className="font-semibold text-primary-600 bg-primary-50 px-3 py-2 sm:px-4 rounded-lg text-sm sm:text-base break-all">
-          {alreadyRegisteredEmail}
-        </div>
-      </div>
+      </CardHeader>
 
-      <div className="flex flex-col gap-3 sm:gap-4 w-full">
-        <div className="flex flex-col gap-2 text-sm sm:text-base">
-          <div className="flex flex-col sm:flex-row sm:justify-between gap-1 sm:gap-2">
-            <span className="text-gray-600 font-medium">Start Time:</span>
+      <CardContent className="pt-4 px-6 pb-6">
+        <Separator className="mb-4" />
+
+        {/* Time Details */}
+        <div className="space-y-2.5 mb-5">
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-gray-500">Start Time</span>
             <span className="font-semibold text-gray-800">
               {formatStartTime()}
             </span>
           </div>
           {sessionDetails.waitingRoomTime !== 0 && (
-            <div className="flex flex-col sm:flex-row sm:justify-between gap-1 sm:gap-2">
-              <span className="text-gray-600 font-medium">
-                Waiting Room Opens:
-              </span>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-500">Waiting Room Opens</span>
               <span className="font-semibold text-gray-800">
                 {formatWaitingRoomTime()}
               </span>
@@ -340,8 +355,11 @@ export default function SessionStatusCard({
           )}
         </div>
 
-        {renderSessionStatus()}
-      </div>
-    </div>
+        {/* Action */}
+        <div className="flex flex-col items-center gap-3">
+          {renderSessionAction()}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

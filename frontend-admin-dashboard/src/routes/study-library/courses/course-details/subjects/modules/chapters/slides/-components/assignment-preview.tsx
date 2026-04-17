@@ -8,6 +8,7 @@ import { FormControl, FormField, FormItem } from '@/components/ui/form';
 import { MyInput } from '@/components/design-system/input';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import useDialogStore from '@/routes/assessment/question-papers/-global-states/question-paper-dialogue-close';
 import {
     AlertDialog,
@@ -152,51 +153,75 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
 
                 {/* Live Date Range */}
                 <div>
-                    <h1 className="mb-3 font-semibold">Live Date Range</h1>
-                    <div className="flex items-center gap-6">
+                    <div className="mb-3 flex items-center gap-3">
+                        <h1 className="font-semibold">Live Date Range</h1>
                         <FormField
                             control={form.control}
-                            name="startDate"
-                            render={({ field: { ...field } }) => (
+                            name="hasDateRange"
+                            render={({ field }) => (
                                 <FormItem>
                                     <FormControl>
-                                        <MyInput
-                                            inputType="datetime-local"
-                                            input={field.value}
-                                            onChangeFunction={field.onChange}
-                                            required
-                                            size="large"
-                                            label="Start Date & Time"
-                                            labelStyle="font-normal"
-                                            {...field}
-                                            className="w-full"
-                                        />
-                                    </FormControl>
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="endDate"
-                            render={({ field: { ...field } }) => (
-                                <FormItem>
-                                    <FormControl>
-                                        <MyInput
-                                            inputType="datetime-local"
-                                            input={field.value}
-                                            onChangeFunction={field.onChange}
-                                            required
-                                            size="large"
-                                            label="End Date & Time"
-                                            labelStyle="font-normal"
-                                            {...field}
-                                            className="w-full"
+                                        <Switch
+                                            checked={field.value ?? false}
+                                            onCheckedChange={(checked) => {
+                                                field.onChange(checked);
+                                                if (!checked) {
+                                                    form.setValue('startDate', '');
+                                                    form.setValue('endDate', '');
+                                                }
+                                            }}
                                         />
                                     </FormControl>
                                 </FormItem>
                             )}
                         />
                     </div>
+                    {form.watch('hasDateRange') && (
+                        <div className="flex items-center gap-6">
+                            <FormField
+                                control={form.control}
+                                name="startDate"
+                                render={({ field: { ...field } }) => (
+                                    <FormItem>
+                                        <FormControl>
+                                            <MyInput
+                                                inputType="datetime-local"
+                                                input={field.value}
+                                                onChangeFunction={field.onChange}
+                                                required
+                                                size="large"
+                                                label="Start Date & Time"
+                                                labelStyle="font-normal"
+                                                {...field}
+                                                className="w-full"
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="endDate"
+                                render={({ field: { ...field } }) => (
+                                    <FormItem>
+                                        <FormControl>
+                                            <MyInput
+                                                inputType="datetime-local"
+                                                input={field.value}
+                                                onChangeFunction={field.onChange}
+                                                required
+                                                size="large"
+                                                label="End Date & Time"
+                                                labelStyle="font-normal"
+                                                {...field}
+                                                className="w-full"
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {/* Reattempt Count */}

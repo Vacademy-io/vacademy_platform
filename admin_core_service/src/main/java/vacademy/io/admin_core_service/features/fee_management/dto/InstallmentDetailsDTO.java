@@ -20,7 +20,9 @@ public class InstallmentDetailsDTO {
     private String feeTypeName;
     private Integer installmentNumber;
     private BigDecimal amountExpected;
-    private BigDecimal discountAmount;
+    private BigDecimal adjustmentAmount;
+    private String adjustmentType;
+    private String adjustmentStatus;
     private BigDecimal amountPaid;
     private BigDecimal dueAmount;
     private Date dueDate;

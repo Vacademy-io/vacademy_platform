@@ -1,9 +1,7 @@
 import { MyButton } from "@/components/design-system/button";
-import { Separator } from "@/components/ui/separator";
 import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
-import { RegistrationCompletedMobile, RegistrationCompletedWeb } from "@/svgs";
 import {
   InstituteBrandingComponent,
   type InstituteBranding,
@@ -17,6 +15,7 @@ import {
   storeAssessmentInfo,
 } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 import { Assessment, assessmentTypes } from "@/types/assessment";
+import { CheckCircle, Timer, ArrowRight, Sparkle } from "@phosphor-icons/react";
 
 interface TimeLeft {
   hours: number;
@@ -125,49 +124,100 @@ const AssessmentRegistrationCompleted = ({
       });
     }
   };
+  const isLive =
+    timeLeft.hours === 0 && timeLeft.minutes === 0 && timeLeft.seconds === 0;
+
   return (
-    <div className="flex flex-col w-screen h-screen items-center justify-center gap-2 p-10 bg-background">
-      <InstituteBrandingComponent
-        branding={branding}
-        size="large"
-        showName={false}
-      />
-      <h1 className="text-sm sm:text-lg my-1 text-center">{assessmentName}</h1>
-      <Separator className="mt-2" />
-      <div className="block sm:hidden">
-        <RegistrationCompletedMobile />
+    <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-b from-primary-50/40 via-background to-background px-4 py-8">
+      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-primary-100 bg-white/90 backdrop-blur-sm p-6 sm:p-8 shadow-xl">
+        {/* Decorative gradient blob */}
+        <div className="pointer-events-none absolute -right-20 -top-20 size-48 rounded-full bg-primary-100/60 blur-3xl" />
+        <div className="pointer-events-none absolute -left-16 -bottom-16 size-40 rounded-full bg-success-100/50 blur-3xl" />
+
+        <div className="relative flex flex-col items-center gap-5">
+          {/* Branding */}
+          <InstituteBrandingComponent
+            branding={branding}
+            size="large"
+            showName={false}
+          />
+
+          {/* Success icon with halo */}
+          <div className="relative -mt-6 flex items-center justify-center">
+            <div className="absolute inset-0 animate-ping rounded-full bg-success-200/60" />
+            <div className="relative flex size-20 items-center justify-center rounded-full bg-gradient-to-br from-success-500 to-success-400 shadow-lg shadow-success-200">
+              <CheckCircle size={44} weight="fill" className="text-white" />
+            </div>
+          </div>
+
+          {/* Title + assessment name */}
+          <div className="flex flex-col items-center gap-1.5 text-center">
+            <span className="inline-flex items-center gap-1 rounded-full bg-success-50 border border-success-200 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-success-700">
+              <Sparkle size={12} weight="fill" />
+              Registration Completed
+            </span>
+            <h1 className="text-xl sm:text-2xl font-semibold text-neutral-900">
+              You&apos;re all set!
+            </h1>
+            <p className="text-sm text-neutral-500 max-w-[26ch]">
+              {assessmentName}
+            </p>
+          </div>
+
+          {/* Countdown or live banner */}
+          <div className="w-full rounded-2xl border border-primary-100 bg-gradient-to-r from-primary-50 to-primary-50/30 px-4 py-4">
+            {isLive ? (
+              <div className="flex flex-col items-center gap-1.5">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-success-700">
+                  <span className="size-1.5 rounded-full bg-success-500 animate-pulse" />
+                  Live Now
+                </div>
+                <span className="text-sm font-medium text-neutral-700">
+                  Your assessment is ready to begin
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-primary-700">
+                  <Timer size={14} weight="bold" />
+                  Assessment goes live in
+                </div>
+                <span className="text-2xl sm:text-3xl font-bold tabular-nums text-primary-600">
+                  {String(timeLeft.hours).padStart(2, "0")}
+                  :
+                  {String(timeLeft.minutes).padStart(2, "0")}
+                  :
+                  {String(timeLeft.seconds).padStart(2, "0")}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* CTA */}
+          <MyButton
+            type="button"
+            buttonType="primary"
+            scale="large"
+            layoutVariant="default"
+            className="group w-full gap-2"
+            disable={!isLive}
+            onClick={handleNavigateAssessment}
+          >
+            Go To Assessment
+            <ArrowRight
+              size={16}
+              weight="bold"
+              className="transition-transform group-hover:translate-x-0.5"
+            />
+          </MyButton>
+
+          {!isLive && (
+            <p className="text-center text-xs text-neutral-400">
+              This button will unlock automatically when the assessment begins.
+            </p>
+          )}
+        </div>
       </div>
-      <div className="hidden sm:block">
-        <RegistrationCompletedWeb />
-      </div>
-      <h1 className="-mt-4 text-sm sm:text-lg">Registration Completed!</h1>
-      <div className="flex flex-col my-4 text-center">
-        <h1 className="text-primary-500 text-sm sm:text-lg">
-          Assessment goes live in
-        </h1>
-        {(timeLeft.hours > 0 ||
-          timeLeft.minutes > 0 ||
-          timeLeft.seconds > 0) && (
-          <span className="font-thin">
-            {timeLeft.hours} hrs : {timeLeft.minutes} min : {timeLeft.seconds}{" "}
-            sec
-          </span>
-        )}
-      </div>
-      <MyButton
-        type="button"
-        buttonType="primary"
-        scale="large"
-        layoutVariant="default"
-        disable={
-          timeLeft.hours !== 0 ||
-          timeLeft.minutes !== 0 ||
-          timeLeft.seconds !== 0
-        }
-        onClick={handleNavigateAssessment}
-      >
-        Go To Assessment
-      </MyButton>
     </div>
   );
 };

@@ -144,6 +144,17 @@ export const GET_USER_DETAILS_BY_EMAIL = `${BASE_URL}/auth-service/open/user-det
 export const REGISTER_USER = `${BASE_URL}/auth-service/learner/v1/register`;
 
 export const urlInstituteDetails = `${BASE_URL}/admin-core-service/public/institute/v1/details-non-batches`;
+// Lightweight public branding endpoint returning { institute_id, institute_name,
+// logo_file_id, institute_theme_code }. Used as a fallback when the domain
+// routing API (which normally populates InstituteDetails in Preferences)
+// returns 404 — e.g. when the app is served from a pages.dev subdomain.
+export const PUBLIC_INSTITUTE_BRANDING_URL = `${BASE_URL}/admin-core-service/public/institute/v1/branding`;
+// Domain routing resolver: maps a (domain, subdomain) tuple to an institute.
+// Called at app boot to populate InstituteDetails in Preferences. When this
+// returns 404 (for example on pages.dev preview URLs) the register flow
+// falls back to PUBLIC_INSTITUTE_BRANDING_URL with the assessment's
+// institute_id.
+export const DOMAIN_ROUTING_RESOLVE_URL = `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`;
 export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v2/search`;
 export const urlOpenLevels = `${BASE_URL}/admin-core-service/open/level/v1/get-levels`;
 export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/learner-packages/v1/search`;

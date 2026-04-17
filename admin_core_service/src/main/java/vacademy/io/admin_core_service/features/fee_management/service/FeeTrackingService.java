@@ -84,12 +84,22 @@ public class FeeTrackingService {
                                 .userPlanId(entity.getUserPlanId())
                                 .cpoId(entity.getCpoId())
                                 .amountExpected(entity.getAmountExpected())
-                                .discountAmount(entity.getDiscountAmount())
-                                .discountReason(entity.getDiscountReason())
+                                .adjustmentAmount(entity.getAdjustmentAmount())
+                                .adjustmentReason(entity.getAdjustmentReason())
+                                .adjustmentType(entity.getAdjustmentType())
+                                .adjustmentStatus(entity.getAdjustmentStatus())
                                 .amountPaid(entity.getAmountPaid())
                                 .dueDate(entity.getDueDate())
                                 .status(entity.getStatus())
                                 .build();
+        }
+
+        private BigDecimal computeAdjustmentEffect(StudentFeePayment bill) {
+                if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
+                BigDecimal amt = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+                if ("PENALTY".equals(bill.getAdjustmentType())) return amt;
+                if ("CONCESSION".equals(bill.getAdjustmentType())) return amt.negate();
+                return BigDecimal.ZERO;
         }
 
         private StudentFeeAllocationLedgerDTO mapToLedgerDTO(StudentFeeAllocationLedger entity) {
@@ -165,10 +175,9 @@ public class FeeTrackingService {
 
                     for (StudentFeePayment p : group) {
                         BigDecimal expected = p.getAmountExpected() != null ? p.getAmountExpected() : BigDecimal.ZERO;
-                        BigDecimal discount = p.getDiscountAmount() != null ? p.getDiscountAmount() : BigDecimal.ZERO;
                         BigDecimal paid = p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO;
-                        
-                        BigDecimal netExpected = expected.subtract(discount);
+
+                        BigDecimal netExpected = expected.add(computeAdjustmentEffect(p));
                         totalExpectedAmount = totalExpectedAmount.add(netExpected);
                         totalPaidAmount = totalPaidAmount.add(paid);
 
@@ -360,8 +369,8 @@ public class FeeTrackingService {
 
             return payments.stream().map(p -> {
                 BigDecimal expected = p.getAmountExpected() != null ? p.getAmountExpected() : BigDecimal.ZERO;
-                BigDecimal discount = p.getDiscountAmount() != null ? p.getDiscountAmount() : BigDecimal.ZERO;
                 BigDecimal paid = p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO;
+                BigDecimal adjustmentEffect = computeAdjustmentEffect(p);
                 String name = feeTypeNameMap.getOrDefault(p.getAsvId(), "N/A");
                 Integer num = installmentNumberMap.getOrDefault(p.getIId(), null);
 
@@ -369,9 +378,11 @@ public class FeeTrackingService {
                         .feeTypeName(name)
                         .installmentNumber(num)
                         .amountExpected(expected)
-                        .discountAmount(discount)
+                        .adjustmentAmount(p.getAdjustmentAmount())
+                        .adjustmentType(p.getAdjustmentType())
+                        .adjustmentStatus(p.getAdjustmentStatus())
                         .amountPaid(paid)
-                        .dueAmount(expected.subtract(discount).subtract(paid))
+                        .dueAmount(expected.add(adjustmentEffect).subtract(paid))
                         .dueDate(p.getDueDate())
                         .status(p.getStatus())
                         .build();
@@ -443,6 +454,31 @@ public class FeeTrackingService {
 
         @Autowired
         private InvoiceLineItemRepository invoiceLineItemRepository;
+
+        @Transactional(readOnly = true)
+        public List<StudentFeePaymentDTO> getPendingAdjustments(String instituteId) {
+                List<StudentFeePayment> pending = studentFeePaymentRepository
+                        .findByInstituteIdAndAdjustmentStatus(instituteId, "PENDING_FOR_APPROVAL");
+                if (pending.isEmpty()) return Collections.emptyList();
+
+                Map<String, FeeMeta> metaMap = buildFeeMetaMap(pending);
+
+                List<String> userIds = pending.stream()
+                        .map(StudentFeePayment::getUserId)
+                        .distinct()
+                        .collect(Collectors.toList());
+                Map<String, UserDTO> userMap = fetchUserMap(userIds);
+
+                return pending.stream()
+                        .map(entity -> {
+                                StudentFeePaymentDTO dto = mapToPaymentDTO(entity, metaMap.getOrDefault(entity.getId(), null));
+                                dto.setUserId(entity.getUserId());
+                                UserDTO user = userMap.get(entity.getUserId());
+                                dto.setStudentName(user != null ? user.getFullName() : entity.getUserId());
+                                return dto;
+                        })
+                        .collect(Collectors.toList());
+        }
 
         @Transactional(readOnly = true)
         public List<StudentFeePaymentDTO> getStudentDues(String userId, String instituteId) {
@@ -626,9 +662,8 @@ public class FeeTrackingService {
 
         private StudentFeePaymentDTO mapToPaymentDTO(StudentFeePayment entity, FeeMeta meta) {
                 BigDecimal expected = entity.getAmountExpected() != null ? entity.getAmountExpected() : BigDecimal.ZERO;
-                BigDecimal discount = entity.getDiscountAmount() != null ? entity.getDiscountAmount() : BigDecimal.ZERO;
                 BigDecimal paid = entity.getAmountPaid() != null ? entity.getAmountPaid() : BigDecimal.ZERO;
-                BigDecimal amountDue = expected.subtract(discount).subtract(paid);
+                BigDecimal amountDue = expected.add(computeAdjustmentEffect(entity)).subtract(paid);
 
                 Boolean isOverdue = false;
                 Long daysOverdue = null;
@@ -650,8 +685,10 @@ public class FeeTrackingService {
                                 .feeTypeCode(meta != null ? meta.feeTypeCode : null)
                                 .feeTypeDescription(meta != null ? meta.feeTypeDescription : null)
                                 .amountExpected(entity.getAmountExpected())
-                                .discountAmount(entity.getDiscountAmount())
-                                .discountReason(entity.getDiscountReason())
+                                .adjustmentAmount(entity.getAdjustmentAmount())
+                                .adjustmentReason(entity.getAdjustmentReason())
+                                .adjustmentType(entity.getAdjustmentType())
+                                .adjustmentStatus(entity.getAdjustmentStatus())
                                 .amountPaid(entity.getAmountPaid())
                                 .dueDate(entity.getDueDate())
                                 .status(entity.getStatus())
@@ -718,8 +755,8 @@ public class FeeTrackingService {
                 FeeMeta meta = metaMap.get(sfp.getId());
                 BigDecimal expected = sfp.getAmountExpected() != null ? sfp.getAmountExpected() : BigDecimal.ZERO;
                 BigDecimal paid = sfp.getAmountPaid() != null ? sfp.getAmountPaid() : BigDecimal.ZERO;
-                BigDecimal discount = sfp.getDiscountAmount() != null ? sfp.getDiscountAmount() : BigDecimal.ZERO;
-                BigDecimal balance = expected.subtract(paid).subtract(discount).max(BigDecimal.ZERO);
+                BigDecimal adjustmentEffect = computeAdjustmentEffect(sfp);
+                BigDecimal balance = expected.add(adjustmentEffect).subtract(paid).max(BigDecimal.ZERO);
                 lineDTOs.add(ReceiptDetailsDTO.ReceiptLineItemDTO.builder()
                         .feeTypeName(meta != null ? meta.feeTypeName() : null)
                         .cpoName(meta != null ? meta.cpoName() : null)

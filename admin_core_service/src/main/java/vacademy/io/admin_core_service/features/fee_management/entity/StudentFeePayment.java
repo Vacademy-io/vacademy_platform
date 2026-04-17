@@ -50,11 +50,17 @@ public class StudentFeePayment {
     @Column(name = "amount_expected", nullable = false)
     private BigDecimal amountExpected;
 
-    @Column(name = "discount_amount")
-    private BigDecimal discountAmount;
+    @Column(name = "adjustment_amount")
+    private BigDecimal adjustmentAmount;
 
-    @Column(name = "discount_reason")
-    private String discountReason;
+    @Column(name = "adjustment_reason")
+    private String adjustmentReason;
+
+    @Column(name = "adjustment_type")
+    private String adjustmentType; // CONCESSION or PENALTY
+
+    @Column(name = "adjustment_status")
+    private String adjustmentStatus; // PENDING_FOR_APPROVAL, APPROVED, REJECTED
 
     @Column(name = "amount_paid")
     private BigDecimal amountPaid = BigDecimal.ZERO;
@@ -97,8 +103,8 @@ public class StudentFeePayment {
         if (amountPaid == null) {
             amountPaid = BigDecimal.ZERO;
         }
-        if (discountAmount == null) {
-            discountAmount = BigDecimal.ZERO;
+        if (adjustmentAmount == null) {
+            adjustmentAmount = BigDecimal.ZERO;
         }
     }
 

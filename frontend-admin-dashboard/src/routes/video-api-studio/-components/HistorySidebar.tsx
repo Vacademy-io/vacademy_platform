@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
     Video,
@@ -24,6 +23,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface HistorySidebarProps {
     history: HistoryItem[];
@@ -33,9 +33,10 @@ interface HistorySidebarProps {
     onNewVideo: () => void;
     isCollapsed: boolean;
     onToggleCollapse: () => void;
-    onLoadMore?: () => void;
-    isLoadingMore?: boolean;
-    hasMore?: boolean;
+    currentPage?: number;
+    totalPages?: number;
+    onPageChange?: (page: number) => void;
+    isLoadingHistory?: boolean;
 }
 
 export function HistorySidebar({
@@ -46,34 +47,11 @@ export function HistorySidebar({
     onNewVideo,
     isCollapsed,
     onToggleCollapse,
-    onLoadMore,
-    isLoadingMore,
-    hasMore,
+    currentPage = 0,
+    totalPages = 1,
+    onPageChange,
+    isLoadingHistory,
 }: HistorySidebarProps) {
-    // Infinite scroll: use IntersectionObserver on a sentinel element
-    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-    const sentinelRef = useRef<HTMLDivElement | null>(null);
-    const onLoadMoreRef = useRef(onLoadMore);
-    onLoadMoreRef.current = onLoadMore;
-
-    useEffect(() => {
-        if (!hasMore || isLoadingMore || !onLoadMore) return;
-        const sentinel = sentinelRef.current;
-        const root = scrollContainerRef.current;
-        if (!sentinel || !root) return;
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0]?.isIntersecting) {
-                    onLoadMoreRef.current?.();
-                }
-            },
-            { root, threshold: 0.1 }
-        );
-        observer.observe(sentinel);
-        return () => observer.disconnect();
-    }, [hasMore, isLoadingMore, onLoadMore]);
-
     const getStatusIcon = (status: HistoryItem['status']) => {
         switch (status) {
             case 'pending':
@@ -173,9 +151,13 @@ export function HistorySidebar({
                 </Button>
             </div>
 
-            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+            <ScrollArea className="flex-1">
                 <div className="space-y-1 p-2">
-                    {history.length === 0 ? (
+                    {isLoadingHistory ? (
+                        <div className="flex items-center justify-center py-12">
+                            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : history.length === 0 ? (
                         <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
                             <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted/50">
                                 <Video className="size-5 text-muted-foreground/50" />
@@ -262,22 +244,37 @@ export function HistorySidebar({
                             </div>
                         ))
                     )}
-                    {/* Sentinel for IntersectionObserver infinite scroll */}
-                    {hasMore && history.length > 0 && (
-                        <div ref={sentinelRef} className="h-1" />
-                    )}
-                    {isLoadingMore && (
-                        <div className="flex items-center justify-center py-3">
-                            <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                        </div>
-                    )}
-                    {!hasMore && history.length > 0 && (
-                        <p className="py-2 text-center text-[10px] text-muted-foreground/50">
-                            End of history
-                        </p>
-                    )}
                 </div>
-            </div>
+            </ScrollArea>
+
+            {/* Pagination buttons */}
+            {onPageChange && totalPages > 1 && (
+                <div className="flex items-center justify-between border-t px-3 py-2">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1 px-2 text-xs"
+                        disabled={currentPage === 0 || isLoadingHistory}
+                        onClick={() => onPageChange(currentPage - 1)}
+                    >
+                        <ChevronLeft className="size-3.5" />
+                        Prev
+                    </Button>
+                    <span className="text-[10px] text-muted-foreground">
+                        {currentPage + 1} / {totalPages}
+                    </span>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1 px-2 text-xs"
+                        disabled={currentPage >= totalPages - 1 || isLoadingHistory}
+                        onClick={() => onPageChange(currentPage + 1)}
+                    >
+                        Next
+                        <ChevronRight className="size-3.5" />
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }

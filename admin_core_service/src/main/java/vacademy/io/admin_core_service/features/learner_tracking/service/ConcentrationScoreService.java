@@ -25,7 +25,7 @@ public class ConcentrationScoreService {
                 concentrationScoreDTO.getAnswerTimesInSeconds(),
                 (int) (activityDuration / 1000) // Convert milliseconds to seconds
         );
-        ConcentrationScore concentrationScore = new ConcentrationScore(concentrationScoreDTO.getId(), concentrationScoreValue, concentrationScoreDTO.getTabSwitchCount(), concentrationScoreDTO.getPauseCount(), concentrationScoreDTO.getAnswerTimesInSeconds(), activityLog);
+        ConcentrationScore concentrationScore = new ConcentrationScore(java.util.UUID.randomUUID().toString(), concentrationScoreValue, concentrationScoreDTO.getTabSwitchCount(), concentrationScoreDTO.getPauseCount(), concentrationScoreDTO.getAnswerTimesInSeconds(), activityLog);
         concentrationScoreRepository.save(concentrationScore);
     }
 }

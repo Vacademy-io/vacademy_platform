@@ -243,6 +243,9 @@ public class InvoiceService {
                 if (paymentData.containsKey("originalRequest")) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> originalRequest = (Map<String, Object>) paymentData.get("originalRequest");
+                    if (originalRequest.containsKey("order_id")) {
+                        return (String) originalRequest.get("order_id");
+                    }
                     if (originalRequest.containsKey("orderId")) {
                         return (String) originalRequest.get("orderId");
                     }
@@ -362,14 +365,15 @@ public class InvoiceService {
             // Calculate plan price first
             BigDecimal planPrice = BigDecimal.valueOf(paymentPlan.getActualPrice());
 
-            // Use payment amount from payment log
+            // For multi-package invoices, use the plan's actual_price (per-book price)
+            // instead of paymentLog.getPaymentAmount() (which may contain the total gateway charge)
             BigDecimal paymentAmount;
-            if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
+            if (paymentLogs.size() > 1) {
+                // Multi-package: each line item should show the individual book price
+                paymentAmount = planPrice;
+            } else if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
                 paymentAmount = BigDecimal.valueOf(paymentLog.getPaymentAmount());
             } else {
-                // Fallback to plan price if payment amount is not set
-                log.warn("Payment log {} has no payment amount, using plan price {} as fallback",
-                        paymentLog.getId(), planPrice);
                 paymentAmount = planPrice;
             }
             totalPaymentAmount = totalPaymentAmount.add(paymentAmount);
@@ -516,63 +520,58 @@ public class InvoiceService {
      */
     private String buildPackageSessionDescription(PaymentPlan paymentPlan, String paymentLogId) {
         try {
-            // Get the payment log to access user plan and session information
+            // Get the payment log to access user plan and enroll invite
             PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElse(null);
-            if (paymentLog == null) {
-                log.warn("Payment log not found for ID: {}", paymentLogId);
-                return getFallbackDescription(paymentPlan);
-            }
-
-            if (paymentLog.getUserPlan() == null) {
-                log.warn("Payment log {} has no user plan", paymentLogId);
+            if (paymentLog == null || paymentLog.getUserPlan() == null) {
+                log.warn("Payment log or user plan not found for ID: {}", paymentLogId);
                 return getFallbackDescription(paymentPlan);
             }
 
             UserPlan userPlan = paymentLog.getUserPlan();
 
-            // Get package session information from student session mappings
+            // Primary source: EnrollInvite name (always available, contains book name)
+            // Format: "{level} {package_name} {session_name}" e.g. "buy Blue umbrella store 1"
+            if (userPlan.getEnrollInvite() != null
+                    && userPlan.getEnrollInvite().getName() != null
+                    && !userPlan.getEnrollInvite().getName().trim().isEmpty()) {
+                String enrollInviteName = userPlan.getEnrollInvite().getName().trim();
+                log.debug("Using enroll invite name for invoice line item: {}", enrollInviteName);
+                return enrollInviteName;
+            }
+
+            // Fallback: try to get from package session via SSIGM
             List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
-                    .findAllByUserPlanIdAndStatusIn(userPlan.getId(), List.of("ACTIVE"));
+                    .findAllByUserPlanIdAndStatusIn(userPlan.getId(),
+                            List.of("ACTIVE", "INVITED", "ABANDONED_CART", "DETAILS_FILLED"));
 
-            if (mappings == null || mappings.isEmpty()) {
-                log.warn("No active student session mappings found for userPlanId: {}", userPlan.getId());
-                return getFallbackDescription(paymentPlan);
-            }
+            if (mappings != null && !mappings.isEmpty()) {
+                StudentSessionInstituteGroupMapping mapping = mappings.get(0);
+                String packageSessionId = null;
+                if (mapping.getDestinationPackageSession() != null) {
+                    packageSessionId = mapping.getDestinationPackageSession().getId();
+                } else if (mapping.getPackageSession() != null) {
+                    packageSessionId = mapping.getPackageSession().getId();
+                }
 
-            StudentSessionInstituteGroupMapping mapping = mappings.get(0);
-            if (mapping == null || mapping.getPackageSession() == null) {
-                log.warn("Student session mapping has no package session for userPlanId: {}", userPlan.getId());
-                return getFallbackDescription(paymentPlan);
-            }
-
-            String packageSessionId = mapping.getPackageSession().getId();
-            if (packageSessionId == null || packageSessionId.isEmpty()) {
-                log.warn("Package session ID is null or empty for userPlanId: {}", userPlan.getId());
-                return getFallbackDescription(paymentPlan);
-            }
-
-            // Get batch/institute info for the package session
-            Optional<BatchInstituteProjection> batchInfoOpt = packageSessionRepository
-                    .findBatchAndInstituteByPackageSessionId(packageSessionId);
-
-            if (batchInfoOpt.isPresent()) {
-                BatchInstituteProjection info = batchInfoOpt.get();
-                // Format: "Level Name Package Name" (no institute name)
-                // Batch name already includes level name and package name: CONCAT(l.level_name,
-                // ' ', p.package_name)
-                String batchName = info.getBatchName();
-                if (batchName != null && !batchName.trim().isEmpty()) {
-                    return batchName.trim();
+                if (packageSessionId != null && !packageSessionId.isEmpty()) {
+                    Optional<BatchInstituteProjection> batchInfoOpt = packageSessionRepository
+                            .findBatchAndInstituteByPackageSessionId(packageSessionId);
+                    if (batchInfoOpt.isPresent()) {
+                        String batchName = batchInfoOpt.get().getBatchName();
+                        if (batchName != null && !batchName.trim().isEmpty()) {
+                            return batchName.trim();
+                        }
+                    }
                 }
             }
 
-            log.warn("Could not get batch info for packageSessionId: {}", packageSessionId);
+            log.warn("Could not resolve description from enroll invite or SSIGM for payment log {}", paymentLogId);
         } catch (Exception e) {
             log.error("Error building package session description for payment log {}: {}",
                     paymentLogId, e.getMessage(), e);
         }
 
-        // Fallback to basic plan description
+        // Final fallback to payment plan name
         return getFallbackDescription(paymentPlan);
     }
 

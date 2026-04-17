@@ -20,7 +20,7 @@ import { SessionStreamingServiceType } from "@/routes/register/live-class/-types
 import { getPublicFileUrl } from "../-hooks/getPublicUrl";
 import { useMarkAttendance } from "@/routes/live-class-guest/-hooks/useMarkAttendance";
 import axios from "axios";
-import { LIVE_SESSION_CHECK_EMAIL_REGISTRATION } from "@/constants/urls";
+import { LIVE_SESSION_CHECK_EMAIL_REGISTRATION, urlInstituteDetails } from "@/constants/urls";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 
 // Import the separated components
@@ -29,6 +29,13 @@ import RegistrationForm from "./RegistrationForm";
 import SessionStatusCard from "./SessionStatusCard";
 import SessionInfo from "./SessionInfo";
 import { Preferences } from "@capacitor/preferences";
+import { getCachedInstituteBranding } from "@/services/domain-routing";
+import { useTheme } from "@/providers/theme/theme-provider";
+
+export interface InstituteBrandingInfo {
+  instituteName: string | null;
+  instituteLogoUrl: string | null;
+}
 
 export default function LiveClassRegistrationPage() {
   const [dialog, setDialog] = useState<boolean>(false);
@@ -39,9 +46,12 @@ export default function LiveClassRegistrationPage() {
   const { data, isLoading } = useSessionCustomFields(sessionId || "");
   const { data: earliestScheduleId } = useEarliestScheduleId(sessionId || "");
   const navigate = useNavigate();
+  const { setPrimaryColor } = useTheme();
   const [coverFileUrl, setCoverFileUrl] = useState<string | undefined>(
     undefined
   );
+  const [instituteBranding, setInstituteBranding] =
+    useState<InstituteBrandingInfo>({ instituteName: null, instituteLogoUrl: null });
   const [registrationResponse, setRegistrationResponse] = useState<string>("");
   const { mutateAsync: registerGuestUser } = useLiveSessionGuestRegistration();
   const { mutateAsync: collectPublicUserData } = useCollectPublicUserData();
@@ -73,6 +83,59 @@ export default function LiveClassRegistrationPage() {
     setCoverFileUrl(response);
   }, [data?.coverFileId]);
 
+  // Fetch institute branding: first try cached domain routing, then fallback to public API using session's instituteId
+  const fetchInstituteBranding = useCallback(async () => {
+    try {
+      // Try cached branding first (from domain routing)
+      const cached = getCachedInstituteBranding();
+      if (cached?.instituteName || cached?.instituteLogoFileId) {
+        let logoUrl: string | null = null;
+        if (cached.instituteLogoFileId) {
+          try {
+            logoUrl = await getPublicFileUrl(cached.instituteLogoFileId);
+          } catch {
+            // ignore logo fetch failure
+          }
+        }
+        // Apply theme from cached branding
+        if (cached.instituteThemeCode) {
+          setPrimaryColor(cached.instituteThemeCode);
+        }
+        setInstituteBranding({
+          instituteName: cached.instituteName,
+          instituteLogoUrl: logoUrl,
+        });
+        return;
+      }
+
+      // Fallback: fetch institute details using the session's instituteId
+      if (!data?.instituteId) return;
+      const response = await axios.get(
+        `${urlInstituteDetails}/${data.instituteId}`,
+        { params: { instituteId: data.instituteId } }
+      );
+      const details = response.data;
+      let logoUrl: string | null = null;
+      if (details?.institute_logo_file_id) {
+        try {
+          logoUrl = await getPublicFileUrl(details.institute_logo_file_id);
+        } catch {
+          // ignore logo fetch failure
+        }
+      }
+      // Apply the institute theme
+      if (details?.institute_theme_code) {
+        setPrimaryColor(details.institute_theme_code);
+      }
+      setInstituteBranding({
+        instituteName: details?.institute_name || null,
+        instituteLogoUrl: logoUrl,
+      });
+    } catch (error) {
+      console.error("Failed to fetch institute branding:", error);
+    }
+  }, [data?.instituteId, setPrimaryColor]);
+
   const fetchSessionDetail = useCallback(async (id: string) => {
     try {
       const response = await fetchSessionDetails(id);
@@ -96,13 +159,31 @@ export default function LiveClassRegistrationPage() {
       router.navigate({ to: "/study-library/live-class" });
     } else {
       fetchCoverFileUrl();
+      fetchInstituteBranding();
     }
-  }, [data, fetchCoverFileUrl, router]);
+  }, [data, fetchCoverFileUrl, fetchInstituteBranding, router]);
 
   const onSubmit = async (formValues: RegistrationFormValues) => {
     let payload;
     let userPayload;
-    const email = String(formValues.email);
+    // Extract email robustly: try form value, then look in custom fields
+    let email = formValues.email ? String(formValues.email) : "";
+    if (!email || email === "undefined") {
+      const emailField = (data?.customFields || []).find(
+        (f) =>
+          f.fieldKey === "email" ||
+          f.fieldKey === "email_address" ||
+          f.fieldName.toLowerCase() === "email"
+      );
+      if (emailField) {
+        const val = formValues[emailField.fieldKey];
+        if (val) email = String(val);
+      }
+    }
+    // Final fallback: use the verified email
+    if (!email || email === "undefined") {
+      email = verifiedEmail || "";
+    }
     try {
       payload = transformToGuestRegistrationDTO(
         formValues,
@@ -328,37 +409,41 @@ export default function LiveClassRegistrationPage() {
 
   return (
     <>
-      <div className="w-screen min-h-screen bg-primary-50 p-4 sm:p-8 lg:p-20 flex flex-col lg:flex-row gap-6 lg:gap-8 justify-center lg:justify-around items-center">
-        <SessionInfo
-          sessionTitle={data?.sessionTitle}
-          startTime={data?.startTime}
-          lastEntryTime={data?.lastEntryTime}
-          subject={data?.subject}
-          coverFileUrl={coverFileUrl}
-          sessionDetails={sessionDetails}
-        />
+      <div className="w-screen min-h-screen bg-gradient-to-b from-primary-50/80 via-white to-primary-50/40 relative overflow-hidden">
+        {/* Decorative background elements */}
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary-100/30 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary-100/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/3 pointer-events-none" />
 
-        <div className="w-full max-w-md lg:w-[35%] flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-md w-full">
-            <div className="flex flex-col gap-4">
-              {isUserAlreadyRegistered && sessionDetails ? (
-                <SessionStatusCard
-                  sessionDetails={sessionDetails}
-                  registrationResponse={registrationResponse}
-                  alreadyRegisteredEmail={alreadyRegisteredEmail}
-                  earliestScheduleId={earliestScheduleId || ""}
-                />
-              ) : (
-                <RegistrationForm
-                  customFields={data?.customFields || []}
-                  verifiedEmail={verifiedEmail}
-                  verifiedEmails={verifiedEmails}
-                  onSubmit={onSubmit}
-                  onError={onError}
-                  onEmailChange={handleEmailChange}
-                />
-              )}
-            </div>
+        <div className="relative z-10 w-full min-h-screen p-4 sm:p-8 lg:p-12 flex flex-col lg:flex-row gap-8 lg:gap-14 justify-center items-center max-w-7xl mx-auto">
+          <SessionInfo
+            sessionTitle={data?.sessionTitle}
+            startTime={data?.startTime}
+            lastEntryTime={data?.lastEntryTime}
+            subject={data?.subject}
+            coverFileUrl={coverFileUrl}
+            sessionDetails={sessionDetails}
+            instituteName={instituteBranding.instituteName}
+            instituteLogoUrl={instituteBranding.instituteLogoUrl}
+          />
+
+          <div className="w-full max-w-[420px] lg:w-[420px] flex-shrink-0">
+            {isUserAlreadyRegistered && sessionDetails ? (
+              <SessionStatusCard
+                sessionDetails={sessionDetails}
+                registrationResponse={registrationResponse}
+                alreadyRegisteredEmail={alreadyRegisteredEmail}
+                earliestScheduleId={earliestScheduleId || ""}
+              />
+            ) : (
+              <RegistrationForm
+                customFields={data?.customFields || []}
+                verifiedEmail={verifiedEmail}
+                verifiedEmails={verifiedEmails}
+                onSubmit={onSubmit}
+                onError={onError}
+                onEmailChange={handleEmailChange}
+              />
+            )}
           </div>
         </div>
       </div>

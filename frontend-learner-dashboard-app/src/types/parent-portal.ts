@@ -268,8 +268,10 @@ export interface StudentFeeDue {
   fee_type_code?: string;
   fee_type_description?: string;
   amount_expected: number;
-  discount_amount: number;
-  discount_reason: string | null;
+  adjustment_amount: number;
+  adjustment_reason: string | null;
+  adjustment_type: string | null;
+  adjustment_status: string | null;
   amount_paid: number;
   due_date: string;
   status: string;

@@ -429,8 +429,8 @@ export const convertToAssignmentSlideBackendFormat = (assignmentSlide: Assignmen
         endDateType: typeof assignmentSlide.endDate,
     });
 
-    const convertedStartDate = convertToUTC(assignmentSlide.startDate);
-    const convertedEndDate = convertToUTC(assignmentSlide.endDate);
+    const convertedStartDate = assignmentSlide.hasDateRange ? convertToUTC(assignmentSlide.startDate || '') : '';
+    const convertedEndDate = assignmentSlide.hasDateRange ? convertToUTC(assignmentSlide.endDate || '') : '';
 
     console.log('[Assignment Backend Format] Converted dates:', {
         convertedStartDate,
@@ -720,14 +720,18 @@ export function timestampToSeconds(timestamp: string | undefined): number {
 }
 
 const transformAssignmentSlide = (assignment: AssignmentSlide) => {
+    const startDate = convertDateFormat(assignment?.live_date || '');
+    const endDate = convertDateFormat(assignment?.end_date || '');
+    const hasDateRange = !!(startDate || endDate);
     return {
         id: assignment?.id,
         task: parseHtmlToString(assignment?.text_data?.content || ''),
         taskDescription: assignment?.parent_rich_text?.content || '',
         parentRichTextId: assignment?.parent_rich_text?.id || '',
         textDataId: assignment?.text_data?.id || '',
-        startDate: convertDateFormat(assignment?.live_date || ''),
-        endDate: convertDateFormat(assignment?.end_date || ''),
+        hasDateRange,
+        startDate,
+        endDate,
         reattemptCount: String(assignment?.re_attempt_count || 0),
         totalMarks: assignment?.total_marks ?? undefined,
         passingMarks: assignment?.passing_marks ?? undefined,

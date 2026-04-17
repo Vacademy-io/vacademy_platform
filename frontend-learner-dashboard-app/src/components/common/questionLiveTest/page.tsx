@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { QuestionDisplay } from "./question-display";
 import { SectionTabs } from "./section-tabs";
 import { Navbar } from "./navbar";
@@ -22,7 +22,13 @@ import {
 } from "@/constants/assessment-timings";
 
 export function convertToLocalDateTime(utcDate: string): string {
-  const date = new Date(utcDate);
+  if (!utcDate) return "";
+
+  // Backend sends timestamps as UTC but sometimes omits the trailing 'Z'.
+  // Force UTC interpretation when no zone marker is present.
+  const hasTimezone = /Z$|[+-]\d{2}:?\d{2}$/i.test(utcDate);
+  const normalized = hasTimezone ? utcDate : `${utcDate.replace(" ", "T")}Z`;
+  const date = new Date(normalized);
 
   const options: Intl.DateTimeFormatOptions = {
     day: "2-digit",
@@ -127,6 +133,9 @@ export default function Page() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [playMode, setPlayMode] = useState<string>("");
   const [evaluationType, setEvaluationType] = useState<string>("");
+  // Latches so we show the "save failed" toast exactly once per failure streak
+  // and the "recovered" toast exactly once when it clears.
+  const hasShownSaveFailureToastRef = useRef(false);
 
   const sendFormattedData = async () => {
     const state = useAssessmentStore.getState();
@@ -187,13 +196,20 @@ export default function Page() {
 
   useEffect(() => {
     const sendData = async () => {
-      console.log("Sending data...");
       try {
         await sendFormattedData();
+        if (hasShownSaveFailureToastRef.current) {
+          hasShownSaveFailureToastRef.current = false;
+          toast.success("Your responses are being saved again");
+        }
       } catch (error) {
         console.error("Error in periodic data sending:", error);
-        // Show toast notification for failure
-        toast.error("Your responses are not being recorded");
+        // Only toast on the first failure in a streak — the persistent
+        // NetworkStatus banner keeps the user informed after that.
+        if (!hasShownSaveFailureToastRef.current) {
+          hasShownSaveFailureToastRef.current = true;
+          toast.error("Your responses are not being recorded");
+        }
       }
     };
 

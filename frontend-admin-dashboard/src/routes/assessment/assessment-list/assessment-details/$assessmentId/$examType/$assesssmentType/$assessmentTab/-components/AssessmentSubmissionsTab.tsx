@@ -1158,15 +1158,20 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                 onRowSelectionChange={handleRowSelectionChange}
                                 currentPage={page}
                             />
-                            {type === 'PRIVATE' ? (
+                            {selectedParticipantsTab === 'external' ? (
+                                // External participants registered via the public form
+                                // — show the form answers and custom-field responses.
+                                <OpenStudentSidebar />
+                            ) : (
+                                // Internal participants (whether the assessment is
+                                // PRIVATE or PUBLIC) get the full student profile
+                                // sheet, same as the students list.
                                 <StudentSidebar
                                     selectedTab={selectedTab}
                                     examType={examType}
                                     selectedStudent={selectedStudent}
                                     isSubmissionTab={true}
                                 />
-                            ) : (
-                                <OpenStudentSidebar />
                             )}
                         </SidebarProvider>
                     </TabsContent>

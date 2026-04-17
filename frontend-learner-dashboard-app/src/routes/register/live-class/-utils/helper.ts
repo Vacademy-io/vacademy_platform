@@ -43,13 +43,29 @@ export const transformToGuestRegistrationDTO = (
   sessionId: string,
   customFields: CustomField[]
 ): GuestRegistrationRequestDTO => {
+  // Extract email: try top-level formValues.email first, then look in custom fields
+  let email = formValues.email as string | undefined;
+  if (!email || email === "undefined") {
+    // Find the email from custom fields (fieldKey contains "email" or fieldType is email-like)
+    const emailField = customFields.find(
+      (f) =>
+        f.fieldKey === "email" ||
+        f.fieldKey === "email_address" ||
+        f.fieldName.toLowerCase() === "email"
+    );
+    if (emailField) {
+      const emailValue = formValues[emailField.fieldKey];
+      if (emailValue) {
+        email = String(emailValue);
+      }
+    }
+  }
+
   const dto: GuestRegistrationRequestDTO = {
     session_id: sessionId,
-    email: formValues.email as string,
+    email: email || "",
     custom_fields: [],
   };
-  console.log("formValues ", formValues);
-  console.log("customFileds ", customFields);
 
   for (const field of customFields) {
     const value = formValues[field.fieldKey];
@@ -66,15 +82,43 @@ export const transformToGuestRegistrationDTO = (
   return dto;
 };
 
+const extractFieldValue = (
+  formValues: RegistrationFormValues,
+  customFields: CustomField[],
+  ...keys: string[]
+): string | undefined => {
+  // Try direct form value first
+  for (const key of keys) {
+    const val = formValues[key];
+    if (val && String(val) !== "undefined") return String(val);
+  }
+  // Fallback: search custom fields by key or name
+  for (const key of keys) {
+    const field = customFields.find(
+      (f) => f.fieldKey === key || f.fieldName.toLowerCase() === key
+    );
+    if (field) {
+      const val = formValues[field.fieldKey];
+      if (val && String(val) !== "undefined") return String(val);
+    }
+  }
+  return undefined;
+};
+
 export const transformToCollectPublicUserDataDTO = (
   formValues: RegistrationFormValues,
   sessionId: string,
   customFields: CustomField[]
 ): CollectPublicUserDataDTO => {
+  const email =
+    extractFieldValue(formValues, customFields, "email", "email_address") || "";
+  const fullName =
+    extractFieldValue(formValues, customFields, "full_name", "name") || "";
+
   const dto: CollectPublicUserDataDTO = {
     user_dto: {
-      full_name: formValues.full_name as string,
-      email: formValues.email as string,
+      full_name: fullName,
+      email: email,
       username: formValues.username as string,
       mobile_number: formValues.mobile_number as string | undefined,
       address_line: formValues.address_line as string | undefined,

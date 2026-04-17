@@ -73,6 +73,7 @@ export const getAssessmentSubmissionsFilteredDataStudentData = (
                 if (selectedTab === 'Attempted') {
                     return {
                         id: student.user_id,
+                        registration_id: student.registration_id,
                         attempt_id: student.attempt_id,
                         full_name: student.student_name,
                         package_id: student.batch_id,
@@ -94,6 +95,7 @@ export const getAssessmentSubmissionsFilteredDataStudentData = (
                 } else if (selectedTab === 'Ongoing') {
                     return {
                         id: student.user_id,
+                        registration_id: student.registration_id,
                         attempt_id: student.attempt_id,
                         full_name: student.student_name,
                         start_time: extractDateTime(convertToLocalDateTime(student.attempt_date))
@@ -102,6 +104,7 @@ export const getAssessmentSubmissionsFilteredDataStudentData = (
                 } else if (selectedTab === 'Pending') {
                     return {
                         id: student.user_id,
+                        registration_id: student.registration_id,
                         attempt_id: student.attempt_id,
                         full_name: student.student_name,
                         package_session_id: getBatchNameById(

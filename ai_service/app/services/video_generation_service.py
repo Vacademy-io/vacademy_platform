@@ -179,9 +179,10 @@ class VideoGenerationService:
         
         # Determine starting stage
         if resume:
-            start_stage_idx = self.STAGES.index(video_record.current_stage)
+            # Start from the stage AFTER the current completed one
+            start_stage_idx = self.STAGES.index(video_record.current_stage) + 1
             # If already at or past target, just return current state
-            if start_stage_idx >= self.STAGES.index(target_stage):
+            if start_stage_idx > self.STAGES.index(target_stage):
                 yield {
                     "type": "info",
                     "message": f"Video already at stage {video_record.current_stage}",

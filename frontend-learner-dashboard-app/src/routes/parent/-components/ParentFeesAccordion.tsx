@@ -522,9 +522,9 @@ function DuesTable({
               </TableCell>
               <TableCell
                 className="text-right"
-                title={item.discount_reason || undefined}
+                title={item.adjustment_reason || undefined}
               >
-                {formatINR(item.discount_amount)}
+                {formatINR(item.adjustment_amount)}
               </TableCell>
               <TableCell className="text-right">
                 {formatINR(item.amount_paid)}

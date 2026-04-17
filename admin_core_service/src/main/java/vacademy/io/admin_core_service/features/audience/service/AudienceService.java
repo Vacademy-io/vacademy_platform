@@ -399,6 +399,7 @@ public class AudienceService {
                         .sourceType(requestDTO.getSourceType())
                         .sourceId(requestDTO.getSourceId())
                         .userId(userId) // Set user_id if created successfully
+                        .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                         .build();
 
                 AudienceResponse savedResponse = audienceResponseRepository.save(response);
@@ -681,6 +682,7 @@ public class AudienceService {
                         .sourceType(requestDTO.getSourceType())
                         .sourceId(requestDTO.getSourceId())
                         .userId(userId)
+                        .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                         .build();
 
                 AudienceResponse savedResponse = audienceResponseRepository.save(response);

@@ -42,7 +42,7 @@ public class AuthInternalController {
             HttpServletRequest request) {
         long startTime = System.currentTimeMillis();
 
-        String smallCaseUsername = StringUtils.trimAllWhitespace(userName);
+        String smallCaseUsername = StringUtils.trimWhitespace(userName);
 
         String usernameWithoutInstitute = smallCaseUsername;
         String instituteId = null;

@@ -139,6 +139,16 @@ public class FormWebhookConnector {
     /** Webhook verify token for Meta hub challenge verification */
     @Column(name = "webhook_verify_token", length = 255)
     private String webhookVerifyToken;
+
+    /**
+     * JSON containing default/static values to merge into form data during webhook processing.
+     * Used for center-specific constants (e.g., schedule link, location link, phone, PM name)
+     * that are not provided by the external form but are needed by downstream workflows.
+     * Values from the form payload take precedence over defaults.
+     * Example: {"center name": "Baner", "Schedule Link": "https://cal.com/...", "School Phone": "8530553999"}
+     */
+    @Column(name = "default_values_json", columnDefinition = "TEXT")
+    private String defaultValuesJson;
     
     @Column(name = "created_at", updatable = false)
     @Temporal(TemporalType.TIMESTAMP)

@@ -50,7 +50,9 @@ export interface InstallmentDetailDTO {
     fee_type_name: string;
     installment_number: number;
     amount_expected: number;
-    discount_amount: number;
+    adjustment_amount: number;
+    adjustment_type: string | null;
+    adjustment_status: string | null;
     amount_paid: number;
     due_amount: number;
     due_date: string; // ISO datetime
@@ -60,6 +62,8 @@ export interface InstallmentDetailDTO {
 // ─── Student Dues (Pay Installments) ───────────────────────────────────────
 export interface StudentFeeDueDTO {
     id: string;
+    user_id: string;
+    student_name: string | null;
     user_plan_id: string;
     cpo_id: string;
     cpo_name: string;
@@ -67,7 +71,10 @@ export interface StudentFeeDueDTO {
     fee_type_code: string;
     fee_type_description: string;
     amount_expected: number;
-    discount_amount: number;
+    adjustment_amount: number;
+    adjustment_type: string | null;
+    adjustment_status: string | null;
+    adjustment_reason: string | null;
     amount_paid: number;
     amount_due: number;
     due_date: string; // ISO datetime

@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentUserFilter;
 import vacademy.io.assessment_service.features.assessment.dto.ClosedAssessmentParticipantsResponse;
+import vacademy.io.assessment_service.features.assessment.dto.ParticipantRegistrationDetailDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.RespondentListResponse;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
@@ -49,6 +50,13 @@ public class AdminAssessmentGetParticipantsController {
                                                                  @RequestParam(name = "pageNo", required = false, defaultValue = DEFAULT_PAGE_NUMBER) Integer pageNo,
                                                                  @RequestParam(name = "pageSize", required = false, defaultValue = DEFAULT_PAGE_SIZE) Integer pageSize) {
         return assessmentParticipantsManager.getRespondentList(user, assessmentId, sectionId, questionId, filter, pageNo, pageSize);
+    }
+
+    @GetMapping("/registration-details")
+    public ResponseEntity<ParticipantRegistrationDetailDto> getParticipantRegistrationDetails(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("registrationId") String registrationId) {
+        return assessmentParticipantsManager.getParticipantRegistrationDetails(registrationId);
     }
 
 }

@@ -1,7 +1,18 @@
 import { AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import React, { MutableRefObject, useEffect, useState, useRef } from 'react';
 import { useFieldArray, UseFormReturn } from 'react-hook-form';
-import { PencilSimpleLine, TrashSimple, X, Check } from '@phosphor-icons/react';
+import {
+    PencilSimpleLine,
+    TrashSimple,
+    X,
+    Check,
+    PencilLine,
+    FolderOpen,
+    ListNumbers,
+    Shuffle,
+} from '@phosphor-icons/react';
+import { BorderBeam } from '@/components/magicui/border-beam';
+import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
     AlertDialog,
     AlertDialogCancel,
@@ -354,9 +365,13 @@ export const Step2SectionInfo = ({
     if (isLoading || adaptiveMarking.isLoading) return <DashboardLoader />;
 
     return (
-        <AccordionItem value={`section-${index}`} key={index}>
+        <AccordionItem
+            value={`section-${index}`}
+            key={index}
+            className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition-shadow hover:shadow-md data-[state=open]:shadow-md"
+        >
             <AccordionTrigger
-                className="flex items-center justify-between"
+                className="flex items-center justify-between px-5 py-4 hover:no-underline [&[data-state=open]]:border-b [&[data-state=open]]:border-neutral-100"
                 id="section-details"
                 onKeyDown={(e) => {
                     // Prevent accordion toggle when section name editing is enabled or input is focused
@@ -488,27 +503,29 @@ export const Step2SectionInfo = ({
                             )}
                             {allSections?.[index]!.adaptive_marking_for_each_question.length >
                                 0 && (
-                                <span className="font-thin !text-neutral-600">
-                                    (MCQ(Single Correct):&nbsp;
-                                    {allSections?.[index]?.adaptive_marking_for_each_question
-                                        ? getQuestionTypeCounts(
-                                              allSections[index]!.adaptive_marking_for_each_question
-                                          ).MCQS
-                                        : 0}
-                                    ,&nbsp; MCQ(Multiple Correct):&nbsp;
-                                    {allSections?.[index]?.adaptive_marking_for_each_question
-                                        ? getQuestionTypeCounts(
-                                              allSections[index]!.adaptive_marking_for_each_question
-                                          ).MCQM
-                                        : 0}
-                                    ,&nbsp; Total:&nbsp;
-                                    {allSections?.[index]?.adaptive_marking_for_each_question
-                                        ? getQuestionTypeCounts(
-                                              allSections[index]!.adaptive_marking_for_each_question
-                                          ).totalQuestions
-                                        : 0}
-                                    )
-                                </span>
+                                <div className="ml-2 flex items-center gap-1.5">
+                                    <span className="inline-flex items-center rounded-full bg-info-50 px-2.5 py-0.5 text-xs font-medium text-info-700">
+                                        MCQ Single:{' '}
+                                        {getQuestionTypeCounts(
+                                            allSections[index]!
+                                                .adaptive_marking_for_each_question
+                                        ).MCQS}
+                                    </span>
+                                    <span className="inline-flex items-center rounded-full bg-warning-50 px-2.5 py-0.5 text-xs font-medium text-warning-700">
+                                        MCQ Multi:{' '}
+                                        {getQuestionTypeCounts(
+                                            allSections[index]!
+                                                .adaptive_marking_for_each_question
+                                        ).MCQM}
+                                    </span>
+                                    <span className="inline-flex items-center rounded-full bg-success-50 px-2.5 py-0.5 text-xs font-medium text-success-700">
+                                        Total:{' '}
+                                        {getQuestionTypeCounts(
+                                            allSections[index]!
+                                                .adaptive_marking_for_each_question
+                                        ).totalQuestions}
+                                    </span>
+                                </div>
                             )}
                         </div>
                     ) : (
@@ -585,20 +602,25 @@ export const Step2SectionInfo = ({
                         </div>
                     )}
                     <div className="flex items-center gap-4">
-                        <TrashSimple
-                            size={20}
-                            className="text-danger-400"
+                        <button
+                            type="button"
                             onClick={(e) => handleDeleteSection(e, index)}
-                        />
+                            className="flex size-8 items-center justify-center rounded-lg text-danger-500 transition-colors hover:bg-danger-50"
+                            aria-label="Delete section"
+                        >
+                            <TrashSimple size={18} />
+                        </button>
                     </div>
                 </div>
             </AccordionTrigger>
-            <AccordionContent className="flex flex-col gap-8">
-                <div
-                    className="flex flex-wrap items-center justify-start gap-5"
-                    id="upload-question-paper"
-                >
-                    <h3>Upload Question Paper</h3>
+            <AccordionContent className="flex flex-col gap-6 px-5 pb-5 pt-5">
+                <div className="flex flex-col gap-3" id="upload-question-paper">
+                    <h3 className="text-sm font-semibold text-neutral-700">
+                        Upload Question Paper
+                    </h3>
+                    <p className="-mt-2 text-xs text-neutral-500">
+                        Choose how you want to populate this section with questions.
+                    </p>
                     {/* <AlertDialog
                         open={isUploadFromDeviceDialogOpen}
                         onOpenChange={setIsUploadFromDeviceDialogOpen}
@@ -636,19 +658,28 @@ export const Step2SectionInfo = ({
                             />
                         </AlertDialogContent>
                     </AlertDialog> */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <AlertDialog
                         open={isManualQuestionPaperDialogOpen}
                         onOpenChange={setIsManualQuestionPaperDialogOpen}
                     >
-                        <AlertDialogTrigger>
-                            <MyButton
+                        <AlertDialogTrigger asChild>
+                            <button
                                 type="button"
-                                scale="large"
-                                buttonType="secondary"
-                                className="font-thin"
+                                className="group flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary-400 hover:shadow-md"
                             >
-                                Create Manually
-                            </MyButton>
+                                <div className="flex size-10 items-center justify-center rounded-lg bg-primary-50 text-primary-500 transition-colors group-hover:bg-primary-500 group-hover:text-white">
+                                    <PencilLine size={20} weight="bold" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="text-sm font-semibold text-neutral-800">
+                                        Create Manually
+                                    </div>
+                                    <div className="text-xs text-neutral-500">
+                                        Write questions one by one
+                                    </div>
+                                </div>
+                            </button>
                         </AlertDialogTrigger>
                         <AlertDialogContent className="p-0">
                             <div className="flex items-center justify-between rounded-md bg-primary-50">
@@ -677,15 +708,23 @@ export const Step2SectionInfo = ({
                         open={isSavedQuestionPaperDialogOpen}
                         onOpenChange={setIsSavedQuestionPaperDialogOpen}
                     >
-                        <DialogTrigger>
-                            <MyButton
+                        <DialogTrigger asChild>
+                            <button
                                 type="button"
-                                scale="large"
-                                buttonType="secondary"
-                                className="font-thin"
+                                className="group flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary-400 hover:shadow-md"
                             >
-                                Choose Saved Paper
-                            </MyButton>
+                                <div className="flex size-10 items-center justify-center rounded-lg bg-info-50 text-info-600 transition-colors group-hover:bg-info-500 group-hover:text-white">
+                                    <FolderOpen size={20} weight="bold" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="text-sm font-semibold text-neutral-800">
+                                        Choose Saved Paper
+                                    </div>
+                                    <div className="text-xs text-neutral-500">
+                                        Reuse an existing paper
+                                    </div>
+                                </div>
+                            </button>
                         </DialogTrigger>
                         <DialogContent className="no-scrollbar !m-0 flex h-[90vh] !w-full !max-w-[90vw] flex-col items-start !gap-0 overflow-y-auto !p-0 [&>button]:hidden">
                             <DialogTitle className="sr-only">
@@ -717,47 +756,73 @@ export const Step2SectionInfo = ({
                             </div>
                         </DialogContent>
                     </Dialog>
-                    <Step2GenerateQuestionsFromAI form={form} index={index} />
+                    <div className="relative overflow-hidden rounded-xl">
+                        <Step2GenerateQuestionsFromAI form={form} index={index} />
+                        <BorderBeam
+                            size={120}
+                            duration={10}
+                            colorFrom="hsl(var(--primary-500))"
+                            colorTo="#9c40ff"
+                        />
+                    </div>
+                    </div>
                 </div>
 
                 {/* Evaluation Criteria Section */}
                 {examtype !== 'SURVEY' &&
                     (allSections[index]?.adaptive_marking_for_each_question?.length ?? 0) > 0 && (
-                        <div className="flex flex-col gap-4">
-                            <h3 className="font-thin">Evaluation Criteria</h3>
-                            <div className="flex items-center gap-3">
-                                <MyButton
-                                    type="button"
-                                    buttonType={'secondary'}
-                                    scale="large"
-                                    onClick={() => {
-                                        if (bulkGenerating) {
-                                            handleCancelBulkGeneration();
-                                        } else {
-                                            handleBulkGenerateCriteria();
-                                        }
-                                    }}
-                                >
-                                    {bulkGenerating ? (
-                                        <p className="ml-2 flex items-center gap-2 text-sm text-neutral-600">
-                                            <span>
-                                                Stop ({bulkProgress.current}/{bulkProgress.total})
-                                            </span>
-                                            <Spinner className="mr-2 animate-spin text-primary-500" />
-                                        </p>
-                                    ) : (
-                                        <>
-                                            <Sparkle size={16} className="mr-2" />
-                                            AI Generate All Criteria
-                                        </>
-                                    )}
-                                </MyButton>
+                        <div className="relative flex items-center justify-between gap-4 overflow-hidden rounded-xl border border-primary-100 bg-gradient-to-r from-primary-50/40 via-white to-purple-50/30 p-4">
+                            <div className="flex items-start gap-3">
+                                <div className="flex size-9 items-center justify-center rounded-lg bg-primary-500 text-white shadow-sm">
+                                    <Sparkle size={18} weight="fill" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-semibold text-neutral-800">
+                                        Evaluation Criteria
+                                    </h3>
+                                    <p className="text-xs text-neutral-500">
+                                        Let AI draft evaluation rubrics for every question.
+                                    </p>
+                                </div>
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (bulkGenerating) {
+                                        handleCancelBulkGeneration();
+                                    } else {
+                                        handleBulkGenerateCriteria();
+                                    }
+                                }}
+                                className="relative z-10 flex items-center gap-2 rounded-lg bg-gradient-to-r from-primary-500 to-primary-400 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:shadow-md active:translate-y-px"
+                            >
+                                {bulkGenerating ? (
+                                    <>
+                                        <Spinner className="animate-spin" />
+                                        <span>
+                                            Stop ({bulkProgress.current}/{bulkProgress.total})
+                                        </span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkle size={16} weight="fill" />
+                                        Generate All Criteria
+                                    </>
+                                )}
+                            </button>
+                            <BorderBeam
+                                size={100}
+                                duration={12}
+                                colorFrom="hsl(var(--primary-400))"
+                                colorTo="#9c40ff"
+                            />
                         </div>
                     )}
 
                 <div className="flex flex-col gap-2" id="section-instructions">
-                    <h1 className="font-thin">Section Description</h1>
+                    <h3 className="text-sm font-semibold text-neutral-700">
+                        Section Description
+                    </h3>
                     <FormField
                         control={control}
                         name={`section.${index}.section_description`}
@@ -939,23 +1004,30 @@ export const Step2SectionInfo = ({
                     </div>
                 )}
                 {examtype !== 'SURVEY' && (
-                    <div id="marking-scheme" className="flex flex-col gap-8">
-                        <div
-                            className="flex items-center gap-4 text-sm font-thin"
-                            id="marking-scheme"
-                        >
-                            <div className="flex flex-col font-normal">
-                                <h1>
-                                    Marks Per Question
-                                    {getStepKey({
-                                        assessmentDetails,
-                                        currentStep,
-                                        key: 'marks_per_question',
-                                    }) === 'REQUIRED' && (
-                                        <span className="text-subtitle text-danger-600">*</span>
-                                    )}
-                                </h1>
-                                <h1>(Default)</h1>
+                    <div
+                        id="marking-scheme"
+                        className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-neutral-50/40 p-5"
+                    >
+                        <div className="flex items-center justify-between gap-4 text-sm">
+                            <div className="flex items-center gap-3">
+                                <div className="flex size-9 items-center justify-center rounded-lg bg-primary-100 text-primary-600">
+                                    <ListNumbers size={18} weight="bold" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-semibold text-neutral-800">
+                                        Marks Per Question
+                                        {getStepKey({
+                                            assessmentDetails,
+                                            currentStep,
+                                            key: 'marks_per_question',
+                                        }) === 'REQUIRED' && (
+                                            <span className="ml-0.5 text-danger-600">*</span>
+                                        )}
+                                    </h3>
+                                    <p className="text-xs text-neutral-500">
+                                        Default marks awarded for correct answers
+                                    </p>
+                                </div>
                             </div>
                             <FormField
                                 control={control}
@@ -987,25 +1059,25 @@ export const Step2SectionInfo = ({
                                                 }}
                                                 size="large"
                                                 {...field}
-                                                className="ml-3 w-11"
+                                                className="w-14 text-center"
                                             />
                                         </FormControl>
                                     </FormItem>
                                 )}
                             />
                         </div>
-                        <div className="flex w-1/2 items-center justify-between">
-                            <div className="flex w-52 items-center justify-between gap-4">
-                                <h1>
+                        <div className="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white px-4 py-3">
+                            <div className="flex flex-1 items-center gap-4">
+                                <h3 className="text-sm font-medium text-neutral-700">
                                     Negative Marking
                                     {getStepKey({
                                         assessmentDetails,
                                         currentStep,
                                         key: 'negative_marking',
                                     }) === 'REQUIRED' && (
-                                        <span className="text-subtitle text-danger-600">*</span>
+                                        <span className="ml-0.5 text-danger-600">*</span>
                                     )}
-                                </h1>
+                                </h3>
                                 <FormField
                                     control={control}
                                     name={`section.${index}.negative_marking.value`}
@@ -1044,7 +1116,7 @@ export const Step2SectionInfo = ({
                                                     }}
                                                     size="large"
                                                     {...field}
-                                                    className="mr-2 w-11"
+                                                    className="w-14 text-center"
                                                 />
                                             </FormControl>
                                         </FormItem>
@@ -1070,15 +1142,15 @@ export const Step2SectionInfo = ({
                             control={form.control}
                             name={`section.${index}.partial_marking`}
                             render={({ field }) => (
-                                <FormItem className="flex w-1/2 items-center justify-between">
-                                    <FormLabel className="font-normal">
+                                <FormItem className="flex items-center justify-between gap-4 space-y-0 rounded-lg border border-neutral-200 bg-white px-4 py-3">
+                                    <FormLabel className="flex-1 text-sm font-medium text-neutral-700">
                                         Partial Marking
                                         {getStepKey({
                                             assessmentDetails,
                                             currentStep,
                                             key: 'partial_marking',
                                         }) === 'REQUIRED' && (
-                                            <span className="text-subtitle text-danger-600">*</span>
+                                            <span className="ml-0.5 text-danger-600">*</span>
                                         )}
                                     </FormLabel>
                                     <FormControl>
@@ -1161,10 +1233,15 @@ export const Step2SectionInfo = ({
                         control={form.control}
                         name={`section.${index}.problem_randomization`}
                         render={({ field }) => (
-                            <FormItem className="flex w-1/2 items-center justify-between">
-                                <FormLabel className="font-normal">
-                                    Problem Randomization
-                                </FormLabel>
+                            <FormItem className="flex items-center justify-between gap-4 space-y-0 rounded-lg border border-neutral-200 bg-white px-4 py-3">
+                                <div className="flex flex-1 items-center gap-3">
+                                    <div className="flex size-8 items-center justify-center rounded-md bg-info-50 text-info-600">
+                                        <Shuffle size={16} weight="bold" />
+                                    </div>
+                                    <FormLabel className="text-sm font-medium text-neutral-700">
+                                        Problem Randomization
+                                    </FormLabel>
+                                </div>
                                 <FormControl>
                                     <Switch
                                         checked={field.value}
@@ -1176,13 +1253,25 @@ export const Step2SectionInfo = ({
                     />
                 )}
                 {Boolean(allSections?.[index]?.adaptive_marking_for_each_question?.length) && (
-                    <div>
-                        <h1 className="mb-4 text-primary-500">
-                            {examtype === 'SURVEY' ? 'Survey Questions' : 'Adaptive Marking Rules'}
-                        </h1>
+                    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+                        <div className="flex items-center justify-between border-b border-neutral-100 bg-neutral-50/60 px-4 py-3">
+                            <h3 className="text-sm font-semibold text-neutral-800">
+                                {examtype === 'SURVEY'
+                                    ? 'Survey Questions'
+                                    : 'Adaptive Marking Rules'}
+                            </h3>
+                            <span className="rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-semibold text-primary-600">
+                                {allSections[index]?.adaptive_marking_for_each_question?.length}{' '}
+                                question
+                                {(allSections[index]?.adaptive_marking_for_each_question?.length ??
+                                    0) !== 1
+                                    ? 's'
+                                    : ''}
+                            </span>
+                        </div>
                         <Table>
-                            <TableHeader className="bg-primary-200">
-                                <TableRow>
+                            <TableHeader className="bg-neutral-50">
+                                <TableRow className="border-neutral-100 hover:bg-neutral-50">
                                     <TableHead>Q.No.</TableHead>
                                     <TableHead>
                                         {examtype === 'SURVEY' ? 'Survey Question' : 'Question'}
@@ -1195,7 +1284,7 @@ export const Step2SectionInfo = ({
                                     {examtype !== 'SURVEY' && <TableHead>Criteria</TableHead>}
                                 </TableRow>
                             </TableHeader>
-                            <TableBody className="bg-neutral-50">
+                            <TableBody className="bg-white">
                                 {allSections[index] &&
                                     allSections[index]?.adaptive_marking_for_each_question?.map(
                                         (question, idx) => {
@@ -1370,14 +1459,22 @@ export const Step2SectionInfo = ({
                 {examtype !== 'SURVEY' &&
                     (watch(`section.${index}.marks_per_question`) ||
                         watch(`section.${index}.total_marks`)) && (
-                        <div className="flex items-center justify-end gap-1">
-                            <span>Total Marks</span>
-                            <span>:</span>
-                            <h1>
-                                {calculateTotalMarks(
-                                    getValues(`section.${index}.adaptive_marking_for_each_question`)
-                                )}
-                            </h1>
+                        <div className="flex items-center justify-end">
+                            <div className="flex items-center gap-2 rounded-full border border-primary-200 bg-gradient-to-r from-primary-50 to-primary-100/50 px-4 py-1.5">
+                                <span className="text-xs font-medium uppercase tracking-wide text-neutral-600">
+                                    Total Marks
+                                </span>
+                                <NumberTicker
+                                    value={Number(
+                                        calculateTotalMarks(
+                                            getValues(
+                                                `section.${index}.adaptive_marking_for_each_question`
+                                            )
+                                        ) || 0
+                                    )}
+                                    className="text-base font-bold text-primary-600"
+                                />
+                            </div>
                         </div>
                     )}
             </AccordionContent>

@@ -166,6 +166,7 @@ export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-servi
 export const GET_EXPORT_CSV_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/registered-participants`;
 export const GET_QUESTIONS_INSIGHTS_URL = `${BASE_URL}/assessment-service/assessment/admin/get-question-insights`;
 export const GET_ADMIN_PARTICIPANTS = `${BASE_URL}/assessment-service/assessment/admin-participants/all/registered-participants`;
+export const GET_PARTICIPANT_REGISTRATION_DETAILS = `${BASE_URL}/assessment-service/assessment/admin-participants/registration-details`;
 export const GET_PARTICIPANTS_QUESTION_WISE = `${BASE_URL}/assessment-service/assessment/admin-participants/all/respondent-list`;
 export const GET_REVALUATE_STUDENT_RESULT = `${BASE_URL}/assessment-service/assessment/admin/revaluate`;
 export const GET_RELEASE_STUDENT_RESULT = `${BASE_URL}/assessment-service/admin/participants/release-result`;

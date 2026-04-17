@@ -541,6 +541,9 @@ export const CourseDetailsPage = () => {
     [],
   );
   const hasFetchedRef = useRef(false);
+  // Reactive flag so the auto-select effect can wait for batches before running
+  // when a URL packageSessionId is present (avoids the race that shows the wrong level).
+  const [isBatchesFetched, setIsBatchesFetched] = useState(false);
 
   // Effect 1: Fetch institute details and batches ONCE when instituteId is available
   useEffect(() => {
@@ -583,6 +586,7 @@ export const CourseDetailsPage = () => {
         // Store batches for mapping
         setFetchedBatches(batches);
         hasFetchedRef.current = true;
+        setIsBatchesFetched(true);
 
         if (import.meta.env.MODE !== "production") {
           console.info("[CourseDetailsPage] Data fetched", {
@@ -711,27 +715,38 @@ export const CourseDetailsPage = () => {
     // 1) Apply URL packageSessionId only when it matches current selection, or on initial load when selection not yet set.
     //    If user has changed session/level/subgroup, URL param is stale – fall through to block 2 to resolve from selection.
     if (urlPackageSessionId && fetchedBatches.length > 0) {
-      const targetBatch = fetchedBatches.find((b) => b.id === urlPackageSessionId);
+      const targetBatch = fetchedBatches.find(
+        (b) => b.id === urlPackageSessionId,
+      );
       const urlMatchesCurrentSelection =
         targetBatch &&
         targetBatch.session?.id === selectedSession &&
         targetBatch.level?.id === selectedLevel &&
         (!selectedBatchId || targetBatch.id === selectedBatchId);
 
-      if (targetBatch?.session?.id && targetBatch?.level?.id && urlMatchesCurrentSelection) {
+      if (
+        targetBatch?.session?.id &&
+        targetBatch?.level?.id &&
+        urlMatchesCurrentSelection
+      ) {
         setPackageSessionIdForCurrentLevel(targetBatch.id);
         setSelectedBatchId(targetBatch.id);
         return;
       }
       // Initial load: no session/level selected yet – sync from URL once
-      if (targetBatch?.session?.id && targetBatch?.level?.id && !selectedSession && !selectedLevel) {
+      if (
+        targetBatch?.session?.id &&
+        targetBatch?.level?.id &&
+        !selectedSession &&
+        !selectedLevel
+      ) {
         setPackageSessionIdForCurrentLevel(targetBatch.id);
         setSelectedBatchId(targetBatch.id);
         setSelectedSession(targetBatch.session.id);
         setSelectedLevel(targetBatch.level.id);
         const sessions = form.getValues("courseData")?.sessions || [];
         const selectedSessionData = sessions.find(
-          (s) => s.sessionDetails.id === targetBatch.session.id
+          (s) => s.sessionDetails.id === targetBatch.session.id,
         );
         if (selectedSessionData) {
           setLevelOptions(
@@ -739,7 +754,7 @@ export const CourseDetailsPage = () => {
               _id: level.id,
               value: level.id,
               label: level.name,
-            }))
+            })),
           );
         }
         return;
@@ -747,9 +762,50 @@ export const CourseDetailsPage = () => {
       // URL doesn't match current selection – do not return; block 2 will resolve from selectedSession/selectedLevel/selectedBatchId
     }
 
-    // When batches empty but URL has packageSessionId, trust URL
+    // When batches empty but URL has packageSessionId, trust URL.
+    // Also try to resolve session/level from course-init data so dropdowns populate correctly.
     if (urlPackageSessionId && fetchedBatches.length === 0) {
       setPackageSessionIdForCurrentLevel(urlPackageSessionId);
+      // Try to find session/level for this packageSessionId from courseDetailsData
+      try {
+        const initData = courseDetailsData as
+          | {
+              package_sessions?: Array<{
+                id: string;
+                session?: { id: string };
+                level?: { id: string };
+              }>;
+              sessions?: Array<{
+                session_dto?: { id: string };
+                level_with_details?: Array<{ id: string; name?: string }>;
+              }>;
+            }
+          | null
+          | undefined;
+        const ps = initData?.package_sessions?.find(
+          (p) => p.id === urlPackageSessionId,
+        );
+        if (ps?.session?.id && !selectedSession) {
+          setSelectedSession(ps.session.id);
+        }
+        if (ps?.level?.id && !selectedLevel) {
+          setSelectedLevel(ps.level.id);
+          const sessionData = initData?.sessions?.find(
+            (s) => s.session_dto?.id === ps.session?.id,
+          );
+          if (sessionData?.level_with_details) {
+            setLevelOptions(
+              sessionData.level_with_details.map((l) => ({
+                _id: l.id,
+                value: l.id,
+                label: l.name ?? l.id,
+              })),
+            );
+          }
+        }
+      } catch (_) {
+        /* ignore */
+      }
       return;
     }
 
@@ -760,11 +816,19 @@ export const CourseDetailsPage = () => {
         selectedSession,
         selectedLevel,
         searchParams.courseId || "",
-        selectedBatchId || undefined
+        selectedBatchId || undefined,
       );
       if (packageSessionId) {
         setPackageSessionIdForCurrentLevel(packageSessionId);
-        if (!selectedBatchId && hasChildSubgroups(fetchedBatches, selectedSession, selectedLevel, searchParams.courseId || "")) {
+        if (
+          !selectedBatchId &&
+          hasChildSubgroups(
+            fetchedBatches,
+            selectedSession,
+            selectedLevel,
+            searchParams.courseId || "",
+          )
+        ) {
           setSelectedBatchId(packageSessionId);
         }
         if (import.meta.env.MODE !== "production") {
@@ -829,7 +893,11 @@ export const CourseDetailsPage = () => {
           (ps) => !ps.package_dto?.id || ps.package_dto.id === courseId,
         );
         const list = forCourse.length > 0 ? forCourse : packageSessions;
-        const match =
+        // Priority: 1) URL packageSessionId, 2) current session+level selection, 3) first item
+        const urlMatch = urlPackageSessionId
+          ? list.find((ps) => ps.id === urlPackageSessionId)
+          : null;
+        const selectionMatch =
           selectedSession && selectedLevel
             ? list.find(
                 (ps) =>
@@ -837,21 +905,36 @@ export const CourseDetailsPage = () => {
                   ps.level?.id === selectedLevel,
               )
             : null;
-        const toUse = match ?? list[0];
+        const toUse = urlMatch ?? selectionMatch ?? list[0];
         if (toUse?.id) {
           setPackageSessionIdForCurrentLevel(toUse.id);
-          // Only set session here — level selection is handled by re-filter effect / handleSessionChange
-          const firstSession = data?.sessions?.[0];
-          if (firstSession?.session_dto?.id) {
-            if (!selectedSession)
-              setSelectedSession(firstSession.session_dto.id);
+          // Set both session and level so dropdowns reflect the correct selection
+          if (toUse.session?.id && !selectedSession) {
+            setSelectedSession(toUse.session.id);
+          }
+          if (toUse.level?.id && !selectedLevel) {
+            setSelectedLevel(toUse.level.id);
+            // Populate the level options dropdown for this session
+            const sessionData = data?.sessions?.find(
+              (s) => s.session_dto?.id === toUse.session?.id,
+            );
+            if (sessionData?.level_with_details) {
+              setLevelOptions(
+                sessionData.level_with_details.map((l) => ({
+                  _id: l.id,
+                  value: l.id,
+                  label: l.name ?? l.id,
+                })),
+              );
+            }
           }
           if (import.meta.env.MODE !== "production") {
             console.info(
               "[CourseDetailsPage] packageSessionId from course-init fallback",
               {
                 packageSessionId: toUse.id,
-                fromMatch: !!match,
+                fromUrlMatch: !!urlMatch,
+                fromSelectionMatch: !!selectionMatch,
               },
             );
           }
@@ -1207,9 +1290,9 @@ export const CourseDetailsPage = () => {
         fetchedBatches,
         selectedSession,
         selectedLevel,
-        courseIdForBatch
+        courseIdForBatch,
       ),
-    [fetchedBatches, selectedSession, selectedLevel, courseIdForBatch]
+    [fetchedBatches, selectedSession, selectedLevel, courseIdForBatch],
   );
 
   const batchOptions = useMemo(
@@ -1218,9 +1301,9 @@ export const CourseDetailsPage = () => {
         fetchedBatches,
         selectedSession,
         selectedLevel,
-        courseIdForBatch
+        courseIdForBatch,
       ),
-    [fetchedBatches, selectedSession, selectedLevel, courseIdForBatch]
+    [fetchedBatches, selectedSession, selectedLevel, courseIdForBatch],
   );
 
   // Update level options when session changes - filter based on selectedTab
@@ -1339,6 +1422,15 @@ export const CourseDetailsPage = () => {
       return;
     }
 
+    // If the URL carries a packageSessionId, wait until batches have been fetched so
+    // the URL-sync effect (Effect 2) can set the correct session/level first.
+    // Without this guard the auto-select fires before batches resolve and sets the
+    // wrong level (first in list), then Effect 2's "initial load" branch is skipped
+    // because selectedSession/selectedLevel are already populated.
+    if (searchParams.packageSessionId && !isBatchesFetched) {
+      return;
+    }
+
     if (sessionOptions.length > 0 && sessionOptions[0]?.value) {
       if (!selectedSession) {
         // No session selected yet — auto-select first session
@@ -1355,9 +1447,12 @@ export const CourseDetailsPage = () => {
         // but level was never set — call handleSessionChange to populate level options and select a level
         handleSessionChange(selectedSession);
         if (import.meta.env.MODE !== "production") {
-          console.info("[CourseDetailsPage] auto-select level for existing session", {
-            selectedSession,
-          });
+          console.info(
+            "[CourseDetailsPage] auto-select level for existing session",
+            {
+              selectedSession,
+            },
+          );
         }
       }
     }
@@ -1367,6 +1462,8 @@ export const CourseDetailsPage = () => {
     selectedLevel,
     handleSessionChange,
     isEnrollmentLoading,
+    isBatchesFetched,
+    searchParams.packageSessionId,
   ]);
 
   // Re-filter levels when enrollment data becomes available after initial selection
@@ -1403,20 +1500,30 @@ export const CourseDetailsPage = () => {
           label: level.name,
         })),
       );
-      // Set selected level to enrolled level
+      // Set selected level to enrolled level — but only when the URL doesn't lock us to a
+      // specific packageSessionId. If the user navigated here via a catalog card (URL has
+      // packageSessionId), respect that choice; don't force-switch to the default enrolled level.
+      const urlPackageSessionId = searchParams.packageSessionId;
       const enrolledLevelId = enrolledLevelIds[0] as string;
-      if (!selectedLevel || !enrolledLevelIds.includes(selectedLevel)) {
-        setSelectedLevel(enrolledLevelId);
-      }
-      // Also set packageSessionId for the enrolled level so modules can load
-      const enrolledPkgSession = matchingPkgSessions.find(
-        (ps) => ps.level?.id === enrolledLevelId
-      );
-      if (enrolledPkgSession?.id) {
-        setPackageSessionIdForCurrentLevel(enrolledPkgSession.id);
+      if (!urlPackageSessionId) {
+        if (!selectedLevel || !enrolledLevelIds.includes(selectedLevel)) {
+          setSelectedLevel(enrolledLevelId);
+        }
+        // Also sync packageSessionId for the enrolled level
+        const enrolledPkgSession = matchingPkgSessions.find(
+          (ps) => ps.level?.id === enrolledLevelId,
+        );
+        if (enrolledPkgSession?.id) {
+          setPackageSessionIdForCurrentLevel(enrolledPkgSession.id);
+        }
       }
     }
-  }, [enrolledPackageSessionsForCourse, selectedSession, watchedSessions]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    enrolledPackageSessionsForCourse,
+    selectedSession,
+    watchedSessions,
+    searchParams.packageSessionId,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Trace selection state changes
   useEffect(() => {
@@ -1961,7 +2068,6 @@ export const CourseDetailsPage = () => {
       />
 
       <div className="min-h-screen bg-background relative w-full max-w-full">
-
         {/* Course Header */}
         <CourseHeader
           courseData={form.getValues("courseData")}
@@ -2022,8 +2128,6 @@ export const CourseDetailsPage = () => {
                 hasRightSidebar={hasRightSidebar}
                 paymentType={paymentType}
                 certificateUrl={certificateUrl}
-                onSessionChange={handleSessionChange}
-                onLevelChange={handleLevelChange}
                 onBatchChange={handleBatchChange}
                 onEnrollmentClick={async () => {
                   // Check user status for free payment types before opening enrollment dialog

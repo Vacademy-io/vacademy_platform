@@ -63,6 +63,14 @@ import java.util.*;
 @Service
 public class SchoolFeeReceiptService {
 
+    private BigDecimal computeAdjustmentEffect(StudentFeePayment bill) {
+        if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
+        BigDecimal amt = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+        if ("PENALTY".equals(bill.getAdjustmentType())) return amt;
+        if ("CONCESSION".equals(bill.getAdjustmentType())) return amt.negate();
+        return BigDecimal.ZERO;
+    }
+
     private static final String SCHOOL_FEE_RECEIPT_TEMPLATE_TYPE = "SCHOOL_FEE_RECEIPT";
     private static final String RECEIPT_PREFIX = "RCT";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -167,8 +175,7 @@ public class SchoolFeeReceiptService {
                 totalExpected = totalExpected
                         .add(fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO);
                 totalPaid = totalPaid.add(fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO);
-                totalDiscount = totalDiscount
-                        .add(fp.getDiscountAmount() != null ? fp.getDiscountAmount() : BigDecimal.ZERO);
+                totalDiscount = totalDiscount.add(computeAdjustmentEffect(fp).negate());
             }
             BigDecimal balanceDue = totalExpected.subtract(totalPaid).subtract(totalDiscount);
 
@@ -277,8 +284,7 @@ public class SchoolFeeReceiptService {
                 totalExpected = totalExpected
                         .add(fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO);
                 totalPaid = totalPaid.add(fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO);
-                totalDiscount = totalDiscount
-                        .add(fp.getDiscountAmount() != null ? fp.getDiscountAmount() : BigDecimal.ZERO);
+                totalDiscount = totalDiscount.add(computeAdjustmentEffect(fp).negate());
             }
             BigDecimal balanceDue = totalExpected.subtract(totalPaid).subtract(totalDiscount);
 
@@ -366,8 +372,7 @@ public class SchoolFeeReceiptService {
             totalExpected = totalExpected
                     .add(fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO);
             totalPaid = totalPaid.add(fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO);
-            totalDiscount = totalDiscount
-                    .add(fp.getDiscountAmount() != null ? fp.getDiscountAmount() : BigDecimal.ZERO);
+            totalDiscount = totalDiscount.add(computeAdjustmentEffect(fp).negate());
         }
         BigDecimal balanceDue = totalExpected.subtract(totalPaid).subtract(totalDiscount);
 
@@ -805,8 +810,12 @@ public class SchoolFeeReceiptService {
         for (StudentFeePayment fp : feePayments) {
             BigDecimal expected = fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO;
             BigDecimal paid = fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO;
-            BigDecimal discount = fp.getDiscountAmount() != null ? fp.getDiscountAmount() : BigDecimal.ZERO;
-            BigDecimal balance = expected.subtract(paid).subtract(discount);
+            BigDecimal adjustmentEffect = computeAdjustmentEffect(fp);
+            BigDecimal balance = expected.add(adjustmentEffect).subtract(paid);
+            // For template display: show concession as positive amount
+            BigDecimal discount = "APPROVED".equals(fp.getAdjustmentStatus()) && "CONCESSION".equals(fp.getAdjustmentType())
+                    ? (fp.getAdjustmentAmount() != null ? fp.getAdjustmentAmount() : BigDecimal.ZERO)
+                    : BigDecimal.ZERO;
             String status = fp.getStatus() != null ? fp.getStatus() : "PENDING";
             String statusLabel = status.replace("_", " ");
             String statusClass = switch (status) {
@@ -880,8 +889,11 @@ public class SchoolFeeReceiptService {
         for (StudentFeePayment fp : feePayments) {
             BigDecimal expected = fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO;
             BigDecimal paid = fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO;
-            BigDecimal discount = fp.getDiscountAmount() != null ? fp.getDiscountAmount() : BigDecimal.ZERO;
-            BigDecimal balance = expected.subtract(paid).subtract(discount);
+            BigDecimal adjustmentEffect = computeAdjustmentEffect(fp);
+            BigDecimal balance = expected.add(adjustmentEffect).subtract(paid);
+            BigDecimal discount = "APPROVED".equals(fp.getAdjustmentStatus()) && "CONCESSION".equals(fp.getAdjustmentType())
+                    ? (fp.getAdjustmentAmount() != null ? fp.getAdjustmentAmount() : BigDecimal.ZERO)
+                    : BigDecimal.ZERO;
             String status = fp.getStatus() != null ? fp.getStatus() : "PENDING";
             String dueDate = fp.getDueDate() != null
                     ? new java.text.SimpleDateFormat("dd MMM yyyy").format(fp.getDueDate())

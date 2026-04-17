@@ -41,19 +41,29 @@ public class FeeLedgerAllocationService {
 
     private BigDecimal computeAmountDue(StudentFeePayment bill) {
         BigDecimal expected = bill.getAmountExpected() != null ? bill.getAmountExpected() : BigDecimal.ZERO;
-        BigDecimal discount = bill.getDiscountAmount() != null ? bill.getDiscountAmount() : BigDecimal.ZERO;
         BigDecimal paid = bill.getAmountPaid() != null ? bill.getAmountPaid() : BigDecimal.ZERO;
-        return expected.subtract(discount).subtract(paid);
+        BigDecimal adjustment = BigDecimal.ZERO;
+        if ("APPROVED".equals(bill.getAdjustmentStatus())) {
+            BigDecimal amt = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+            if ("PENALTY".equals(bill.getAdjustmentType())) {
+                adjustment = amt;
+            } else if ("CONCESSION".equals(bill.getAdjustmentType())) {
+                adjustment = amt.negate();
+            }
+        }
+        return expected.add(adjustment).subtract(paid);
     }
 
     /**
-     * Treat a bill as "settled via discount" when:
-     * - discount_amount > 0
+     * Treat a bill as "settled via adjustment" when:
+     * - an approved concession exists
      * - and remaining due <= 0
      */
-    private boolean isDiscountSettled(StudentFeePayment bill) {
-        BigDecimal discount = bill.getDiscountAmount() != null ? bill.getDiscountAmount() : BigDecimal.ZERO;
-        if (discount.compareTo(BigDecimal.ZERO) <= 0) return false;
+    private boolean isAdjustmentSettled(StudentFeePayment bill) {
+        if (!"APPROVED".equals(bill.getAdjustmentStatus())) return false;
+        if (!"CONCESSION".equals(bill.getAdjustmentType())) return false;
+        BigDecimal amt = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+        if (amt.compareTo(BigDecimal.ZERO) <= 0) return false;
         return computeAmountDue(bill).compareTo(BigDecimal.ZERO) <= 0;
     }
 
@@ -298,7 +308,7 @@ public class FeeLedgerAllocationService {
         // Include installments that are "settled via discount" even if allocation
         // created no ledger rows for them.
         for (StudentFeePayment bill : selectedBills) {
-            if (isDiscountSettled(bill) && !"PAID".equalsIgnoreCase(bill.getStatus())) {
+            if (isAdjustmentSettled(bill) && !"PAID".equalsIgnoreCase(bill.getStatus())) {
                 bill.setStatus("PAID");
                 studentFeePaymentRepository.save(bill);
                 if (!paidInstallmentIds.contains(bill.getId())) {
@@ -428,7 +438,7 @@ public class FeeLedgerAllocationService {
         // Include installments that are "settled via discount" even if allocation
         // created no ledger rows for them.
         for (StudentFeePayment bill : unpaidBills) {
-            if (isDiscountSettled(bill) && !"PAID".equalsIgnoreCase(bill.getStatus())) {
+            if (isAdjustmentSettled(bill) && !"PAID".equalsIgnoreCase(bill.getStatus())) {
                 bill.setStatus("PAID");
                 studentFeePaymentRepository.save(bill);
                 if (!paidInstallmentIds.contains(bill.getId())) {

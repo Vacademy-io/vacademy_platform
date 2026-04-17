@@ -153,8 +153,8 @@ export function InstallmentDetailsModal({
                                                 {formatCurrency(inst.amount_expected)}
                                             </td>
                                             <td className="py-3 px-4 text-gray-500">
-                                                {inst.discount_amount > 0
-                                                    ? `-${formatCurrency(inst.discount_amount)}`
+                                                {inst.adjustment_amount > 0
+                                                    ? `${inst.adjustment_type === 'PENALTY' ? '+' : '-'}${formatCurrency(inst.adjustment_amount)}`
                                                     : '—'}
                                             </td>
                                             <td className="py-3 px-4 text-emerald-700 font-semibold">

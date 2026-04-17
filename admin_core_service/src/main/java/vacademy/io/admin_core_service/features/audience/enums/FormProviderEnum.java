@@ -8,7 +8,8 @@ public enum FormProviderEnum {
     GOOGLE_FORMS("GOOGLE_FORMS", "Google Forms"),
     MICROSOFT_FORMS("MICROSOFT_FORMS", "Microsoft Forms"),
     META_LEAD_ADS("META_LEAD_ADS", "Meta Lead Ads"),
-    GOOGLE_LEAD_ADS("GOOGLE_LEAD_ADS", "Google Lead Form Extensions");
+    GOOGLE_LEAD_ADS("GOOGLE_LEAD_ADS", "Google Lead Form Extensions"),
+    GENERIC("GENERIC", "Generic Webhook");
 
     private final String code;
     private final String displayName;

@@ -17,6 +17,8 @@ import java.lang.Boolean;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class StudentFeePaymentDTO {
     private String id;
+    private String userId;
+    private String studentName;
     private String userPlanId;
     private String cpoId;
     private String cpoName;
@@ -24,14 +26,16 @@ public class StudentFeePaymentDTO {
     private String feeTypeCode;
     private String feeTypeDescription;
     private BigDecimal amountExpected;
-    private BigDecimal discountAmount;
-    private String discountReason;
+    private BigDecimal adjustmentAmount;
+    private String adjustmentReason;
+    private String adjustmentType;
+    private String adjustmentStatus;
     private BigDecimal amountPaid;
     private Date dueDate;
     private String status;
 
     // Derived fields for "installments/dues/overdues" UI
-    private BigDecimal amountDue; // amount_expected - discount_amount - amount_paid
+    private BigDecimal amountDue; // computed based on adjustment_status and adjustment_type
     private Boolean isOverdue; // due_date < today AND amountDue > 0
     private Long daysOverdue; // null if not overdue or due_date null
 }

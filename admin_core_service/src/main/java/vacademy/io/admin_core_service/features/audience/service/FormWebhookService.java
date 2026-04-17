@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.audience.enums.FormProviderEnum;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.FormWebhookConnectorRepository;
 import vacademy.io.admin_core_service.features.audience.strategy.FormWebhookStrategy;
+import vacademy.io.admin_core_service.features.audience.strategy.GenericFormWebhookStrategy;
 import vacademy.io.admin_core_service.features.audience.strategy.GoogleFormWebhookStrategy;
 import vacademy.io.admin_core_service.features.audience.strategy.MicrosoftFormWebhookStrategy;
 import vacademy.io.admin_core_service.features.audience.strategy.ZohoFormWebhookStrategy;
@@ -43,6 +44,9 @@ public class FormWebhookService {
     
     @Autowired
     private MicrosoftFormWebhookStrategy microsoftFormWebhookStrategy;
+
+    @Autowired
+    private GenericFormWebhookStrategy genericFormWebhookStrategy;
     
     @Autowired
     private AudienceService audienceService;
@@ -66,6 +70,7 @@ public class FormWebhookService {
         strategyMap.put(FormProviderEnum.ZOHO_FORMS.getCode(), zohoFormWebhookStrategy);
         strategyMap.put(FormProviderEnum.GOOGLE_FORMS.getCode(), googleFormWebhookStrategy);
         strategyMap.put(FormProviderEnum.MICROSOFT_FORMS.getCode(), microsoftFormWebhookStrategy);
+        strategyMap.put(FormProviderEnum.GENERIC.getCode(), genericFormWebhookStrategy);
         logger.info("Initialized form webhook strategies: {}", strategyMap.keySet());
     }
     
@@ -107,8 +112,12 @@ public class FormWebhookService {
         // Step 6: Apply field mapping to transform field names
         ProcessedFormDataDTO mappedData = applyFieldMapping(processedData, fieldMapping);
 
+        // Step 6b: Merge default values from connector BEFORE audience data
+        // (so connector-specific center name takes precedence over audience campaign name)
+        mergeDefaultValues(mappedData, connector.getDefaultValuesJson());
+
         addAudienceRelatedData(connector.getAudienceId(),mappedData);
-        
+
         // Step 7: Submit to audience service
         String responseId = audienceService.submitLeadFromFormWebhook(
                 connector.getAudienceId(),
@@ -280,6 +289,37 @@ public class FormWebhookService {
             throw new VacademyException("Webhook payload is empty");
         }
     }
+    /**
+     * Merge default/static values from the connector into the processed form data.
+     * Form data takes precedence — defaults are only added for fields not already present.
+     */
+    private void mergeDefaultValues(ProcessedFormDataDTO processedData, String defaultValuesJson) {
+        if (!StringUtils.hasText(defaultValuesJson)) {
+            return;
+        }
+
+        try {
+            Map<String, String> defaults = objectMapper.readValue(
+                    defaultValuesJson,
+                    new TypeReference<Map<String, String>>() {}
+            );
+
+            int mergedCount = 0;
+            for (Map.Entry<String, String> entry : defaults.entrySet()) {
+                if (!processedData.getFormFields().containsKey(entry.getKey())) {
+                    processedData.getFormFields().put(entry.getKey(), entry.getValue());
+                    mergedCount++;
+                }
+            }
+
+            if (mergedCount > 0) {
+                logger.info("Merged {} default values into form data", mergedCount);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to parse default_values_json: {}", defaultValuesJson, e);
+        }
+    }
+
     private void addAudienceRelatedData(String audienceId, ProcessedFormDataDTO processData){
         Optional<Audience> audienceOptional=audienceRepository.findById(audienceId);
         if(audienceOptional.isEmpty()){
@@ -287,7 +327,8 @@ public class FormWebhookService {
             return;
         }
         Audience audience=audienceOptional.get();
-        processData.getFormFields().put("center name",audience.getCampaignName());
+        // Only set center name if not already present (e.g., from default_values_json or form payload)
+        processData.getFormFields().putIfAbsent("center name",audience.getCampaignName());
         
         // Construct full name from first name and last name if they exist
         String firstName = processData.getFormFields().get("first name");

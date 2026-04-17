@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.fee_management.controller;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
@@ -27,7 +29,9 @@ import vacademy.io.admin_core_service.features.fee_management.enums.AllocationSc
 import vacademy.io.admin_core_service.features.fee_management.repository.InstituteFeeTypePriorityRepository;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackingService;
-import vacademy.io.admin_core_service.features.fee_management.service.StudentFeeDiscountService;
+import vacademy.io.admin_core_service.features.fee_management.service.StudentFeeAdjustmentService;
+import vacademy.io.admin_core_service.features.fee_management.enums.AdjustmentType;
+import vacademy.io.admin_core_service.features.fee_management.enums.AdjustmentStatus;
 import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
 import vacademy.io.admin_core_service.features.invoice.entity.InvoiceLineItem;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceLineItemRepository;
@@ -68,7 +72,7 @@ public class FeeTrackingAdminController {
     private vacademy.io.admin_core_service.features.fee_management.service.SchoolFeeReceiptService schoolFeeReceiptService;
 
     @Autowired
-    private StudentFeeDiscountService studentFeeDiscountService;
+    private StudentFeeAdjustmentService studentFeeAdjustmentService;
 
     @PostMapping("/{userId}/dues")
     public ResponseEntity<List<StudentFeePaymentDTO>> getStudentDues(
@@ -196,41 +200,106 @@ public class FeeTrackingAdminController {
     }
 
     /**
-     * Apply a manual, user-specific discount to a specific installment row.
-     *
-     * Constraints:
-     * - Updates `student_fee_payment.discount_amount` and optional `discount_reason`
-     * - Enforces that total discount (existing + delta) never exceeds `amount_expected`
-     * - If it covers remaining due, marks installment status as `PAID`
+     * Submit an adjustment (penalty or concession) on a specific installment.
+     * Penalty is auto-approved. Concession goes to PENDING_FOR_APPROVAL.
      */
-    @PatchMapping("/discount/apply")
-    public ResponseEntity<?> applyManualDiscount(
-            @RequestBody ApplyManualDiscountRequest request,
+    @PatchMapping("/adjustment/submit")
+    public ResponseEntity<?> submitAdjustment(
+            @RequestBody AdjustmentSubmitRequest request,
+            @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails adminUser
     ) {
-        StudentFeePayment updated = studentFeeDiscountService.applyManualDiscount(
+        AdjustmentType type = AdjustmentType.valueOf(request.getAdjustmentType().toUpperCase());
+
+        StudentFeePayment updated = studentFeeAdjustmentService.submitAdjustment(
                 request.getStudentFeePaymentId(),
                 request.getUserId(),
-                request.getDiscountAmount(),
-                request.getDiscountReason()
+                request.getAdjustmentAmount(),
+                type,
+                request.getAdjustmentReason(),
+                instituteId
         );
 
-        BigDecimal amountExpected = updated.getAmountExpected() != null ? updated.getAmountExpected() : BigDecimal.ZERO;
-        BigDecimal amountPaid = updated.getAmountPaid() != null ? updated.getAmountPaid() : BigDecimal.ZERO;
-        BigDecimal discount = updated.getDiscountAmount() != null ? updated.getDiscountAmount() : BigDecimal.ZERO;
-        BigDecimal amountDue = amountExpected.subtract(discount).subtract(amountPaid);
+        return ResponseEntity.ok(buildAdjustmentResponse(updated));
+    }
+
+    /**
+     * Approve or reject a pending concession adjustment.
+     * Only users with configured approval roles can call this.
+     */
+    @PatchMapping("/adjustment/review")
+    public ResponseEntity<?> reviewAdjustment(
+            @RequestBody AdjustmentReviewRequest request,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails adminUser
+    ) {
+        AdjustmentStatus action = AdjustmentStatus.valueOf(request.getAction().toUpperCase());
+
+        StudentFeePayment updated = studentFeeAdjustmentService.reviewAdjustment(
+                request.getStudentFeePaymentId(),
+                action,
+                instituteId,
+                adminUser
+        );
+
+        return ResponseEntity.ok(buildAdjustmentResponse(updated));
+    }
+
+    /**
+     * Retract an adjustment (pending, rejected, or approved).
+     * Resets all adjustment fields to null.
+     */
+    @PatchMapping("/adjustment/retract")
+    public ResponseEntity<?> retractAdjustment(
+            @RequestBody AdjustmentRetractRequest request,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails adminUser
+    ) {
+        StudentFeePayment updated = studentFeeAdjustmentService.retractAdjustment(
+                request.getStudentFeePaymentId(),
+                instituteId
+        );
+
+        return ResponseEntity.ok(buildAdjustmentResponse(updated));
+    }
+
+    /**
+     * Get all installments with pending adjustment approvals for an institute.
+     */
+    @PostMapping("/adjustment/pending")
+    public ResponseEntity<?> getPendingAdjustments(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails adminUser
+    ) {
+        List<StudentFeePaymentDTO> pending = feeTrackingService.getPendingAdjustments(instituteId);
+        return ResponseEntity.ok(pending);
+    }
+
+    private Map<String, Object> buildAdjustmentResponse(StudentFeePayment bill) {
+        BigDecimal amountExpected = bill.getAmountExpected() != null ? bill.getAmountExpected() : BigDecimal.ZERO;
+        BigDecimal amountPaid = bill.getAmountPaid() != null ? bill.getAmountPaid() : BigDecimal.ZERO;
+        BigDecimal adjustmentAmount = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+
+        BigDecimal amountDue = amountExpected.subtract(amountPaid);
+        if ("APPROVED".equals(bill.getAdjustmentStatus())) {
+            if ("PENALTY".equals(bill.getAdjustmentType())) {
+                amountDue = amountDue.add(adjustmentAmount);
+            } else if ("CONCESSION".equals(bill.getAdjustmentType())) {
+                amountDue = amountDue.subtract(adjustmentAmount);
+            }
+        }
 
         Map<String, Object> resp = new java.util.HashMap<>();
-        resp.put("student_fee_payment_id", updated.getId());
-        resp.put("user_id", updated.getUserId());
-        resp.put("discount_amount", discount);
-        if (updated.getDiscountReason() != null) {
-            resp.put("discount_reason", updated.getDiscountReason());
-        }
-        resp.put("status", updated.getStatus());
+        resp.put("student_fee_payment_id", bill.getId());
+        resp.put("user_id", bill.getUserId());
+        resp.put("adjustment_amount", adjustmentAmount);
+        resp.put("adjustment_type", bill.getAdjustmentType());
+        resp.put("adjustment_status", bill.getAdjustmentStatus());
+        resp.put("adjustment_reason", bill.getAdjustmentReason());
+        resp.put("status", bill.getStatus());
         resp.put("amount_due", amountDue);
 
-        return ResponseEntity.ok(resp);
+        return resp;
     }
 
     /**
@@ -462,43 +531,31 @@ public class FeeTrackingAdminController {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public static class ApplyManualDiscountRequest {
+    @Getter
+    @Setter
+    public static class AdjustmentSubmitRequest {
         private String studentFeePaymentId;
         private String userId;
-        private BigDecimal discountAmount;
-        private String discountReason;
+        private BigDecimal adjustmentAmount;
+        private String adjustmentType; // CONCESSION or PENALTY
+        private String adjustmentReason;
+    }
 
-        public String getStudentFeePaymentId() {
-            return studentFeePaymentId;
-        }
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @Getter
+    @Setter
+    public static class AdjustmentReviewRequest {
+        private String studentFeePaymentId;
+        private String action; // APPROVED or REJECTED
+    }
 
-        public void setStudentFeePaymentId(String studentFeePaymentId) {
-            this.studentFeePaymentId = studentFeePaymentId;
-        }
-
-        public String getUserId() {
-            return userId;
-        }
-
-        public void setUserId(String userId) {
-            this.userId = userId;
-        }
-
-        public BigDecimal getDiscountAmount() {
-            return discountAmount;
-        }
-
-        public void setDiscountAmount(BigDecimal discountAmount) {
-            this.discountAmount = discountAmount;
-        }
-
-        public String getDiscountReason() {
-            return discountReason;
-        }
-
-        public void setDiscountReason(String discountReason) {
-            this.discountReason = discountReason;
-        }
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @Getter
+    @Setter
+    public static class AdjustmentRetractRequest {
+        private String studentFeePaymentId;
     }
 
 }

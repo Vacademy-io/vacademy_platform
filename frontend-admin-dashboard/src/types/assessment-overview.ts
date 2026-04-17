@@ -60,6 +60,7 @@ export interface StudentLeaderboard {
     rank: number;
     user_id: string;
     percentile: number;
+    face_file_url?: string;
 }
 
 export interface StudentLeaderboardData {

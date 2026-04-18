@@ -563,13 +563,33 @@ class VideoGenerationService:
                 iv_repo = AiInputVideoRepository(session=db_session)
                 iv_record = iv_repo.get_by_id(input_video_id)
                 if iv_record and iv_record.status == "COMPLETED" and iv_record.context_json_url:
-                    # Download video_context.json
-                    import httpx
+                    # Download video_context.json — try S3 (handles private + public
+                    # buckets via IAM), fall back to HTTP for non-S3 URLs.
                     context_path = run_dir / "input_video_context.json"
                     if not context_path.exists():
-                        resp = httpx.get(iv_record.context_json_url, timeout=60)
-                        resp.raise_for_status()
-                        context_path.write_bytes(resp.content)
+                        context_path.parent.mkdir(parents=True, exist_ok=True)
+                        _ctx_url = iv_record.context_json_url
+                        _downloaded = False
+                        for _bkt in ["vacademy-media-storage", "vacademy-media-storage-public"]:
+                            if _bkt in _ctx_url:
+                                try:
+                                    _parts = _ctx_url.split(f"{_bkt}.s3.amazonaws.com/")
+                                    if len(_parts) == 2:
+                                        self.s3_service.s3_client.download_file(
+                                            _bkt, _parts[1], str(context_path)
+                                        )
+                                        _downloaded = True
+                                        logger.info(f"[VideoGenService] Downloaded video context from S3 ({_bkt})")
+                                        break
+                                except Exception as _s3e:
+                                    logger.warning(f"[VideoGenService] S3 download from {_bkt} failed: {_s3e}")
+                                    continue
+                        if not _downloaded:
+                            import httpx
+                            logger.info(f"[VideoGenService] Trying HTTP download for video context: {_ctx_url}")
+                            resp = httpx.get(_ctx_url, timeout=60)
+                            resp.raise_for_status()
+                            context_path.write_bytes(resp.content)
                     import json as _json
                     # Resolve audio preference: explicit > mode default
                     _audio_pref = input_video_audio

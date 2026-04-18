@@ -741,7 +741,12 @@ async def request_video_render(
             _iv_repo = AiInputVideoRepository(session=db)
             _iv_rec = _iv_repo.get_by_id(_meta["input_video_id"])
             if _iv_rec:
-                _source_video_url = _iv_rec.source_url
+                # Prefer public copy (from assets_urls), fall back to private source
+                _iv_assets = _iv_rec.assets_urls or {}
+                _source_video_url = (
+                    _iv_assets.get("source_video")
+                    or _iv_rec.source_url
+                )
         except Exception:
             pass
 

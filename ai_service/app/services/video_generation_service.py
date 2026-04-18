@@ -600,9 +600,15 @@ class VideoGenerationService:
                     if not _audio_pref:
                         _audio_pref = "original" if iv_record.mode == "podcast" else "tts"
 
+                    # Build public source URL from assets_urls if available
+                    _iv_assets = iv_record.assets_urls or {}
+                    _source_public = _iv_assets.get("source_video", "")
+
                     input_video_context = {
                         "context": _json.loads(context_path.read_text()),
                         "source_url": iv_record.source_url,
+                        "source_public_url": _source_public,
+                        "assets_urls": _iv_assets,
                         "input_video_id": str(iv_record.id),
                         "duration_seconds": iv_record.duration_seconds,
                         "mode": iv_record.mode,

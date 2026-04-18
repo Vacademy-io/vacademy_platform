@@ -4576,10 +4576,16 @@ class VideoGenerationPipeline:
                 entry["source_start"] = _src_start
                 entry["source_end"] = _src_end
 
-                # Inject background <video> into the shot HTML
+                # Inject background <video> into the shot HTML.
+                # Use the PUBLIC bucket URL (from assets_urls.source_video) so the
+                # browser can load it. Falls back to source_url (may be private).
                 _source_url = ""
                 if self._input_video_context:
-                    _source_url = self._input_video_context.get("source_url", "")
+                    # Try public URL from indexed assets first
+                    _iv_assets = self._input_video_context.get("context", {}).get("meta", {})
+                    # The indexing pipeline stores a public copy at assets_urls.source_video
+                    _assets_urls = self._input_video_context.get("assets_urls", {})
+                    _source_url = _assets_urls.get("source_video", "") or self._input_video_context.get("source_public_url", "") or self._input_video_context.get("source_url", "")
                 if _source_url and html:
                     _video_bg = (
                         f'<video data-source-clip="true" '

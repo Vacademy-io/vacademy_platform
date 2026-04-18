@@ -167,6 +167,21 @@ def run_index_pipeline(
         fps_original = probe["fps"]
         resolution = f"{width}x{height}"
         logger.info(f"Video: {resolution} @ {fps_original:.1f}fps, {duration_s:.1f}s")
+
+        # Copy source video to public bucket so the FE player can show it
+        # in SOURCE_CLIP shots via <video> tag (browser needs public URL).
+        _src_ext = source_url.rsplit(".", 1)[-1].split("?")[0] or "mp4"
+        _content_type = "video/quicktime" if _src_ext in ("mov",) else "video/mp4"
+        source_public_url = s3.upload(
+            video_path,
+            f"{s3_base}/source.{_src_ext}",
+            content_type=_content_type,
+        )
+        # Store INSIDE assets dict — the poller saves output_urls["assets"]
+        # to the DB's assets_urls column, so top-level keys get lost.
+        output_urls["assets"]["source_video"] = source_public_url
+        logger.info(f"Source video copied to public bucket: {source_public_url}")
+
         on_progress(5)
 
         # ── STAGE 1: CHEAP PASS (5-30%) ───────────────────────────────

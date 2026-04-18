@@ -120,7 +120,12 @@ DIRECTOR_SYSTEM_PROMPT = (
     "pick this for any beat that can be drawn rather than photographed. No photos — everything is drawn.\n"
     "- **KINETIC_TITLE**: Full-screen bold typography. Single phrase, word-wipe reveal (translateY 100%→0%), "
     "one accent-color word. Hooks, section headers ('1. THE PASS'), outros. "
-    "Works as a hard cut between style worlds (e.g. from a photo-hero act into an illustrated infographic act).\n\n"
+    "Works as a hard cut between style worlds (e.g. from a photo-hero act into an illustrated infographic act).\n"
+    "- **SOURCE_CLIP**: Play a clip from the user's uploaded source video. The original footage "
+    "(speaker, screen recording, demo) plays as the background with HTML overlays on top. "
+    "Use for key quotes, soundbites, demo highlights — any moment where showing the real footage "
+    "is more impactful than AI graphics. Specify `source_start` and `source_end` (seconds in the "
+    "source video). No `image_prompt` or `video_query` needed. ONLY available when source video context is provided.\n\n"
 
     "**RULES**:\n"
     "1. First shot is the hook — pick whichever shot type sells the topic best "

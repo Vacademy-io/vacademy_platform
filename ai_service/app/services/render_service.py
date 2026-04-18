@@ -51,6 +51,7 @@ class RenderService:
         caption_bg_color: Optional[str] = None,
         caption_bg_opacity: Optional[int] = None,
         caption_font_size: Optional[int] = None,
+        source_video_url: Optional[str] = None,
     ) -> str:
         """
         Submit a render job to the worker. Returns the job_id.
@@ -85,6 +86,8 @@ class RenderService:
             payload["caption_bg_opacity"] = caption_bg_opacity
         if caption_font_size is not None:
             payload["caption_font_size"] = caption_font_size
+        if source_video_url is not None:
+            payload["source_video_url"] = source_video_url
 
         try:
             with httpx.Client(timeout=self._timeout) as client:

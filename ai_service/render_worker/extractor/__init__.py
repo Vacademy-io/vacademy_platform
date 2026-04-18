@@ -1,0 +1,1 @@
+# Video input extraction pipeline

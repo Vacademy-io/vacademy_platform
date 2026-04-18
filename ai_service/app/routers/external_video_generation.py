@@ -226,6 +226,8 @@ async def generate_video_external(
                         orientation=p.orientation,
                         visual_style=p.visual_style,
                         sound_effects_enabled=p.sound_effects_enabled,
+                        input_video_id=p.input_video_id,
+                        input_video_audio=p.input_video_audio,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -385,6 +387,8 @@ async def resume_video_external(
                         target_duration=p.target_duration,
                         model=p.model or "",
                         sound_effects_enabled=p.sound_effects_enabled,
+                        input_video_id=p.input_video_id,
+                        input_video_audio=p.input_video_audio,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -728,6 +732,9 @@ async def request_video_render(
     _caption_bg_opacity = (body.caption_bg_opacity if body and body.caption_bg_opacity is not None else None)
     _caption_font_size = (_CAPTION_SIZE_PX.get(body.caption_size) if body and body.caption_size else None)
 
+    # Check if this video uses an indexed source video (for SOURCE_CLIP compositing)
+    _source_video_url = _meta.get("source_video_url")
+
     try:
         job_id = render_svc.submit(
             video_id=video_id,
@@ -746,6 +753,7 @@ async def request_video_render(
             caption_bg_color=_caption_bg_color,
             caption_bg_opacity=_caption_bg_opacity,
             caption_font_size=_caption_font_size,
+            source_video_url=_source_video_url,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))

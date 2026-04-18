@@ -99,6 +99,8 @@ class VideoGenerationService:
         orientation: str = "landscape",
         visual_style: str = "standard",
         sound_effects_enabled: bool = True,
+        input_video_id: Optional[str] = None,
+        input_video_audio: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -160,6 +162,8 @@ class VideoGenerationService:
                 gen_metadata["visual_style"] = visual_style
             if quality_tier and quality_tier != "ultra":
                 gen_metadata["quality_tier"] = quality_tier
+            if input_video_id:
+                gen_metadata["input_video_id"] = input_video_id
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -229,6 +233,8 @@ class VideoGenerationService:
                     orientation=orientation,
                     visual_style=visual_style,
                     sound_effects_enabled=sound_effects_enabled,
+                    input_video_id=input_video_id,
+                    input_video_audio=input_video_audio,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -309,6 +315,8 @@ class VideoGenerationService:
         orientation: str = "landscape",
         visual_style: str = "standard",
         sound_effects_enabled: bool = True,
+        input_video_id: Optional[str] = None,
+        input_video_audio: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -547,6 +555,59 @@ class VideoGenerationService:
                 logger.warning(f"[VideoGenService] Reference file processing failed (non-fatal): {e}")
                 reference_context = None
 
+        # ── Load indexed input video context (if provided) ──
+        input_video_context = None
+        if input_video_id:
+            try:
+                from ..repositories.ai_input_video_repository import AiInputVideoRepository
+                iv_repo = AiInputVideoRepository(session=db_session)
+                iv_record = iv_repo.get_by_id(input_video_id)
+                if iv_record and iv_record.status == "COMPLETED" and iv_record.context_json_url:
+                    # Download video_context.json
+                    import httpx
+                    context_path = run_dir / "input_video_context.json"
+                    if not context_path.exists():
+                        resp = httpx.get(iv_record.context_json_url, timeout=60)
+                        resp.raise_for_status()
+                        context_path.write_bytes(resp.content)
+                    import json as _json
+                    # Resolve audio preference: explicit > mode default
+                    _audio_pref = input_video_audio
+                    if not _audio_pref:
+                        _audio_pref = "original" if iv_record.mode == "podcast" else "tts"
+
+                    input_video_context = {
+                        "context": _json.loads(context_path.read_text()),
+                        "source_url": iv_record.source_url,
+                        "input_video_id": str(iv_record.id),
+                        "duration_seconds": iv_record.duration_seconds,
+                        "mode": iv_record.mode,
+                        "audio_preference": _audio_pref,
+                    }
+                    logger.info(
+                        f"[VideoGenService] Loaded input video context: "
+                        f"{iv_record.name} ({iv_record.duration_seconds:.1f}s, mode={iv_record.mode})"
+                    )
+                    # Store source_video_url in video metadata so the render
+                    # endpoint can pass it to the render worker for compositing.
+                    # MERGE with existing metadata — don't overwrite.
+                    try:
+                        video_record = self.repository.get_by_video_id(video_id)
+                        if video_record:
+                            existing_meta = video_record.extra_metadata or {}
+                            existing_meta["source_video_url"] = iv_record.source_url
+                            existing_meta["input_video_id"] = input_video_id
+                            self.repository.update_metadata(video_id, existing_meta)
+                    except Exception:
+                        pass  # non-fatal
+                elif iv_record:
+                    logger.warning(f"[VideoGenService] Input video {input_video_id} not COMPLETED (status={iv_record.status})")
+                else:
+                    logger.warning(f"[VideoGenService] Input video {input_video_id} not found")
+            except Exception as e:
+                logger.warning(f"[VideoGenService] Input video context loading failed (non-fatal): {e}")
+                input_video_context = None
+
         # Calculate percentage per stage
         total_stages = target_stage_idx - start_stage_idx + 1
         percentage_per_stage = 80 / total_stages if total_stages > 0 else 80  # Save 20% for final processing
@@ -672,8 +733,9 @@ class VideoGenerationService:
                     video_height=_vid_height,
                     visual_style=visual_style,
                     sound_effects_enabled=sound_effects_enabled,
+                    input_video_context=input_video_context,
                 )
-                
+
                 with ThreadPoolExecutor() as executor:
                     outputs = await loop.run_in_executor(executor, pipeline_run)
                 

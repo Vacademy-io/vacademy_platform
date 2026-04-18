@@ -214,6 +214,8 @@ async def generate_till_html(
             avatar_image_url=payload.avatar_image_url,
             generate_avatar=payload.generate_avatar,
             sound_effects_enabled=payload.sound_effects_enabled,
+            input_video_id=payload.input_video_id,
+            input_video_audio=payload.input_video_audio,
         ):
             yield f"data: {event}\n\n"
     
@@ -276,6 +278,8 @@ async def generate_till_render(
             user_id=payload.user_id,
             avatar_image_url=payload.avatar_image_url,
             sound_effects_enabled=payload.sound_effects_enabled,
+            input_video_id=payload.input_video_id,
+            input_video_audio=payload.input_video_audio,
         ):
             yield f"data: {event}\n\n"
     

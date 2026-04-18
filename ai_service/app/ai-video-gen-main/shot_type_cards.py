@@ -1029,6 +1029,70 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
             "After entrance animation, objects must STAY VISIBLE during narration — don't animate out.",
         ],
     },
+    # ------------------------------------------------------------------
+    # SOURCE_CLIP — play a clip from the indexed source video with
+    # transparent HTML overlays on top (captions, lower thirds, callouts)
+    # ------------------------------------------------------------------
+    "SOURCE_CLIP": {
+        "id": "SOURCE_CLIP",
+        "name": "Source Video Clip",
+        "category": "video",
+        "description": (
+            "Play a clip from the indexed source video. The viewer sees the original footage "
+            "(the speaker, the interview setting, the screen recording). HTML overlays render "
+            "ON TOP of the video with a transparent background. Use for key quotes, soundbites, "
+            "emotional moments, or showing the original content."
+        ),
+        "use_for": (
+            "Showing the original speaker during impactful quotes, "
+            "displaying screen recordings during key demonstrations, "
+            "any moment where the source footage is more powerful than AI graphics."
+        ),
+        "requires_image": False,
+        "requires_video": False,
+        "preferred_domains": ["input_video_podcast", "input_video_demo", "general"],
+        "html_template": (
+            "<!-- SOURCE_CLIP: overlay on top of source video footage -->\n"
+            "<!-- CRITICAL: background MUST be #000000 (black) — black pixels become transparent -->\n"
+            "<!-- during compositing. The source video plays behind all non-black content. -->\n"
+            "<div style='width:100%; height:100%; position:relative; background:#000000;'>\n"
+            "\n"
+            "  <!-- Lower-third caption (bottom 20% of screen) -->\n"
+            "  <div style='position:absolute; bottom:8%; left:5%; right:5%;\n"
+            "       background:rgba(0,0,0,0.7); padding:1.2rem 2rem; border-radius:0.5rem;\n"
+            "       border-left:4px solid var(--brand-accent);'>\n"
+            "    <div id='caption-text' style='font-family:Inter,sans-serif; font-size:1.8rem;\n"
+            "         color:#fff; font-weight:600; opacity:0; transform:translateY(10px);'>\n"
+            "      Design is how it works\n"
+            "    </div>\n"
+            "  </div>\n"
+            "\n"
+            "  <!-- Optional: speaker name title -->\n"
+            "  <div id='name-tag' style='position:absolute; bottom:28%; left:5%;\n"
+            "       opacity:0; transform:translateX(-20px);'>\n"
+            "    <span style='font-family:Bebas Neue,sans-serif; font-size:1.3rem;\n"
+            "         color:var(--brand-accent); letter-spacing:0.12em;'>STEVE JOBS</span>\n"
+            "  </div>\n"
+            "\n"
+            "</div>\n"
+        ),
+        "script_block": (
+            "// Animate caption in\n"
+            "gsap.to('#caption-text', {opacity:1, y:0, duration:0.5, delay:0.3, ease:'power3.out'});\n"
+            "// Animate name tag in\n"
+            "gsap.to('#name-tag', {opacity:1, x:0, duration:0.4, delay:0.6, ease:'power2.out'});\n"
+        ),
+        "guidelines": [
+            "Background MUST be solid #000000 (black). Black pixels become transparent during compositing.",
+            "All non-black content renders as overlay on top of the source video footage.",
+            "Keep overlays in the BOTTOM 30% of the screen — don't cover the speaker's face.",
+            "Use semi-transparent dark backgrounds (rgba(0,0,0,0.7)) for text readability.",
+            "Suggested elements: captions, lower thirds, name titles, callout arrows, stats.",
+            "DO NOT use <img> tags or data-img-prompt — the video itself is the visual.",
+            "DO NOT use data-video-query — the source video is already playing.",
+            "Animations should be subtle — the video content is the star, overlays support it.",
+        ],
+    },
 }
 
 
@@ -1106,6 +1170,9 @@ DOMAIN_SHOT_TYPES: Dict[str, List[str]] = {
     "product_showcase": ["PRODUCT_HERO", "KINETIC_TITLE", "DATA_STORY", "LOWER_THIRD"],
     # Default
     "general": ["IMAGE_HERO", "VIDEO_HERO", "TEXT_DIAGRAM", "IMAGE_SPLIT", "ANIMATED_ASSET", "PROCESS_STEPS", "LOWER_THIRD"],
+    # Input video modes — SOURCE_CLIP is the primary shot type
+    "input_video_podcast": ["SOURCE_CLIP", "KINETIC_TITLE", "TEXT_DIAGRAM", "DATA_STORY", "LOWER_THIRD"],
+    "input_video_demo": ["SOURCE_CLIP", "KINETIC_TITLE", "TEXT_DIAGRAM", "PROCESS_STEPS", "ANNOTATION_MAP", "LOWER_THIRD"],
 }
 
 

@@ -48,6 +48,13 @@ rsync -avz --progress \
     "$AI_SERVICE_DIR/app/ai-video-gen-main/generate_video.py" \
     "$RENDER_SERVER:$REMOTE_DIR/app/ai-video-gen-main/"
 
+# Sync extractor package (video indexing pipeline)
+if [ -d "$SCRIPT_DIR/extractor" ]; then
+    rsync -avz --progress --delete \
+        "$SCRIPT_DIR/extractor/" \
+        "$RENDER_SERVER:$REMOTE_DIR/render_worker/extractor/"
+fi
+
 # Sync optional config/assets (ignore if missing)
 for f in video_options.json captions_settings.json branding.json; do
     if [ -f "$AI_SERVICE_DIR/app/ai-video-gen-main/$f" ]; then
@@ -92,12 +99,13 @@ docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     -p 8090:8090 \
-    -e AWS_ACCESS_KEY_ID='AWS_ACCESS_KEY_ID' \
-    -e AWS_SECRET_ACCESS_KEY='AWS_SECRET_ACCESS_KEY' \
+    -e AWS_ACCESS_KEY_ID='' \
+    -e AWS_SECRET_ACCESS_KEY='' \
     -e AWS_REGION='ap-south-1' \
     -e AWS_S3_PUBLIC_BUCKET='vacademy-media-storage-public' \
     -e RENDER_KEY='vsahcraedyeamsyh' \
     -e MAX_CONCURRENT_JOBS='2' \
+    -e OPENROUTER_API_KEY='' \
     "$IMAGE_NAME"
 
 echo ""

@@ -263,20 +263,24 @@ export const CustomFieldRenderer = ({
             );
 
         case 'radio':
+            // Wrapped in a div so FormControl's Slot doesn't merge
+            // id/aria-* directly onto the Radix RadioGroup root.
             return (
-                <RadioGroup
-                    value={value || ''}
-                    onValueChange={handleChange}
-                    disabled={disabled}
-                    className="flex flex-col gap-2"
-                >
-                    {options.map((opt, idx) => (
-                        <div key={idx} className="flex items-center space-x-2">
-                            <RadioGroupItem value={opt} id={`${name}-${idx}`} />
-                            <Label htmlFor={`${name}-${idx}`}>{opt}</Label>
-                        </div>
-                    ))}
-                </RadioGroup>
+                <div>
+                    <RadioGroup
+                        value={value || ''}
+                        onValueChange={handleChange}
+                        disabled={disabled}
+                        className="flex flex-col gap-2"
+                    >
+                        {options.map((opt, idx) => (
+                            <div key={idx} className="flex items-center space-x-2">
+                                <RadioGroupItem value={opt} id={`${name}-${idx}`} />
+                                <Label htmlFor={`${name}-${idx}`}>{opt}</Label>
+                            </div>
+                        ))}
+                    </RadioGroup>
+                </div>
             );
 
         case 'file': {

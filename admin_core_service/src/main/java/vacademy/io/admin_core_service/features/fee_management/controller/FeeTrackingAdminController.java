@@ -75,21 +75,31 @@ public class FeeTrackingAdminController {
     private StudentFeeAdjustmentService studentFeeAdjustmentService;
 
     @PostMapping("/{userId}/dues")
-    public ResponseEntity<List<StudentFeePaymentDTO>> getStudentDues(
+    public ResponseEntity<StudentDuesPageResponse> getStudentDues(
             @PathVariable("userId") String userId,
             @RequestParam("instituteId") String instituteId,
             @RequestBody(required = false) DuesFilterRequest filter) {
 
         List<StudentFeePaymentDTO> dues = feeTrackingService.getStudentDues(userId, instituteId);
 
+        boolean fetchAll = false;
+        int page = 0;
+        int size = 10;
+
         if (filter != null) {
-            // Optional status filter (e.g., PENDING, PARTIAL_PAID, OVERDUE)
+            // Optional status filter: OVERDUE is client-defined (is_overdue flag), rest match status field
             if (filter.getStatus() != null && !filter.getStatus().isBlank()) {
                 String statusFilter = filter.getStatus().trim().toUpperCase();
-                dues = dues.stream()
-                        .filter(d -> d.getStatus() != null
-                                && d.getStatus().toUpperCase().equals(statusFilter))
-                        .collect(Collectors.toList());
+                if ("OVERDUE".equals(statusFilter)) {
+                    dues = dues.stream()
+                            .filter(d -> Boolean.TRUE.equals(d.getIsOverdue()))
+                            .collect(Collectors.toList());
+                } else {
+                    dues = dues.stream()
+                            .filter(d -> d.getStatus() != null
+                                    && d.getStatus().toUpperCase().equals(statusFilter))
+                            .collect(Collectors.toList());
+                }
             }
 
             // Optional due date range filter
@@ -114,9 +124,49 @@ public class FeeTrackingAdminController {
                         })
                         .collect(Collectors.toList());
             }
+
+            if (Boolean.TRUE.equals(filter.getFetchAll())) {
+                fetchAll = true;
+            }
+            if (filter.getPage() != null && filter.getPage() >= 0) {
+                page = filter.getPage();
+            }
+            if (filter.getSize() != null && filter.getSize() > 0) {
+                size = filter.getSize();
+            }
         }
 
-        return ResponseEntity.ok(dues);
+        BigDecimal totalFee = BigDecimal.ZERO;
+        BigDecimal totalPaid = BigDecimal.ZERO;
+        BigDecimal totalDue = BigDecimal.ZERO;
+        for (StudentFeePaymentDTO d : dues) {
+            if (d.getAmountExpected() != null) totalFee = totalFee.add(d.getAmountExpected());
+            if (d.getAmountPaid() != null) totalPaid = totalPaid.add(d.getAmountPaid());
+            if (d.getAmountDue() != null) totalDue = totalDue.add(d.getAmountDue());
+        }
+
+        long totalElements = dues.size();
+        int totalPages = size > 0 ? (int) Math.ceil((double) totalElements / size) : 1;
+
+        List<StudentFeePaymentDTO> content;
+        if (fetchAll) {
+            content = dues;
+        } else {
+            int from = Math.min(page * size, dues.size());
+            int to = Math.min(from + size, dues.size());
+            content = dues.subList(from, to);
+        }
+
+        StudentDuesPageResponse response = new StudentDuesPageResponse();
+        response.setContent(content);
+        response.setPageNumber(fetchAll ? 0 : page);
+        response.setPageSize(fetchAll ? content.size() : size);
+        response.setTotalElements(totalElements);
+        response.setTotalPages(fetchAll ? 1 : totalPages);
+        response.setTotalFee(totalFee);
+        response.setTotalPaid(totalPaid);
+        response.setTotalDue(totalDue);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{userId}/receipts")
@@ -498,35 +548,35 @@ public class FeeTrackingAdminController {
      * Request body for filtering dues.
      * - status: optional status filter (e.g. "PENDING", "PARTIAL_PAID").
      * - startDueDate / endDueDate: optional due date range (yyyy-MM-dd).
+     * - page / size: optional pagination. Defaults to page=0, size=10.
+     * - fetchAll: when true, returns the full filtered list (no pagination). Used by "Select all filtered".
      */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @Getter
+    @Setter
     public static class DuesFilterRequest {
         private String status;
         private LocalDate startDueDate;
         private LocalDate endDueDate;
+        private Integer page;
+        private Integer size;
+        private Boolean fetchAll;
+    }
 
-        public String getStatus() {
-            return status;
-        }
-
-        public void setStatus(String status) {
-            this.status = status;
-        }
-
-        public LocalDate getStartDueDate() {
-            return startDueDate;
-        }
-
-        public void setStartDueDate(LocalDate startDueDate) {
-            this.startDueDate = startDueDate;
-        }
-
-        public LocalDate getEndDueDate() {
-            return endDueDate;
-        }
-
-        public void setEndDueDate(LocalDate endDueDate) {
-            this.endDueDate = endDueDate;
-        }
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @Getter
+    @Setter
+    public static class StudentDuesPageResponse {
+        private List<StudentFeePaymentDTO> content;
+        private int pageNumber;
+        private int pageSize;
+        private long totalElements;
+        private int totalPages;
+        private BigDecimal totalFee;
+        private BigDecimal totalPaid;
+        private BigDecimal totalDue;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

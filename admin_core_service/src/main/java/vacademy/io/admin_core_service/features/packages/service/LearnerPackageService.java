@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.packages.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class LearnerPackageService {
 
         @Autowired
@@ -41,6 +43,7 @@ public class LearnerPackageService {
                         String instituteId,
                         int pageNo,
                         int pageSize) {
+                try {
 
                 Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
                 Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
@@ -84,7 +87,8 @@ public class LearnerPackageService {
                 // Fetch instructor details
                 List<UserDTO> userDTOS = authService.getUsersFromAuthServiceByUserIds(instructorIds);
                 Map<String, UserDTO> userMap = userDTOS.stream()
-                                .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
+                                .filter(u -> u != null && u.getId() != null)
+                                .collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
 
                 // Map projections to DTOs (instructors = faculty list, or single creator as
                 // fallback)
@@ -130,6 +134,13 @@ public class LearnerPackageService {
                 }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
+                } catch (RuntimeException e) {
+                        log.error("getLearnerPackageDetail failed for institute={}, type={}, userId={}",
+                                        instituteId,
+                                        learnerPackageFilterDTO != null ? learnerPackageFilterDTO.getType() : null,
+                                        userId, e);
+                        throw e;
+                }
         }
 
         private Page<PackageDetailProjection> getCompletedLearnerPackageDetail(
@@ -301,7 +312,8 @@ public class LearnerPackageService {
 
                 List<UserDTO> userDTOS = authService.getUsersFromAuthServiceByUserIds(instructorIds);
                 Map<String, UserDTO> userMap = userDTOS.stream()
-                                .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
+                                .filter(u -> u != null && u.getId() != null)
+                                .collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
 
                 List<UserDTO> instructors = instructorIds.stream()
                                 .map(userMap::get)

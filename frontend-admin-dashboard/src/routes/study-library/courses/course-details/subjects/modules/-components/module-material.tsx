@@ -10,6 +10,8 @@ import { getLevelName } from '@/utils/helpers/study-library-helpers.ts/get-name-
 import { getSubjectName } from '@/utils/helpers/study-library-helpers.ts/get-name-by-id/getSubjectNameById';
 import { useUpdateModuleOrder } from '@/routes/study-library/courses/course-details/subjects/modules/-services/update-modules-order';
 import { orderModulePayloadType } from '@/routes/study-library/courses/-types/order-payload';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 // import useIntroJsTour from '@/hooks/use-intro';
 // import { StudyLibraryIntroKey } from '@/constants/storage/introKey';
 // import { studyLibrarySteps } from '@/constants/intro/steps';
@@ -21,8 +23,6 @@ import {
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import { MyDropdown } from '@/components/common/students/enroll-manually/dropdownForPackageItems';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const ModuleMaterial = () => {
     const router = useRouter();

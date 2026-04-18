@@ -85,6 +85,8 @@ interface PromptInputProps {
     onOptionsChange: (options: Omit<GenerateVideoRequest, 'prompt'>) => void;
     reviewModeEnabled?: boolean;
     onReviewModeChange?: (enabled: boolean) => void;
+    /** API key for fetching indexed videos list. */
+    apiKey?: string | null;
 }
 
 interface OptionBubbleProps {
@@ -128,6 +130,7 @@ export function PromptInput({
     onOptionsChange,
     reviewModeEnabled,
     onReviewModeChange,
+    apiKey,
 }: PromptInputProps) {
     const [showPreview, setShowPreview] = useState(false);
     const [isPdfProcessing, setIsPdfProcessing] = useState(false);
@@ -153,6 +156,12 @@ export function PromptInput({
         Array<{ fileId: string; fileName: string; fileType: 'image' | 'pdf'; url: string; previewUrl?: string }>
     >([]);
     const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+    // Input video (indexed source video) state
+    const [indexedVideos, setIndexedVideos] = useState<
+        Array<{ id: string; name: string; mode: string; duration_seconds: number | null; status: string }>
+    >([]);
+    const [selectedInputVideoId, setSelectedInputVideoId] = useState<string | null>(null);
+    const [inputVideoAudio, setInputVideoAudio] = useState<'original' | 'tts'>('tts');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
     const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -174,6 +183,30 @@ export function PromptInput({
             textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
         }
     }, [prompt, showPreview]);
+
+    // Fetch indexed input videos for the source video selector
+    useEffect(() => {
+        if (!apiKey) return;
+        import('../-services/input-video').then(({ listInputVideos }) => {
+            listInputVideos(apiKey)
+                .then((videos) => {
+                    setIndexedVideos(
+                        videos
+                            .filter((v) => v.status === 'COMPLETED')
+                            .map((v) => ({
+                                id: v.id,
+                                name: v.name,
+                                mode: v.mode,
+                                duration_seconds: v.duration_seconds,
+                                status: v.status,
+                            })),
+                    );
+                })
+                .catch(() => {
+                    /* non-fatal */
+                });
+        });
+    }, [apiKey]);
 
     // Auto-select model based on quality tier
     useEffect(() => {
@@ -281,6 +314,9 @@ export function PromptInput({
             prompt: prompt.trim(),
             ...options,
             ...(referenceFiles.length > 0 ? { reference_files: referenceFiles } : {}),
+            ...(selectedInputVideoId
+                ? { input_video_id: selectedInputVideoId, input_video_audio: inputVideoAudio }
+                : {}),
         });
     };
 
@@ -530,6 +566,70 @@ export function PromptInput({
                             ))}
                         </div>
                     </OptionBubble>
+
+                    {/* Source Video Selector */}
+                    {indexedVideos.length > 0 && (
+                        <OptionBubble
+                            icon={<Film className="size-3" />}
+                            label="Source Video"
+                            value={
+                                selectedInputVideoId
+                                    ? indexedVideos.find((v) => v.id === selectedInputVideoId)?.name || 'Selected'
+                                    : 'None'
+                            }
+                        >
+                            <Select
+                                value={selectedInputVideoId || '__none__'}
+                                onValueChange={(v) => setSelectedInputVideoId(v === '__none__' ? null : v)}
+                            >
+                                <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue placeholder="No source video" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__none__" className="text-xs">
+                                        None (text prompt only)
+                                    </SelectItem>
+                                    {indexedVideos.map((v) => (
+                                        <SelectItem key={v.id} value={v.id} className="text-xs">
+                                            {v.name} ({v.mode}, {v.duration_seconds ? `${Math.round(v.duration_seconds)}s` : '?'})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </OptionBubble>
+                    )}
+
+                    {/* Audio Source Toggle (visible when source video is selected) */}
+                    {selectedInputVideoId && (
+                        <OptionBubble
+                            icon={<Mic className="size-3" />}
+                            label="Audio"
+                            value={inputVideoAudio === 'original' ? 'Original' : 'AI Narration'}
+                        >
+                            <div className="inline-flex w-full rounded-lg border bg-muted p-0.5">
+                                <button
+                                    onClick={() => setInputVideoAudio('original')}
+                                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                        inputVideoAudio === 'original'
+                                            ? 'bg-background text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    Original Audio
+                                </button>
+                                <button
+                                    onClick={() => setInputVideoAudio('tts')}
+                                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                        inputVideoAudio === 'tts'
+                                            ? 'bg-background text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    AI Narration
+                                </button>
+                            </div>
+                        </OptionBubble>
+                    )}
 
                     {/* Quality Tier Selector */}
                     <OptionBubble

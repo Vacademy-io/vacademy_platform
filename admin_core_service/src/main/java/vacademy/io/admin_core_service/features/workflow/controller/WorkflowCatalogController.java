@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.workflow.dto.CatalogItemDTO;
+import vacademy.io.admin_core_service.features.workflow.enums.EventAppliedType;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 
 import java.util.*;
@@ -101,6 +102,62 @@ public class WorkflowCatalogController {
                 .description("Get fee installments due within a date range for an institute")
                 .category("Fee Management")
                 .requiredParams(List.of("instituteId", "startDate", "endDate"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_live_sessions")
+                .label("Fetch Live Sessions")
+                .description("Get live sessions for an institute with optional status filter")
+                .category("Live Session")
+                .requiredParams(List.of("instituteId"))
+                .optionalParams(List.of("status"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_live_session_participants")
+                .label("Fetch Live Session Participants")
+                .description("Get all participants of a live session")
+                .category("Live Session")
+                .requiredParams(List.of("liveSessionId"))
+                .optionalParams(List.of("status"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_enroll_invites")
+                .label("Fetch Enrollment Invites")
+                .description("Get enrollment invites for an institute with optional filters")
+                .category("Invites")
+                .requiredParams(List.of("instituteId"))
+                .optionalParams(List.of("status"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_expiring_memberships")
+                .label("Fetch Expiring Memberships")
+                .description("Get user plans/memberships expiring within N days")
+                .category("CRM")
+                .requiredParams(List.of("instituteId"))
+                .optionalParams(List.of("daysUntilExpiry"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_audience_responses_filtered")
+                .label("Fetch Audience Responses (Filtered)")
+                .description("Get audience/lead responses with flexible date and audience filters")
+                .category("CRM")
+                .requiredParams(List.of("instituteId"))
+                .optionalParams(List.of("audienceId", "daysAgo", "startDate", "endDate"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_student_attendance_report")
+                .label("Student Attendance & Engagement Report")
+                .description("Get attendance %, session-wise attendance, and concentration/engagement scores for a student in a batch")
+                .category("Live Session")
+                .requiredParams(List.of("userId", "batchId"))
+                .optionalParams(List.of("daysBack"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_batch_attendance_report")
+                .label("Batch Attendance Report (All Students)")
+                .description("Get attendance and engagement data for students — pass batchId for one batch, or leave empty for ALL batches in the institute")
+                .category("Live Session")
+                .requiredParams(List.of("instituteId"))
+                .optionalParams(List.of("batchId", "daysBack"))
                 .build()
         );
         return ResponseEntity.ok(keys);
@@ -108,28 +165,75 @@ public class WorkflowCatalogController {
 
     @GetMapping("/trigger-events")
     public ResponseEntity<List<CatalogItemDTO>> getTriggerEvents() {
-        Map<String, String[]> eventMeta = Map.of(
-            "LEARNER_BATCH_ENROLLMENT", new String[]{"Learner Batch Enrollment", "Fires when learners are enrolled in a batch", "Enrollment"},
-            "GENERATE_ADMIN_LOGIN_URL_FOR_LEARNER_PORTAL", new String[]{"Generate Admin Login URL", "Fires when admin login URL is generated for learner portal", "Auth"},
-            "SEND_LEARNER_CREDENTIALS", new String[]{"Send Learner Credentials", "Fires when credentials need to be sent to learners", "Notification"},
-            "SUB_ORG_MEMBER_ENROLLMENT", new String[]{"Sub-Org Member Enrollment", "Fires when a member is enrolled in a sub-organization", "Enrollment"},
-            "SUB_ORG_MEMBER_TERMINATION", new String[]{"Sub-Org Member Termination", "Fires when a member is removed from a sub-organization", "Enrollment"},
-            "AUDIENCE_LEAD_SUBMISSION", new String[]{"Audience Lead Submission", "Fires when a new lead is submitted via audience form", "CRM"},
-            "INSTALLMENT_DUE_REMINDER", new String[]{"Installment Due Reminder", "Fires when a fee installment is approaching its due date", "Fee Management"}
-        );
+        // Each entry: label, description, category, eventAppliedType
+        Map<String, String[]> eventMeta = new LinkedHashMap<>();
+        // Existing
+        eventMeta.put("LEARNER_BATCH_ENROLLMENT", new String[]{"Learner Batch Enrollment", "Fires when learners are enrolled in a batch", "Enrollment", "PACKAGE_SESSION"});
+        eventMeta.put("GENERATE_ADMIN_LOGIN_URL_FOR_LEARNER_PORTAL", new String[]{"Generate Admin Login URL", "Fires when admin login URL is generated for learner portal", "Auth", "PACKAGE_SESSION"});
+        eventMeta.put("SEND_LEARNER_CREDENTIALS", new String[]{"Send Learner Credentials", "Fires when credentials need to be sent to learners", "Notification", "PACKAGE_SESSION"});
+        eventMeta.put("SUB_ORG_MEMBER_ENROLLMENT", new String[]{"Sub-Org Member Enrollment", "Fires when a member is enrolled in a sub-organization", "Enrollment", "PACKAGE_SESSION"});
+        eventMeta.put("SUB_ORG_MEMBER_TERMINATION", new String[]{"Sub-Org Member Termination", "Fires when a member is removed from a sub-organization", "Enrollment", "PACKAGE_SESSION"});
+        eventMeta.put("AUDIENCE_LEAD_SUBMISSION", new String[]{"Audience Lead Submission", "Fires when a new lead is submitted via audience form", "CRM", "AUDIENCE"});
+        eventMeta.put("INSTALLMENT_DUE_REMINDER", new String[]{"Installment Due Reminder", "Fires when a fee installment is approaching its due date", "Fee Management", "INSTITUTE"});
+        // Live Session
+        eventMeta.put("LIVE_SESSION_CREATE", new String[]{"Live Session Created", "Fires when a new live session is created", "Live Session", "LIVE_SESSION"});
+        eventMeta.put("LIVE_SESSION_START", new String[]{"Live Session Started", "Fires when a live session starts", "Live Session", "LIVE_SESSION"});
+        eventMeta.put("LIVE_SESSION_END", new String[]{"Live Session Ended", "Fires when a live session ends", "Live Session", "LIVE_SESSION"});
+        eventMeta.put("LIVE_SESSION_FORM_SUBMISSION", new String[]{"Live Session Form Submission", "Fires when a learner submits a live session registration form", "Live Session", "LIVE_SESSION"});
+        // Payment
+        eventMeta.put("PAYMENT_FAILED", new String[]{"Payment Failed", "Fires when a payment fails for an enrollment invite", "Payment", "ENROLL_INVITE"});
+        eventMeta.put("ABANDONED_CART", new String[]{"Abandoned Cart", "Fires when a user starts enrollment but doesn't complete payment", "Payment", "ENROLL_INVITE"});
+        // Invites
+        eventMeta.put("INVITE_CREATE", new String[]{"Invite Created", "Fires when a new enroll invite is created", "Invites", "ENROLL_INVITE"});
+        eventMeta.put("INVITE_FORM_FILL", new String[]{"Invite Form Filled", "Fires when a learner completes an invite enrollment form", "Invites", "ENROLL_INVITE"});
+        // CRM
+        eventMeta.put("MEMBERSHIP_EXPIRY", new String[]{"Membership Expiry", "Fires when a user's membership/subscription is about to expire", "CRM", "USER_PLAN"});
+        eventMeta.put("ENROLLMENT_REPORTS", new String[]{"Enrollment Reports", "Fires periodically for generating enrollment reports", "CRM", "INSTITUTE"});
+        // Assessment
+        eventMeta.put("ASSESSMENT_CREATE", new String[]{"Assessment Created", "Fires when a new assessment is created", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_START", new String[]{"Assessment Started", "Fires when a student starts an assessment attempt", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_END", new String[]{"Assessment Ended", "Fires when a student submits an assessment", "Assessment", "ASSESSMENT"});
+        eventMeta.put("ASSESSMENT_FORM_SUBMISSION", new String[]{"Assessment Form Submission", "Fires when an assessment registration form is submitted", "Assessment", "ASSESSMENT"});
 
         List<CatalogItemDTO> events = new ArrayList<>();
         for (WorkflowTriggerEvent event : WorkflowTriggerEvent.values()) {
-            String[] meta = eventMeta.getOrDefault(event.name(), new String[]{event.name(), "", "General"});
+            String[] meta = eventMeta.getOrDefault(event.name(), new String[]{event.name(), "", "General", ""});
             events.add(CatalogItemDTO.builder()
                     .key(event.name())
                     .label(meta[0])
                     .description(meta[1])
                     .category(meta[2])
+                    .eventAppliedType(meta.length > 3 && !meta[3].isEmpty() ? meta[3] : null)
                     .requiredParams(List.of())
                     .build());
         }
         return ResponseEntity.ok(events);
+    }
+
+    @GetMapping("/event-applied-types")
+    public ResponseEntity<List<CatalogItemDTO>> getEventAppliedTypes() {
+        Map<String, String> descriptions = Map.of(
+            "PACKAGE_SESSION", "Package Session (enrollment-related)",
+            "AUDIENCE", "Audience / Lead (CRM-related)",
+            "LIVE_SESSION", "Live Session",
+            "ENROLL_INVITE", "Enrollment Invite",
+            "PAYMENT", "Payment",
+            "USER_PLAN", "User Plan / Membership",
+            "INSTITUTE", "Institute-wide",
+            "ASSESSMENT", "Assessment (cross-service)"
+        );
+
+        List<CatalogItemDTO> types = new ArrayList<>();
+        for (EventAppliedType type : EventAppliedType.values()) {
+            types.add(CatalogItemDTO.builder()
+                    .key(type.name())
+                    .label(descriptions.getOrDefault(type.name(), type.name()))
+                    .description(descriptions.getOrDefault(type.name(), ""))
+                    .category("Event Applied Type")
+                    .requiredParams(List.of())
+                    .build());
+        }
+        return ResponseEntity.ok(types);
     }
 
     @GetMapping("/actions")

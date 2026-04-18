@@ -166,6 +166,10 @@ export interface GenerateVideoRequest {
     orientation?: VideoOrientation;
     visual_style?: VisualStyle;
     target_stage?: VideoStage; // Stop at this stage (default: HTML). Use 'SCRIPT' for review mode.
+    /** ID of an indexed input video — uses its transcript as script and audio as narration */
+    input_video_id?: string;
+    /** Audio source when input_video_id is set: 'original' (keep source audio) or 'tts' (generate AI narration) */
+    input_video_audio?: 'original' | 'tts';
 }
 
 export const QUALITY_TIERS: Array<{

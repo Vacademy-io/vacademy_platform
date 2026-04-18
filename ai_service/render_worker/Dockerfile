@@ -7,13 +7,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
     libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
     libasound2 libgtk-3-0 fonts-liberation fonts-noto fonts-noto-color-emoji \
+    libsndfile1 \
     wget curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 # Install Google Chrome (NOT Chromium) — includes H.264/AAC proprietary codecs
 # Playwright's bundled Chromium lacks these codecs due to patent licensing
 RUN playwright install chrome --with-deps

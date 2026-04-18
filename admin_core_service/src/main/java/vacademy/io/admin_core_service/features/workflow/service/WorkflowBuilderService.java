@@ -207,6 +207,7 @@ public class WorkflowBuilderService {
                     .description(trig.getDescription())
                     .status("ACTIVE")
                     .eventId(trig.getEventId())
+                    .eventAppliedType(trig.getEventAppliedType())
                     .build();
             // Set workflow relationship - need to fetch the managed entity
             Workflow managedWorkflow = workflowRepository.findById(workflowId).orElseThrow();
@@ -352,6 +353,7 @@ public class WorkflowBuilderService {
                     .triggerEventName(trigger.getTriggerEventName())
                     .description(trigger.getDescription())
                     .eventId(trigger.getEventId())
+                    .eventAppliedType(trigger.getEventAppliedType())
                     .build();
         }
 

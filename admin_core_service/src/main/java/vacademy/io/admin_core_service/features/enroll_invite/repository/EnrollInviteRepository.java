@@ -214,4 +214,11 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             @Param("subOrgId") String subOrgId,
             @Param("packageSessionId") String packageSessionId);
 
+    @Query("SELECT ei FROM EnrollInvite ei WHERE ei.instituteId = :instituteId AND ei.status = :status")
+    List<EnrollInvite> findByInstituteIdAndStatus(
+            @Param("instituteId") String instituteId,
+            @Param("status") String status);
+
+    @Query("SELECT ei FROM EnrollInvite ei WHERE ei.instituteId = :instituteId")
+    List<EnrollInvite> findByInstituteId(@Param("instituteId") String instituteId);
 }

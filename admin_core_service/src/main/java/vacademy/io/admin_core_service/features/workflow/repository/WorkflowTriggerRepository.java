@@ -34,4 +34,44 @@ public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger
 
     @Query("SELECT w FROM WorkflowTrigger w WHERE w.webhookUrlSlug = :slug AND w.status = :status")
     WorkflowTrigger findByWebhookUrlSlugAndStatus(@Param("slug") String slug, @Param("status") String status);
+
+    @Query("""
+        SELECT w FROM WorkflowTrigger w
+        WHERE w.instituteId = :instituteId
+          AND w.triggerEventName = :eventType
+          AND w.status IN :statuses
+          AND w.eventId = :eventId
+    """)
+    List<WorkflowTrigger> findSpecificTriggers(
+        @Param("instituteId") String instituteId,
+        @Param("eventId") String eventId,
+        @Param("eventType") String eventType,
+        @Param("statuses") List<String> statuses
+    );
+
+    @Query("""
+        SELECT w FROM WorkflowTrigger w
+        WHERE w.instituteId = :instituteId
+          AND w.triggerEventName = :eventType
+          AND w.status IN :statuses
+          AND w.eventId IS NULL
+    """)
+    List<WorkflowTrigger> findGlobalTriggers(
+        @Param("instituteId") String instituteId,
+        @Param("eventType") String eventType,
+        @Param("statuses") List<String> statuses
+    );
+
+    @Query("""
+        SELECT w FROM WorkflowTrigger w
+        WHERE w.instituteId = :instituteId
+          AND w.triggerEventName = :eventType
+          AND w.status IN :statuses
+          AND w.eventId IS NULL
+    """)
+    List<WorkflowTrigger> findGlobalTriggersByEventType(
+        @Param("instituteId") String instituteId,
+        @Param("eventType") String eventType,
+        @Param("statuses") List<String> statuses
+    );
 }

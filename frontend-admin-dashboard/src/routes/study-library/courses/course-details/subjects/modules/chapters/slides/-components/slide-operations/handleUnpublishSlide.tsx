@@ -102,7 +102,7 @@ export const handleUnpublishSlide = async (
                     cover_file_id: activeItem.document_slide?.cover_file_id || '',
                     total_pages: activeItem.document_slide?.total_pages || 0,
                     published_data: null, // Clear published_data since we're unpublishing
-                    published_document_total_pages: 1,
+                    published_document_total_pages: activeItem.document_slide?.total_pages || 0,
                 },
                 status,
                 new_slide: false,

@@ -24,6 +24,13 @@ const testInputFieldSchema = z.object({
             })
         )
         .optional(),
+    // Backend custom_fields.id (master UUID). Without this, the backend
+    // can't find the existing master row and tries to create a new one,
+    // which crashes on institutes with duplicate field_key rows.
+    _id: z.string().optional(),
+    status: z.string().optional(),
+    field_id: z.string().optional(),
+    custom_field_data: z.any().optional(),
 });
 
 export const audienceCampaignSchema = z.object({

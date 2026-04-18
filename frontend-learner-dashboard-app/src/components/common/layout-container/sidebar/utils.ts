@@ -24,7 +24,9 @@ import {
 const getNamingSettings = (): NamingSettingsType[] => {
   try {
     const saved = localStorage.getItem(NAMING_SETTINGS_KEY);
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? parsed : [];
   } catch (error) {
     console.error("Failed to parse naming settings from localStorage:", error);
     return [];

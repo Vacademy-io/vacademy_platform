@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.packages.service;
 
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class OpenPackageService {
         @Autowired
         private PackageRepository packageRepository;
@@ -142,7 +144,8 @@ public class OpenPackageService {
 
                 List<UserDTO> userDTOS = authService.getUsersFromAuthServiceByUserIds(instructorIds);
                 Map<String, UserDTO> userMap = userDTOS.stream()
-                                .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
+                                .filter(u -> u != null && u.getId() != null)
+                                .collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
 
                 return projections.stream().map(projection -> {
                         List<String> instructorIdList = Optional.ofNullable(projection.getFacultyUserIds()).orElse(List.of());
@@ -205,7 +208,8 @@ public class OpenPackageService {
 
                 List<UserDTO> userDTOS = authService.getUsersFromAuthServiceByUserIds(instructorIds);
                 Map<String, UserDTO> userMap = userDTOS.stream()
-                                .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
+                                .filter(u -> u != null && u.getId() != null)
+                                .collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
 
                 List<UserDTO> instructors = instructorIds.stream()
                                 .map(userMap::get)
@@ -249,6 +253,7 @@ public class OpenPackageService {
                         String instituteId,
                         int pageNo,
                         int pageSize) {
+                try {
 
                 Sort thisSort = ListService.createSortObject(learnerPackageFilterDTO.getSortColumns());
                 Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
@@ -318,7 +323,8 @@ public class OpenPackageService {
                 // Fetch instructor details
                 List<UserDTO> userDTOS = authService.getUsersFromAuthServiceByUserIds(instructorIds);
                 Map<String, UserDTO> userMap = userDTOS.stream()
-                                .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
+                                .filter(u -> u != null && u.getId() != null)
+                                .collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
 
                 // Map projections to DTOs (instructors = faculty list, or single creator as fallback)
                 List<PackageDetailV2DTO> dtos = learnerPackageDetail.getContent().stream().map(projection -> {
@@ -367,6 +373,13 @@ public class OpenPackageService {
                 }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
+                } catch (RuntimeException e) {
+                        log.error("getLearnerPackageDetailV2 failed for institute={}, search={}",
+                                        instituteId,
+                                        learnerPackageFilterDTO != null ? learnerPackageFilterDTO.getSearchByName() : null,
+                                        e);
+                        throw e;
+                }
         }
 
         private Long getReadTimeInMinutes(String packageId) {

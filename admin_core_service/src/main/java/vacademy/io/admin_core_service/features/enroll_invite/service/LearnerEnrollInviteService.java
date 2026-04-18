@@ -1,18 +1,20 @@
 package vacademy.io.admin_core_service.features.enroll_invite.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.Date;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 @Service
+@Slf4j
 public class LearnerEnrollInviteService {
 
     @Autowired
@@ -20,6 +22,9 @@ public class LearnerEnrollInviteService {
 
     @Autowired
     private EnrollInviteService enrollInviteService;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     /**
      * Fetches and validates an active enroll invite by instituteId and inviteCode.
@@ -48,6 +53,23 @@ public class LearnerEnrollInviteService {
             throw new VacademyException("This enroll invite has expired.");
         }
 
-        return enrollInviteService.buildFullEnrollInviteDTO(enrollInvite, instituteId);
+        EnrollInviteDTO result = enrollInviteService.buildFullEnrollInviteDTO(enrollInvite, instituteId);
+
+        // Trigger INVITE_FORM_FILL workflow
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("invite", enrollInvite);
+            contextData.put("instituteId", instituteId);
+            contextData.put("inviteCode", inviteCode);
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.INVITE_FORM_FILL.name(),
+                    enrollInvite.getId(),
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger INVITE_FORM_FILL workflow", e);
+        }
+
+        return result;
     }
 }

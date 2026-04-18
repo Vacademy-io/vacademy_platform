@@ -222,6 +222,11 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
                                         {workflow.trigger.trigger_event_name}
                                     </Badge>
                                 )}
+                                {workflow.trigger.event_applied_type && (
+                                    <span className="text-xs text-muted-foreground">
+                                        Applies to: {workflow.trigger.event_applied_type.replace(/_/g, ' ')}
+                                    </span>
+                                )}
                                 {workflow.trigger.trigger_status && (
                                     <Badge variant="outline" className="text-green-700">
                                         {workflow.trigger.trigger_status}

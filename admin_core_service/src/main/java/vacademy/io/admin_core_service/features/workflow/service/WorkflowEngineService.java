@@ -192,6 +192,12 @@ public class WorkflowEngineService {
                             if (changes != null && !changes.isEmpty()) {
                                 ctx.putAll(changes);
                                 log.info("Node {} updated context with: {}", current.getId(), changes.keySet());
+
+                                // Check if workflow was paused (e.g., by DELAY node for long waits)
+                                if (Boolean.TRUE.equals(changes.get("__workflow_paused"))) {
+                                    log.info("Workflow paused at node {}. Exiting execution loop. Will be resumed by WorkflowResumeJob.", currentNodeId);
+                                    return ctx;
+                                }
                             }
                             lastError = null;
                             break; // Success

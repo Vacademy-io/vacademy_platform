@@ -40,4 +40,7 @@ public class DomainRoutingResolveResponse {
     private boolean convertUsernamePasswordToLowercase;
     private String subOrgId;
     private String commaSeparatedPreferredCountry;
+    private Boolean hideInstituteName;
+    private Integer logoWidthPx;
+    private Integer logoHeightPx;
 }

@@ -34,6 +34,8 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.ReferralOptionService;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -78,6 +80,9 @@ public class EnrollInviteService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService instituteSettingService;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     @org.springframework.beans.factory.annotation.Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerBaseUrl;
@@ -144,6 +149,20 @@ public class EnrollInviteService {
         packageSessionEnrollInviteToPaymentOptionService
                 .createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
         validateSaveOrUpdate(mappingEntities, mappingDTOs);
+
+        // Trigger INVITE_CREATE workflow
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("invite", savedEnrollInvite);
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.INVITE_CREATE.name(),
+                    savedEnrollInvite.getId(),
+                    savedEnrollInvite.getInstituteId(),
+                    contextData);
+        } catch (Exception e) {
+            logger.warn("Failed to trigger INVITE_CREATE workflow", e);
+        }
+
         return savedEnrollInvite.getId();
     }
 

@@ -680,7 +680,7 @@ export function ModularDynamicLoginContainer({
       >
         <div className="space-y-1">
           <h3 className="text-lg font-semibold text-gray-900">
-            Welcome Back
+            Welcome
           </h3>
           <p className="text-sm text-gray-600">
             Sign in to continue your journey

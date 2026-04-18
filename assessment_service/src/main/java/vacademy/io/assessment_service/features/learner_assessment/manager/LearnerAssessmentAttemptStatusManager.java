@@ -62,6 +62,9 @@ public class LearnerAssessmentAttemptStatusManager {
         @Autowired
         AssessmentLLMAnalyticsService assessmentLLMAnalyticsService;
 
+        @Autowired
+        vacademy.io.assessment_service.features.assessment.service.WorkflowTriggerClient workflowTriggerClient;
+
         /**
          * Converts the duration distribution data into a list of duration responses.
          *
@@ -406,7 +409,26 @@ public class LearnerAssessmentAttemptStatusManager {
                 Date utcDate = Date.from(utcNow.toInstant());
                 attempt.setSubmitTime(utcDate);
 
-                return studentAttemptService.updateStudentAttempt(attempt);
+                StudentAttempt saved = studentAttemptService.updateStudentAttempt(attempt);
+
+                // Trigger ASSESSMENT_END workflow
+                try {
+                        String assessmentId = attempt.getRegistration() != null && attempt.getRegistration().getAssessment() != null
+                                ? attempt.getRegistration().getAssessment().getId() : null;
+                        String userId = attempt.getRegistration() != null ? attempt.getRegistration().getUserId() : null;
+                        String instituteId = attempt.getRegistration() != null ? attempt.getRegistration().getInstituteId() : null;
+                        if (assessmentId != null && instituteId != null) {
+                                Map<String, Object> contextData = new HashMap<>();
+                                contextData.put("assessmentId", assessmentId);
+                                contextData.put("userId", userId);
+                                contextData.put("attemptId", saved.getId());
+                                workflowTriggerClient.triggerEvent("ASSESSMENT_END", assessmentId, instituteId, contextData);
+                        }
+                } catch (Exception e) {
+                        log.warn("Failed to trigger ASSESSMENT_END workflow", e);
+                }
+
+                return saved;
         }
 
         public ResponseEntity<AssessmentRestartResponse> restartAssessment(CustomUserDetails user, String assessmentId,

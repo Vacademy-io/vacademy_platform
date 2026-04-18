@@ -54,6 +54,9 @@ public class WorkflowTrigger {
     @Column(name = "eventId")
     private String eventId;
 
+    @Column(name = "event_applied_type")
+    private String eventAppliedType;
+
     /**
      * JSON configuration for idempotency key generation.
      * Defines how to generate unique keys to prevent duplicate workflow executions.

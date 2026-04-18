@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowCounterClockwise, ArrowLeft, CurrencyInr, DownloadSimple, PencilSimple, Spinner, Wallet, WarningCircle, X } from '@phosphor-icons/react';
+import { useState, useMemo, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { ArrowCounterClockwise, ArrowLeft, CaretLeft, CaretRight, CurrencyInr, DownloadSimple, PencilSimple, Spinner, Wallet, WarningCircle, X } from '@phosphor-icons/react';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -11,11 +11,14 @@ import {
     generateInvoiceForInstallments,
     sendInvoiceEmail,
     getReceiptUrlForInstallment,
+    StudentDuesFilterRequest,
 } from '@/services/manage-finances';
 import { useTheme } from '@/providers/theme/theme-provider';
 import { InvoiceActionDialog } from './InvoiceActionDialog';
 import { AdjustmentDialog } from './AdjustmentDialog';
 import { cn } from '@/lib/utils';
+
+const PAGE_SIZE = 10;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -66,61 +69,58 @@ export function InstallmentSelectionStep({
     const { getPrimaryColorCode } = useTheme();
     const queryClient = useQueryClient();
 
-    const { data: dues, isLoading, error, refetch, isFetching } = useQuery({
-        queryKey: getStudentDuesQueryKey(student.student_id),
-        queryFn: () => fetchStudentDues(student.student_id),
-        staleTime: 30000,
-    });
-
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
-
-    // Filters
+    // Filters + pagination
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [dueDateFrom, setDueDateFrom] = useState('');
     const [dueDateTo, setDueDateTo] = useState('');
+    const [page, setPage] = useState(0);
 
-    const filteredDues = useMemo(() => {
-        if (!dues) return [];
-        return dues.filter((d) => {
-            if (statusFilter === 'OVERDUE') {
-                if (!d.is_overdue) return false;
-            } else if (statusFilter !== 'ALL') {
-                if (d.status !== statusFilter) return false;
-            }
-            if (dueDateFrom && d.due_date) {
-                if (dayjs(d.due_date).isBefore(dayjs(dueDateFrom), 'day')) return false;
-            }
-            if (dueDateTo && d.due_date) {
-                if (dayjs(d.due_date).isAfter(dayjs(dueDateTo), 'day')) return false;
-            }
-            return true;
-        });
-    }, [dues, statusFilter, dueDateFrom, dueDateTo]);
+    const filterBody = useMemo<StudentDuesFilterRequest>(() => ({
+        status: statusFilter === 'ALL' ? undefined : statusFilter,
+        start_due_date: dueDateFrom || undefined,
+        end_due_date: dueDateTo || undefined,
+        page,
+        size: PAGE_SIZE,
+    }), [statusFilter, dueDateFrom, dueDateTo, page]);
 
-    const selectableDues = useMemo(() => filteredDues.filter((d) => d.status !== 'PAID'), [filteredDues]);
+    // Reset to first page whenever filter inputs change
+    useEffect(() => {
+        setPage(0);
+    }, [statusFilter, dueDateFrom, dueDateTo]);
 
-    const selectedDues = useMemo(
-        () => (dues || []).filter((d) => selectedIds.has(d.id)),
-        [dues, selectedIds]
+    const { data: pageData, isLoading, error, refetch, isFetching } = useQuery({
+        queryKey: [...getStudentDuesQueryKey(student.student_id), filterBody],
+        queryFn: () => fetchStudentDues(student.student_id, filterBody),
+        staleTime: 30000,
+        placeholderData: keepPreviousData,
+    });
+
+    // Cross-page selection: persist full DTOs as user navigates/filters
+    const [selectedDuesMap, setSelectedDuesMap] = useState<Map<string, StudentFeeDueDTO>>(new Map());
+    const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
+    const [isSelectingAll, setIsSelectingAll] = useState(false);
+
+    const pageContent = pageData?.content ?? [];
+    const pageSelectable = useMemo(
+        () => pageContent.filter((d) => d.status !== 'PAID'),
+        [pageContent]
     );
+    const selectedDues = useMemo(() => Array.from(selectedDuesMap.values()), [selectedDuesMap]);
+    const selectedIds = useMemo(() => new Set(selectedDuesMap.keys()), [selectedDuesMap]);
 
     const totalSelectedDue = useMemo(
         () => selectedDues.reduce((sum, d) => sum + d.amount_due, 0),
         [selectedDues]
     );
 
-    const summaryTotals = useMemo(() => {
-        if (!dues) return { totalFee: 0, totalPaid: 0, totalDue: 0 };
-        return dues.reduce(
-            (acc, d) => ({
-                totalFee: acc.totalFee + d.amount_expected,
-                totalPaid: acc.totalPaid + d.amount_paid,
-                totalDue: acc.totalDue + d.amount_due,
-            }),
-            { totalFee: 0, totalPaid: 0, totalDue: 0 }
-        );
-    }, [dues]);
+    const summaryTotals = {
+        totalFee: pageData?.total_fee ?? 0,
+        totalPaid: pageData?.total_paid ?? 0,
+        totalDue: pageData?.total_due ?? 0,
+    };
+
+    const totalElements = pageData?.total_elements ?? 0;
+    const totalPages = pageData?.total_pages ?? 0;
 
     const hasActiveFilters = statusFilter !== 'ALL' || dueDateFrom || dueDateTo;
 
@@ -130,30 +130,53 @@ export function InstallmentSelectionStep({
         setDueDateTo('');
     };
 
-    const toggleSelect = (id: string) => {
-        setSelectedIds((prev) => {
-            const next = new Set(prev);
+    const toggleSelect = (id: string, due: StudentFeeDueDTO) => {
+        setSelectedDuesMap((prev) => {
+            const next = new Map(prev);
             if (next.has(id)) next.delete(id);
-            else next.add(id);
+            else next.set(id, due);
             return next;
         });
     };
 
-    const toggleSelectAll = () => {
-        if (selectedIds.size === selectableDues.length && selectableDues.length > 0) {
-            setSelectedIds((prev) => {
-                const next = new Set(prev);
-                selectableDues.forEach((d) => next.delete(d.id));
+    const pageFullySelected =
+        pageSelectable.length > 0 && pageSelectable.every((d) => selectedDuesMap.has(d.id));
+
+    const togglePageSelection = () => {
+        setSelectedDuesMap((prev) => {
+            const next = new Map(prev);
+            if (pageFullySelected) {
+                pageSelectable.forEach((d) => next.delete(d.id));
+            } else {
+                pageSelectable.forEach((d) => next.set(d.id, d));
+            }
+            return next;
+        });
+    };
+
+    const handleSelectAllFiltered = async () => {
+        setIsSelectingAll(true);
+        try {
+            const allMatching = await fetchStudentDues(student.student_id, {
+                ...filterBody,
+                fetch_all: true,
+            });
+            setSelectedDuesMap((prev) => {
+                const next = new Map(prev);
+                for (const d of allMatching.content) {
+                    if (d.status !== 'PAID') next.set(d.id, d);
+                }
                 return next;
             });
-        } else {
-            setSelectedIds((prev) => {
-                const next = new Set(prev);
-                selectableDues.forEach((d) => next.add(d.id));
-                return next;
-            });
+            toast.success(`Selected ${allMatching.content.filter((d) => d.status !== 'PAID').length} installments`);
+        } catch {
+            toast.error('Failed to select all');
+        } finally {
+            setIsSelectingAll(false);
         }
     };
+
+    const clearSelection = () => setSelectedDuesMap(new Map());
 
     const [adjustmentDialogInstallment, setAdjustmentDialogInstallment] = useState<StudentFeeDueDTO | null>(null);
     const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
@@ -227,9 +250,6 @@ export function InstallmentSelectionStep({
         );
     }
 
-    const allVisibleSelectableSelected =
-        selectableDues.length > 0 && selectableDues.every((d) => selectedIds.has(d.id));
-
     return (
         <div className="flex flex-col flex-1 min-h-0">
             {/* ── Top section ── */}
@@ -254,7 +274,7 @@ export function InstallmentSelectionStep({
                     </div>
                 </div>
 
-                {(!dues || dues.length === 0) && (
+                {totalElements === 0 && !hasActiveFilters && (
                     <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
                         <p className="text-lg font-semibold text-gray-600">No dues found.</p>
                         <p className="mt-2 text-sm text-gray-400">
@@ -264,7 +284,7 @@ export function InstallmentSelectionStep({
                 )}
             </div>
 
-            {dues && dues.length > 0 && (
+            {(totalElements > 0 || hasActiveFilters) && (
                 <>
                     {/* Summary Cards */}
                     <div className="grid grid-cols-3 gap-4 mb-4">
@@ -368,8 +388,34 @@ export function InstallmentSelectionStep({
                         </div>
                     </div>
 
+                    {/* Select all filtered banner */}
+                    {pageFullySelected && totalElements > pageContent.length && (
+                        <div className="mb-2 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-2 flex items-center justify-between text-xs text-blue-800">
+                            <span>
+                                All <span className="font-bold">{pageSelectable.length}</span> selectable row{pageSelectable.length !== 1 ? 's' : ''} on this page selected.
+                            </span>
+                            <button
+                                type="button"
+                                onClick={handleSelectAllFiltered}
+                                disabled={isSelectingAll}
+                                className="font-semibold underline hover:text-blue-900 disabled:opacity-50"
+                            >
+                                {isSelectingAll
+                                    ? 'Selecting…'
+                                    : `Select all ${totalElements} filtered row${totalElements !== 1 ? 's' : ''}`}
+                            </button>
+                        </div>
+                    )}
+
                     {/* ── Refresh + Table ── */}
-                    <div className="flex justify-end mb-2">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs text-gray-500">
+                            Showing <span className="font-semibold text-gray-700">{pageContent.length === 0 ? 0 : page * PAGE_SIZE + 1}</span>
+                            {'\u2013'}
+                            <span className="font-semibold text-gray-700">{page * PAGE_SIZE + pageContent.length}</span>
+                            {' of '}
+                            <span className="font-semibold text-gray-700">{totalElements}</span>
+                        </div>
                         <button
                             type="button"
                             onClick={() => refetch()}
@@ -388,9 +434,10 @@ export function InstallmentSelectionStep({
                                         <th className="py-3 px-4 w-10">
                                             <input
                                                 type="checkbox"
-                                            checked={allVisibleSelectableSelected}
-                                                onChange={toggleSelectAll}
-                                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                checked={pageFullySelected}
+                                                onChange={togglePageSelection}
+                                                disabled={pageSelectable.length === 0}
+                                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-30"
                                             />
                                         </th>
                                         <th className="py-3 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Fee Type</th>
@@ -406,16 +453,16 @@ export function InstallmentSelectionStep({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 text-sm font-medium">
-                                    {filteredDues.length === 0 && (
+                                    {pageContent.length === 0 && (
                                         <tr>
                                             <td colSpan={10} className="py-12 text-center text-gray-400">
                                                 No installments match the selected filters.
                                             </td>
                                         </tr>
                                     )}
-                                    {filteredDues.map((inst: StudentFeeDueDTO) => {
+                                    {pageContent.map((inst: StudentFeeDueDTO) => {
                                         const isSelectable = inst.status !== 'PAID';
-                                        const isSelected = selectedIds.has(inst.id);
+                                        const isSelected = selectedDuesMap.has(inst.id);
                                         return (
                                             <tr
                                                 key={inst.id}
@@ -424,14 +471,14 @@ export function InstallmentSelectionStep({
                                                         ? 'bg-blue-50/40'
                                                         : 'hover:bg-gray-50/60'
                                                 } ${!isSelectable ? 'opacity-50' : 'cursor-pointer'}`}
-                                                onClick={() => isSelectable && toggleSelect(inst.id)}
+                                                onClick={() => isSelectable && toggleSelect(inst.id, inst)}
                                             >
                                                 <td className="py-3 px-4">
                                                     <input
                                                         type="checkbox"
                                                         checked={isSelected}
                                                         disabled={!isSelectable}
-                                                        onChange={() => toggleSelect(inst.id)}
+                                                        onChange={() => toggleSelect(inst.id, inst)}
                                                         onClick={(e) => e.stopPropagation()}
                                                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-30"
                                                     />
@@ -528,19 +575,55 @@ export function InstallmentSelectionStep({
                         </div>
                     </div>
 
+                    {/* Pagination controls */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-center gap-2 py-3 mb-4">
+                            <button
+                                type="button"
+                                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                                disabled={page === 0 || isFetching}
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <CaretLeft size={12} weight="bold" />
+                                Prev
+                            </button>
+                            <span className="text-xs text-gray-500 px-3">
+                                Page <span className="font-bold text-gray-800">{page + 1}</span> of{' '}
+                                <span className="font-bold text-gray-800">{totalPages}</span>
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                                disabled={page >= totalPages - 1 || isFetching}
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                                Next
+                                <CaretRight size={12} weight="bold" />
+                            </button>
+                        </div>
+                    )}
+
                     {/* ── Fixed bottom action bar ── */}
                     <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4">
                         <div className="flex items-center gap-4">
                             <div className="text-sm text-gray-600">
-                                <span className="font-bold text-gray-800">{selectedIds.size}</span>{' '}
-                                installment{selectedIds.size !== 1 ? 's' : ''} selected
-                                {selectedIds.size > 0 && (
+                                <span className="font-bold text-gray-800">{selectedDuesMap.size}</span>{' '}
+                                installment{selectedDuesMap.size !== 1 ? 's' : ''} selected
+                                {selectedDuesMap.size > 0 && (
                                     <>
                                         {' \u00b7 '}
                                         Total due:{' '}
                                         <span className="font-bold text-gray-800">
                                             {formatCurrency(totalSelectedDue)}
                                         </span>
+                                        {' \u00b7 '}
+                                        <button
+                                            type="button"
+                                            onClick={clearSelection}
+                                            className="text-xs font-medium text-gray-500 hover:text-red-600 transition-colors underline"
+                                        >
+                                            Clear
+                                        </button>
                                     </>
                                 )}
                             </div>
@@ -550,14 +633,14 @@ export function InstallmentSelectionStep({
                             <div className="flex items-center gap-3">
                                 <button
                                     onClick={() => setShowInvoiceDialog(true)}
-                                    disabled={selectedIds.size === 0}
+                                    disabled={selectedDuesMap.size === 0}
                                     className="px-5 py-2 bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                                 >
                                     Generate Invoice
                                 </button>
                                 <button
                                     onClick={() => onProceedToPayment(selectedDues)}
-                                    disabled={selectedIds.size === 0}
+                                    disabled={selectedDuesMap.size === 0}
                                     className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                                 >
                                     Proceed to Pay

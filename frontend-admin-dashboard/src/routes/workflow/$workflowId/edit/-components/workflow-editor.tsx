@@ -22,6 +22,7 @@ export function WorkflowEditor({ workflowId }: Props) {
         setWorkflowName,
         setWorkflowDescription,
         setWorkflowType,
+        setSetupComplete,
     } = useWorkflowBuilderStore();
 
     // Load workflow data into the builder store once fetched
@@ -31,6 +32,29 @@ export function WorkflowEditor({ workflowId }: Props) {
         setWorkflowName(data.name ?? '');
         setWorkflowDescription(data.description ?? '');
         setWorkflowType((data.workflow_type as 'SCHEDULED' | 'EVENT_DRIVEN') ?? 'SCHEDULED');
+
+        // Load trigger/schedule config if present
+        if (data.trigger) {
+            useWorkflowBuilderStore.getState().setTriggerConfig({
+                eventName: data.trigger.trigger_event_name ?? '',
+                description: data.trigger.description ?? '',
+                eventAppliedType: data.trigger.event_applied_type ?? '',
+                eventId: data.trigger.event_id ?? undefined,
+            });
+        }
+        if (data.schedule) {
+            useWorkflowBuilderStore.getState().setScheduleConfig({
+                scheduleType: (data.schedule.schedule_type as 'CRON' | 'INTERVAL') ?? 'CRON',
+                cronExpression: data.schedule.cron_expression ?? '',
+                intervalMinutes: data.schedule.interval_minutes ?? 60,
+                timezone: data.schedule.timezone ?? 'Asia/Kolkata',
+                startDate: data.schedule.start_date ?? '',
+                endDate: data.schedule.end_date ?? '',
+            });
+        }
+
+        // Skip setup step — go directly to canvas when editing
+        setSetupComplete(true);
 
         // Convert WorkflowBuilderNodes to ReactFlow nodes
         const rfNodes = (data.nodes ?? []).map((n) => ({

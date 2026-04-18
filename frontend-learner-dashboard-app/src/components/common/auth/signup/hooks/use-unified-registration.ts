@@ -201,7 +201,7 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
             
             // Show success message
             if (showSuccessMessage) {
-              toast.success("Welcome back! You are already enrolled in this institute.");
+              toast.success("Welcome! You are already enrolled in this institute.");
             }
             
             // Handle post-login flow

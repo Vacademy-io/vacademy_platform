@@ -251,6 +251,10 @@ public class WhiteLabelService {
                         .windowsAppLink(r.getWindowsAppLink())
                         .macAppLink(r.getMacAppLink())
                         .commaSeparatedPreferredCountry(r.getCommaSeparatedPreferredCountry())
+                        // Logo / institute-name display
+                        .hideInstituteName(r.getHideInstituteName())
+                        .logoWidthPx(r.getLogoWidthPx())
+                        .logoHeightPx(r.getLogoHeightPx())
                         .build())
                 .collect(Collectors.toList());
 
@@ -464,6 +468,9 @@ public class WhiteLabelService {
                             ? cfg.getConvertUsernamePasswordToLowercase()
                             : false);
             r.setCommaSeparatedPreferredCountry(cfg.getCommaSeparatedPreferredCountry());
+            r.setHideInstituteName(cfg.getHideInstituteName());
+            r.setLogoWidthPx(cfg.getLogoWidthPx());
+            r.setLogoHeightPx(cfg.getLogoHeightPx());
         } else {
             r.setAllowUsernamePasswordAuth(true);
             r.setConvertUsernamePasswordToLowercase(false);

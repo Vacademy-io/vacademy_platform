@@ -120,5 +120,15 @@ public class WhiteLabelStatusResponse {
         // ── Phone input preferences ───────────────────────────────────────
         @JsonProperty("comma_separated_preferred_country")
         private String commaSeparatedPreferredCountry;
+
+        // ── Logo / institute-name display ─────────────────────────────────
+        @JsonProperty("hide_institute_name")
+        private Boolean hideInstituteName;
+
+        @JsonProperty("logo_width_px")
+        private Integer logoWidthPx;
+
+        @JsonProperty("logo_height_px")
+        private Integer logoHeightPx;
     }
 }

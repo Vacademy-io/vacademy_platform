@@ -114,7 +114,7 @@ export const fetchAndStoreInstituteDetails = async (
         const settingsObj: InstituteSettings = JSON.parse(settingsJson);
 
         const namingSettings = settingsObj?.setting?.NAMING_SETTING?.data?.data;
-        if (namingSettings) {
+        if (Array.isArray(namingSettings)) {
           localStorage.setItem(
             NAMING_SETTINGS_KEY,
             JSON.stringify(namingSettings)

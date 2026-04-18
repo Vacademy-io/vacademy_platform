@@ -71,6 +71,18 @@ public class SchoolFeeReceiptService {
         return BigDecimal.ZERO;
     }
 
+    private BigDecimal computeConcession(StudentFeePayment bill) {
+        if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
+        if (!"CONCESSION".equals(bill.getAdjustmentType())) return BigDecimal.ZERO;
+        return bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+    }
+
+    private BigDecimal computePenalty(StudentFeePayment bill) {
+        if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
+        if (!"PENALTY".equals(bill.getAdjustmentType())) return BigDecimal.ZERO;
+        return bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+    }
+
     private static final String SCHOOL_FEE_RECEIPT_TEMPLATE_TYPE = "SCHOOL_FEE_RECEIPT";
     private static final String RECEIPT_PREFIX = "RCT";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -169,15 +181,17 @@ public class SchoolFeeReceiptService {
             // 4. Build receipt data
             BigDecimal totalExpected = BigDecimal.ZERO;
             BigDecimal totalPaid = BigDecimal.ZERO;
-            BigDecimal totalDiscount = BigDecimal.ZERO;
+            BigDecimal totalConcession = BigDecimal.ZERO;
+            BigDecimal totalPenalty = BigDecimal.ZERO;
 
             for (StudentFeePayment fp : feePayments) {
                 totalExpected = totalExpected
                         .add(fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO);
                 totalPaid = totalPaid.add(fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO);
-                totalDiscount = totalDiscount.add(computeAdjustmentEffect(fp).negate());
+                totalConcession = totalConcession.add(computeConcession(fp));
+                totalPenalty = totalPenalty.add(computePenalty(fp));
             }
-            BigDecimal balanceDue = totalExpected.subtract(totalPaid).subtract(totalDiscount);
+            BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
             // 5. Generate receipt number
             String receiptNumber = generateReceiptNumber(instituteId);
@@ -188,7 +202,7 @@ public class SchoolFeeReceiptService {
             // 7. Replace placeholders (includes fee table HTML)
             String filledTemplate = replacePlaceholders(templateHtml, user, institute, feePayments,
                     receiptNumber, amountPaid, transactionId, paymentMode,
-                    totalExpected, totalPaid, totalDiscount, balanceDue, currency);
+                    totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency);
 
             // 8. Generate PDF
             byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
@@ -198,7 +212,7 @@ public class SchoolFeeReceiptService {
 
             // 10. Save to invoice table
             Invoice invoice = saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
-                    amountPaid, totalExpected, totalPaid, totalDiscount, balanceDue, currency);
+                    amountPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency);
 
             // 11. Save line items (one per installment)
             saveLineItems(invoice, feePayments, currency);
@@ -278,15 +292,17 @@ public class SchoolFeeReceiptService {
             // 4. Build receipt data (only for paid installments)
             BigDecimal totalExpected = BigDecimal.ZERO;
             BigDecimal totalPaid = BigDecimal.ZERO;
-            BigDecimal totalDiscount = BigDecimal.ZERO;
+            BigDecimal totalConcession = BigDecimal.ZERO;
+            BigDecimal totalPenalty = BigDecimal.ZERO;
 
             for (StudentFeePayment fp : feePayments) {
                 totalExpected = totalExpected
                         .add(fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO);
                 totalPaid = totalPaid.add(fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO);
-                totalDiscount = totalDiscount.add(computeAdjustmentEffect(fp).negate());
+                totalConcession = totalConcession.add(computeConcession(fp));
+                totalPenalty = totalPenalty.add(computePenalty(fp));
             }
-            BigDecimal balanceDue = totalExpected.subtract(totalPaid).subtract(totalDiscount);
+            BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
             // 5. Generate receipt number
             String receiptNumber = generateReceiptNumber(instituteId);
@@ -297,7 +313,7 @@ public class SchoolFeeReceiptService {
             // 7. Replace placeholders (includes fee table HTML)
             String filledTemplate = replacePlaceholders(templateHtml, user, institute, feePayments,
                     receiptNumber, amountPaid, transactionId, paymentMode,
-                    totalExpected, totalPaid, totalDiscount, balanceDue, currency);
+                    totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency);
 
             // 8. Generate PDF
             byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
@@ -307,7 +323,7 @@ public class SchoolFeeReceiptService {
 
             // 10. Save to invoice table
             Invoice invoice = saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
-                    amountPaid, totalExpected, totalPaid, totalDiscount, balanceDue, currency);
+                    amountPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency);
 
             // 11. Save line items (only for paid installments)
             saveLineItems(invoice, feePayments, currency);
@@ -366,29 +382,31 @@ public class SchoolFeeReceiptService {
 
         BigDecimal totalExpected = BigDecimal.ZERO;
         BigDecimal totalPaid = BigDecimal.ZERO;
-        BigDecimal totalDiscount = BigDecimal.ZERO;
+        BigDecimal totalConcession = BigDecimal.ZERO;
+        BigDecimal totalPenalty = BigDecimal.ZERO;
 
         for (StudentFeePayment fp : feePayments) {
             totalExpected = totalExpected
                     .add(fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO);
             totalPaid = totalPaid.add(fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO);
-            totalDiscount = totalDiscount.add(computeAdjustmentEffect(fp).negate());
+            totalConcession = totalConcession.add(computeConcession(fp));
+            totalPenalty = totalPenalty.add(computePenalty(fp));
         }
-        BigDecimal balanceDue = totalExpected.subtract(totalPaid).subtract(totalDiscount);
+        BigDecimal balanceDue = totalExpected.add(totalPenalty).subtract(totalConcession).subtract(totalPaid);
 
         String receiptNumber = generateReceiptNumber(instituteId);
         String templateHtml = loadSchoolFeeReceiptTemplate(instituteId);
 
         String filledTemplate = replacePlaceholders(templateHtml, user, institute, feePayments,
                 receiptNumber, totalPaid, receiptNumber, "STATEMENT",
-                totalExpected, totalPaid, totalDiscount, balanceDue, currency);
+                totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency);
 
         byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
         String pdfFileId = uploadReceiptToS3(pdfBytes, receiptNumber, instituteId);
 
         // Save invoice record
         saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
-                totalPaid, totalExpected, totalPaid, totalDiscount, balanceDue, currency);
+                totalPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency);
 
         return pdfFileId;
     }
@@ -553,14 +571,18 @@ public class SchoolFeeReceiptService {
                         </div>
                         <div class="totals-row" style="{{TOTAL_CONCESSION_ROW_STYLE}}">
                             <span class="totals-label">Concession:</span>
-                            <span class="totals-value">- {{currency_symbol}} {{total_discount}}</span>
+                            <span class="totals-value">- {{currency_symbol}} {{total_concession}}</span>
+                        </div>
+                        <div class="totals-row" style="{{TOTAL_PENALTY_ROW_STYLE}}">
+                            <span class="totals-label">Penalty:</span>
+                            <span class="totals-value">+ {{currency_symbol}} {{total_penalty}}</span>
                         </div>
                         <div class="totals-row">
                             <span class="totals-label">Total Paid:</span>
                             <span class="totals-value">{{currency_symbol}} {{total_paid}}</span>
                         </div>
                         <div class="totals-row grand-total">
-                            <span class="totals-label">Balance Due:</span>
+                            <span class="totals-label">Outstanding:</span>
                             <span class="totals-value">{{currency_symbol}} {{balance_due}}</span>
                         </div>
                     </div>
@@ -585,7 +607,8 @@ public class SchoolFeeReceiptService {
     private String replacePlaceholders(String template, UserDTO user, Institute institute,
             List<StudentFeePayment> feePayments, String receiptNumber,
             BigDecimal amountPaid, String transactionId, String paymentMode,
-            BigDecimal totalExpected, BigDecimal totalPaid, BigDecimal totalDiscount,
+            BigDecimal totalExpected, BigDecimal totalPaid,
+            BigDecimal totalConcession, BigDecimal totalPenalty,
             BigDecimal balanceDue, String currency) {
 
         String currencySymbol = getCurrencySymbol(currency);
@@ -595,8 +618,10 @@ public class SchoolFeeReceiptService {
         String instituteAddress = buildInstituteAddress(institute);
         String logoHtml = buildInstituteLogoHtml(institute);
         String logoUrl = buildInstituteLogoUrl(institute);
-        boolean showConcession = totalDiscount != null && totalDiscount.signum() > 0;
-        String feeTableHtml = buildFeeTableHtml(feePayments, currency, showConcession);
+        boolean showConcession = totalConcession != null && totalConcession.signum() > 0;
+        boolean showPenalty = totalPenalty != null && totalPenalty.signum() > 0;
+        boolean showAdjustmentColumn = showConcession || showPenalty;
+        String feeTableHtml = buildFeeTableHtml(feePayments, currency, showAdjustmentColumn);
         ReceiptEnrichment enrichment = enrichReceiptFromEnrollment(user.getId(), institute.getId());
         String safeTransactionId = transactionId != null ? transactionId : "N/A";
         String safePaymentMode = paymentMode != null ? paymentMode : "OFFLINE";
@@ -619,7 +644,9 @@ public class SchoolFeeReceiptService {
                 .replace("{{fee_table}}", feeTableHtml)
                 .replace("{{total_expected}}", totalExpected.toPlainString())
                 .replace("{{total_paid}}", totalPaid.toPlainString())
-                .replace("{{total_discount}}", totalDiscount.toPlainString())
+                .replace("{{total_concession}}", totalConcession.toPlainString())
+                .replace("{{total_penalty}}", totalPenalty.toPlainString())
+                .replace("{{total_discount}}", totalConcession.toPlainString())
                 .replace("{{balance_due}}", balanceDue.toPlainString())
                 .replace("{{amount_paid_now}}", amountPaid.toPlainString())
                 .replace("{{transaction_id}}", safeTransactionId)
@@ -647,10 +674,14 @@ public class SchoolFeeReceiptService {
                 .replace("{{REMARKS}}", "Paid")
                 .replace("{{FEE_TABLE}}", feeTableHtml)
                 .replace("{{TOTAL_EXPECTED_FEE}}", currencySymbol + " " + totalExpected.toPlainString())
-                .replace("{{TOTAL_DISCOUNT}}", currencySymbol + " " + totalDiscount.toPlainString())
+                .replace("{{TOTAL_CONCESSION}}", currencySymbol + " " + totalConcession.toPlainString())
+                .replace("{{TOTAL_PENALTY}}", currencySymbol + " " + totalPenalty.toPlainString())
+                .replace("{{TOTAL_DISCOUNT}}", currencySymbol + " " + totalConcession.toPlainString())
                 .replace("{{TOTAL_CONCESSION_ROW_STYLE}}", showConcession ? "" : "display: none;")
+                .replace("{{TOTAL_PENALTY_ROW_STYLE}}", showPenalty ? "" : "display: none;")
                 .replace("{{TOTAL_PAID_ALL_TIME}}", currencySymbol + " " + totalPaid.toPlainString())
                 .replace("{{CURRENT_BALANCE_DUE}}", currencySymbol + " " + balanceDue.toPlainString())
+                .replace("{{OUTSTANDING}}", currencySymbol + " " + balanceDue.toPlainString())
                 .replace("{{AMOUNT_PAID_NOW}}", currencySymbol + " " + amountPaid.toPlainString());
 
         return applyIndexedFeeRowPlaceholders(replaced, feePayments, currencySymbol);
@@ -812,10 +843,20 @@ public class SchoolFeeReceiptService {
             BigDecimal paid = fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO;
             BigDecimal adjustmentEffect = computeAdjustmentEffect(fp);
             BigDecimal balance = expected.add(adjustmentEffect).subtract(paid);
-            // For template display: show concession as positive amount
-            BigDecimal discount = "APPROVED".equals(fp.getAdjustmentStatus()) && "CONCESSION".equals(fp.getAdjustmentType())
-                    ? (fp.getAdjustmentAmount() != null ? fp.getAdjustmentAmount() : BigDecimal.ZERO)
-                    : BigDecimal.ZERO;
+            BigDecimal concession = computeConcession(fp);
+            BigDecimal penalty = computePenalty(fp);
+            String adjustmentDisplay;
+            String adjustmentTypeLabel;
+            if (concession.signum() > 0) {
+                adjustmentDisplay = "- " + currencySymbol + " " + concession.toPlainString() + " (Concession)";
+                adjustmentTypeLabel = "Concession";
+            } else if (penalty.signum() > 0) {
+                adjustmentDisplay = "+ " + currencySymbol + " " + penalty.toPlainString() + " (Penalty)";
+                adjustmentTypeLabel = "Penalty";
+            } else {
+                adjustmentDisplay = "";
+                adjustmentTypeLabel = "";
+            }
             String status = fp.getStatus() != null ? fp.getStatus() : "PENDING";
             String statusLabel = status.replace("_", " ");
             String statusClass = switch (status) {
@@ -833,10 +874,14 @@ public class SchoolFeeReceiptService {
                     .replace("{{FEE_TYPE_" + index + "}}", feeType)
                     .replace("{{FEE_DUE_DATE_" + index + "}}", dueDate)
                     .replace("{{FEE_AMOUNT_EXPECTED_" + index + "}}", currencySymbol + " " + expected.toPlainString())
-                    .replace("{{FEE_DISCOUNT_" + index + "}}", currencySymbol + " " + discount.toPlainString())
-                    .replace("{{FEE_CONCESSION_" + index + "}}", currencySymbol + " " + discount.toPlainString())
+                    .replace("{{FEE_DISCOUNT_" + index + "}}", currencySymbol + " " + concession.toPlainString())
+                    .replace("{{FEE_CONCESSION_" + index + "}}", currencySymbol + " " + concession.toPlainString())
+                    .replace("{{FEE_PENALTY_" + index + "}}", currencySymbol + " " + penalty.toPlainString())
+                    .replace("{{FEE_ADJUSTMENT_" + index + "}}", adjustmentDisplay)
+                    .replace("{{FEE_ADJUSTMENT_TYPE_" + index + "}}", adjustmentTypeLabel)
                     .replace("{{FEE_AMOUNT_PAID_" + index + "}}", currencySymbol + " " + paid.toPlainString())
                     .replace("{{FEE_BALANCE_" + index + "}}", currencySymbol + " " + balance.toPlainString())
+                    .replace("{{FEE_OUTSTANDING_" + index + "}}", currencySymbol + " " + balance.toPlainString())
                     .replace("{{FEE_STATUS_CLASS_" + index + "}}", statusClass)
                     .replace("{{FEE_STATUS_LABEL_" + index + "}}", statusLabel);
             index++;
@@ -865,10 +910,10 @@ public class SchoolFeeReceiptService {
     // ─── Fee Table HTML ──────────────────────────────────────────────────────
 
     /**
-     * @param showConcessionColumn when false, no concession column is rendered (all amounts are zero).
+     * @param showAdjustmentColumn when false, no adjustment column is rendered (no approved concession or penalty exists).
      */
     private String buildFeeTableHtml(List<StudentFeePayment> feePayments, String currency,
-            boolean showConcessionColumn) {
+            boolean showAdjustmentColumn) {
         String currencySymbol = getCurrencySymbol(currency);
         StringBuilder sb = new StringBuilder();
         sb.append("<table>");
@@ -877,11 +922,11 @@ public class SchoolFeeReceiptService {
                 .append("<th>Fee Type</th>")
                 .append("<th>Due Date</th>")
                 .append("<th>Amount Expected</th>");
-        if (showConcessionColumn) {
-            sb.append("<th>Concession</th>");
+        if (showAdjustmentColumn) {
+            sb.append("<th>Adjustment</th>");
         }
         sb.append("<th>Amount Paid</th>")
-                .append("<th>Balance</th>")
+                .append("<th>Outstanding</th>")
                 .append("<th>Status</th>")
                 .append("</tr>");
 
@@ -891,9 +936,18 @@ public class SchoolFeeReceiptService {
             BigDecimal paid = fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO;
             BigDecimal adjustmentEffect = computeAdjustmentEffect(fp);
             BigDecimal balance = expected.add(adjustmentEffect).subtract(paid);
-            BigDecimal discount = "APPROVED".equals(fp.getAdjustmentStatus()) && "CONCESSION".equals(fp.getAdjustmentType())
-                    ? (fp.getAdjustmentAmount() != null ? fp.getAdjustmentAmount() : BigDecimal.ZERO)
-                    : BigDecimal.ZERO;
+            BigDecimal concession = computeConcession(fp);
+            BigDecimal penalty = computePenalty(fp);
+            String adjustmentCell;
+            if (concession.signum() > 0) {
+                adjustmentCell = "<span style=\"color:#047857;\">- " + currencySymbol + " "
+                        + concession.toPlainString() + " (Concession)</span>";
+            } else if (penalty.signum() > 0) {
+                adjustmentCell = "<span style=\"color:#b91c1c;\">+ " + currencySymbol + " "
+                        + penalty.toPlainString() + " (Penalty)</span>";
+            } else {
+                adjustmentCell = "-";
+            }
             String status = fp.getStatus() != null ? fp.getStatus() : "PENDING";
             String dueDate = fp.getDueDate() != null
                     ? new java.text.SimpleDateFormat("dd MMM yyyy").format(fp.getDueDate())
@@ -919,8 +973,8 @@ public class SchoolFeeReceiptService {
                     .append("<td>").append(feeTypeName).append("</td>")
                     .append("<td>").append(dueDate).append("</td>")
                     .append("<td>").append(currencySymbol).append(" ").append(expected.toPlainString()).append("</td>");
-            if (showConcessionColumn) {
-                sb.append("<td>").append(currencySymbol).append(" ").append(discount.toPlainString()).append("</td>");
+            if (showAdjustmentColumn) {
+                sb.append("<td>").append(adjustmentCell).append("</td>");
             }
             sb.append("<td>").append(currencySymbol).append(" ").append(paid.toPlainString()).append("</td>")
                     .append("<td>").append(currencySymbol).append(" ").append(balance.toPlainString()).append("</td>")
@@ -1015,7 +1069,8 @@ public class SchoolFeeReceiptService {
     private Invoice saveReceipt(String userId, String instituteId, String receiptNumber,
             String pdfFileId, BigDecimal amountPaid,
             BigDecimal totalExpected, BigDecimal totalPaid,
-            BigDecimal totalDiscount, BigDecimal balanceDue, String currency) {
+            BigDecimal totalConcession, BigDecimal totalPenalty,
+            BigDecimal balanceDue, String currency) {
         Invoice invoice = new Invoice();
         invoice.setInvoiceNumber(receiptNumber);
         invoice.setUserId(userId);
@@ -1023,7 +1078,7 @@ public class SchoolFeeReceiptService {
         invoice.setInvoiceDate(LocalDateTime.now());
         invoice.setDueDate(LocalDateTime.now());
         invoice.setSubtotal(totalExpected);
-        invoice.setDiscountAmount(totalDiscount);
+        invoice.setDiscountAmount(totalConcession);
         invoice.setTaxAmount(BigDecimal.ZERO);
         invoice.setTotalAmount(amountPaid);
         invoice.setCurrency(currency);
@@ -1037,7 +1092,8 @@ public class SchoolFeeReceiptService {
             receiptData.put("type", "SCHOOL_FEE_RECEIPT");
             receiptData.put("totalExpected", totalExpected);
             receiptData.put("totalPaid", totalPaid);
-            receiptData.put("totalDiscount", totalDiscount);
+            receiptData.put("totalConcession", totalConcession);
+            receiptData.put("totalPenalty", totalPenalty);
             receiptData.put("balanceDue", balanceDue);
             receiptData.put("amountPaidNow", amountPaid);
             ObjectMapper objectMapper = new ObjectMapper();

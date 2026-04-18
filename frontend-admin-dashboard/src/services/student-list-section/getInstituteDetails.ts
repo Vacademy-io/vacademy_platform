@@ -190,7 +190,7 @@ export const useInstituteLightweightQuery = () => {
                     const instituteSettings = JSON.parse(data.setting);
                     if (!isNullOrEmptyOrUndefined(instituteSettings)) {
                         const namingSettings = instituteSettings.setting?.NAMING_SETTING;
-                        if (namingSettings) {
+                        if (namingSettings && Array.isArray(namingSettings.data?.data)) {
                             setValue(namingSettings.data.data);
                         }
                     }
@@ -244,7 +244,7 @@ export const useInstituteFullQuery = () => {
                     const instituteSettings = JSON.parse(data.setting);
                     if (!isNullOrEmptyOrUndefined(instituteSettings)) {
                         const namingSettings = instituteSettings.setting?.NAMING_SETTING;
-                        if (namingSettings) {
+                        if (namingSettings && Array.isArray(namingSettings.data?.data)) {
                             setValue(namingSettings.data.data);
                         }
                     }
@@ -298,7 +298,7 @@ export const useInstituteQuery = () => {
                     const instituteSettings = JSON.parse(data.setting);
                     if (!isNullOrEmptyOrUndefined(instituteSettings)) {
                         const namingSettings = instituteSettings.setting?.NAMING_SETTING;
-                        if (namingSettings) {
+                        if (namingSettings && Array.isArray(namingSettings.data?.data)) {
                             setValue(namingSettings.data.data);
                         }
                     }

@@ -44,6 +44,7 @@ import { Route as AdminPackageManagementIndexRouteImport } from "./routes/admin-
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
 import { Route as WorkflowCreateIndexRouteImport } from "./routes/workflow/create/index"
 import { Route as WorkflowWorkflowIdIndexRouteImport } from "./routes/workflow/$workflowId/index"
+import { Route as VideoApiStudioInputVideosIndexRouteImport } from "./routes/video-api-studio/input-videos/index"
 import { Route as VideoApiStudioConsoleIndexRouteImport } from "./routes/video-api-studio/console/index"
 import { Route as UserTagsLinkIndexRouteImport } from "./routes/user-tags/link/index"
 import { Route as UserTagsInstituteIndexRouteImport } from "./routes/user-tags/institute/index"
@@ -402,6 +403,16 @@ const WorkflowWorkflowIdIndexRoute = WorkflowWorkflowIdIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/workflow/$workflowId/index.lazy").then((d) => d.Route),
 )
+const VideoApiStudioInputVideosIndexRoute =
+  VideoApiStudioInputVideosIndexRouteImport.update({
+    id: "/video-api-studio/input-videos/",
+    path: "/video-api-studio/input-videos/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/video-api-studio/input-videos/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const VideoApiStudioConsoleIndexRoute =
   VideoApiStudioConsoleIndexRouteImport.update({
     id: "/video-api-studio/console/",
@@ -1429,6 +1440,7 @@ export interface FileRoutesByFullPath {
   "/user-tags/institute/": typeof UserTagsInstituteIndexRoute
   "/user-tags/link/": typeof UserTagsLinkIndexRoute
   "/video-api-studio/console/": typeof VideoApiStudioConsoleIndexRoute
+  "/video-api-studio/input-videos/": typeof VideoApiStudioInputVideosIndexRoute
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
@@ -1577,6 +1589,7 @@ export interface FileRoutesByTo {
   "/user-tags/institute": typeof UserTagsInstituteIndexRoute
   "/user-tags/link": typeof UserTagsLinkIndexRoute
   "/video-api-studio/console": typeof VideoApiStudioConsoleIndexRoute
+  "/video-api-studio/input-videos": typeof VideoApiStudioInputVideosIndexRoute
   "/workflow/$workflowId": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create": typeof WorkflowCreateIndexRoute
   "/workflow/list": typeof WorkflowListIndexRoute
@@ -1727,6 +1740,7 @@ export interface FileRoutesById {
   "/user-tags/institute/": typeof UserTagsInstituteIndexRoute
   "/user-tags/link/": typeof UserTagsLinkIndexRoute
   "/video-api-studio/console/": typeof VideoApiStudioConsoleIndexRoute
+  "/video-api-studio/input-videos/": typeof VideoApiStudioInputVideosIndexRoute
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
@@ -1878,6 +1892,7 @@ export interface FileRouteTypes {
     | "/user-tags/institute/"
     | "/user-tags/link/"
     | "/video-api-studio/console/"
+    | "/video-api-studio/input-videos/"
     | "/workflow/$workflowId/"
     | "/workflow/create/"
     | "/workflow/list/"
@@ -2026,6 +2041,7 @@ export interface FileRouteTypes {
     | "/user-tags/institute"
     | "/user-tags/link"
     | "/video-api-studio/console"
+    | "/video-api-studio/input-videos"
     | "/workflow/$workflowId"
     | "/workflow/create"
     | "/workflow/list"
@@ -2175,6 +2191,7 @@ export interface FileRouteTypes {
     | "/user-tags/institute/"
     | "/user-tags/link/"
     | "/video-api-studio/console/"
+    | "/video-api-studio/input-videos/"
     | "/workflow/$workflowId/"
     | "/workflow/create/"
     | "/workflow/list/"
@@ -2324,6 +2341,7 @@ export interface RootRouteChildren {
   UserTagsInstituteIndexRoute: typeof UserTagsInstituteIndexRoute
   UserTagsLinkIndexRoute: typeof UserTagsLinkIndexRoute
   VideoApiStudioConsoleIndexRoute: typeof VideoApiStudioConsoleIndexRoute
+  VideoApiStudioInputVideosIndexRoute: typeof VideoApiStudioInputVideosIndexRoute
   WorkflowWorkflowIdIndexRoute: typeof WorkflowWorkflowIdIndexRoute
   WorkflowCreateIndexRoute: typeof WorkflowCreateIndexRoute
   WorkflowListIndexRoute: typeof WorkflowListIndexRoute
@@ -2632,6 +2650,13 @@ declare module "@tanstack/react-router" {
       path: "/workflow/$workflowId"
       fullPath: "/workflow/$workflowId/"
       preLoaderRoute: typeof WorkflowWorkflowIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/video-api-studio/input-videos/": {
+      id: "/video-api-studio/input-videos/"
+      path: "/video-api-studio/input-videos"
+      fullPath: "/video-api-studio/input-videos/"
+      preLoaderRoute: typeof VideoApiStudioInputVideosIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/video-api-studio/console/": {
@@ -3529,6 +3554,7 @@ const rootRouteChildren: RootRouteChildren = {
   UserTagsInstituteIndexRoute: UserTagsInstituteIndexRoute,
   UserTagsLinkIndexRoute: UserTagsLinkIndexRoute,
   VideoApiStudioConsoleIndexRoute: VideoApiStudioConsoleIndexRoute,
+  VideoApiStudioInputVideosIndexRoute: VideoApiStudioInputVideosIndexRoute,
   WorkflowWorkflowIdIndexRoute: WorkflowWorkflowIdIndexRoute,
   WorkflowCreateIndexRoute: WorkflowCreateIndexRoute,
   WorkflowListIndexRoute: WorkflowListIndexRoute,

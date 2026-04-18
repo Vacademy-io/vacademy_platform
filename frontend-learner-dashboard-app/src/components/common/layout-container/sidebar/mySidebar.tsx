@@ -225,10 +225,14 @@ export const MySidebar = ({
   // in collapsed mode regardless of override.
   const hasCustomLogoDims =
     isExpanded && (logoWidthPx != null || logoHeightPx != null);
+  // maxWidth: 100% caps the logo at the available sidebar width so an
+  // admin-configured pixel width larger than the panel doesn't overflow —
+  // it just fills the available space.
   const customLogoStyle: React.CSSProperties | undefined = hasCustomLogoDims
     ? {
         width: logoWidthPx ?? undefined,
         height: logoHeightPx ?? undefined,
+        maxWidth: '100%',
       }
     : undefined;
 
@@ -252,7 +256,13 @@ export const MySidebar = ({
             <SidebarMenuItem>
               <SidebarMenuButton
                 size="default"
-                className="h-auto min-h-10 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                className={cn(
+                  "h-auto min-h-10 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+                  // When the institute name is hidden and we're not in
+                  // sub-org mode, center the logo in the expanded sidebar
+                  // so a wide custom-sized logo fills the sheet area.
+                  hideInstituteName && !subOrgName && isExpanded && "justify-center"
+                )}
                 onClick={
                   homeIconClickRoute ? handleInstituteLogoClick : undefined
                 }

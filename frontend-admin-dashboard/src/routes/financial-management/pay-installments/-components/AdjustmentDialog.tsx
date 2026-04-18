@@ -57,7 +57,7 @@ export function AdjustmentDialog({
         onSuccess: () => {
             const msg =
                 selectedType === 'PENALTY'
-                    ? 'Penalty submitted for approval'
+                    ? 'Penalty applied'
                     : 'Concession submitted for approval';
             toast.success(msg);
             queryClient.invalidateQueries({ queryKey: getStudentDuesQueryKey(studentId) });
@@ -230,8 +230,8 @@ export function AdjustmentDialog({
                                 <div className="text-[11px] text-gray-500 mt-0.5">
                                     Increases due amount
                                 </div>
-                                <div className="text-[10px] text-amber-600 mt-1 font-medium">
-                                    Requires approval
+                                <div className="text-[10px] text-emerald-600 mt-1 font-medium">
+                                    Applied instantly
                                 </div>
                             </button>
                         </div>
@@ -281,7 +281,11 @@ export function AdjustmentDialog({
                                             : 'bg-red-600 hover:bg-red-700'
                                     )}
                                 >
-                                    {isPending ? 'Submitting...' : 'Submit for Approval'}
+                                    {isPending
+                                        ? 'Submitting...'
+                                        : selectedType === 'PENALTY'
+                                          ? 'Apply Penalty'
+                                          : 'Submit for Approval'}
                                 </button>
                             </div>
                         )}

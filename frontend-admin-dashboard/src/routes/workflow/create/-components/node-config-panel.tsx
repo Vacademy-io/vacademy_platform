@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Trash, X } from '@phosphor-icons/react';
 import { WORKFLOW_NODE_TYPES } from '@/types/workflow/workflow-types';
 import { VariablePicker } from './variable-picker';
+import { ConditionBuilder } from './condition-builder';
+import { AggregateBuilder } from './aggregate-builder';
+import { KeyValueBuilder } from './key-value-builder';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import {
@@ -323,6 +326,23 @@ export function NodeConfigPanel() {
                                 ))}
                             </div>
                         )}
+                        {/* Optional params from catalog */}
+                        {selectedQueryKey?.optional_params && selectedQueryKey.optional_params.length > 0 && (
+                            <div className="space-y-2 border-t pt-2 mt-2">
+                                <Label className="text-[10px] uppercase text-gray-400">Optional Filters</Label>
+                                {selectedQueryKey.optional_params.map((param) => (
+                                    <div key={param}>
+                                        <Label className="text-xs text-gray-500">{param} <span className="text-gray-300">(optional)</span></Label>
+                                        <VariablePicker
+                                            value={(data.config[param] as string) ?? ''}
+                                            onChange={(v) => handleConfigChange(param, v)}
+                                            placeholder={`Filter by ${param}...`}
+                                            nodeId={selectedNode.id}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         <div>
                             <Label className="text-xs">Result Key</Label>
                             <Input
@@ -335,57 +355,73 @@ export function NodeConfigPanel() {
                     </>
                 )}
 
-                {/* Delay node config */}
-                {data.nodeType === 'DELAY' && (
-                    <>
-                        <div>
-                            <Label className="text-xs">Delay Value</Label>
-                            <Input
-                                type="number"
-                                value={(data.config.delayValue as number) ?? 5}
-                                onChange={(e) => handleConfigChange('delayValue', parseInt(e.target.value) || 0)}
-                                className="mt-1"
-                                min={0}
-                            />
-                        </div>
-                        <div>
-                            <Label className="text-xs">Unit</Label>
-                            <select
-                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                value={(data.config.delayUnit as string) ?? 'SECONDS'}
-                                onChange={(e) => handleConfigChange('delayUnit', e.target.value)}
-                            >
-                                <option value="SECONDS">Seconds</option>
-                                <option value="MINUTES">Minutes</option>
-                                <option value="HOURS">Hours</option>
-                            </select>
-                        </div>
-                    </>
-                )}
+                {/* Delay node config — saves as config.delay.value / config.delay.unit to match backend */}
+                {data.nodeType === 'DELAY' && (() => {
+                    const delay = (data.config.delay as { value?: number; unit?: string }) ?? {};
+                    // Backward compat: read from flat keys if nested doesn't exist
+                    const delayValue = delay.value ?? (data.config.delayValue as number) ?? 5;
+                    const delayUnit = delay.unit ?? (data.config.delayUnit as string) ?? 'MINUTES';
+                    const updateDelay = (field: string, val: unknown) => {
+                        handleConfigChange('delay', { ...delay, value: delayValue, unit: delayUnit, [field]: val });
+                    };
+                    return (
+                        <>
+                            <div>
+                                <Label className="text-xs">Wait for</Label>
+                                <div className="mt-1 flex items-center gap-2">
+                                    <Input
+                                        type="number"
+                                        value={delayValue}
+                                        onChange={(e) => updateDelay('value', parseInt(e.target.value) || 0)}
+                                        className="w-20"
+                                        min={0}
+                                    />
+                                    <select
+                                        className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        value={delayUnit}
+                                        onChange={(e) => updateDelay('unit', e.target.value)}
+                                    >
+                                        <option value="SECONDS">Seconds</option>
+                                        <option value="MINUTES">Minutes</option>
+                                        <option value="HOURS">Hours</option>
+                                        <option value="DAYS">Days</option>
+                                    </select>
+                                </div>
+                                {delayUnit === 'DAYS' && delayValue > 0 && (
+                                    <p className="mt-1.5 text-[10px] text-primary-500">
+                                        Workflow will pause and resume automatically after {delayValue} day{delayValue > 1 ? 's' : ''}.
+                                    </p>
+                                )}
+                            </div>
+                        </>
+                    );
+                })()}
 
-                {/* Filter node config */}
+                {/* Filter node config — Visual Condition Builder in item mode */}
                 {data.nodeType === 'FILTER' && (
                     <>
                         <div>
-                            <Label className="text-xs">Source Expression</Label>
+                            <Label className="text-xs">Source List</Label>
                             <VariablePicker
                                 value={(data.config.source as string) ?? ''}
                                 onChange={(v) => handleConfigChange('source', v)}
-                                placeholder="Pick a list variable..."
+                                placeholder="Pick a list to filter..."
                                 nodeId={selectedNode.id}
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Filter Condition (SpEL)</Label>
-                            <Input
-                                value={(data.config.condition as string) ?? ''}
-                                onChange={(e) => handleConfigChange('condition', e.target.value)}
-                                className="mt-1"
-                                placeholder="#item['age'] > 18"
-                            />
+                            <Label className="text-xs">Keep items where</Label>
+                            <div className="mt-1.5">
+                                <ConditionBuilder
+                                    value={(data.config.condition as string) ?? ''}
+                                    onChange={(v) => handleConfigChange('condition', v)}
+                                    nodeId={selectedNode.id}
+                                    itemMode
+                                />
+                            </div>
                         </div>
                         <div>
-                            <Label className="text-xs">Output Key</Label>
+                            <Label className="text-xs">Save filtered list as</Label>
                             <Input
                                 value={(data.config.outputKey as string) ?? 'filteredList'}
                                 onChange={(e) => handleConfigChange('outputKey', e.target.value)}
@@ -396,83 +432,62 @@ export function NodeConfigPanel() {
                     </>
                 )}
 
-                {/* Aggregate node config */}
+                {/* Aggregate node config — Visual Operation Builder */}
                 {data.nodeType === 'AGGREGATE' && (
                     <>
                         <div>
-                            <Label className="text-xs">Source Expression</Label>
+                            <Label className="text-xs">Source List</Label>
                             <VariablePicker
                                 value={(data.config.source as string) ?? ''}
                                 onChange={(v) => handleConfigChange('source', v)}
-                                placeholder="Pick a list variable..."
+                                placeholder="Pick a list to aggregate..."
                                 nodeId={selectedNode.id}
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Operations (JSON)</Label>
-                            <textarea
-                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-                                rows={6}
-                                value={
-                                    (data.config.operations as string) ??
-                                    JSON.stringify(
-                                        [
-                                            { type: 'COUNT', outputKey: 'total' },
-                                            { type: 'AVG', field: 'score', outputKey: 'avgScore' },
-                                        ],
-                                        null,
-                                        2
-                                    )
-                                }
-                                onChange={(e) => {
-                                    try {
-                                        const parsed = JSON.parse(e.target.value);
-                                        handleConfigChange('operations', parsed);
-                                    } catch {
-                                        // Store raw string while editing
-                                        handleConfigChange('operations', e.target.value);
-                                    }
-                                }}
-                            />
-                            <p className="mt-1 text-[10px] text-gray-400">
-                                Types: COUNT, SUM, AVG, MIN, MAX. Each needs outputKey, SUM/AVG/MIN/MAX need field.
-                            </p>
+                            <Label className="text-xs">Operations</Label>
+                            <div className="mt-1.5">
+                                <AggregateBuilder
+                                    value={(data.config.operations as Array<{ type: string; field?: string; outputKey: string }>) ?? []}
+                                    onChange={(ops) => handleConfigChange('operations', ops)}
+                                />
+                            </div>
                         </div>
                     </>
                 )}
 
-                {/* Condition (If/Else) node config */}
+                {/* Condition (If/Else) node config — Visual Condition Builder */}
                 {data.nodeType === 'CONDITION' && (
                     <>
                         <div>
-                            <Label className="text-xs">Condition Expression</Label>
-                            <VariablePicker
-                                value={(data.config.condition as string) ?? ''}
-                                onChange={(v) => handleConfigChange('condition', v)}
-                                placeholder="Pick a variable to check..."
-                                nodeId={selectedNode.id}
-                            />
-                            <p className="mt-1 text-[10px] text-gray-400">
-                                Must evaluate to true/false. Use Advanced mode for complex expressions like "#ctx['age'] &gt; 18".
-                            </p>
+                            <Label className="text-xs">Condition</Label>
+                            <div className="mt-1.5">
+                                <ConditionBuilder
+                                    value={(data.config.condition as string) ?? ''}
+                                    onChange={(v) => handleConfigChange('condition', v)}
+                                    nodeId={selectedNode.id}
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <Label className="text-xs">True Label</Label>
-                            <Input
-                                value={(data.config.trueLabel as string) ?? 'Yes'}
-                                onChange={(e) => handleConfigChange('trueLabel', e.target.value)}
-                                className="mt-1"
-                                placeholder="Yes"
-                            />
-                        </div>
-                        <div>
-                            <Label className="text-xs">False Label</Label>
-                            <Input
-                                value={(data.config.falseLabel as string) ?? 'No'}
-                                onChange={(e) => handleConfigChange('falseLabel', e.target.value)}
-                                className="mt-1"
-                                placeholder="No"
-                            />
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <Label className="text-xs">True Label</Label>
+                                <Input
+                                    value={(data.config.trueLabel as string) ?? 'Yes'}
+                                    onChange={(e) => handleConfigChange('trueLabel', e.target.value)}
+                                    className="mt-1"
+                                    placeholder="Yes"
+                                />
+                            </div>
+                            <div>
+                                <Label className="text-xs">False Label</Label>
+                                <Input
+                                    value={(data.config.falseLabel as string) ?? 'No'}
+                                    onChange={(e) => handleConfigChange('falseLabel', e.target.value)}
+                                    className="mt-1"
+                                    placeholder="No"
+                                />
+                            </div>
                         </div>
                     </>
                 )}
@@ -578,7 +593,7 @@ export function NodeConfigPanel() {
                     </>
                 )}
 
-                {/* Update Record node config */}
+                {/* Update Record node config — Visual Key-Value Builder */}
                 {data.nodeType === 'UPDATE_RECORD' && (
                     <>
                         <div>
@@ -599,42 +614,28 @@ export function NodeConfigPanel() {
                             </select>
                         </div>
                         <div>
-                            <Label className="text-xs">WHERE Clause (JSON)</Label>
-                            <textarea
-                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-                                rows={3}
-                                value={
-                                    typeof data.config.where === 'string'
-                                        ? data.config.where
-                                        : JSON.stringify(data.config.where ?? { id: "#ctx['recordId']" }, null, 2)
-                                }
-                                onChange={(e) => {
-                                    try {
-                                        handleConfigChange('where', JSON.parse(e.target.value));
-                                    } catch {
-                                        handleConfigChange('where', e.target.value);
-                                    }
-                                }}
-                            />
+                            <Label className="text-xs">Find records where</Label>
+                            <div className="mt-1.5">
+                                <KeyValueBuilder
+                                    value={(data.config.where as Record<string, string>) ?? {}}
+                                    onChange={(kv) => handleConfigChange('where', kv)}
+                                    nodeId={selectedNode.id}
+                                    keyPlaceholder="column"
+                                    valuePlaceholder="match value"
+                                />
+                            </div>
                         </div>
                         <div>
-                            <Label className="text-xs">SET Clause (JSON)</Label>
-                            <textarea
-                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-                                rows={3}
-                                value={
-                                    typeof data.config.set === 'string'
-                                        ? data.config.set
-                                        : JSON.stringify(data.config.set ?? { status: 'ACTIVE' }, null, 2)
-                                }
-                                onChange={(e) => {
-                                    try {
-                                        handleConfigChange('set', JSON.parse(e.target.value));
-                                    } catch {
-                                        handleConfigChange('set', e.target.value);
-                                    }
-                                }}
-                            />
+                            <Label className="text-xs">Set values to</Label>
+                            <div className="mt-1.5">
+                                <KeyValueBuilder
+                                    value={(data.config.set as Record<string, string>) ?? {}}
+                                    onChange={(kv) => handleConfigChange('set', kv)}
+                                    nodeId={selectedNode.id}
+                                    keyPlaceholder="column"
+                                    valuePlaceholder="new value"
+                                />
+                            </div>
                         </div>
                     </>
                 )}
@@ -662,12 +663,12 @@ export function NodeConfigPanel() {
                             />
                         </div>
                         <div>
-                            <Label className="text-xs">Recipient Token Expression (SpEL)</Label>
-                            <Input
+                            <Label className="text-xs">Recipient Tokens</Label>
+                            <VariablePicker
                                 value={(data.config.recipientTokenExpression as string) ?? ''}
-                                onChange={(e) => handleConfigChange('recipientTokenExpression', e.target.value)}
-                                className="mt-1"
-                                placeholder="#ctx['fcmTokens']"
+                                onChange={(v) => handleConfigChange('recipientTokenExpression', v)}
+                                placeholder="Pick FCM token list..."
+                                nodeId={selectedNode.id}
                             />
                         </div>
                         <div>

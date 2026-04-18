@@ -72,6 +72,7 @@ class RenderJobRequest(BaseModel):
     caption_bg_color: Optional[str] = Field(default=None, description="CSS hex color for caption background")
     caption_bg_opacity: Optional[int] = Field(default=None, description="Caption background opacity 0-100")
     caption_font_size: Optional[int] = Field(default=None, description="Caption font size in px")
+    source_video_url: Optional[str] = Field(default=None, description="S3 URL of indexed source video for SOURCE_CLIP compositing")
 
 
 class RenderJobResponse(BaseModel):
@@ -120,6 +121,7 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
             caption_bg_color=request.caption_bg_color,
             caption_bg_opacity=request.caption_bg_opacity,
             caption_font_size=request.caption_font_size,
+            source_video_url=request.source_video_url,
         )
 
         jobs[job_id]["status"] = "completed"
@@ -225,6 +227,148 @@ async def get_job_status(job_id: str, x_render_key: str = Header("")):
     j = jobs[job_id]
     return RenderJobStatus(**j)
 
+
+# ---------------------------------------------------------------------------
+# Index Jobs — Video input indexing (stub for Step 1, real pipeline in Step 2)
+# ---------------------------------------------------------------------------
+
+index_jobs: Dict[str, dict] = {}
+
+
+class IndexJobRequest(BaseModel):
+    input_video_id: str = Field(..., description="AI Input Video record ID")
+    source_url: str = Field(..., description="S3 URL of the uploaded video")
+    mode: str = Field(..., description="'podcast' or 'demo'")
+    callback_url: Optional[str] = Field(None, description="Webhook URL on completion")
+
+
+class IndexJobResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str = ""
+
+
+class IndexJobStatus(BaseModel):
+    job_id: str
+    input_video_id: str
+    status: str  # queued, running, completed, failed
+    progress: Optional[float] = None
+    output_urls: Optional[dict] = None
+    duration_seconds: Optional[float] = None
+    resolution: Optional[str] = None
+    error: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+async def _run_index_job(job_id: str, request: IndexJobRequest):
+    """Run the real video extraction pipeline in a thread pool executor."""
+    index_jobs[job_id]["status"] = "running"
+    index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    def progress_cb(pct: float):
+        index_jobs[job_id]["progress"] = pct
+        index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    try:
+        from extractor.pipeline import run_index_pipeline
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            run_index_pipeline,
+            request.input_video_id,
+            request.source_url,
+            request.mode,
+            progress_cb,
+        )
+
+        index_jobs[job_id]["status"] = "completed"
+        index_jobs[job_id]["progress"] = 100
+        index_jobs[job_id]["output_urls"] = result["output_urls"]
+        index_jobs[job_id]["duration_seconds"] = result.get("duration_seconds")
+        index_jobs[job_id]["resolution"] = result.get("resolution")
+        index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        logger.info(f"Index job {job_id} completed: {list(result['output_urls'].keys())}")
+
+        if request.callback_url:
+            await _send_callback(request.callback_url, {
+                "input_video_id": request.input_video_id,
+                "job_id": job_id,
+                "status": "completed",
+                "output_urls": result["output_urls"],
+                "duration_seconds": result.get("duration_seconds"),
+                "resolution": result.get("resolution"),
+            })
+
+    except Exception as e:
+        error_msg = str(e)
+        index_jobs[job_id]["status"] = "failed"
+        index_jobs[job_id]["error"] = error_msg
+        index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        logger.error(f"Index job {job_id} failed: {error_msg}", exc_info=True)
+
+        if request.callback_url:
+            await _send_callback(request.callback_url, {
+                "input_video_id": request.input_video_id,
+                "job_id": job_id,
+                "status": "failed",
+                "error": error_msg,
+            })
+
+
+@app.post("/index-jobs", response_model=IndexJobResponse)
+async def submit_index_job(
+    request: IndexJobRequest,
+    x_render_key: str = Header(""),
+):
+    _verify_key(x_render_key)
+
+    # Shared capacity check: render + index jobs compete for the same CPU
+    active_render = sum(1 for j in jobs.values() if j["status"] in ("queued", "running"))
+    active_index = sum(1 for j in index_jobs.values() if j["status"] in ("queued", "running"))
+    active_total = active_render + active_index
+    if active_total >= MAX_CONCURRENT_JOBS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Server busy ({active_total}/{MAX_CONCURRENT_JOBS} jobs running)",
+        )
+
+    job_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    index_jobs[job_id] = {
+        "job_id": job_id,
+        "input_video_id": request.input_video_id,
+        "status": "queued",
+        "progress": 0,
+        "output_urls": None,
+        "duration_seconds": None,
+        "resolution": None,
+        "error": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    asyncio.create_task(_run_index_job(job_id, request))
+
+    return IndexJobResponse(job_id=job_id, status="queued", message="Index job submitted")
+
+
+@app.get("/index-jobs/{job_id}", response_model=IndexJobStatus)
+async def get_index_job_status(job_id: str, x_render_key: str = Header("")):
+    _verify_key(x_render_key)
+
+    if job_id not in index_jobs:
+        raise HTTPException(status_code=404, detail="Index job not found")
+
+    j = index_jobs[job_id]
+    return IndexJobStatus(**j)
+
+
+# ---------------------------------------------------------------------------
+# Startup
+# ---------------------------------------------------------------------------
 
 @app.on_event("startup")
 async def startup():

@@ -7,7 +7,9 @@ import React, { useEffect, useMemo, useRef, useCallback, type ChangeEvent, Suspe
 const YooptaEditorWrapper = React.lazy(() => import('./YooptaEditorWrapper').then(module => ({ default: module.YooptaEditorWrapper })));
 import '../excalidraw-z-index-fix.css';
 import { MyButton } from '@/components/design-system/button';
-const PDFViewer = React.lazy(() => import('./pdf-viewer'));
+const PDFViewer = React.lazy(() =>
+    import('./pdf-viewer').then((module) => ({ default: module.default }))
+);
 import { ActivityStatsSidebar } from './stats-dialog/activity-sidebar';
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 import { EmptySlideMaterial } from '@/assets/svgs';
@@ -40,7 +42,9 @@ import { handleUnpublishSlide } from './slide-operations/handleUnpublishSlide';
 import { updateHeading } from './slide-operations/updateSlideHeading';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from './slide-operations/formatHtmlString';
 import { handleConvertAndUpload } from './slide-operations/handleConvertUpload';
-const SlideEditor = React.lazy(() => import('./SlideEditor'));
+const SlideEditor = React.lazy(() =>
+    import('./SlideEditor').then((module) => ({ default: module.default }))
+);
 import type { JSX } from 'react/jsx-runtime';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
@@ -65,25 +69,61 @@ import {
 } from '@/types/display-settings';
 import { processHtmlImages, containsBase64Images, getBase64ImagesSize } from '@/utils/image-processing';
 
-/** Check if HTML content is effectively empty (shared across editor components). */
+/** Check if HTML content is effectively empty (shared across editor components).
+ *
+ *  Guard philosophy: this check exists to prevent an accidentally-empty
+ *  serialization from clobbering a slide's saved content on the backend.
+ *  It MUST be permissive about what counts as content — false positives
+ *  here surface to the user as "Could not read editor content" and
+ *  block their save. Only flag as empty when we're extremely confident
+ *  the document is truly blank.
+ */
 function checkIsHtmlEmpty(data: string | null): boolean {
     if (!data) return true;
-    const textContent = data
-        .replace(/<[^>]*>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (textContent === '' || textContent.length === 0) return true;
+
     const trimmed = data.trim();
-    return (
+    if (!trimmed) return true;
+
+    // First: the very specific known empty wrappers the editor produces
+    // when there's nothing at all. These are the ONLY shapes we flag
+    // with confidence.
+    if (
         trimmed === '<html><head></head><body><div></div></body></html>' ||
+        trimmed === '<html><head></head><body></body></html>' ||
         trimmed === '<div></div>' ||
         trimmed === '<p></p>' ||
         trimmed === '<br>' ||
         trimmed === '<br/>' ||
-        /^<p><br><\/p>$/.test(trimmed) ||
-        /^<div><br><\/div>$/.test(trimmed)
-    );
+        /^<p><br\s*\/?><\/p>$/.test(trimmed) ||
+        /^<div><br\s*\/?><\/div>$/.test(trimmed)
+    ) {
+        return true;
+    }
+
+    // Media + Yoopta custom blocks + semantic elements (details/summary
+    // from the accordion serializer, figures, tables, lists, code, etc.)
+    // always count as content, even without visible text.
+    if (
+        /<(img|video|iframe|audio|source|embed|object|svg|canvas|details|summary|figure|table|ul|ol|pre|code|blockquote|hr)\b/i.test(
+            data
+        ) ||
+        /\b(data-yoopta-type|data-meta-align|data-meta-depth|data-tabs|data-front|data-back)\s*=/i.test(
+            data
+        )
+    ) {
+        return false;
+    }
+
+    // Fallback: strip tags/entities/whitespace and check for any text.
+    const textContent = data
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return textContent.length === 0;
 }
 
 /** Lightweight page count estimation from HTML (replaces expensive jspdf+html2canvas render). */
@@ -342,6 +382,7 @@ export const SlideMaterial = ({
                         value={editor.children}
                         selectionBoxRoot={selectionRef}
                         autoFocus={true}
+                        readOnly={isLearnerView}
                         onChange={() => {
                             // Check emptiness from JSON structure (instant, no serialization)
                             setShowPlaceholder(checkIsEmptyFromEditor());
@@ -709,18 +750,31 @@ export const SlideMaterial = ({
 
     const getCurrentEditorHTMLContent: () => string = () => {
         const data = editor.getEditorValue();
-        let htmlString = '';
         try {
-            htmlString = html.serialize(editor, data);
+            const htmlString = html.serialize(editor, data);
+            const formatted = formatHTMLString(htmlString);
+            // Keep the last-known-good snapshot in sync so future serialize
+            // failures (e.g. the Yoopta accordion "Cannot find descendant
+            // at path" Slate bug) have something to fall back to.
+            currentDocHtmlRef.current = formatted;
+            return formatted;
         } catch (error) {
             console.error('Error serializing content in getCurrentEditorHTMLContent:', error);
-            // Return empty string or perhaps the last known good state?
-            // For now, empty string is safer than crashing
+            // Serialize blew up (typically Yoopta/Slate throwing on a
+            // partially-normalized accordion/custom-block state). Fall
+            // back to the most recent successfully-serialized HTML
+            // (captured on every onChange), then to the slide's stored
+            // data. Returning '' used to land in SaveDraft's empty-guard
+            // and surface "Could not read editor content" — we'd rather
+            // preserve prior content than lose work.
+            if (currentDocHtmlRef.current) {
+                return currentDocHtmlRef.current;
+            }
+            if (activeItem?.document_slide?.data) {
+                return activeItem.document_slide.data;
+            }
             return '';
         }
-        const formattedHtmlString = formatHTMLString(htmlString);
-
-        return formattedHtmlString;
     };
 
     // Unified handler to check and handle unsaved DOC changes for the previous slide
@@ -2082,7 +2136,10 @@ export const SlideMaterial = ({
             // produced by formatHTMLString(''), so we detect both literal
             // emptiness and that empty wrapper before clobbering the slide.
             if (!processedHtmlString || checkIsHtmlEmpty(processedHtmlString)) {
-                console.warn('⚠️ Skipping SaveDraft for DOC — editor returned empty content');
+                console.warn(
+                    '⚠️ Skipping SaveDraft for DOC — editor returned empty content. html:',
+                    processedHtmlString
+                );
                 toast.error('Could not read editor content. Please try again.');
                 return;
             }
@@ -2265,8 +2322,12 @@ export const SlideMaterial = ({
                 return; // Don't show additional toast as custom function handles it
             }
 
+            // SaveDraft owns user messaging for every slide-type branch
+            // (success, error, empty-content, no-op). Don't add a second toast
+            // here — it produced duplicate success toasts on every save and a
+            // success-after-error stack when the DOC branch guarded empty
+            // editor content.
             await SaveDraft(activeItem);
-            toast.success('Slide saved successfully');
         } catch {
             toast.error('error saving document');
         }

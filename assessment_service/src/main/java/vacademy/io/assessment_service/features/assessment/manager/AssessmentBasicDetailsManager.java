@@ -38,6 +38,9 @@ public class AssessmentBasicDetailsManager {
     @Autowired
     AssessmentInstituteMappingRepository assessmentInstituteMappingRepository;
 
+    @Autowired
+    vacademy.io.assessment_service.features.assessment.service.WorkflowTriggerClient workflowTriggerClient;
+
     public ResponseEntity<AssessmentSaveResponseDto> saveBasicAssessmentDetails(CustomUserDetails user, BasicAssessmentDetailsDTO basicAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
 
         if (!StringUtils.hasText(assessmentId))
@@ -112,6 +115,18 @@ public class AssessmentBasicDetailsManager {
         assessment = assessmentRepository.save(assessment);
         assessmentInstituteMapping.setAssessment(assessment);
         assessmentInstituteMappingRepository.save(assessmentInstituteMapping);
+
+        // Trigger ASSESSMENT_CREATE workflow
+        try {
+            Map<String, Object> contextData = new java.util.HashMap<>();
+            contextData.put("assessmentId", assessment.getId());
+            contextData.put("assessmentName", assessment.getName());
+            contextData.put("assessmentType", type);
+            contextData.put("createdBy", user.getUserId());
+            workflowTriggerClient.triggerEvent("ASSESSMENT_CREATE", assessment.getId(), instituteId, contextData);
+        } catch (Exception e) {
+            // Don't fail assessment creation if workflow trigger fails
+        }
 
         return ResponseEntity.ok(new AssessmentSaveResponseDto(assessment.getId(), AssessmentStatus.DRAFT.name()));
     }

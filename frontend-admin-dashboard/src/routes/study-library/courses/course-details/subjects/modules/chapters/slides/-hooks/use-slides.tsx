@@ -574,22 +574,28 @@ export const useSlidesMutations = (
             return { data: response.data, isNewSlide: payload.new_slide };
         },
         onSuccess: async (result) => {
-            // Invalidate and wait for slides query to refetch
             await queryClient.invalidateQueries({ queryKey: ['slides'] });
             queryClient.invalidateQueries({ queryKey: ['GET_MODULES_WITH_CHAPTERS'] });
             queryClient.invalidateQueries({ queryKey: ['GET_STUDENT_SUBJECTS_PROGRESS'] });
             queryClient.invalidateQueries({ queryKey: ['GET_STUDENT_SLIDES_PROGRESS'] });
 
-            // If this was a new slide creation, set first slide as active after refetch completes
+            // When a new DOC slide is created, auto-switch to it. New slides
+            // are inserted at slide_order 0, so items[0] IS the new slide
+            // after the refetch lands. Poll the store briefly instead of
+            // using a fixed setTimeout — the old 1s delay raced with slow
+            // networks (new slide didn't switch) and was redundantly late
+            // on fast ones. Callers that want to control the active slide
+            // themselves (e.g. AddDocDialog.reorderSlidesAfterNewSlide)
+            // will simply overwrite this with the same target.
             if (result.isNewSlide) {
-                // Wait for the slides query to actually refetch and update the store
-                setTimeout(() => {
+                for (let i = 0; i < 15; i++) {
+                    await new Promise((r) => setTimeout(r, 100));
                     const { setActiveItem, items } = useContentStore.getState();
-
                     if (items && items.length > 0) {
                         setActiveItem(items[0] as Slide);
+                        break;
                     }
-                }, 1000); // Increased timeout to ensure refetch completes
+                }
             }
         },
     });

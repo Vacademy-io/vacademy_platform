@@ -32,6 +32,31 @@ export function isChunkLoadError(err: unknown): boolean {
     );
 }
 
+/**
+ * Detects the React.lazy resolver crash where the dynamic import resolved
+ * but the resulting module object was undefined — so React's internal
+ * `moduleObject.default` access throws a TypeError. This is observed in the
+ * wild after a deploy when a stale tab fetches a chunk filename whose body
+ * was rewritten or replaced (the request itself succeeds, so it does not
+ * surface as a ChunkLoadError).
+ *
+ * The message wording differs per browser engine:
+ *   - V8 (Chrome/Edge):   "Cannot read properties of undefined (reading 'default')"
+ *   - SpiderMonkey (FF):  "can't access property \"default\" of undefined"
+ *   - JSC (Safari):       "undefined is not an object (evaluating 'X.default')"
+ */
+export function isLazyResolverError(err: unknown): boolean {
+    if (!err) return false;
+    const errObj = err as { name?: string; message?: string };
+    if (errObj.name !== 'TypeError') return false;
+    const message = errObj.message ?? '';
+    return (
+        /reading ['"]default['"]/.test(message) ||
+        /property ['"]default['"] of undefined/.test(message) ||
+        /evaluating ['"][^'"]*\.default['"]/.test(message)
+    );
+}
+
 function readRecord(): ReloadRecord {
     try {
         const raw = sessionStorage.getItem(RELOAD_KEY);
@@ -92,7 +117,7 @@ export function installChunkErrorHandler(): void {
     });
 
     window.addEventListener('unhandledrejection', (event) => {
-        if (isChunkLoadError(event.reason)) {
+        if (isChunkLoadError(event.reason) || isLazyResolverError(event.reason)) {
             if (reloadForChunkError()) {
                 event.preventDefault();
             }
@@ -100,7 +125,11 @@ export function installChunkErrorHandler(): void {
     });
 
     window.addEventListener('error', (event) => {
-        if (isChunkLoadError(event.error) || isChunkLoadError(event.message)) {
+        if (
+            isChunkLoadError(event.error) ||
+            isChunkLoadError(event.message) ||
+            isLazyResolverError(event.error)
+        ) {
             if (reloadForChunkError()) {
                 event.preventDefault();
             }

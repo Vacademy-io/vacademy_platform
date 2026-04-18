@@ -12,6 +12,7 @@ interface YooptaEditorWrapperProps {
     onChange: () => void;
     className?: string;
     style?: React.CSSProperties;
+    readOnly?: boolean;
 }
 
 export function YooptaEditorWrapper({
@@ -25,6 +26,7 @@ export function YooptaEditorWrapper({
     onChange,
     className,
     style,
+    readOnly,
 }: YooptaEditorWrapperProps) {
     return (
         <YooptaEditor
@@ -38,6 +40,7 @@ export function YooptaEditorWrapper({
             onChange={onChange}
             className={className}
             style={style}
+            readOnly={readOnly}
         />
     );
 }

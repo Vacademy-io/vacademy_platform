@@ -1,5 +1,6 @@
 import {
     GET_SIGNED_URL,
+    GET_SIGNED_URL_PUBLIC,
     ACKNOWLEDGE,
     GET_PUBLIC_URL,
     GET_DETAILS,
@@ -143,4 +144,38 @@ export const getPublicUrls = async (fileIds: string | undefined | null) => {
         GET_DETAILS,
         { fileIds, expiryDays: 7 }
     );
+};
+
+/**
+ * Upload a file using the PUBLIC (unauthenticated) signed-URL endpoint.
+ * Used on public-facing registration pages (live-class, audience-response)
+ * where the learner is not logged in.
+ *
+ * Flow: POST /media-service/public/get-signed-url → PUT to S3 → return fileId.
+ * The public signed-URL endpoint auto-acknowledges so no separate ACKNOWLEDGE
+ * call is needed.
+ */
+export const UploadFilePublic = async (
+    file: File,
+    source = "CUSTOM_FIELD",
+    sourceId = "PUBLIC_UPLOAD"
+): Promise<string | undefined> => {
+    const requestBody = {
+        file_name: file.name.toLowerCase().replace(/\s+/g, "_"),
+        file_type: file.type,
+        source,
+        source_id: sourceId,
+    };
+
+    // 1. Get a signed URL from the public endpoint (no auth token needed)
+    const signedUrlResponse = await axios.post<SignedURLResponse>(
+        GET_SIGNED_URL_PUBLIC,
+        requestBody
+    );
+    const { id: fileId, url: signedUrl } = signedUrlResponse.data;
+
+    // 2. Upload the file directly to S3 via the signed URL
+    await axios.put(signedUrl, file);
+
+    return fileId;
 };

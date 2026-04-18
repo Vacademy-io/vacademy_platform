@@ -6,7 +6,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
+import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecutionState;
+import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionStateRepository;
+import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionRepository;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -17,6 +21,8 @@ import java.util.concurrent.TimeUnit;
 public class DelayNodeHandler implements NodeHandler {
 
     private final ObjectMapper objectMapper;
+    private final WorkflowExecutionStateRepository executionStateRepository;
+    private final WorkflowExecutionRepository executionRepository;
     private static final long MAX_INLINE_DELAY_MS = 60_000; // Max 1 minute inline delay
 
     @Override
@@ -40,6 +46,7 @@ public class DelayNodeHandler implements NodeHandler {
             long delayMs = switch (unit) {
                 case "MINUTES" -> TimeUnit.MINUTES.toMillis(value);
                 case "HOURS" -> TimeUnit.HOURS.toMillis(value);
+                case "DAYS" -> TimeUnit.DAYS.toMillis(value);
                 default -> TimeUnit.SECONDS.toMillis(value);
             };
 
@@ -58,17 +65,53 @@ public class DelayNodeHandler implements NodeHandler {
             }
 
             if (delayMs <= MAX_INLINE_DELAY_MS) {
+                // Short delay — inline Thread.sleep
                 log.info("DELAY node: waiting {} {} ({} ms) inline", value, unit, delayMs);
                 Thread.sleep(delayMs);
                 result.put("delayed", true);
                 result.put("delayMs", delayMs);
             } else {
-                // For longer delays, log a warning - full persistent delay support requires Phase 5
-                log.warn("DELAY node: {} {} ({} ms) exceeds inline limit ({}ms). Executing immediately - persistent delay requires workflow_execution_state table.",
-                        value, unit, delayMs, MAX_INLINE_DELAY_MS);
-                result.put("delayed", false);
+                // Long delay — persist state and pause workflow
+                log.info("DELAY node: {} {} ({} ms) exceeds inline limit. Persisting state for resume.",
+                        value, unit, delayMs);
+
+                String executionId = (String) context.get("executionId");
+                String currentNodeId = (String) context.get("currentNodeId");
+
+                if (executionId == null) {
+                    log.warn("No executionId in context — cannot persist delay. Executing immediately.");
+                    result.put("delayed", false);
+                    result.put("delayMs", delayMs);
+                    result.put("warning", "No executionId for persistent delay. Executed immediately.");
+                    return result;
+                }
+
+                // Create execution state record
+                Instant resumeAt = Instant.now().plusMillis(delayMs);
+                WorkflowExecutionState state = WorkflowExecutionState.builder()
+                        .executionId(executionId)
+                        .pausedAtNodeId(currentNodeId)
+                        .serializedContext(new HashMap<>(context))
+                        .resumeAt(resumeAt)
+                        .pauseReason("DELAY")
+                        .status("WAITING")
+                        .build();
+                executionStateRepository.save(state);
+
+                // Mark the execution as PAUSED
+                executionRepository.findById(executionId).ifPresent(execution -> {
+                    execution.setStatus(vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus.PAUSED);
+                    executionRepository.save(execution);
+                });
+
+                log.info("DELAY node: workflow paused. Will resume at {} (in {} {})",
+                        resumeAt, value, unit);
+
+                // Signal engine to stop processing
+                result.put("__workflow_paused", true);
+                result.put("delayed", true);
                 result.put("delayMs", delayMs);
-                result.put("warning", "Long delay executed immediately. Persistent delay support coming in future update.");
+                result.put("resumeAt", resumeAt.toString());
             }
 
         } catch (InterruptedException e) {

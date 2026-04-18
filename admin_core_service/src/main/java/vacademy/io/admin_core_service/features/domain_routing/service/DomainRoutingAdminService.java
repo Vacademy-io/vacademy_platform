@@ -61,6 +61,9 @@ public class DomainRoutingAdminService {
                                 .commaSeparatedPreferredCountry(
                                                 request.getCommaSeparatedPreferredCountry() == null ? null
                                                                 : request.getCommaSeparatedPreferredCountry().trim())
+                                .hideInstituteName(request.getHideInstituteName())
+                                .logoWidthPx(request.getLogoWidthPx())
+                                .logoHeightPx(request.getLogoHeightPx())
                                 .build();
                 return repository.save(entity);
         }
@@ -119,6 +122,9 @@ public class DomainRoutingAdminService {
                         existing.setCommaSeparatedPreferredCountry(
                                         request.getCommaSeparatedPreferredCountry() == null ? null
                                                         : request.getCommaSeparatedPreferredCountry().trim());
+                        existing.setHideInstituteName(request.getHideInstituteName());
+                        existing.setLogoWidthPx(request.getLogoWidthPx());
+                        existing.setLogoHeightPx(request.getLogoHeightPx());
                         return repository.save(existing);
                 });
         }

@@ -142,8 +142,17 @@ export function VariablePicker({ value, onChange, placeholder, nodeId }: Props) 
                             />
                         </div>
                         {filteredGroups.length === 0 ? (
-                            <div className="p-3 text-xs text-muted-foreground text-center">
-                                No upstream variables found. Connect nodes to see available data.
+                            <div className="p-4 text-center space-y-1.5">
+                                <p className="text-xs font-medium text-gray-500">No variables available</p>
+                                <p className="text-[10px] text-gray-400">
+                                    Connect this node to upstream nodes (like Trigger or Query) to see their output data here.
+                                </p>
+                                <button
+                                    className="mt-1 text-[10px] text-primary hover:underline"
+                                    onClick={() => { setShowDropdown(false); setAdvanced(true); }}
+                                >
+                                    Or switch to Advanced mode to type a SpEL expression manually
+                                </button>
                             </div>
                         ) : (
                             filteredGroups.map(({ group, vars }) => (

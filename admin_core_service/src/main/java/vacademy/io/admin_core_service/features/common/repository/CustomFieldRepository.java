@@ -144,8 +144,18 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
       @Param("instituteId") String instituteId);
 
   /**
-   * Find custom field by field_key with pessimistic lock to prevent race conditions
-   * Used during custom field creation to ensure no duplicates
+   * Find custom fields by field_key with pessimistic lock to prevent race conditions
+   * during custom field creation.
+   *
+   * Returns a list (not Optional) because the DB can legitimately hold multiple
+   * rows sharing (field_key, status) — historical duplicates exist from before
+   * this lock was introduced. An Optional mapping blows up with
+   * "Query did not return a unique result" the moment any institute has two
+   * matching rows. Callers should take the most recent row (list is ordered
+   * by created_at DESC).
+   *
+   * JPQL (not native) because Hibernate rejects {@code @Lock} on native queries
+   * with "Illegal attempt to set lock mode for a native query".
    */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("SELECT cf FROM CustomFields cf WHERE cf.fieldKey = :fieldKey AND cf.status = :status ORDER BY cf.createdAt DESC")

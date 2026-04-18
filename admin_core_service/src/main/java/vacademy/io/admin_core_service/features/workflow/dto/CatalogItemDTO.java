@@ -16,4 +16,6 @@ public class CatalogItemDTO {
     private String description;
     private String category;
     private List<String> requiredParams;
+    private List<String> optionalParams;
+    private String eventAppliedType;
 }

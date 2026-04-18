@@ -39,6 +39,8 @@ export interface WorkflowTrigger {
     trigger_id: string | null;
     trigger_event_name: string | null;
     trigger_description: string | null;
+    event_applied_type: string | null;
+    event_id: string | null;
     trigger_status: string | null;
     trigger_created_at: string | null;
     trigger_updated_at: string | null;
@@ -106,6 +108,7 @@ export interface WorkflowBuilderSchedule {
 export interface WorkflowBuilderTrigger {
     trigger_event_name: string;
     description?: string;
+    event_applied_type?: string;
     event_id?: string;
 }
 

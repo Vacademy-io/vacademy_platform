@@ -175,7 +175,7 @@ export function handleEnrolledUser(
       const result = await autoLoginEnrolledUser(email, instituteId, undefined, shouldRedirectAfterLogin);
       
       if (result.success) {
-        toast.success("Welcome back! You are already enrolled in this institute.");
+        toast.success("Welcome! You are already enrolled in this institute.");
         onAutoLoginSuccess?.();
       } else {
         toast.error("You are already enrolled in this institute. Please use the login page with your correct credentials.");

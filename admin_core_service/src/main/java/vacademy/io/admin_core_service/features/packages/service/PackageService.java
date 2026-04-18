@@ -169,7 +169,8 @@ public class PackageService {
 
         List<UserDTO> userDTOS = authService.getUsersFromAuthServiceByUserIds(instructorIds);
         Map<String, UserDTO> userMap = userDTOS.stream()
-                .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
+                .filter(u -> u != null && u.getId() != null)
+                .collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
 
         return projections.stream().map(projection -> {
             List<UserDTO> instructors = Optional.ofNullable(projection.getFacultyUserIds())
@@ -228,7 +229,8 @@ public class PackageService {
 
         List<UserDTO> userDTOS = authService.getUsersFromAuthServiceByUserIds(instructorIds);
         Map<String, UserDTO> userMap = userDTOS.stream()
-                .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
+                .filter(u -> u != null && u.getId() != null)
+                .collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
 
         List<UserDTO> instructors = instructorIds.stream()
                 .map(userMap::get)

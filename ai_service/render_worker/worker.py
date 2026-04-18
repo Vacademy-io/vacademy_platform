@@ -76,6 +76,7 @@ class RenderWorker:
         caption_bg_opacity: Optional[int] = None,
         caption_font_size: Optional[int] = None,
         audio_tracks: Optional[list] = None,
+        source_video_url: Optional[str] = None,
     ) -> str:
         """
         Run the full render pipeline and return the S3 URL of the output MP4.
@@ -344,6 +345,37 @@ class RenderWorker:
             logger.info(f"Total rendered frames: {len(rendered_frames)} (.jpg), stale .png: {stale_png_count}")
 
             if on_progress:
+                on_progress(70)
+
+            # ── SOURCE_CLIP compositing ──
+            # For shots that use source video footage, overlay the rendered HTML
+            # frames (transparent background) on top of extracted source clips.
+            source_video_path: Optional[Path] = None
+            if source_video_url:
+                source_video_path = work_dir / "source_video.mp4"
+                self._download(source_video_url, source_video_path)
+                logger.info(f"Downloaded source video for compositing")
+
+            if source_video_path and source_video_path.exists():
+                source_clip_entries = [
+                    e for e in tl_entries
+                    if e.get("shot_type") == "SOURCE_CLIP"
+                    and e.get("source_start") is not None
+                ]
+                if source_clip_entries:
+                    logger.info(f"Compositing {len(source_clip_entries)} SOURCE_CLIP shots...")
+                    await self._composite_source_clips(
+                        source_video_path=source_video_path,
+                        source_clip_entries=source_clip_entries,
+                        frames_dir=frames_dir,
+                        render_width=render_width,
+                        render_height=render_height,
+                        fps=FPS,
+                    )
+                # Clean up source video to free disk space before FFmpeg assembly
+                source_video_path.unlink(missing_ok=True)
+
+            if on_progress:
                 on_progress(75)
 
             # ── Assemble with FFmpeg ──
@@ -490,6 +522,108 @@ class RenderWorker:
             logger.info(f"Downloaded (HTTP): {local_path.name}")
         except Exception as e:
             raise RuntimeError(f"Failed to download {url}: {e}")
+
+    async def _composite_source_clips(
+        self,
+        source_video_path: Path,
+        source_clip_entries: list,
+        frames_dir: Path,
+        render_width: int,
+        render_height: int,
+        fps: int,
+    ) -> None:
+        """Replace rendered HTML-only frames with source_video + HTML overlay composites.
+
+        For each SOURCE_CLIP entry in the timeline:
+        1. Extract the source video clip for [source_start, source_end]
+        2. Read the Playwright-rendered overlay frames (transparent bg) for this shot
+        3. Composite overlay on top of source clip → overwrite frame JPGs
+
+        The Playwright renderer produced frames with whatever background the HTML had
+        (should be transparent/black for SOURCE_CLIP). We replace those frames with
+        the source video underneath + the overlay on top.
+        """
+        import cv2
+        import numpy as np
+
+        cap = cv2.VideoCapture(str(source_video_path))
+        if not cap.isOpened():
+            logger.error(f"Cannot open source video for compositing: {source_video_path}")
+            return
+
+        for entry in source_clip_entries:
+            in_time = float(entry.get("inTime", 0))
+            exit_time = float(entry.get("exitTime", 0))
+            source_start = float(entry.get("source_start", 0))
+            source_end = float(entry.get("source_end", source_start + (exit_time - in_time)))
+
+            # Frame range in the output video
+            # Frames are named frame_000001.jpg (1-indexed)
+            first_frame_num = int(in_time * fps) + 1
+            last_frame_num = int(exit_time * fps) + 1
+            source_duration = source_end - source_start
+
+            if source_duration <= 0:
+                continue
+
+            logger.info(
+                f"  Compositing SOURCE_CLIP: output frames {first_frame_num}-{last_frame_num}, "
+                f"source {source_start:.1f}-{source_end:.1f}s"
+            )
+
+            # For each output frame in this shot's range, extract the corresponding
+            # source video frame and composite the HTML overlay on top.
+            for frame_num in range(first_frame_num, last_frame_num + 1):
+                frame_path = frames_dir / f"frame_{frame_num:06d}.jpg"
+                if not frame_path.exists():
+                    continue
+
+                # Calculate the source video timestamp for this output frame
+                t_in_shot = (frame_num - first_frame_num) / fps
+                t_ratio = t_in_shot / max(exit_time - in_time, 0.001)
+                source_t = source_start + t_ratio * source_duration
+
+                # Seek to source timestamp and read frame
+                cap.set(cv2.CAP_PROP_POS_MSEC, source_t * 1000)
+                ret, src_frame = cap.read()
+                if not ret:
+                    continue
+
+                # Resize source frame to match render dimensions
+                if src_frame.shape[1] != render_width or src_frame.shape[0] != render_height:
+                    src_frame = cv2.resize(src_frame, (render_width, render_height))
+
+                # Read the existing overlay frame (rendered by Playwright)
+                overlay = cv2.imread(str(frame_path), cv2.IMREAD_UNCHANGED)
+                if overlay is None:
+                    # No overlay — just use source frame
+                    cv2.imwrite(str(frame_path), src_frame)
+                    continue
+
+                # Resize overlay if needed
+                if overlay.shape[1] != render_width or overlay.shape[0] != render_height:
+                    overlay = cv2.resize(overlay, (render_width, render_height))
+
+                # If overlay has alpha channel (RGBA), use it for compositing
+                if overlay.shape[2] == 4:
+                    alpha = overlay[:, :, 3:4].astype(float) / 255.0
+                    overlay_rgb = overlay[:, :, :3]
+                    composited = (src_frame * (1 - alpha) + overlay_rgb * alpha).astype(np.uint8)
+                else:
+                    # No alpha — check if overlay is mostly black (transparent bg)
+                    # If so, use additive compositing; otherwise just use overlay
+                    gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
+                    mask = (gray > 15).astype(float)  # pixels brighter than near-black
+                    mask = cv2.GaussianBlur(mask, (3, 3), 0)
+                    mask = mask[:, :, np.newaxis]
+                    composited = (src_frame * (1 - mask) + overlay * mask).astype(np.uint8)
+
+                # Write composited frame back (as JPG to match existing format)
+                cv2.imwrite(str(frame_path), composited)
+
+            logger.info(f"  ✅ Composited {last_frame_num - first_frame_num + 1} frames")
+
+        cap.release()
 
     def _upload(self, local_path: Path, s3_key: str) -> str:
         """Upload a file to S3 and return the public URL."""

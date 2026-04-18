@@ -105,12 +105,16 @@ const getDefaultInviteFields = (): InviteFormCustomField[] => {
  * empty (e.g. after a Settings save which invalidates the cache). Use this
  * in dialog components that mount after a Settings change.
  */
-const SEEDED_FIELD_KEYS = ['full_name', 'email', 'phone_number'];
+const SEEDED_FIELD_KEYS = new Set([
+    'full_name', 'name', 'fullname',
+    'email', 'e_mail',
+    'phone_number', 'phone', 'mobile_number', 'mobile',
+]);
 
 function isSeededField(field: { name: string; id: string; canBeDeleted?: boolean }): boolean {
     if (field.canBeDeleted === false) return true;
     const key = generateKeyFromName(field.name);
-    return SEEDED_FIELD_KEYS.includes(key);
+    return SEEDED_FIELD_KEYS.has(key);
 }
 
 /**
@@ -127,50 +131,72 @@ export const getInviteListCustomFieldsAsync = async (): Promise<InviteFormCustom
         const defaults = await fetchInstituteDefaultFields(instituteId);
         if (!defaults || defaults.length === 0) return getDefaultInviteFields();
 
-        console.log('[getInviteListCustomFieldsAsync] Fetched', defaults.length, 'default fields from API');
-        return defaults
-            .map((entry, index): InviteFormCustomField => {
-                const cf = entry.custom_field;
-                const fieldType = mapFieldType(cf.fieldType || 'text');
-                const key = generateKeyFromName(cf.fieldName);
-                const seeded = isSeededField({ name: cf.fieldName, id: cf.id });
+        // Alias groups for dedup — old-style (`name`, `phone`) and new-style
+        // (`full_name`, `phone_number`) should not both appear.
+        const NAME_ALIASES: string[][] = [
+            ['full_name', 'name', 'fullname'],
+            ['email', 'e_mail'],
+            ['phone_number', 'phone', 'mobile_number', 'mobile', 'contact'],
+        ];
+        const aliasMap = new Map<string, string[]>();
+        NAME_ALIASES.forEach((group) => {
+            group.forEach((k) => aliasMap.set(k, group));
+        });
+        const seenKeys = new Set<string>();
+        const markSeen = (key: string) => {
+            seenKeys.add(key);
+            const aliases = aliasMap.get(key);
+            if (aliases) aliases.forEach((a) => seenKeys.add(a));
+        };
 
-                const transformed: InviteFormCustomField = {
-                    id: String(index),
-                    type: fieldType,
-                    name: cf.fieldName,
-                    oldKey: seeded,
-                    isRequired: cf.isMandatory || seeded,
-                    key,
-                    order: entry.individual_order ?? cf.formOrder ?? index,
-                    _id: cf.id,
-                    status: 'ACTIVE',
-                };
+        const result: InviteFormCustomField[] = [];
+        defaults.forEach((entry, index) => {
+            const cf = entry.custom_field;
+            if (!cf || !cf.fieldName) return;
 
-                if ((fieldType === 'dropdown' || fieldType === 'radio') && cf.config) {
-                    try {
-                        const parsed = JSON.parse(cf.config);
-                        if (Array.isArray(parsed)) {
-                            transformed.options = parsed.map((opt: any, oi: number) => ({
+            const fieldType = mapFieldType(cf.fieldType || 'text');
+            const key = generateKeyFromName(cf.fieldName);
+            if (seenKeys.has(key)) return;
+            markSeen(key);
+
+            const seeded = isSeededField({ name: cf.fieldName, id: cf.id });
+            const transformed: InviteFormCustomField = {
+                id: String(index),
+                type: fieldType,
+                name: cf.fieldName,
+                oldKey: seeded,
+                isRequired: cf.isMandatory || seeded,
+                key,
+                order: entry.individual_order ?? cf.formOrder ?? index,
+                _id: cf.id,
+                status: 'ACTIVE',
+            };
+
+            if ((fieldType === 'dropdown' || fieldType === 'radio') && cf.config) {
+                try {
+                    const parsed = JSON.parse(cf.config);
+                    if (Array.isArray(parsed)) {
+                        transformed.options = parsed.map((opt: any, oi: number) => ({
+                            id: `${index}_opt_${oi}`,
+                            value: opt.value || opt.label || opt,
+                            disabled: true,
+                        }));
+                    } else if (parsed.coommaSepartedOptions) {
+                        transformed.options = parsed.coommaSepartedOptions
+                            .split(',')
+                            .map((v: string, oi: number) => ({
                                 id: `${index}_opt_${oi}`,
-                                value: opt.value || opt.label || opt,
+                                value: v.trim(),
                                 disabled: true,
                             }));
-                        } else if (parsed.coommaSepartedOptions) {
-                            transformed.options = parsed.coommaSepartedOptions
-                                .split(',')
-                                .map((v: string, oi: number) => ({
-                                    id: `${index}_opt_${oi}`,
-                                    value: v.trim(),
-                                    disabled: true,
-                                }));
-                        }
-                    } catch { /* ignore parse errors */ }
-                }
+                    }
+                } catch { /* ignore parse errors */ }
+            }
 
-                return transformed;
-            })
-            .sort((a, b) => a.order - b.order);
+            result.push(transformed);
+        });
+
+        return result.sort((a, b) => a.order - b.order);
     } catch (err) {
         console.error('[getInviteListCustomFieldsAsync] API call failed, using fallback defaults:', err);
         return getDefaultInviteFields();

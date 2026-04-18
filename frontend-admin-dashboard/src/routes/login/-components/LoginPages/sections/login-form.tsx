@@ -458,7 +458,7 @@ export function LoginForm() {
                                     className="mb-4 max-h-16 max-w-[160px] object-contain sm:mb-6 sm:max-h-20 sm:max-w-[200px]"
                                 />
                             ) : null}
-                            {instituteName ? (
+                            {instituteName && cachedBranding?.hideInstituteName !== true ? (
                                 <div className="mb-2 text-lg font-bold text-neutral-900 sm:mb-4 sm:text-xl">
                                     {instituteName}
                                 </div>

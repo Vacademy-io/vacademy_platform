@@ -124,7 +124,10 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
             {/* Logo + Institute Name Header */}
             <div className="flex flex-col border-b border-neutral-200">
                 <div
-                    className="flex cursor-pointer items-center gap-2.5 px-4 py-4"
+                    className={cn(
+                        'flex cursor-pointer items-center',
+                        hideInstituteName ? 'justify-center p-0' : 'gap-2.5 px-4 py-4'
+                    )}
                     onClick={() => {
                         navigate({ to: '/dashboard' });
                         onItemClick?.();
@@ -133,14 +136,18 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                     {instituteLogo && (() => {
                         const hasCustom = logoWidthPx != null || logoHeightPx != null;
                         if (hasCustom) {
+                            // maxWidth: 100% caps the logo at the available panel width
+                            // so an admin-configured pixel width larger than the panel
+                            // doesn't overflow — it just fills the available space.
                             return (
                                 <img
                                     src={instituteLogo}
                                     alt="logo"
-                                    className="flex-shrink-0 object-contain"
+                                    className="object-contain"
                                     style={{
                                         width: logoWidthPx ?? undefined,
                                         height: logoHeightPx ?? undefined,
+                                        maxWidth: '100%',
                                     }}
                                 />
                             );

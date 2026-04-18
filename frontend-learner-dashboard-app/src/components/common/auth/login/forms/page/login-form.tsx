@@ -935,7 +935,7 @@ export function LoginForm({
             >
               <CardHeader className="space-y-1 pb-6 text-center">
                 <CardTitle className="text-2xl font-bold tracking-tight text-primary-700">
-                  Welcome Back
+                  Welcome
                 </CardTitle>
                 <CardDescription>
                   Sign in to continue your journey

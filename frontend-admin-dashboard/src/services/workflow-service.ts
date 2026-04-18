@@ -46,6 +46,8 @@ interface WorkflowWithScheduleRow {
     trigger_id: string | null;
     trigger_event_name: string | null;
     trigger_description: string | null;
+    event_applied_type: string | null;
+    event_id: string | null;
     trigger_status: string | null;
     trigger_created_at: string | null;
     trigger_updated_at: string | null;
@@ -139,6 +141,8 @@ export const fetchActiveWorkflows = async (instituteId: string): Promise<Workflo
                 trigger_id: row.trigger_id,
                 trigger_event_name: row.trigger_event_name,
                 trigger_description: row.trigger_description,
+                event_applied_type: row.event_applied_type,
+                event_id: row.event_id,
                 trigger_status: row.trigger_status,
                 trigger_created_at: row.trigger_created_at,
                 trigger_updated_at: row.trigger_updated_at,
@@ -348,6 +352,8 @@ export interface CatalogItem {
     description: string;
     category: string;
     required_params: string[];
+    optional_params?: string[];
+    event_applied_type?: string;
 }
 
 export interface TemplateItem {
@@ -387,6 +393,21 @@ export function getTriggerEventsCatalogQuery() {
     return queryOptions({
         queryKey: ['WORKFLOW_CATALOG_TRIGGER_EVENTS'],
         queryFn: fetchTriggerEventsCatalog,
+        staleTime: 600_000,
+    });
+}
+
+export async function fetchEventAppliedTypesCatalog(): Promise<CatalogItem[]> {
+    const response = await authenticatedAxiosInstance.get(
+        `${WORKFLOW_SERVICE_BASE}/catalog/event-applied-types`
+    );
+    return response.data;
+}
+
+export function getEventAppliedTypesCatalogQuery() {
+    return queryOptions({
+        queryKey: ['WORKFLOW_CATALOG_EVENT_APPLIED_TYPES'],
+        queryFn: fetchEventAppliedTypesCatalog,
         staleTime: 600_000,
     });
 }

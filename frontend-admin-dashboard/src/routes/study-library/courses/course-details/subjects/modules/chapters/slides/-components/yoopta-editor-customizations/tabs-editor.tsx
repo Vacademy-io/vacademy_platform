@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
+import {
+    YooptaPlugin,
+    useYooptaEditor,
+    useYooptaReadOnly,
+    Elements,
+    PluginElementRenderProps,
+} from '@yoopta/editor';
 
 interface TabItem {
     label: string;
@@ -18,12 +24,20 @@ export function TabsBlock({
     blockId,
 }: PluginElementRenderProps) {
     const editor = useYooptaEditor();
+    const isReadOnly = useYooptaReadOnly();
     const [tabs, setTabs] = useState<TabItem[]>(
         element?.props?.tabs || DEFAULT_TABS.map((t) => ({ ...t }))
     );
     const [activeTab, setActiveTab] = useState(0);
-    const [isEditing, setIsEditing] = useState(!element?.props?.tabs?.length);
+    // In read-only mode (learner view) we never enter Edit mode — learners
+    // only switch between tabs and read content, never rename labels or
+    // toggle chrome. Force preview regardless of the default-on-empty check.
+    const [isEditing, setIsEditing] = useState(
+        !isReadOnly && !element?.props?.tabs?.length
+    );
+    const [renamingIndex, setRenamingIndex] = useState<number | null>(null);
     const isFirstRender = useRef(true);
+    const renameInputRef = useRef<HTMLInputElement | null>(null);
 
     // Persist state
     useEffect(() => {
@@ -41,12 +55,28 @@ export function TabsBlock({
         });
     }, [tabs]);
 
+    // Autofocus the rename input when it appears
+    useEffect(() => {
+        if (renamingIndex !== null && renameInputRef.current) {
+            renameInputRef.current.focus();
+            renameInputRef.current.select();
+        }
+    }, [renamingIndex]);
+
     const handleInputKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Backspace') {
             const target = e.target as HTMLTextAreaElement | HTMLInputElement;
             if (target.value.length > 0 || target.selectionStart !== 0) {
                 e.stopPropagation();
             }
+        }
+        if (e.key === 'Enter' && renamingIndex !== null) {
+            e.preventDefault();
+            setRenamingIndex(null);
+        }
+        if (e.key === 'Escape' && renamingIndex !== null) {
+            e.preventDefault();
+            setRenamingIndex(null);
         }
     };
 
@@ -60,6 +90,7 @@ export function TabsBlock({
 
     const addTab = () => {
         setTabs((prev) => [...prev, { label: `Tab ${prev.length + 1}`, content: '' }]);
+        setActiveTab(tabs.length);
     };
 
     const removeTab = (index: number) => {
@@ -68,147 +99,245 @@ export function TabsBlock({
         if (activeTab >= tabs.length - 1) {
             setActiveTab(Math.max(0, tabs.length - 2));
         }
+        if (renamingIndex === index) setRenamingIndex(null);
     };
+
+    const ACTIVE_COLOR = '#007acc';
+    const BORDER_COLOR = '#e0e0e0';
+    const MUTED_COLOR = '#666';
 
     return (
         <div
             {...attributes}
             contentEditable={false}
             style={{
-                border: '1px solid #e0e0e0',
+                border: `1px solid ${BORDER_COLOR}`,
                 borderRadius: '8px',
                 margin: '8px 0',
                 overflow: 'hidden',
                 backgroundColor: '#fafafa',
             }}
         >
-            {/* Header */}
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    backgroundColor: '#f0f0f0',
-                    borderBottom: '1px solid #e0e0e0',
-                }}
-            >
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#333' }}>
-                    Tabbed Content
-                </span>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    {isEditing && (
+            {/* Header — admin chrome only. Hidden on learner (read-only)
+                views so students just see the clean tabs + content. */}
+            {!isReadOnly && (
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        backgroundColor: '#f0f0f0',
+                        borderBottom: `1px solid ${BORDER_COLOR}`,
+                    }}
+                >
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#333' }}>
+                        Tabbed Content
+                    </span>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        {isEditing && (
+                            <button
+                                onClick={addTab}
+                                style={{
+                                    padding: '3px 10px',
+                                    fontSize: '12px',
+                                    border: '1px solid #ccc',
+                                    borderRadius: '4px',
+                                    backgroundColor: 'white',
+                                    color: MUTED_COLOR,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                + Add Tab
+                            </button>
+                        )}
                         <button
-                            onClick={addTab}
+                            onClick={() => {
+                                setIsEditing(!isEditing);
+                                setRenamingIndex(null);
+                            }}
                             style={{
                                 padding: '3px 10px',
                                 fontSize: '12px',
                                 border: '1px solid #ccc',
                                 borderRadius: '4px',
                                 backgroundColor: 'white',
-                                color: '#666',
+                                color: MUTED_COLOR,
                                 cursor: 'pointer',
                             }}
                         >
-                            + Add Tab
+                            {isEditing ? 'Preview' : 'Edit'}
                         </button>
-                    )}
-                    <button
-                        onClick={() => setIsEditing(!isEditing)}
-                        style={{
-                            padding: '3px 10px',
-                            fontSize: '12px',
-                            border: '1px solid #ccc',
-                            borderRadius: '4px',
-                            backgroundColor: 'white',
-                            color: '#666',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        {isEditing ? 'Preview' : 'Edit'}
-                    </button>
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {/* Tab Bar */}
+            {/* Tab Bar
+                UX notes:
+                - Whole button is a click target → switches active tab
+                - Active tab: white background, blue top border, bold label
+                - Inactive: gray background, hover highlight
+                - Double-click label to rename (edit mode only)
+                - Pencil icon + x are separate buttons that stop propagation */}
             <div
                 style={{
                     display: 'flex',
-                    borderBottom: '1px solid #e0e0e0',
-                    backgroundColor: '#fff',
+                    gap: '2px',
+                    padding: '4px 4px 0 4px',
+                    backgroundColor: '#f5f5f5',
+                    borderBottom: `1px solid ${BORDER_COLOR}`,
                     overflowX: 'auto',
                 }}
             >
-                {tabs.map((tab, index) => (
-                    <div
-                        key={index}
-                        onClick={() => setActiveTab(index)}
-                        style={{
-                            padding: '8px 16px',
-                            fontSize: '13px',
-                            fontWeight: activeTab === index ? 600 : 400,
-                            color: activeTab === index ? '#007acc' : '#666',
-                            borderBottom: activeTab === index ? '2px solid #007acc' : '2px solid transparent',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            transition: 'color 0.15s, border-color 0.15s',
-                        }}
-                    >
-                        {isEditing ? (
-                            <input
-                                value={tab.label}
-                                onChange={(e) => updateTabLabel(index, e.target.value)}
-                                onKeyDown={handleInputKeyDown}
-                                onClick={(e) => e.stopPropagation()}
-                                style={{
-                                    border: 'none',
-                                    borderBottom: '1px dashed #ccc',
-                                    background: 'transparent',
-                                    fontSize: '13px',
-                                    fontWeight: activeTab === index ? 600 : 400,
-                                    color: activeTab === index ? '#007acc' : '#666',
-                                    outline: 'none',
-                                    width: `${Math.max(tab.label.length * 8, 50)}px`,
-                                    padding: '0',
-                                }}
-                            />
-                        ) : (
-                            tab.label
-                        )}
-                        {isEditing && tabs.length > 1 && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    removeTab(index);
-                                }}
-                                style={{
-                                    width: '16px',
-                                    height: '16px',
-                                    border: 'none',
-                                    background: 'none',
-                                    color: '#999',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    lineHeight: '14px',
-                                    padding: 0,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                }}
-                                title="Remove tab"
-                            >
-                                x
-                            </button>
-                        )}
-                    </div>
-                ))}
+                {tabs.map((tab, index) => {
+                    const isActive = activeTab === index;
+                    const isRenaming = renamingIndex === index;
+                    return (
+                        <button
+                            key={index}
+                            type="button"
+                            onClick={() => {
+                                if (!isRenaming) setActiveTab(index);
+                            }}
+                            onDoubleClick={() => {
+                                if (isEditing) setRenamingIndex(index);
+                            }}
+                            title={isEditing && !isRenaming ? 'Click to switch · Double-click to rename' : undefined}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '8px 14px',
+                                fontSize: '13px',
+                                fontWeight: isActive ? 600 : 500,
+                                color: isActive ? ACTIVE_COLOR : MUTED_COLOR,
+                                backgroundColor: isActive ? '#ffffff' : 'transparent',
+                                border: 'none',
+                                borderTop: `2px solid ${isActive ? ACTIVE_COLOR : 'transparent'}`,
+                                borderLeft: `1px solid ${isActive ? BORDER_COLOR : 'transparent'}`,
+                                borderRight: `1px solid ${isActive ? BORDER_COLOR : 'transparent'}`,
+                                borderTopLeftRadius: '6px',
+                                borderTopRightRadius: '6px',
+                                marginBottom: '-1px',
+                                cursor: isRenaming ? 'text' : 'pointer',
+                                whiteSpace: 'nowrap',
+                                transition: 'background-color 0.15s, color 0.15s',
+                                outline: 'none',
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!isActive && !isRenaming) {
+                                    (e.currentTarget as HTMLButtonElement).style.backgroundColor =
+                                        '#ebebeb';
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!isActive && !isRenaming) {
+                                    (e.currentTarget as HTMLButtonElement).style.backgroundColor =
+                                        'transparent';
+                                }
+                            }}
+                        >
+                            {isRenaming ? (
+                                <input
+                                    ref={renameInputRef}
+                                    value={tab.label}
+                                    onChange={(e) => updateTabLabel(index, e.target.value)}
+                                    onKeyDown={handleInputKeyDown}
+                                    onBlur={() => setRenamingIndex(null)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                        border: `1px solid ${ACTIVE_COLOR}`,
+                                        borderRadius: '3px',
+                                        background: '#fff',
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        color: ACTIVE_COLOR,
+                                        outline: 'none',
+                                        padding: '2px 6px',
+                                        minWidth: '60px',
+                                        width: `${Math.max(tab.label.length * 8, 60)}px`,
+                                    }}
+                                />
+                            ) : (
+                                <span style={{ userSelect: 'none' }}>{tab.label || 'Untitled'}</span>
+                            )}
+                            {isEditing && !isRenaming && (
+                                <span
+                                    role="button"
+                                    aria-label="Rename tab"
+                                    title="Rename tab"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setRenamingIndex(index);
+                                    }}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '16px',
+                                        height: '16px',
+                                        color: isActive ? ACTIVE_COLOR : '#999',
+                                        cursor: 'pointer',
+                                        opacity: 0.75,
+                                    }}
+                                >
+                                    <svg
+                                        width="11"
+                                        height="11"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    >
+                                        <path d="M12 20h9" />
+                                        <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                                    </svg>
+                                </span>
+                            )}
+                            {isEditing && tabs.length > 1 && !isRenaming && (
+                                <span
+                                    role="button"
+                                    aria-label="Remove tab"
+                                    title="Remove tab"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeTab(index);
+                                    }}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '16px',
+                                        height: '16px',
+                                        borderRadius: '50%',
+                                        color: '#999',
+                                        cursor: 'pointer',
+                                        fontSize: '13px',
+                                        lineHeight: '13px',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        (e.currentTarget as HTMLSpanElement).style.backgroundColor =
+                                            '#e0e0e0';
+                                        (e.currentTarget as HTMLSpanElement).style.color = '#333';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        (e.currentTarget as HTMLSpanElement).style.backgroundColor =
+                                            'transparent';
+                                        (e.currentTarget as HTMLSpanElement).style.color = '#999';
+                                    }}
+                                >
+                                    ×
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
             </div>
 
             {/* Tab Content */}
-            <div style={{ padding: '12px', minHeight: '80px' }}>
+            <div style={{ padding: '12px', minHeight: '80px', backgroundColor: '#fff' }}>
                 {isEditing ? (
                     <textarea
                         value={tabs[activeTab]?.content || ''}
@@ -247,7 +376,23 @@ export function TabsBlock({
                 )}
             </div>
 
-            {children}
+            {/* Slate requires {children} to be rendered for the block to be
+                valid, but we don't want the default paragraph placeholder
+                ("Type / for commands") visible — it was overlaying the tab
+                content area. Hide it visually while keeping it in the DOM. */}
+            <div
+                aria-hidden
+                style={{
+                    position: 'absolute',
+                    width: 0,
+                    height: 0,
+                    overflow: 'hidden',
+                    opacity: 0,
+                    pointerEvents: 'none',
+                }}
+            >
+                {children}
+            </div>
         </div>
     );
 }

@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs;
 
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 
@@ -50,4 +51,16 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
      */
     long countByUserSourceIdAndLogType(String userSourceId, String logType);
 
+    @Query("""
+        SELECT l FROM LiveSessionLogs l
+        WHERE l.logType = :logType
+          AND l.userSourceType = :userSourceType
+          AND l.createdAt BETWEEN :startTime AND :endTime
+    """)
+    List<LiveSessionLogs> findByLogTypeAndUserSourceTypeAndCreatedAtBetween(
+        @Param("logType") String logType,
+        @Param("userSourceType") String userSourceType,
+        @Param("startTime") Timestamp startTime,
+        @Param("endTime") Timestamp endTime
+    );
 }

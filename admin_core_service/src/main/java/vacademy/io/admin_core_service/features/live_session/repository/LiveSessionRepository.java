@@ -348,4 +348,10 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
     @Transactional
     @Query(value = "UPDATE live_session SET status = 'DELETED' WHERE id = :sessionId", nativeQuery = true)
     void softDeleteLiveSessionById(@Param("sessionId") String sessionId);
+
+    @Query("SELECT s FROM LiveSession s WHERE s.instituteId = :instituteId AND s.status = :status")
+    List<LiveSession> findByInstituteIdAndStatus(@Param("instituteId") String instituteId, @Param("status") String status);
+
+    @Query("SELECT s FROM LiveSession s WHERE s.instituteId = :instituteId")
+    List<LiveSession> findByInstituteId(@Param("instituteId") String instituteId);
 }

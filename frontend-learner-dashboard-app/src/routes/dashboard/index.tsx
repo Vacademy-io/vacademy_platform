@@ -449,7 +449,7 @@ export function DashboardComponent() {
                   <Skeleton className="h-8 w-48" />
                 ) : (
                   <span>
-                    {`Welcome back, ${username ||
+                    {`Welcome, ${username ||
                       getTerminology(RoleTerms.Learner, SystemTerms.Learner)
                       }!`}{" "}
                     <span className="hidden sm:inline-block origin-bottom-right rotate-12">

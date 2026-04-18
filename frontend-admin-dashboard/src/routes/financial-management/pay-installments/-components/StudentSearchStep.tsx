@@ -129,7 +129,7 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
                         </div>
                     );
                 },
-                size: 180,
+                size: 260,
             },
             {
                 id: 'package',
@@ -144,14 +144,14 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
                     const display = names.length > 0 ? names.join(', ') : '\u2014';
                     return (
                         <div
-                            className="text-sm text-gray-700 max-w-[200px] truncate"
+                            className="text-sm text-gray-700 truncate"
                             title={display}
                         >
                             {display}
                         </div>
                     );
                 },
-                size: 200,
+                size: 340,
             },
             {
                 id: 'dueAmount',
@@ -167,7 +167,7 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
                         </div>
                     );
                 },
-                size: 120,
+                size: 180,
             },
             {
                 id: 'overdueAmount',
@@ -183,14 +183,14 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
                         </div>
                     );
                 },
-                size: 120,
+                size: 180,
             },
             {
                 id: 'status',
                 header: 'Status',
                 accessorFn: (row) => row.status || '',
                 cell: ({ row }) => <StatusPill status={row.original.status} />,
-                size: 120,
+                size: 160,
             },
         ],
         [getPackageName]

@@ -5,7 +5,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -20,6 +22,7 @@ import java.util.Map;
 public class InternalWorkflowController {
 
     private final WorkflowEngineService workflowEngineService;
+    private final WorkflowTriggerService workflowTriggerService;
 
     /**
      * Run a workflow with the provided context.
@@ -51,6 +54,31 @@ public class InternalWorkflowController {
                     "status", "error",
                     "message", e.getMessage()));
         }
+    }
+
+    /**
+     * Trigger a workflow event from an external service (e.g., assessment_service).
+     * Accepts event details and delegates to WorkflowTriggerService.
+     *
+     * @param request Map containing eventName, eventId, instituteId, and optional contextData
+     * @return Workflow trigger result
+     */
+    @SuppressWarnings("unchecked")
+    @PostMapping("/trigger")
+    public ResponseEntity<Map<String, Object>> triggerWorkflowEvent(
+            @RequestBody Map<String, Object> request) {
+
+        String eventName = (String) request.get("eventName");
+        String eventId = (String) request.get("eventId");
+        String instituteId = (String) request.get("instituteId");
+        Map<String, Object> contextData = (Map<String, Object>) request.getOrDefault("contextData", new HashMap<>());
+
+        log.info("Internal workflow trigger request: eventName={}, eventId={}, instituteId={}",
+                eventName, eventId, instituteId);
+
+        Map<String, Object> result = workflowTriggerService.handleTriggerEvents(
+                eventName, eventId, instituteId, contextData);
+        return ResponseEntity.ok(result);
     }
 
     /**

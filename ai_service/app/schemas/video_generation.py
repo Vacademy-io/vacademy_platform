@@ -116,6 +116,24 @@ class VideoGenerationRequest(BaseModel):
             "cues are suppressed regardless of tier."
         )
     )
+    input_video_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "ID of a COMPLETED indexed video (from ai_input_videos table). "
+            "When provided, the Director can plan SOURCE_CLIP shots that play "
+            "clips from the source video with HTML overlays on top."
+        )
+    )
+    input_video_audio: Optional[str] = Field(
+        default=None,
+        description=(
+            "Audio source when input_video_id is set. "
+            "'original' = use source video audio as narration (skip script+TTS). "
+            "'tts' = generate AI narration from scratch (script+TTS run normally, "
+            "video context feeds into the script prompt). "
+            "Default: 'original' for podcast mode, 'tts' for demo mode."
+        )
+    )
 
     class Config:
         json_schema_extra = {

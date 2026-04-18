@@ -462,11 +462,13 @@ public class MetaOAuthController {
     private ResponseEntity<Void> redirectToFrontend(String queryString, String fragment) {
         String base = frontendCallbackUrl;
         if (base == null || base.isBlank()) {
-            // Fallback: return 200 with JSON — useful in dev when frontend URL not configured
             log.warn("meta.oauth.frontend.callback.url not set; cannot redirect browser");
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
         }
-        String url = base + "?" + queryString + (fragment != null ? "#" + fragment : "");
+        // Use & if base already contains ?, otherwise use ?
+        String separator = base.contains("?") ? "&" : "?";
+        String url = base + separator + queryString;
+        if (fragment != null) url += "#" + fragment;
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, url)
                 .build();

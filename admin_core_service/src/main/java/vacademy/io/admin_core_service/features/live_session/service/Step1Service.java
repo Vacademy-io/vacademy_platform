@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.live_session.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO;
@@ -10,6 +11,8 @@ import vacademy.io.admin_core_service.features.live_session.enums.LiveSessionSta
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.sql.Date;
@@ -18,9 +21,12 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
+@Slf4j
 public class Step1Service {
 
     @Autowired
@@ -31,6 +37,9 @@ public class Step1Service {
 
     @Autowired
     private ScheduleNotificationRepository scheduleNotificationRepository;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     public LiveSession step1AddService(LiveSessionStep1RequestDTO request, CustomUserDetails user) {
         LiveSession session = getOrCreateSession(request, user);
@@ -46,6 +55,20 @@ public class Step1Service {
             handleDeletedSchedules(request);
             handleAddedSchedules(request, savedSession);
             handleUpdatedSchedules(request);
+        }
+
+        // Trigger LIVE_SESSION_CREATE workflow
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("liveSession", savedSession);
+            contextData.put("createdBy", user.getUserId());
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.LIVE_SESSION_CREATE.name(),
+                    savedSession.getId(),
+                    request.getInstituteId(),
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger LIVE_SESSION_CREATE workflow", e);
         }
 
         return savedSession;

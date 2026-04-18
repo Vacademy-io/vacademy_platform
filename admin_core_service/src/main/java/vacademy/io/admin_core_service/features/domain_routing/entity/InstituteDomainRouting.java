@@ -101,4 +101,13 @@ public class InstituteDomainRouting {
 
     @Column(name = "comma_separated_preferred_country", length = 500)
     private String commaSeparatedPreferredCountry;
+
+    @Column(name = "hide_institute_name")
+    private Boolean hideInstituteName;
+
+    @Column(name = "logo_width_px")
+    private Integer logoWidthPx;
+
+    @Column(name = "logo_height_px")
+    private Integer logoHeightPx;
 }

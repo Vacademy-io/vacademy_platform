@@ -25,11 +25,7 @@ import {
     Batch,
 } from './CreateInviteSchema';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import {
-    OtherTerms,
-    SystemTerms,
-    ContentTerms,
-} from '@/routes/settings/-components/NamingSettings';
+import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 type DummyBatchesType = {
     [key: string]: Session[];

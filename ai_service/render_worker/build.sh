@@ -31,6 +31,11 @@ if [ -d "$AI_SERVICE_DIR/app/ai-video-gen-main/assets" ]; then
     cp -r "$AI_SERVICE_DIR/app/ai-video-gen-main/assets" "$BUILD_DIR/ai-video-gen-main/"
 fi
 
+# Copy the extractor package (video indexing pipeline)
+if [ -d "$SCRIPT_DIR/extractor" ]; then
+    cp -r "$SCRIPT_DIR/extractor" "$BUILD_DIR/extractor/"
+fi
+
 echo "==> Building Docker image..."
 cd "$BUILD_DIR"
 docker build -t vacademy-render:latest .

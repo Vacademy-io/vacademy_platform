@@ -2,6 +2,7 @@ import { CheckCircle, DownloadSimple } from '@phosphor-icons/react';
 import dayjs from 'dayjs';
 import { AllocatePaymentResponse, ReceiptLineItem } from '@/services/manage-finances';
 import { useTheme } from '@/providers/theme/theme-provider';
+import { cn } from '@/lib/utils';
 
 const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
@@ -22,6 +23,11 @@ interface PaymentSuccessStepProps {
 export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: PaymentSuccessStepProps) {
     const { getPrimaryColorCode } = useTheme();
     const hasReceipt = receipt && receipt.invoice_id;
+    const totalConcession = receipt?.total_concession ?? 0;
+    const totalPenalty = receipt?.total_penalty ?? 0;
+    const hasAnyAdjustment = (receipt?.line_items ?? []).some(
+        (item) => item.adjustment_status === 'APPROVED'
+    ) || totalConcession > 0 || totalPenalty > 0;
 
     return (
         <div className="space-y-4">
@@ -89,14 +95,20 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                                         <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Fee Type</th>
                                         <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
                                         <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Expected</th>
+                                        {hasAnyAdjustment && (
+                                            <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Adjustment</th>
+                                        )}
                                         <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Paid</th>
-                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Balance</th>
+                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Outstanding</th>
                                         <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {receipt.line_items.map((item: ReceiptLineItem, idx: number) => {
                                         const style = STATUS_STYLES[item.status] || STATUS_STYLES['PENDING']!;
+                                        const isApprovedAdj = item.adjustment_status === 'APPROVED';
+                                        const isConcession = isApprovedAdj && item.adjustment_type === 'CONCESSION';
+                                        const isPenalty = isApprovedAdj && item.adjustment_type === 'PENALTY';
                                         return (
                                             <tr key={idx} className="hover:bg-gray-50/40">
                                                 <td className="py-2.5 px-4 text-gray-400 font-medium">{idx + 1}</td>
@@ -108,6 +120,21 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                                                     {item.due_date ? dayjs(item.due_date).format('DD MMM YYYY') : '—'}
                                                 </td>
                                                 <td className="py-2.5 px-4 text-gray-700 text-right">{formatCurrency(item.amount_expected)}</td>
+                                                {hasAnyAdjustment && (
+                                                    <td className="py-2.5 px-4 text-right">
+                                                        {isConcession ? (
+                                                            <span className={cn('text-xs font-semibold text-emerald-600')}>
+                                                                - {formatCurrency(item.adjustment_amount || 0)} <span className="font-normal">(Concession)</span>
+                                                            </span>
+                                                        ) : isPenalty ? (
+                                                            <span className={cn('text-xs font-semibold text-red-600')}>
+                                                                + {formatCurrency(item.adjustment_amount || 0)} <span className="font-normal">(Penalty)</span>
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-gray-400">—</span>
+                                                        )}
+                                                    </td>
+                                                )}
                                                 <td className="py-2.5 px-4 text-emerald-700 font-semibold text-right">{formatCurrency(item.amount_paid)}</td>
                                                 <td className="py-2.5 px-4 text-red-600 font-semibold text-right">
                                                     {item.balance > 0 ? formatCurrency(item.balance) : '—'}
@@ -125,6 +152,7 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                                     <tr className="border-t-2 border-gray-200 bg-gray-50/60">
                                         <td colSpan={3} />
                                         <td className="py-3 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">Total Expected</td>
+                                        {hasAnyAdjustment && <td />}
                                         <td className="py-3 px-4 text-sm font-bold text-gray-800 text-right">{formatCurrency(receipt.total_expected ?? 0)}</td>
                                         <td className="py-3 px-4 text-sm font-bold text-gray-800 text-right">{formatCurrency(receipt.balance_due ?? 0)}</td>
                                         <td />
@@ -132,9 +160,28 @@ export function PaymentSuccessStep({ studentName, receipt, onPayAnother }: Payme
                                     <tr className="bg-gray-50/60">
                                         <td colSpan={3} />
                                         <td className="py-1 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">Total Paid</td>
+                                        {hasAnyAdjustment && <td />}
                                         <td className="py-1 px-4 text-sm font-bold text-emerald-700 text-right" colSpan={2}>{formatCurrency(receipt.total_paid ?? 0)}</td>
                                         <td />
                                     </tr>
+                                    {totalConcession > 0 && (
+                                        <tr className="bg-gray-50/60">
+                                            <td colSpan={3} />
+                                            <td className="py-1 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">Total Concession</td>
+                                            {hasAnyAdjustment && <td />}
+                                            <td className="py-1 px-4 text-sm font-bold text-emerald-600 text-right" colSpan={2}>- {formatCurrency(totalConcession)}</td>
+                                            <td />
+                                        </tr>
+                                    )}
+                                    {totalPenalty > 0 && (
+                                        <tr className="bg-gray-50/60">
+                                            <td colSpan={3} />
+                                            <td className="py-1 px-4 text-xs font-bold text-gray-500 text-right uppercase tracking-wide">Total Penalty</td>
+                                            {hasAnyAdjustment && <td />}
+                                            <td className="py-1 px-4 text-sm font-bold text-red-600 text-right" colSpan={2}>+ {formatCurrency(totalPenalty)}</td>
+                                            <td />
+                                        </tr>
+                                    )}
                                 </tfoot>
                             </table>
                         </div>

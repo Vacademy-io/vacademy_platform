@@ -27,6 +27,8 @@ public class ReceiptDetailsDTO {
     private List<ReceiptLineItemDTO> lineItems;
     private BigDecimal totalExpected;
     private BigDecimal totalPaid;
+    private BigDecimal totalConcession;
+    private BigDecimal totalPenalty;
     private BigDecimal balanceDue;
     private BigDecimal amountPaidNow;
 
@@ -43,5 +45,8 @@ public class ReceiptDetailsDTO {
         private BigDecimal amountPaid;
         private BigDecimal balance;
         private String status;
+        private String adjustmentType;
+        private BigDecimal adjustmentAmount;
+        private String adjustmentStatus;
     }
 }

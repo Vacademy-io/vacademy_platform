@@ -138,6 +138,10 @@ export const useDomainRouting = () => {
           typeof data.allowUsernamePasswordAuth === "boolean"
             ? data.allowUsernamePasswordAuth
             : null,
+        allowPhoneAuth:
+          typeof data.allowPhoneAuth === "boolean"
+            ? data.allowPhoneAuth
+            : null,
         convertUsernamePasswordToLowercase:
           typeof data.convertUsernamePasswordToLowercase === "boolean"
             ? data.convertUsernamePasswordToLowercase

@@ -102,6 +102,18 @@ public class FeeTrackingService {
                 return BigDecimal.ZERO;
         }
 
+        private BigDecimal computeConcession(StudentFeePayment bill) {
+                if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
+                if (!"CONCESSION".equals(bill.getAdjustmentType())) return BigDecimal.ZERO;
+                return bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+        }
+
+        private BigDecimal computePenalty(StudentFeePayment bill) {
+                if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
+                if (!"PENALTY".equals(bill.getAdjustmentType())) return BigDecimal.ZERO;
+                return bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+        }
+
         private StudentFeeAllocationLedgerDTO mapToLedgerDTO(StudentFeeAllocationLedger entity) {
                 return StudentFeeAllocationLedgerDTO.builder()
                                 .id(entity.getId())
@@ -596,12 +608,14 @@ public class FeeTrackingService {
             BigDecimal totalPaid,
             BigDecimal balanceDue,
             BigDecimal totalDiscount,
-            BigDecimal totalExpected
+            BigDecimal totalExpected,
+            BigDecimal totalConcession,
+            BigDecimal totalPenalty
     ) {}
 
     private InvoiceDataFields extractInvoiceDataFields(String json) {
         if (json == null || json.isBlank()) {
-            return new InvoiceDataFields(null, null, null, null, null, null);
+            return new InvoiceDataFields(null, null, null, null, null, null, null, null);
         }
 
         return new InvoiceDataFields(
@@ -610,7 +624,9 @@ public class FeeTrackingService {
                 extractDecimalField(json, "totalPaid"),
                 extractDecimalField(json, "balanceDue"),
                 extractDecimalField(json, "totalDiscount"),
-                extractDecimalField(json, "totalExpected")
+                extractDecimalField(json, "totalExpected"),
+                extractDecimalField(json, "totalConcession"),
+                extractDecimalField(json, "totalPenalty")
         );
     }
 
@@ -749,6 +765,8 @@ public class FeeTrackingService {
 
             // Build line item DTOs with fresh post-payment amounts
             List<ReceiptDetailsDTO.ReceiptLineItemDTO> lineDTOs = new ArrayList<>();
+            BigDecimal computedConcession = BigDecimal.ZERO;
+            BigDecimal computedPenalty = BigDecimal.ZERO;
             for (String sourceId : sourceIds) {
                 StudentFeePayment sfp = paymentMap.get(sourceId);
                 if (sfp == null) continue;
@@ -757,6 +775,14 @@ public class FeeTrackingService {
                 BigDecimal paid = sfp.getAmountPaid() != null ? sfp.getAmountPaid() : BigDecimal.ZERO;
                 BigDecimal adjustmentEffect = computeAdjustmentEffect(sfp);
                 BigDecimal balance = expected.add(adjustmentEffect).subtract(paid).max(BigDecimal.ZERO);
+                boolean approvedAdjustment = "APPROVED".equals(sfp.getAdjustmentStatus());
+                String adjustmentType = approvedAdjustment ? sfp.getAdjustmentType() : null;
+                BigDecimal adjustmentAmount = approvedAdjustment && sfp.getAdjustmentAmount() != null
+                        ? sfp.getAdjustmentAmount()
+                        : BigDecimal.ZERO;
+                String adjustmentStatus = approvedAdjustment ? sfp.getAdjustmentStatus() : null;
+                computedConcession = computedConcession.add(computeConcession(sfp));
+                computedPenalty = computedPenalty.add(computePenalty(sfp));
                 lineDTOs.add(ReceiptDetailsDTO.ReceiptLineItemDTO.builder()
                         .feeTypeName(meta != null ? meta.feeTypeName() : null)
                         .cpoName(meta != null ? meta.cpoName() : null)
@@ -765,6 +791,9 @@ public class FeeTrackingService {
                         .amountPaid(paid)
                         .balance(balance)
                         .status(sfp.getStatus())
+                        .adjustmentType(adjustmentType)
+                        .adjustmentAmount(adjustmentAmount)
+                        .adjustmentStatus(adjustmentStatus)
                         .build());
             }
 
@@ -774,6 +803,12 @@ public class FeeTrackingService {
                     Comparator.nullsLast(Comparator.naturalOrder())));
 
             InvoiceDataFields dataFields = extractInvoiceDataFields(invoice.getInvoiceDataJson());
+            BigDecimal totalConcession = dataFields.totalConcession() != null
+                    ? dataFields.totalConcession()
+                    : computedConcession;
+            BigDecimal totalPenalty = dataFields.totalPenalty() != null
+                    ? dataFields.totalPenalty()
+                    : computedPenalty;
 
             return ReceiptDetailsDTO.builder()
                     .invoiceId(invoice.getId())
@@ -784,6 +819,8 @@ public class FeeTrackingService {
                     .lineItems(lineDTOs)
                     .totalExpected(dataFields.totalExpected())
                     .totalPaid(dataFields.totalPaid())
+                    .totalConcession(totalConcession)
+                    .totalPenalty(totalPenalty)
                     .balanceDue(dataFields.balanceDue())
                     .amountPaidNow(dataFields.amountPaidNow())
                     .build();

@@ -116,16 +116,35 @@ export const getCampaignCustomFieldsAsync = async (): Promise<CampaignFormCustom
         const defaults = await fetchInstituteDefaultFields(instId);
         if (!defaults || defaults.length === 0) return getDefaultCampaignFields();
 
+        // Alias groups: when one variant is seen, mark all aliases as seen
+        // so old-style (`name`, `phone`) and new-style (`full_name`,
+        // `phone_number`) don't both appear.
+        const NAME_ALIASES: string[][] = [
+            ['full_name', 'name', 'fullname'],
+            ['email', 'e_mail'],
+            ['phone_number', 'phone', 'mobile_number', 'mobile', 'contact'],
+        ];
+        const aliasMap = new Map<string, string[]>();
+        NAME_ALIASES.forEach((group) => {
+            group.forEach((k) => aliasMap.set(k, group));
+        });
+
         const seenKeys = new Set<string>();
         const result: CampaignFormCustomField[] = [];
+
+        const markSeen = (key: string) => {
+            seenKeys.add(key);
+            const aliases = aliasMap.get(key);
+            if (aliases) aliases.forEach((a) => seenKeys.add(a));
+        };
 
         defaults.forEach((entry, index) => {
             const cf = entry.custom_field;
             if (!cf || !cf.fieldName) return;
 
             const key = generateKeyFromName(cf.fieldName);
-            if (seenKeys.has(key)) return; // skip duplicate rows from the historical settings blob
-            seenKeys.add(key);
+            if (seenKeys.has(key)) return;
+            markSeen(key);
 
             const fieldType = mapFieldType(cf.fieldType || 'text');
             const transformed: CampaignFormCustomField = {

@@ -132,5 +132,8 @@ public class WorkflowBuilderDTO {
 
         @JsonProperty("event_id")
         private String eventId;
+
+        @JsonProperty("event_applied_type")
+        private String eventAppliedType;
     }
 }

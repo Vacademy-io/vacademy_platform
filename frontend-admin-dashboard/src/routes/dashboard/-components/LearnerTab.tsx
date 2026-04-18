@@ -28,7 +28,7 @@ export function LearnerTab({ onClose }: LearnerTabProps) {
                     <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-blue-100">
                         <GraduationCap className="size-8 text-blue-600" />
                     </div>
-                    <CardTitle className="text-xl">Welcome Back!</CardTitle>
+                    <CardTitle className="text-xl">Welcome</CardTitle>
                     <CardDescription>
                         You have access to both admin and learner features. Choose how you&apos;d
                         like to proceed:

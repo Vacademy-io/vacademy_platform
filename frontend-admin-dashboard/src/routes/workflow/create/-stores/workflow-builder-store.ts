@@ -23,6 +23,8 @@ export interface ScheduleConfig {
 export interface TriggerConfig {
     eventName: string;
     description: string;
+    eventAppliedType: string;
+    eventId?: string;
 }
 
 export interface WorkflowBuilderState {
@@ -36,6 +38,7 @@ export interface WorkflowBuilderState {
     triggerConfig: TriggerConfig;
     isDirty: boolean;
     isSaving: boolean;
+    setupComplete: boolean;
 
     // Actions
     setNodes: (nodes: Node[]) => void;
@@ -54,6 +57,7 @@ export interface WorkflowBuilderState {
     setScheduleConfig: (config: Partial<ScheduleConfig>) => void;
     setTriggerConfig: (config: Partial<TriggerConfig>) => void;
     setIsSaving: (saving: boolean) => void;
+    setSetupComplete: (complete: boolean) => void;
     reset: () => void;
 }
 
@@ -69,6 +73,7 @@ const defaultSchedule: ScheduleConfig = {
 const defaultTrigger: TriggerConfig = {
     eventName: '',
     description: '',
+    eventAppliedType: '',
 };
 
 const initialState = {
@@ -82,6 +87,7 @@ const initialState = {
     triggerConfig: { ...defaultTrigger },
     isDirty: false,
     isSaving: false,
+    setupComplete: false,
 };
 
 export const useWorkflowBuilderStore = create<WorkflowBuilderState>((set, get) => ({
@@ -182,5 +188,6 @@ export const useWorkflowBuilderStore = create<WorkflowBuilderState>((set, get) =
     setTriggerConfig: (config) =>
         set((state) => ({ triggerConfig: { ...state.triggerConfig, ...config }, isDirty: true })),
     setIsSaving: (saving) => set({ isSaving: saving }),
+    setSetupComplete: (complete) => set({ setupComplete: complete }),
     reset: () => set({ ...initialState, scheduleConfig: { ...defaultSchedule }, triggerConfig: { ...defaultTrigger } }),
 }));

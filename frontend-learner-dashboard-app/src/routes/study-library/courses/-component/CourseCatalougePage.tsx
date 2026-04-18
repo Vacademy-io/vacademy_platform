@@ -274,7 +274,15 @@ const CourseCatalougePage: React.FC = () => {
           toast.error("Something went wrong while loading courses. Please try again.");
         }
 
+        // For non-ALL tabs there is no fallback, so a non-500 error
+        // (e.g. backend's custom 511) would otherwise fail silently and the
+        // user is left staring at an empty tab. Surface it.
+        if (tabType !== "ALL" && status !== 500) {
+          toast.error("Couldn't load courses for this tab. Please try again.");
+        }
+
         if (tabType === "ALL" && status !== 500) {
+          let fallbackSucceeded = false;
           try {
             const { urlCourseDetails } = await import("@/constants/urls");
             const instituteId = await getInstituteId();
@@ -331,8 +339,13 @@ const CourseCatalougePage: React.FC = () => {
                 }
               });
             }
+            fallbackSucceeded = true;
           } catch {
-            // swallow fallback errors
+            // swallow fallback errors — toast below
+          }
+
+          if (!fallbackSucceeded && !controller.signal.aborted) {
+            toast.error("Couldn't load courses. Please try again.");
           }
         }
       } finally {
@@ -495,20 +508,51 @@ const CourseCatalougePage: React.FC = () => {
       const InstituteDetails = await Preferences.get({
         key: "InstituteDetails",
       });
-      const parsedInstituteDetails = JSON.parse(InstituteDetails?.value || "");
-      const settingsJsonData = JSON.parse(
-        parsedInstituteDetails.institute_settings_json
-      );
-      setAllowLeanersToCreateCourses(
-        settingsJsonData.setting.COURSE_SETTING.data.permissions
-          .allowLearnersToCreateCourses
-      );
+      const rawInstituteDetails = InstituteDetails?.value;
+      // Storage may hold an empty value or the literal string "undefined" for
+      // institutes whose setup is incomplete; bail out instead of throwing.
+      if (
+        !rawInstituteDetails ||
+        rawInstituteDetails === "undefined" ||
+        rawInstituteDetails === "null"
+      ) {
+        return;
+      }
 
-      // Enable/disable drip conditions based on institute settings
-      const { isDrippingEnable } = parseDripConditions(
-        parsedInstituteDetails.institute_settings_json
-      );
-      setIsDrippingEnable(isDrippingEnable);
+      let parsedInstituteDetails: { institute_settings_json?: string };
+      try {
+        parsedInstituteDetails = JSON.parse(rawInstituteDetails);
+      } catch (err) {
+        console.warn("[Catalog] InstituteDetails JSON parse failed", err);
+        return;
+      }
+
+      const rawSettingsJson = parsedInstituteDetails.institute_settings_json;
+      if (
+        rawSettingsJson &&
+        rawSettingsJson !== "undefined" &&
+        rawSettingsJson !== "null"
+      ) {
+        try {
+          const settingsJsonData = JSON.parse(rawSettingsJson);
+          setAllowLeanersToCreateCourses(
+            settingsJsonData?.setting?.COURSE_SETTING?.data?.permissions
+              ?.allowLearnersToCreateCourses
+          );
+        } catch (err) {
+          console.warn(
+            "[Catalog] institute_settings_json JSON parse failed",
+            err
+          );
+        }
+
+        try {
+          const { isDrippingEnable } = parseDripConditions(rawSettingsJson);
+          setIsDrippingEnable(isDrippingEnable);
+        } catch (err) {
+          console.warn("[Catalog] parseDripConditions failed", err);
+        }
+      }
     };
 
     fetchInstituteDetails();

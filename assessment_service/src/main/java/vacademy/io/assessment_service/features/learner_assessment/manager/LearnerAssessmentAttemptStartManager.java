@@ -49,6 +49,9 @@ public class LearnerAssessmentAttemptStartManager {
     @Autowired
     QuestionAssessmentSectionMappingRepository questionAssessmentSectionMappingRepository;
 
+    @Autowired
+    vacademy.io.assessment_service.features.assessment.service.WorkflowTriggerClient workflowTriggerClient;
+
 
     @Transactional
     public ResponseEntity<LearnerAssessmentStartPreviewResponse> startAssessmentPreview(CustomUserDetails user, String assessmentId, String instituteId, String batchIds, BasicParticipantDTO basicParticipantDTO) {
@@ -147,7 +150,24 @@ public class LearnerAssessmentAttemptStartManager {
         studentAttempt.setStatus(AssessmentAttemptEnum.PREVIEW.name());
         studentAttempt.setMaxTime(assessment.getDuration());
         studentAttempt.setAttemptNumber(ObjectUtils.isEmpty(assessmentUserRegistration.getStudentAttempts()) ? 1 : assessmentUserRegistration.getStudentAttempts().size() + 1);
-        return studentAttemptRepository.save(studentAttempt);
+        StudentAttempt saved = studentAttemptRepository.save(studentAttempt);
+
+        // Trigger ASSESSMENT_START workflow
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("assessmentId", assessment.getId());
+            contextData.put("userId", assessmentUserRegistration.getUserId());
+            contextData.put("attemptId", saved.getId());
+            contextData.put("attemptNumber", saved.getAttemptNumber());
+            workflowTriggerClient.triggerEvent("ASSESSMENT_START",
+                    assessment.getId(),
+                    assessmentUserRegistration.getInstituteId(),
+                    contextData);
+        } catch (Exception e) {
+            // Don't fail attempt creation if workflow trigger fails
+        }
+
+        return saved;
     }
 
     private List<AssessmentQuestionPreviewDto> createQuestionAssessmentSectionMappingList(Assessment assessment) {

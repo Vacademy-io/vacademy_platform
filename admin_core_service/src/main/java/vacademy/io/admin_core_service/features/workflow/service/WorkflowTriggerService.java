@@ -44,15 +44,27 @@ public class WorkflowTriggerService {
                 log.info("Context data received ({} keys): {}", contextData.size(), contextData);
             }
 
-            log.info(
-                    "Calling repository: findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(instituteId='{}', eventId='{}', eventType='{}')",
+            // Priority-based matching: specific triggers take priority over global ones
+            List<String> activeStatuses = List.of(StatusEnum.ACTIVE.name());
+
+            // Step 1: Look for specific triggers first (exact event_id match)
+            log.info("Looking for SPECIFIC triggers: instituteId='{}', eventId='{}', eventType='{}'",
                     instituteId, eventId, eventName);
-
             List<WorkflowTrigger> triggers = workflowTriggerRepository
-                    .findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(
-                            instituteId, eventId, eventName, List.of(StatusEnum.ACTIVE.name()));
+                    .findSpecificTriggers(instituteId, eventId, eventName, activeStatuses);
 
-            log.info("Repository returned {} triggers for event='{}', eventId='{}', instituteId='{}'",
+            if (!triggers.isEmpty()) {
+                log.info("Found {} SPECIFIC triggers for eventId='{}'. Global triggers will be skipped.",
+                        triggers.size(), eventId);
+            } else {
+                // Step 2: No specific triggers found — fall back to global triggers (event_id IS NULL)
+                log.info("No specific triggers found. Falling back to GLOBAL triggers for event='{}'", eventName);
+                triggers = workflowTriggerRepository
+                        .findGlobalTriggers(instituteId, eventName, activeStatuses);
+                log.info("Found {} GLOBAL triggers for event='{}'", triggers.size(), eventName);
+            }
+
+            log.info("Total {} triggers to execute for event='{}', eventId='{}', instituteId='{}'",
                     triggers.size(), eventName, eventId, instituteId);
 
             if (triggers.isEmpty()) {
@@ -109,6 +121,12 @@ public class WorkflowTriggerService {
                     seedContext.put("triggerId", trigger.getId());
                     seedContext.put("instituteId", instituteId);
                     seedContext.put("executionId", execution.getId());
+                    seedContext.put("eventId", eventId);
+                    if (trigger.getEventAppliedType() != null) {
+                        seedContext.put("eventAppliedType", trigger.getEventAppliedType());
+                    }
+                    // Flag whether this is a global trigger (event_id IS NULL in DB)
+                    seedContext.put("isGlobalTrigger", trigger.getEventId() == null);
                     log.info("Seed context prepared for workflow run ({} keys): {}", seedContext.size(), seedContext);
                     log.info("Starting workflowEngineService.run for workflowId='{}'", trigger.getWorkflow().getId());
 
@@ -164,9 +182,18 @@ public class WorkflowTriggerService {
 
     public Optional<WorkflowTrigger> findByInstituteIdEventNameAndEventId(String instituteId, String eventName,
             String eventId) {
-        List<WorkflowTrigger> res = workflowTriggerRepository.findByInstituteIdAndEventIdAnsEventTypeAndStatusIn(
-                instituteId, eventId, eventName, List.of(StatusEnum.ACTIVE.name()));
-        if (res.size() > 0) {
+        List<String> activeStatuses = List.of(StatusEnum.ACTIVE.name());
+
+        // Check specific triggers first
+        List<WorkflowTrigger> res = workflowTriggerRepository.findSpecificTriggers(
+                instituteId, eventId, eventName, activeStatuses);
+
+        // Fall back to global triggers if no specific ones found
+        if (res.isEmpty()) {
+            res = workflowTriggerRepository.findGlobalTriggers(instituteId, eventName, activeStatuses);
+        }
+
+        if (!res.isEmpty()) {
             return Optional.of(res.get(0));
         }
         return Optional.empty();

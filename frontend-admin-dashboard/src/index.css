@@ -261,6 +261,22 @@ html {
         font-size: 16px;
     }
 
+    /* Yoopta image lightbox fix: the zoom overlay uses z-index:50 (same as
+       the sticky editor header) and a 95% white backdrop. Because the
+       editor content lives inside a `relative z-20` stacking context, the
+       overlay's z-index gets trapped below the header, and the near-white
+       backdrop lets header/sidebar bleed through.
+       1. When any descendant image is zoomed, raise the editor container
+          above the header so the lightbox paints over everything.
+       2. Replace the 95%-white backdrop with an opaque dark one. */
+    div.relative.z-20:has(.yoopta-image--is-zoomed) {
+        z-index: 100 !important;
+    }
+
+    .yoopta-image-zoom-overlay {
+        background-color: rgba(0, 0, 0, 0.85) !important;
+    }
+
     .yoopta-editor-custom [data-slate-placeholder='true'] {
         font-size: 16px !important;
     }
@@ -701,3 +717,90 @@ html {
         margin: 0;
     }
 }
+
+/* =========================================================================
+   Yoopta Accordion visibility override
+   --------------------------------------------------------------------------
+   The default Yoopta accordion ships with a dark-theme (near-black) background
+   on list items, no gradient, and no affordance around empty heading/content
+   areas. On the admin's white canvas this makes the block look like a black
+   strip with blank space below it — users insert one and can't tell what to
+   do.
+
+   These rules live OUTSIDE Tailwind's @layer so they aren't folded into the
+   components/utilities layers (which can be overridden by Yoopta's
+   runtime-injected CSS). Each rule uses a `body` prefix for extra specificity
+   and `!important` to beat Yoopta's inline theming.
+   ========================================================================= */
+
+body .yoopta-accordion-list {
+    margin: 10px 0 !important;
+    border: 1px solid #e0e6ef !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+body .yoopta-accordion-list-item {
+    background: #ffffff !important;
+    border: none !important;
+    border-top: 1px solid #e5e9f0 !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    position: relative !important;
+}
+
+body .yoopta-accordion-list-item:first-child {
+    border-top: none !important;
+}
+
+/* Gradient header row so the accordion is clearly visible on a white canvas
+   and users can see where to click / type the title. */
+body .yoopta-accordion-list-item-heading {
+    padding: 14px 44px 14px 18px !important;
+    min-height: 50px !important;
+    font-weight: 600 !important;
+    font-size: 15px !important;
+    color: #1f2937 !important;
+    background: linear-gradient(90deg, #eef4ff 0%, #f5f7fa 100%) !important;
+    border-bottom: 1px solid #e5e9f0 !important;
+    cursor: pointer !important;
+    transition: background 0.15s ease-in-out !important;
+    box-sizing: border-box !important;
+}
+
+body .yoopta-accordion-list-item-heading:hover {
+    background: linear-gradient(90deg, #e3ecff 0%, #edf1f7 100%) !important;
+}
+
+body .yoopta-accordion-list-item-heading:focus-within {
+    outline: 2px solid #3b82f6 !important;
+    outline-offset: -2px !important;
+}
+
+/* Content area — distinct off-white background + left accent + generous
+   min-height so the "type the content here" zone is obvious even when
+   the item is empty. Without this the content pane was pure white on a
+   white canvas and looked invisible. */
+body .yoopta-accordion-list-item-content {
+    padding: 16px 18px 16px 22px !important;
+    min-height: 64px !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+    color: #374151 !important;
+    background: #f8fafc !important;
+    border-top: 1px solid #e5e9f0 !important;
+    border-left: 3px solid #3b82f6 !important;
+    box-sizing: border-box !important;
+}
+
+/* Make Slate placeholder text (the gray hint inside empty contenteditable
+   spans) clearly visible so users know where to type. */
+body .yoopta-accordion-list-item-heading [data-slate-placeholder='true'],
+body .yoopta-accordion-list-item-content [data-slate-placeholder='true'] {
+    color: #9ca3af !important;
+    font-style: italic !important;
+    opacity: 1 !important;
+}
+

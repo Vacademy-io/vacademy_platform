@@ -44,6 +44,9 @@ public class LearnerEnrollmentEntryService {
     @Autowired
     private InstituteRepository instituteRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
+
     /**
      * Finds the INVITED package session for a given actual package session.
      * Every package has an INVITED session where level_id='INVITED' and
@@ -136,6 +139,20 @@ public class LearnerEnrollmentEntryService {
         StudentSessionInstituteGroupMapping saved = studentSessionRepository.save(mapping);
         log.info("Created ABANDONED_CART entry with ID: {} for user: {}, destination: {}, institute: {}, userPlanId: {}",
                 saved.getId(), userId, actualPackageSession.getId(), instituteId, userPlanId);
+
+        // Trigger ABANDONED_CART workflow
+        try {
+            java.util.Map<String, Object> contextData = new java.util.HashMap<>();
+            contextData.put("userId", userId);
+            contextData.put("userPlanId", userPlanId);
+            contextData.put("packageSessionId", actualPackageSession.getId());
+            contextData.put("packageId", actualPackageSession.getPackageEntity() != null ? actualPackageSession.getPackageEntity().getId() : null);
+            workflowTriggerService.handleTriggerEvents(
+                    vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.ABANDONED_CART.name(),
+                    invitedPackageSession.getId(), instituteId, contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger ABANDONED_CART workflow", e);
+        }
 
         return saved;
     }

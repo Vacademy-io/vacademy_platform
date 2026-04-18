@@ -93,6 +93,9 @@ public class PaymentLogService {
     @Lazy
     private PaymentLogService self;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
+
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
             UserPlan userPlan) {
         return createPaymentLog(userId, paymentAmount, vendor, vendorId, currency, userPlan, null);
@@ -1110,6 +1113,30 @@ public class PaymentLogService {
             userPlan.setStatus(UserPlanStatusEnum.PAYMENT_FAILED.name());
             userPlanRepository.save(userPlan);
             log.info("Updated UserPlan {} status to PAYMENT_FAILED", userPlan.getId());
+
+            // Trigger PAYMENT_FAILED workflow — eventId = enrollInviteId (matches ENROLL_INVITE event_applied_type)
+            try {
+                Map<String, Object> contextData = new HashMap<>();
+                contextData.put("paymentLog", paymentLog);
+                contextData.put("userId", userId);
+                contextData.put("userPlanId", userPlan.getId());
+                contextData.put("amount", paymentLog.getPaymentAmount());
+                contextData.put("vendor", paymentLog.getVendor());
+                contextData.put("enrollInviteId", userPlan.getEnrollInviteId());
+                // Add packageSessionIds from the SSIGM mappings for context
+                List<String> packageSessionIds = mappings.stream()
+                        .filter(m -> m.getDestinationPackageSession() != null)
+                        .map(m -> m.getDestinationPackageSession().getId())
+                        .collect(java.util.stream.Collectors.toList());
+                contextData.put("packageSessionIds", packageSessionIds);
+                // Use enrollInviteId as eventId — users configure PAYMENT_FAILED with event_applied_type=ENROLL_INVITE
+                String eventId = userPlan.getEnrollInviteId() != null ? userPlan.getEnrollInviteId() : instituteId;
+                workflowTriggerService.handleTriggerEvents(
+                        vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.PAYMENT_FAILED.name(),
+                        eventId, instituteId, contextData);
+            } catch (Exception wfe) {
+                log.warn("Failed to trigger PAYMENT_FAILED workflow", wfe);
+            }
 
         } catch (Exception e) {
             log.error("Error handling payment failure for log {}: {}", paymentLog.getId(), e.getMessage(), e);

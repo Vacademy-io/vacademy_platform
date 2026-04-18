@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { StudentFeePaymentRowDTO, StudentFeeDueDTO } from '@/types/manage-finances';
 import { allocateSelectedPayment, AllocatePaymentResponse, getStudentDuesQueryKey } from '@/services/manage-finances';
 import { getInstituteId } from '@/constants/helper';
+import { cn } from '@/lib/utils';
 import { ConfirmPaymentDialog } from './ConfirmPaymentDialog';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -53,6 +54,20 @@ export function PaymentDetailsStep({
         () => selectedDues.reduce((sum, d) => sum + d.amount_due, 0),
         [selectedDues]
     );
+
+    const { totalConcession, totalPenalty, showAdjustmentColumn } = useMemo(() => {
+        let concession = 0;
+        let penalty = 0;
+        let hasAdjustment = false;
+        for (const d of selectedDues) {
+            if (d.adjustment_status === 'APPROVED') {
+                hasAdjustment = true;
+                if (d.adjustment_type === 'CONCESSION') concession += d.adjustment_amount || 0;
+                else if (d.adjustment_type === 'PENALTY') penalty += d.adjustment_amount || 0;
+            }
+        }
+        return { totalConcession: concession, totalPenalty: penalty, showAdjustmentColumn: hasAdjustment };
+    }, [selectedDues]);
 
     const handleAmountChange = (value: string) => {
         if (value === '' || /^\d*\.?\d*$/.test(value)) {
@@ -142,11 +157,16 @@ export function PaymentDetailsStep({
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
                                         Expected
                                     </th>
+                                    {showAdjustmentColumn && (
+                                        <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
+                                            Adjustment
+                                        </th>
+                                    )}
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
                                         Paid
                                     </th>
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">
-                                        Due
+                                        Outstanding
                                     </th>
                                     <th className="py-2.5 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
                                         Due Date
@@ -157,7 +177,11 @@ export function PaymentDetailsStep({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 text-sm font-medium">
-                                {selectedDues.map((inst) => (
+                                {selectedDues.map((inst) => {
+                                    const approvedAdj = inst.adjustment_status === 'APPROVED';
+                                    const isConcession = approvedAdj && inst.adjustment_type === 'CONCESSION';
+                                    const isPenalty = approvedAdj && inst.adjustment_type === 'PENALTY';
+                                    return (
                                     <tr key={inst.id} className="hover:bg-gray-50/40">
                                         <td className="py-2.5 px-4 text-gray-800 font-semibold">
                                             {inst.fee_type_name}
@@ -168,6 +192,21 @@ export function PaymentDetailsStep({
                                         <td className="py-2.5 px-4 text-gray-700 text-right">
                                             {formatCurrency(inst.amount_expected)}
                                         </td>
+                                        {showAdjustmentColumn && (
+                                            <td className="py-2.5 px-4 text-right">
+                                                {isConcession ? (
+                                                    <span className={cn('text-xs font-semibold text-emerald-600')}>
+                                                        - {formatCurrency(inst.adjustment_amount || 0)} <span className="font-normal">(Concession)</span>
+                                                    </span>
+                                                ) : isPenalty ? (
+                                                    <span className={cn('text-xs font-semibold text-red-600')}>
+                                                        + {formatCurrency(inst.adjustment_amount || 0)} <span className="font-normal">(Penalty)</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-gray-400">{'\u2014'}</span>
+                                                )}
+                                            </td>
+                                        )}
                                         <td className="py-2.5 px-4 text-emerald-700 font-semibold text-right">
                                             {formatCurrency(inst.amount_paid)}
                                         </td>
@@ -193,15 +232,38 @@ export function PaymentDetailsStep({
                                             )}
                                         </td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                             <tfoot>
+                                {showAdjustmentColumn && totalConcession > 0 && (
+                                    <tr className="bg-gray-50/40">
+                                        <td colSpan={3} className="py-1.5 px-4 text-xs font-semibold text-gray-500 text-right uppercase tracking-wide">
+                                            Total Concession
+                                        </td>
+                                        <td className="py-1.5 px-4 text-sm font-semibold text-emerald-600 text-right">
+                                            - {formatCurrency(totalConcession)}
+                                        </td>
+                                        <td colSpan={4} />
+                                    </tr>
+                                )}
+                                {showAdjustmentColumn && totalPenalty > 0 && (
+                                    <tr className="bg-gray-50/40">
+                                        <td colSpan={3} className="py-1.5 px-4 text-xs font-semibold text-gray-500 text-right uppercase tracking-wide">
+                                            Total Penalty
+                                        </td>
+                                        <td className="py-1.5 px-4 text-sm font-semibold text-red-600 text-right">
+                                            + {formatCurrency(totalPenalty)}
+                                        </td>
+                                        <td colSpan={4} />
+                                    </tr>
+                                )}
                                 <tr className="border-t-2 border-gray-200 bg-gray-50/60">
                                     <td
-                                        colSpan={4}
+                                        colSpan={showAdjustmentColumn ? 5 : 4}
                                         className="py-3 px-4 text-sm font-bold text-gray-700 text-right"
                                     >
-                                        Total Due:
+                                        Total Outstanding:
                                     </td>
                                     <td className="py-3 px-4 text-base font-extrabold text-red-600 text-right">
                                         {formatCurrency(totalDue)}

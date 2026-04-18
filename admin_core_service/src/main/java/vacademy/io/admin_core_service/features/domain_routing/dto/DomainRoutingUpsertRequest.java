@@ -31,4 +31,7 @@ public class DomainRoutingUpsertRequest {
     private Boolean convertUsernamePasswordToLowercase;
     private String subOrgId;
     private String commaSeparatedPreferredCountry;
+    private Boolean hideInstituteName;
+    private Integer logoWidthPx;
+    private Integer logoHeightPx;
 }

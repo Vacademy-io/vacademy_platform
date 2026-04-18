@@ -2,7 +2,9 @@
 import { useMutation } from "@tanstack/react-query";
 import {
   UploadFileInS3,
+  UploadFilePublic,
   getPublicUrl,
+  getPublicUrlWithoutLogin,
   getPublicUrls,
 } from "@/services/upload_file";
 
@@ -61,12 +63,36 @@ export const useFileUpload = () => {
     },
   });
 
+  const publicUploadMutation = useMutation({
+    mutationFn: async ({ file, source, sourceId }: { file: File; source?: string; sourceId?: string }) => {
+      try {
+        return await UploadFilePublic(file, source, sourceId);
+      } catch (error) {
+        console.error("Public upload error:", error);
+        throw error;
+      }
+    },
+  });
+
+  const publicGetUrlMutation = useMutation({
+    mutationFn: async (fileId: string) => {
+      try {
+        return await getPublicUrlWithoutLogin(fileId);
+      } catch (error) {
+        console.error("Public get URL error:", error);
+        throw error;
+      }
+    },
+  });
+
   return {
     uploadFile: uploadMutation.mutateAsync,
+    uploadFilePublic: publicUploadMutation.mutateAsync,
     getPublicUrl: getUrlMutation.mutateAsync,
+    getPublicUrlWithoutLogin: publicGetUrlMutation.mutateAsync,
     getMultiplePublicUrl: getMultipleUrlMutation.mutateAsync,
-    isUploading: uploadMutation.isPending,
-    isGettingUrl: getUrlMutation.isPending,
-    error: uploadMutation.error || getUrlMutation.error,
+    isUploading: uploadMutation.isPending || publicUploadMutation.isPending,
+    isGettingUrl: getUrlMutation.isPending || publicGetUrlMutation.isPending,
+    error: uploadMutation.error || getUrlMutation.error || publicUploadMutation.error,
   };
 };

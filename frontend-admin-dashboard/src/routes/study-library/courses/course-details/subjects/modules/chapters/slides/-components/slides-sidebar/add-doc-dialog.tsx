@@ -1,7 +1,7 @@
 import { ImportFileImage } from '@/assets/svgs';
 import { MyButton } from '@/components/design-system/button';
 import { DialogFooter } from '@/components/ui/dialog';
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Progress } from '@/components/ui/progress';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { Form } from '@/components/ui/form';
@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { FileType } from '@/types/common/file-upload';
 import { convertDocToHtml } from './utils/doc-to-html';
 import { useRouter } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useReplaceBase64ImagesWithNetworkUrls } from '@/utils/helpers/study-library-helpers.ts/slides/replaceBase64ToNetworkUrl';
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 import { convertHtmlToPdf } from '../../-helper/helper';
@@ -22,6 +23,8 @@ interface FormData {
     docTitle: string;
 }
 
+const MAX_DOC_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
+
 export const AddDocDialog = ({
     openState,
 }: {
@@ -30,10 +33,17 @@ export const AddDocDialog = ({
     const [file, setFile] = useState<File | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadStage, setUploadStage] = useState<string>('');
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+    // Preserve slide/document ids across retries so a failed upload retry
+    // doesn't orphan a record on the server under a fresh id.
+    const slideIdRef = useRef<string | null>(null);
+    const documentIdRef = useRef<string | null>(null);
+
     const route = useRouter();
+    const queryClient = useQueryClient();
     const { getPackageSessionId } = useInstituteDetailsStore();
     const { courseId, levelId, chapterId, moduleId, subjectId, sessionId } =
         route.state.location.search;
@@ -59,6 +69,23 @@ export const AddDocDialog = ({
         },
     });
 
+    const resetUploadIds = () => {
+        slideIdRef.current = null;
+        documentIdRef.current = null;
+    };
+
+    // Wait until the refetched slides include `newSlideId` in the store, with
+    // a bounded retry — avoids the old hardcoded 500ms delay that raced the
+    // query refetch.
+    const waitForSlideInStore = async (newSlideId: string, maxAttempts = 10) => {
+        for (let i = 0; i < maxAttempts; i++) {
+            const slide = useContentStore.getState().getSlideById(newSlideId);
+            if (slide) return slide;
+            await new Promise((r) => setTimeout(r, 100));
+        }
+        return null;
+    };
+
     const reorderSlidesAfterNewSlide = async (newSlideId: string) => {
         try {
             const currentSlides = items || [];
@@ -80,9 +107,17 @@ export const AddDocDialog = ({
                 slideOrderPayload: reorderedSlides,
             });
 
-            setTimeout(() => {
+            // Force a refetch and wait for the store to reflect it before
+            // resolving the active slide. This replaces the old setTimeout.
+            await queryClient.refetchQueries({ queryKey: ['slides'] });
+            const freshSlide = await waitForSlideInStore(newSlideId);
+            if (freshSlide) {
+                setActiveItem(freshSlide);
+            } else {
+                // Fallback: the slide didn't show up in the expected window;
+                // use whatever `getSlideById` returns (may be null).
                 setActiveItem(getSlideById(newSlideId));
-            }, 500);
+            }
         } catch (error) {
             console.error('Error reordering slides:', error);
             toast.error('Slide created but reordering failed');
@@ -100,6 +135,14 @@ export const AddDocDialog = ({
             return;
         }
 
+        if (selectedFile.size > MAX_DOC_SIZE_BYTES) {
+            const sizeMb = (selectedFile.size / (1024 * 1024)).toFixed(1);
+            const msg = `File is ${sizeMb} MB. Maximum size is 25 MB.`;
+            setError(msg);
+            toast.error(msg);
+            return;
+        }
+
         setError(null);
         setFile(selectedFile);
         form.setValue('docFile', [selectedFile] as unknown as FileList);
@@ -111,58 +154,92 @@ export const AddDocDialog = ({
         toast.success('Document selected successfully');
     };
 
+    // Clear retry-preserved ids when the dialog closes so the next open
+    // starts a fresh upload.
+    useEffect(() => {
+        return () => {
+            resetUploadIds();
+        };
+    }, []);
+
     const useHandleUpload = async () => {
         if (!file) {
             toast.error('Please select a file first');
             return;
         }
 
+        const title = form.getValues('docTitle')?.trim();
+        if (!title) {
+            const msg = 'Please enter a title for the document';
+            setError(msg);
+            toast.error(msg);
+            return;
+        }
+
         setIsUploading(true);
         setUploadProgress(0);
+        setUploadStage('Starting…');
         setError(null);
 
-        const progressInterval = setInterval(() => {
-            setUploadProgress((prev) => Math.min(prev + 10, 90));
-        }, 200);
+        // Preserve ids across retries so we don't create orphaned records.
+        if (!slideIdRef.current) slideIdRef.current = crypto.randomUUID();
+        if (!documentIdRef.current) documentIdRef.current = crypto.randomUUID();
 
         try {
+            setUploadStage('Converting document…');
+            setUploadProgress(20);
             const HTMLContent = await convertDocToHtml(file);
+
+            setUploadStage('Processing images…');
+            setUploadProgress(45);
             const processedHtml = await replaceBase64ImagesWithNetworkUrls(HTMLContent);
+
+            setUploadStage('Generating preview…');
+            setUploadProgress(70);
             const { totalPages } = await convertHtmlToPdf(processedHtml);
-            const slideId = crypto.randomUUID();
+
+            setUploadStage('Saving slide…');
+            setUploadProgress(85);
             const slideStatus = getSlideStatusForUser();
 
             const response = await addUpdateDocumentSlide({
-                id: slideId,
-                title: form.getValues('docTitle'),
+                id: slideIdRef.current,
+                title,
                 image_file_id: '',
                 description: null,
                 slide_order: 0,
                 document_slide: {
-                    id: crypto.randomUUID(),
+                    id: documentIdRef.current,
                     type: 'DOC',
                     data: processedHtml,
-                    title: form.getValues('docTitle'),
+                    title,
                     cover_file_id: '',
                     total_pages: totalPages,
                     published_data: slideStatus === 'PUBLISHED' ? processedHtml : null,
-                    published_document_total_pages: slideStatus === 'PUBLISHED' ? totalPages : 1,
+                    published_document_total_pages: totalPages,
                 },
                 status: slideStatus,
                 new_slide: true,
                 notify: false,
             });
 
-            if (response) {
-                await reorderSlidesAfterNewSlide(response);
-                openState?.(false);
-                toast.success('Document uploaded successfully!');
-            }
+            // Backend mutation returns the slide id as a string. Guard
+            // against unexpected shapes so reorder logic can still find the
+            // slide via the locally-generated id.
+            const createdSlideId =
+                typeof response === 'string' && response ? response : slideIdRef.current;
+
+            setUploadStage('Finalizing…');
+            setUploadProgress(95);
+            await reorderSlidesAfterNewSlide(createdSlideId);
 
             setUploadProgress(100);
-            toast.success('Document converted successfully!');
+            setUploadStage('Done');
+            toast.success('Document uploaded successfully!');
+            openState?.(false);
             setFile(null);
             form.reset();
+            resetUploadIds();
         } catch (err) {
             console.error('Upload handling error:', err);
             const errorMessage =
@@ -170,7 +247,6 @@ export const AddDocDialog = ({
             setError(errorMessage);
             toast.error(errorMessage);
         } finally {
-            clearInterval(progressInterval);
             setIsUploading(false);
         }
     };
@@ -209,6 +285,9 @@ export const AddDocDialog = ({
                                     <p className="text-neutral-600">
                                         Drag and drop a document here, or click to select
                                     </p>
+                                    <p className="text-xs text-neutral-500">
+                                        DOC or DOCX, up to 25 MB
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -222,7 +301,7 @@ export const AddDocDialog = ({
                             className="[&>div]:to-primary-600 h-2 bg-neutral-200 [&>div]:bg-gradient-to-r [&>div]:from-primary-500"
                         />
                         <div className="text-sm text-neutral-600">
-                            This may take a few moments...
+                            {uploadStage || 'This may take a few moments…'}
                         </div>
                     </div>
                 )}
@@ -247,7 +326,7 @@ export const AddDocDialog = ({
                         {isUploading ? (
                             <div className="flex items-center justify-center gap-2">
                                 <div className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                Uploading...
+                                Uploading…
                             </div>
                         ) : (
                             'Upload Document'

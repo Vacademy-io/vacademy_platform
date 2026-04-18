@@ -1419,7 +1419,10 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 wrapper.id = 'content-wrapper';
                 wrapper.style.width = '100%';
                 wrapper.style.height = '100%';
+                wrapper.style.minHeight = '100%';
                 wrapper.style.overflow = 'hidden';
+                wrapper.style.position = 'relative';
+                wrapper.style.boxSizing = 'border-box';
                 root.appendChild(wrapper);
                 window.__activeSnippets.set(id, host);
               }
@@ -1441,7 +1444,26 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 host.style.top = '0px';
                 host.style.width = window.innerWidth + 'px';
                 host.style.height = window.innerHeight + 'px';
+                host.style.overflow = 'hidden';
                 host.style.background = getComputedStyle(document.body).backgroundColor || '#ffffff';
+                // Force the inner content to stretch to fill — prevents white gap at bottom
+                const wr = host.shadowRoot.getElementById('content-wrapper');
+                if (wr) {
+                  wr.style.minHeight = window.innerHeight + 'px';
+                  // Find the first child div and stretch it too
+                  const firstChild = wr.firstElementChild;
+                  if (firstChild && firstChild.tagName === 'STYLE') {
+                    // Skip <style> tags, get the first content element
+                    const contentEl = firstChild.nextElementSibling;
+                    if (contentEl) {
+                      contentEl.style.minHeight = '100%';
+                      contentEl.style.boxSizing = 'border-box';
+                    }
+                  } else if (firstChild) {
+                    firstChild.style.minHeight = '100%';
+                    firstChild.style.boxSizing = 'border-box';
+                  }
+                }
                 console.log('[SIZING-DIAG] full-viewport ' + e.id + ' (orig size=' + e.w + 'x' + e.h + ', forced=' + window.innerWidth + 'x' + window.innerHeight + ')');
               }
             };

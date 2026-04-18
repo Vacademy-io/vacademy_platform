@@ -732,8 +732,18 @@ async def request_video_render(
     _caption_bg_opacity = (body.caption_bg_opacity if body and body.caption_bg_opacity is not None else None)
     _caption_font_size = (_CAPTION_SIZE_PX.get(body.caption_size) if body and body.caption_size else None)
 
-    # Check if this video uses an indexed source video (for SOURCE_CLIP compositing)
+    # Check if this video uses an indexed source video (for SOURCE_CLIP compositing).
+    # Try metadata first; fall back to looking up the ai_input_videos record directly.
     _source_video_url = _meta.get("source_video_url")
+    if not _source_video_url and _meta.get("input_video_id"):
+        try:
+            from ..repositories.ai_input_video_repository import AiInputVideoRepository
+            _iv_repo = AiInputVideoRepository(session=db)
+            _iv_rec = _iv_repo.get_by_id(_meta["input_video_id"])
+            if _iv_rec:
+                _source_video_url = _iv_rec.source_url
+        except Exception:
+            pass
 
     try:
         job_id = render_svc.submit(

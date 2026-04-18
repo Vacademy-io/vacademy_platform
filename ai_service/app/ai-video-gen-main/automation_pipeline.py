@@ -4566,10 +4566,38 @@ class VideoGenerationPipeline:
                 # Stashed for the Sound Planner — stripped before serialization.
                 "_skill_audio_events": _shot_skill_audio_events,
             }
-            # SOURCE_CLIP: propagate source video time range for the renderer
+            # SOURCE_CLIP: propagate source video time range + inject <video> into
+            # the HTML so the FE player (iframe preview) shows the actual footage
+            # instead of a black rectangle. The render worker will composite
+            # properly later, but this gives a meaningful preview.
             if shot_type == "SOURCE_CLIP":
-                entry["source_start"] = float(shot.get("source_start", 0))
-                entry["source_end"] = float(shot.get("source_end", end_time - start_time))
+                _src_start = float(shot.get("source_start", 0))
+                _src_end = float(shot.get("source_end", end_time - start_time))
+                entry["source_start"] = _src_start
+                entry["source_end"] = _src_end
+
+                # Inject background <video> into the shot HTML
+                _source_url = ""
+                if self._input_video_context:
+                    _source_url = self._input_video_context.get("source_url", "")
+                if _source_url and html:
+                    _video_bg = (
+                        f'<video data-source-clip="true" '
+                        f'data-source-start="{_src_start}" '
+                        f'src="{_source_url}#t={_src_start},{_src_end}" '
+                        f'autoplay muted playsinline '
+                        f'style="position:absolute;top:0;left:0;width:100%;height:100%;'
+                        f'object-fit:cover;z-index:0;pointer-events:none;"></video>'
+                    )
+                    # Wrap: video bg at z=0, original overlay HTML at z=1
+                    html = (
+                        f'<div style="position:relative;width:100%;height:100%;overflow:hidden;background:#000;">'
+                        f'{_video_bg}'
+                        f'<div style="position:relative;z-index:1;width:100%;height:100%;">'
+                        f'{html}'
+                        f'</div></div>'
+                    )
+                    entry["html"] = html
             if "z" in data:
                 try:
                     entry["z"] = int(data["z"])
@@ -5704,6 +5732,38 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               --primary-color: {primary_color};
               --accent-color: {accent_color};
               --text-color: {text_color};
+            }}
+
+            /* --- TEXT SAFETY: prevent word-smashing and overflow --- */
+            * {{
+              overflow-wrap: break-word;
+              word-break: break-word;
+              box-sizing: border-box;
+            }}
+            /* Prevent any element from exceeding the viewport */
+            body, html {{
+              overflow: hidden;
+              width: 100%;
+              height: 100%;
+              margin: 0;
+              padding: 0;
+            }}
+            /* LLM often generates inline-block word wrappers without gap/margin.
+               This catches the common pattern: parent > inline-block children. */
+            [class*="-word-wrap"],
+            [class*="-word-row"] > div {{
+              margin-right: 0.25em;
+            }}
+            /* Flexbox word rows — ensure gap if not set */
+            [class*="-word-row"],
+            [class*="-words"],
+            [class*="word-row"] {{
+              gap: 0.25em;
+            }}
+            /* Ensure large display text doesn't overflow */
+            h1, h2, h3, .text-display {{
+              max-width: 100%;
+              padding: 0 4%;
             }}
 
             /* --- FULL SCREEN CENTER CONTAINER (CRITICAL) --- */

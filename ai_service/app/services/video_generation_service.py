@@ -557,11 +557,15 @@ class VideoGenerationService:
 
         # ── Load indexed input video context (if provided) ──
         input_video_context = None
+        logger.info(f"[VideoGenService] input_video_id={input_video_id}, input_video_audio={input_video_audio}")
         if input_video_id:
             try:
                 from ..repositories.ai_input_video_repository import AiInputVideoRepository
                 iv_repo = AiInputVideoRepository(session=db_session)
                 iv_record = iv_repo.get_by_id(input_video_id)
+                logger.info(f"[VideoGenService] DB lookup result: record={'found' if iv_record else 'NOT FOUND'}, "
+                            f"status={iv_record.status if iv_record else 'N/A'}, "
+                            f"context_url={iv_record.context_json_url[:50] if iv_record and iv_record.context_json_url else 'None'}")
                 if iv_record and iv_record.status == "COMPLETED" and iv_record.context_json_url:
                     # Download video_context.json — try S3 (handles private + public
                     # buckets via IAM), fall back to HTTP for non-S3 URLs.

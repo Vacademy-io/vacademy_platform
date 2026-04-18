@@ -258,7 +258,9 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 <div className="h-4 bg-muted rounded w-1/3"></div>
                                 <div className={cn(
                                     "grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4",
-                                    isFilterOpen ? "lg:grid-cols-2" : "lg:grid-cols-3"
+                                    isFilterOpen
+                                        ? "lg:grid-cols-2 xl:grid-cols-3"
+                                        : "lg:grid-cols-3 xl:grid-cols-4"
                                 )}>
                                     {Array.from({ length: 4 }).map((_, i) => (
                                         <div key={i} className="bg-muted/10 border rounded-md p-3 sm:p-4">
@@ -324,12 +326,14 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 s • Page {courseData.number + 1}/{courseData.totalPages} • Showing {courseData.numberOfElements} of {courseData.totalElements}
                             </div>
 
-                            {/* Course Grid */}
+                            {/* Course Grid — extra column at xl so wide
+                                viewports show one more card per row without
+                                making the cards feel cramped on lg laptops. */}
                             <div className={cn(
                                 "grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4",
                                 isFilterOpen
-                                    ? "lg:grid-cols-2 xl:grid-cols-2"
-                                    : "lg:grid-cols-3 xl:grid-cols-3"
+                                    ? "lg:grid-cols-2 xl:grid-cols-3"
+                                    : "lg:grid-cols-3 xl:grid-cols-4"
                             )}>
                                 {courseData.content.map((course, index) => {
                                     return (

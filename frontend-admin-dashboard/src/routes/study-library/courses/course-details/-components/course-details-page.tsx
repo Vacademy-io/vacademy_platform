@@ -1043,6 +1043,17 @@ export const CourseDetailsPage = () => {
     // Cache for profilePicId -> url
     const profilePicUrlCache = useRef<Record<string, string>>({});
 
+    // Description expand/collapse state for course header
+    const [isDescExpanded, setIsDescExpanded] = useState(false);
+    const [isDescClamped, setIsDescClamped] = useState(false);
+    const descRef = useRef<HTMLDivElement>(null);
+    const courseDescription = form.watch('courseData')?.description;
+    useEffect(() => {
+        const el = descRef.current;
+        if (!el) return;
+        setIsDescClamped(el.scrollHeight > el.clientHeight);
+    }, [courseDescription, isDescExpanded]);
+
     // Determine if we should show the dashboard loader.
     // We only block on the initial course-init load; once that finishes,
     // we always render the page (even if slide counts or avatars are
@@ -1164,93 +1175,66 @@ export const CourseDetailsPage = () => {
                 </div>
             )}
 
-            {/* Top Banner - More Compact */}
-            <div
-                className={`relative ${
-                    form.watch('courseData')?.courseBannerMediaId
-                        ? form.getValues('courseData')?.isCoursePublishedToCatalaouge
-                            ? 'min-h-[200px] sm:min-h-[220px] lg:min-h-[240px]'
-                            : 'min-h-[180px] sm:min-h-[200px] lg:min-h-[220px]'
-                        : form.getValues('courseData')?.isCoursePublishedToCatalaouge
-                          ? 'min-h-[140px] sm:min-h-[160px] lg:min-h-[180px]'
-                          : 'min-h-[120px] sm:min-h-[140px] lg:min-h-[160px]'
-                }`}
-            >
-                {/* Transparent black overlay */}
-                {form.watch('courseData')?.courseBannerMediaId ? (
-                    <div className="pointer-events-none absolute inset-0 z-10 bg-black/50" />
-                ) : (
-                    <div className="pointer-events-none absolute inset-0 z-10 bg-black/5" />
-                )}
-                {!form.watch('courseData')?.courseBannerMediaId ? (
-                    <div className="absolute inset-0 z-0 bg-gradient-to-br from-primary-100 via-primary-200 to-primary-300" />
-                ) : (
-                    <div className="absolute inset-0 z-0 opacity-70">
-                        <img
-                            src={form.watch('courseData')?.courseBannerMediaPreview}
-                            alt="Course Banner"
-                            className="size-full object-cover"
-                            onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                e.currentTarget.parentElement?.classList.add('bg-primary-500');
-                            }}
-                        />
+            {/* Course Header - Title and Description on left, Banner/Video on right */}
+            <div className="w-full px-2 py-3 sm:px-4 lg:px-6 lg:py-4">
+                {!form.watch('courseData')?.title ? (
+                    <div className="grid grid-cols-1 items-center gap-6 lg:grid-cols-2 lg:gap-10">
+                        <div className="space-y-3">
+                            <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+                            <div className="h-10 w-4/5 animate-pulse rounded bg-gray-200" />
+                            <div className="space-y-2">
+                                <div className="h-4 w-full animate-pulse rounded bg-gray-200" />
+                                <div className="h-4 w-3/4 animate-pulse rounded bg-gray-200" />
+                            </div>
+                        </div>
+                        <div className="hidden h-48 w-full animate-pulse rounded-xl bg-gray-200 lg:block" />
                     </div>
-                )}
-                {/* Primary color overlay with 70% opacity */}
-                <div
-                    className={`relative z-20 w-full px-2 text-white sm:px-4 lg:px-6 ${
-                        form.watch('courseData')?.courseBannerMediaId
-                            ? 'py-3 lg:py-4'
-                            : 'py-4 sm:py-5 lg:py-6'
-                    }`}
-                >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
-                        {/* Left side - Title and Description */}
-                        <div className="max-w-none flex-1 lg:max-w-2xl">
-                            {!form.watch('courseData')?.title ? (
-                                <div className="space-y-2">
-                                    <div className="h-4 w-24 animate-pulse rounded bg-white/20" />
-                                    <div className="h-6 w-3/4 animate-pulse rounded bg-white/20" />
-                                    <div className="h-3 w-full animate-pulse rounded bg-white/20" />
-                                    <div className="h-3 w-2/3 animate-pulse rounded bg-white/20" />
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="flex items-start justify-between gap-4">
-                                        <h1
-                                            className={`font-bold leading-tight tracking-tight ${
-                                                form.watch('courseData')?.courseBannerMediaId
-                                                    ? 'mb-2 text-lg sm:text-xl lg:text-2xl'
-                                                    : 'mb-2 text-2xl sm:text-3xl lg:text-4xl'
-                                            }`}
-                                        >
-                                            {form.getValues('courseData')?.title}
-                                        </h1>
-                                    </div>
-                                    <p
-                                        className={`leading-snug opacity-90 ${
-                                            form.watch('courseData')?.courseBannerMediaId
-                                                ? 'mb-2 text-xs sm:text-sm'
-                                                : 'mb-1 text-xs'
-                                        }`}
-                                        dangerouslySetInnerHTML={{
-                                            __html: form.getValues('courseData')?.description || '',
-                                        }}
-                                    />
-                                    {form.getValues('courseData')
-                                        ?.isCoursePublishedToCatalaouge && (
-                                        <MyButton
-                                            type="button"
-                                            scale="small"
-                                            buttonType="primary"
-                                            className="mb-2 rounded-md bg-success-100 font-medium !text-black hover:bg-success-100 focus:bg-success-100 active:bg-success-100"
-                                        >
-                                            Added to catalog
-                                        </MyButton>
+                ) : (
+                    (() => {
+                        const mediaId = form.watch('courseData')?.courseMediaId?.id;
+                        const mediaType = form.watch('courseData')?.courseMediaId?.type;
+                        const bannerMediaId = form.watch('courseData')?.courseBannerMediaId;
+                        const hasMedia = !!mediaId || !!bannerMediaId;
+                        return (
+                            <div
+                                className={`grid grid-cols-1 items-center gap-6 ${
+                                    hasMedia ? 'lg:grid-cols-2 lg:gap-10' : ''
+                                }`}
+                            >
+                                {/* Left side - Tags, Title, Description */}
+                                <div className="space-y-3 sm:space-y-4">
+                                    {(form.getValues('courseData')?.tags?.length ?? 0) > 0 && (
+                                        <div className="flex flex-wrap gap-2">
+                                            {form
+                                                .getValues('courseData')
+                                                ?.tags?.map((tag, index) => (
+                                                    <span
+                                                        key={index}
+                                                        className="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-700 shadow-sm sm:text-xs"
+                                                    >
+                                                        {tag}
+                                                    </span>
+                                                ))}
+                                        </div>
                                     )}
-                                    {canEdit && (
-                                        <div className="mb-2">
+
+                                    <h1 className="text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl lg:text-3xl">
+                                        {form.getValues('courseData')?.title}
+                                    </h1>
+
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {form.getValues('courseData')
+                                            ?.isCoursePublishedToCatalaouge && (
+                                            <MyButton
+                                                type="button"
+                                                scale="small"
+                                                buttonType="primary"
+                                                className="rounded-md bg-success-100 font-medium !text-black hover:bg-success-100 focus:bg-success-100 active:bg-success-100"
+                                            >
+                                                Added to catalog
+                                            </MyButton>
+                                        )}
+                                        {canEdit && (
                                             <AddCourseForm
                                                 isEdit={true}
                                                 initialCourseData={form.getValues()}
@@ -1266,95 +1250,92 @@ export const CourseDetailsPage = () => {
                                                     ) ?? ''
                                                 }
                                             />
-                                        </div>
-                                    )}
-                                    {(form.getValues('courseData')?.tags?.length ?? 0) > 0 && (
-                                        <div className="flex flex-wrap gap-1">
-                                            {form
-                                                .getValues('courseData')
-                                                ?.tags?.map((tag, index) => (
-                                                    <span
-                                                        key={index}
-                                                        className="rounded-md border bg-white/10 px-2 py-0.5 text-xs shadow-sm backdrop-blur-sm"
-                                                    >
-                                                        {tag}
-                                                    </span>
-                                                ))}
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </div>
+                                        )}
+                                    </div>
 
-                        {/* Right side - Video Player - More Compact */}
-                        {form.watch('courseData')?.courseMediaId?.id &&
-                            (form.watch('courseData')?.courseMediaId?.type === 'youtube' ? (
-                                <div
-                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${
-                                        form.watch('courseData')?.courseBannerMediaId
-                                            ? 'w-full lg:w-[280px] xl:w-[320px]'
-                                            : 'w-full lg:w-[240px] xl:w-[280px]'
-                                    }`}
-                                >
-                                    <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-black">
-                                        <iframe
-                                            width="100%"
-                                            height="100%"
-                                            src={`https://www.youtube.com/embed/${extractYouTubeVideoId(form.watch('courseData')?.courseMediaId?.id || '')}`}
-                                            title="YouTube video player"
-                                            frameBorder="0"
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                            allowFullScreen
-                                            className="size-full object-contain"
-                                        />
-                                    </div>
+                                    {form.getValues('courseData')?.description && (
+                                        <div>
+                                            <div
+                                                ref={descRef}
+                                                className={`text-sm leading-relaxed text-gray-600 sm:text-base ${
+                                                    !isDescExpanded ? 'line-clamp-4' : ''
+                                                }`}
+                                                dangerouslySetInnerHTML={{
+                                                    __html: form.getValues('courseData')?.description || '',
+                                                }}
+                                            />
+                                            {(isDescClamped || isDescExpanded) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsDescExpanded((prev) => !prev)}
+                                                    className="mt-1 text-sm font-medium text-primary-500 hover:underline focus:outline-none"
+                                                >
+                                                    {isDescExpanded ? 'View less' : 'View more'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-                            ) : form.watch('courseData')?.courseMediaId?.type === 'video' ? (
-                                <div
-                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${
-                                        form.watch('courseData')?.courseBannerMediaId
-                                            ? 'w-full lg:w-[280px] xl:w-[320px]'
-                                            : 'w-full lg:w-[240px] xl:w-[280px]'
-                                    }`}
-                                >
-                                    <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
-                                        <video
-                                            src={form.watch('courseData')?.courseMediaPreview}
-                                            controls
-                                            controlsList="nodownload noremoteplayback"
-                                            disablePictureInPicture
-                                            disableRemotePlayback
-                                            className="size-full object-contain"
-                                            onError={(e) => {
-                                                e.currentTarget.style.display = 'none';
-                                                e.currentTarget.parentElement?.classList.add(
-                                                    'bg-black'
-                                                );
-                                            }}
-                                        >
-                                            Your browser does not support the video tag.
-                                        </video>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div
-                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${
-                                        form.watch('courseData')?.courseBannerMediaId
-                                            ? 'w-full lg:w-[280px] xl:w-[320px]'
-                                            : 'w-full lg:w-[240px] xl:w-[280px]'
-                                    }`}
-                                >
-                                    <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
+
+                                {/* Right side - Video or Banner */}
+                                {mediaId &&
+                                    (mediaType === 'youtube' ? (
+                                        <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10">
+                                            <div className="relative aspect-video">
+                                                <iframe
+                                                    width="100%"
+                                                    height="100%"
+                                                    src={`https://www.youtube.com/embed/${extractYouTubeVideoId(mediaId || '')}`}
+                                                    title="YouTube video player"
+                                                    frameBorder="0"
+                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                    allowFullScreen
+                                                    className="size-full object-contain"
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : mediaType === 'video' ? (
+                                        <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10">
+                                            <div className="relative aspect-video">
+                                                <video
+                                                    src={form.watch('courseData')?.courseMediaPreview}
+                                                    controls
+                                                    controlsList="nodownload noremoteplayback"
+                                                    disablePictureInPicture
+                                                    disableRemotePlayback
+                                                    className="size-full object-contain"
+                                                    onError={(e) => {
+                                                        e.currentTarget.style.display = 'none';
+                                                        e.currentTarget.parentElement?.classList.add(
+                                                            'bg-black'
+                                                        );
+                                                    }}
+                                                >
+                                                    Your browser does not support the video tag.
+                                                </video>
+                                            </div>
+                                        </div>
+                                    ) : (
                                         <img
                                             src={form.watch('courseData')?.courseMediaPreview}
                                             alt="Course Banner"
-                                            className="size-full object-contain"
+                                            className="max-h-[300px] w-full rounded-xl object-contain"
                                         />
-                                    </div>
-                                </div>
-                            ))}
-                    </div>
-                </div>
+                                    ))}
+                                {!mediaId && bannerMediaId && (
+                                    <img
+                                        src={form.watch('courseData')?.courseBannerMediaPreview}
+                                        alt="Course Banner"
+                                        className="max-h-[300px] w-full rounded-xl object-contain"
+                                        onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        );
+                    })()
+                )}
             </div>
 
             {/* Main Content */}

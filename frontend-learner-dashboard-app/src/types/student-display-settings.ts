@@ -88,6 +88,18 @@ export interface StudentCourseDetailsTabConfig {
 
 export type OutlineMode = "expanded" | "collapsed";
 
+/**
+ * How the slide viewer's left sidebar lets the learner navigate course content.
+ *
+ * - "breadcrumb": Sidebar shows only the current chapter's slide list (the
+ *   legacy view). Cross-subject/cross-module jumps happen via the breadcrumb
+ *   popovers at the top.
+ * - "ancestors": Sidebar shows the full Subject → Module → Chapter → Slide
+ *   tree; the breadcrumb is a passive label (no popovers) since the tree
+ *   already exposes every jump.
+ */
+export type SlidesSidebarNavigation = "breadcrumb" | "ancestors";
+
 export interface StudentCourseDetailsSettings {
   tabs: StudentCourseDetailsTabConfig[];
   defaultTab: StudentCourseDetailsTabId;
@@ -101,6 +113,11 @@ export interface StudentCourseDetailsSettings {
     showLearningPath: boolean;
     feedbackVisible: boolean;
     canAskDoubt: boolean;
+    /** See {@link SlidesSidebarNavigation}. Optional for backwards compat
+     *  with settings payloads saved before this field existed — consumers
+     *  should fall back to "breadcrumb" (the legacy default) when missing
+     *  so existing learners aren't dropped into a different layout. */
+    sidebarNavigation?: SlidesSidebarNavigation;
   };
 }
 

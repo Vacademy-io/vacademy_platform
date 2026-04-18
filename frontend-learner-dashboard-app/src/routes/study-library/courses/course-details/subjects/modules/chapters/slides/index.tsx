@@ -14,6 +14,7 @@ import {
   ChapterSidebarSlides,
   calculateOverallCompletion,
 } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
+import { CourseTreeSidebar } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/course-tree-sidebar";
 import { getModuleName } from "@/utils/study-library/get-name-by-id/getModuleNameById";
 import { getSubjectName } from "@/utils/study-library/get-name-by-id/getSubjectNameById";
 import { getChapterName } from "@/utils/study-library/get-name-by-id/getChapterById";
@@ -756,6 +757,13 @@ function Slides() {
 
   const [showLearningPath, setShowLearningPath] = useState(true);
   const [feedbackVisible, setFeedbackVisible] = useState(true);
+  // "breadcrumb" = legacy per-chapter slide list; cross-module navigation
+  // happens via the popovers in the breadcrumb. This is the default to keep
+  // existing learners on familiar terrain — admins can opt into the richer
+  // "ancestors" tree from Student Display Settings.
+  const [sidebarNavigation, setSidebarNavigation] = useState<
+    "ancestors" | "breadcrumb"
+  >("breadcrumb");
 
   // Load Student Display Settings for slides view
   useEffect(() => {
@@ -764,6 +772,9 @@ function Slides() {
         s?.courseDetails?.slidesView?.showLearningPath ?? true
       );
       setFeedbackVisible(s?.courseDetails?.slidesView?.feedbackVisible ?? true);
+      setSidebarNavigation(
+        s?.courseDetails?.slidesView?.sidebarNavigation ?? "breadcrumb"
+      );
     });
   }, []);
 
@@ -912,7 +923,20 @@ function Slides() {
             Subject crumb is only rendered when the course structure actually
             has subjects (`subjectId` set + studyLibraryData populated) —
             otherwise the crumb collapses to Module > Chapter as before. */}
-        {showLearningPath && (
+        {showLearningPath && (() => {
+          // Backends frequently emit a "Default"-named subject / module /
+          // chapter as a placeholder when that level isn't really part of
+          // the course. Those crumbs aren't useful navigation context — hide
+          // them so the breadcrumb only shows real ancestors.
+          const isDefaultName = (n: string | null | undefined) =>
+            (n || "").trim().toLowerCase() === "default";
+          const showSubjectCrumb =
+            !!subjectId &&
+            courseSubjects.length > 0 &&
+            !isDefaultName(subjectName);
+          const showModuleCrumb = !isDefaultName(moduleName);
+          const showChapterCrumb = !isDefaultName(chapterName);
+          return (
           <div
             className="flex items-center gap-1.5 text-xs text-gray-500 font-medium min-w-0"
             id="slides-breadcrumb-row"
@@ -921,190 +945,255 @@ function Slides() {
                 course. Selecting one routes to that subject's modules view
                 (we don't know its first chapter yet, so we drop the learner
                 at the modules list per HIG's "show the landing, don't guess"). */}
-            {!!subjectId && courseSubjects.length > 0 && (
+            {showSubjectCrumb && (
               <>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
-                      title={subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
+                {sidebarNavigation === "breadcrumb" ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
+                        title={subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
+                      >
+                        <span className="truncate max-w-[90px] sm:max-w-[130px]">
+                          {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
+                        </span>
+                        <ChevronDownIcon className="w-3 h-3 flex-shrink-0 text-gray-400 group-hover:text-primary-400 transition-colors" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-64 p-0 shadow-md border border-gray-200 rounded-lg overflow-hidden"
+                      align="start"
+                      sideOffset={6}
                     >
-                      <span className="truncate max-w-[90px] sm:max-w-[130px]">
-                        {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
-                      </span>
-                      <ChevronDownIcon className="w-3 h-3 flex-shrink-0 text-gray-400 group-hover:text-primary-400 transition-colors" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-64 p-0 shadow-md border border-gray-200 rounded-lg overflow-hidden"
-                    align="start"
-                    sideOffset={6}
-                  >
-                    <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/80">
-                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                        {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}s
-                      </p>
-                    </div>
-                    <div className="max-h-72 overflow-y-auto custom-scrollbar">
-                      {courseSubjects.map((s) => {
-                        const isCurrent = s.id === subjectId;
-                        const isSwitching = switchingSubjectId === s.id;
-                        return (
-                          <button
-                            key={s.id}
-                            disabled={!!switchingSubjectId && !isSwitching}
-                            onClick={() => handleSubjectSelect(s.id)}
-                            className={`w-full text-left px-3 py-2 text-[11px] transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
-                              isCurrent
-                                ? "bg-primary-50 text-primary-700 font-semibold"
-                                : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
-                            }`}
-                          >
-                            <div
-                              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                                isCurrent ? "bg-primary-500" : "bg-gray-300"
+                      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/80">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}s
+                        </p>
+                      </div>
+                      <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                        {courseSubjects.map((s) => {
+                          const isCurrent = s.id === subjectId;
+                          const isSwitching = switchingSubjectId === s.id;
+                          return (
+                            <button
+                              key={s.id}
+                              disabled={!!switchingSubjectId && !isSwitching}
+                              onClick={() => handleSubjectSelect(s.id)}
+                              className={`w-full text-left px-3 py-2 text-[11px] transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
+                                isCurrent
+                                  ? "bg-primary-50 text-primary-700 font-semibold"
+                                  : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
                               }`}
-                            />
-                            <span className="truncate flex-1">
-                              {toTitleCase(s.subject_name)}
-                            </span>
-                            {isSwitching ? (
-                              <div className="w-3 h-3 border-2 border-primary-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                            ) : isCurrent ? (
-                              <span className="text-[9px] font-bold text-primary-500 uppercase tracking-wide flex-shrink-0">
-                                Now
+                            >
+                              <div
+                                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                  isCurrent ? "bg-primary-500" : "bg-gray-300"
+                                }`}
+                              />
+                              <span className="truncate flex-1">
+                                {toTitleCase(s.subject_name)}
                               </span>
-                            ) : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                              {isSwitching ? (
+                                <div className="w-3 h-3 border-2 border-primary-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                              ) : isCurrent ? (
+                                <span className="text-[9px] font-bold text-primary-500 uppercase tracking-wide flex-shrink-0">
+                                  Now
+                                </span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  // Tree mode: crumb is a passive label; the sidebar tree
+                  // already exposes every cross-subject jump.
+                  <span
+                    className="truncate max-w-[90px] sm:max-w-[130px]"
+                    title={subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
+                  >
+                    {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
+                  </span>
+                )}
 
-                <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                {(showModuleCrumb || showChapterCrumb) && (
+                  <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                )}
               </>
             )}
 
-            {/* Module — tapping opens a full course-content accordion popover
-                so the learner can jump to any module/chapter without navigating
-                back through multiple screens (MD3: contextual menu; HIG: drill-down). */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
-                  title={moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules)}
-                >
-                  <span className="truncate max-w-[90px] sm:max-w-[130px]">
+            {/* Module — in breadcrumb mode this is a popover that lists all
+                modules (tap to jump). In tree mode we drop the popover since
+                the sidebar already shows the full module list; crumb becomes
+                a passive label. */}
+            {showModuleCrumb && (
+              <>
+                {sidebarNavigation === "breadcrumb" ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
+                        title={moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules)}
+                      >
+                        <span className="truncate max-w-[90px] sm:max-w-[130px]">
+                          {toTitleCase(moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules))}
+                        </span>
+                        <ChevronDownIcon className="w-3 h-3 flex-shrink-0 text-gray-400 group-hover:text-primary-400 transition-colors" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-72 p-0 shadow-md border border-gray-200 rounded-lg overflow-hidden"
+                      align="start"
+                      sideOffset={6}
+                    >
+                      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/80">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          {subjectName && !isDefaultName(subjectName)
+                            ? `${toTitleCase(subjectName)} · ${getTerminology(ContentTerms.Modules, SystemTerms.Modules)}s`
+                            : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Content`}
+                        </p>
+                      </div>
+                      <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                        {modulesWithChaptersData?.map((modData) => (
+                          <ModuleAccordionItem
+                            key={modData.module.id}
+                            modData={modData}
+                            isInitiallyExpanded={modData.module.id === moduleId}
+                            currentChapterId={chapterId}
+                            onChapterSelect={(targetModuleId, targetChapterId) => {
+                              navigate({
+                                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+                                search: {
+                                  courseId,
+                                  subjectId,
+                                  moduleId: targetModuleId,
+                                  chapterId: targetChapterId,
+                                  slideId: "",
+                                  sessionId,
+                                },
+                              });
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  <span
+                    className="truncate max-w-[90px] sm:max-w-[130px]"
+                    title={moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules)}
+                  >
                     {toTitleCase(moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules))}
                   </span>
-                  <ChevronDownIcon className="w-3 h-3 flex-shrink-0 text-gray-400 group-hover:text-primary-400 transition-colors" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-72 p-0 shadow-md border border-gray-200 rounded-lg overflow-hidden"
-                align="start"
-                sideOffset={6}
-              >
-                <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/80">
-                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                    {subjectName
-                      ? `${toTitleCase(subjectName)} · ${getTerminology(ContentTerms.Modules, SystemTerms.Modules)}s`
-                      : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Content`}
-                  </p>
-                </div>
-                <div className="max-h-72 overflow-y-auto custom-scrollbar">
-                  {modulesWithChaptersData?.map((modData) => (
-                    <ModuleAccordionItem
-                      key={modData.module.id}
-                      modData={modData}
-                      isInitiallyExpanded={modData.module.id === moduleId}
-                      currentChapterId={chapterId}
-                      onChapterSelect={(targetModuleId, targetChapterId) => {
-                        navigate({
-                          to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
-                          search: {
-                            courseId,
-                            subjectId,
-                            moduleId: targetModuleId,
-                            chapterId: targetChapterId,
-                            slideId: "",
-                            sessionId,
-                          },
-                        });
-                      }}
-                    />
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
+                )}
 
-            <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                {showChapterCrumb && (
+                  <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                )}
+              </>
+            )}
 
             {/* Chapter — current location; per HIG the active crumb is a label,
                 not a link. The native `title` attribute provides the full name
                 on hover without requiring an extra tooltip component. */}
-            <span
-              className="text-gray-900 font-semibold truncate"
-              title={chapterName || getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
-            >
-              {toTitleCase(chapterName || getTerminology(ContentTerms.Chapters, SystemTerms.Chapters))}
-            </span>
+            {showChapterCrumb && (
+              <span
+                className="text-gray-900 font-semibold truncate"
+                title={chapterName || getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
+              >
+                {toTitleCase(chapterName || getTerminology(ContentTerms.Chapters, SystemTerms.Chapters))}
+              </span>
+            )}
+          </div>
+          );
+        })()}
+      </div>
+
+      {/* --- Scrollable Content ---
+          Admin-chosen via Student Display Settings → courseDetails.slidesView.
+          • "ancestors" renders the full Subject → Module → Chapter → Slide
+            tree so learners can jump anywhere from the sidebar.
+          • "breadcrumb" renders the legacy per-chapter flat slide list;
+            cross-module navigation happens via the breadcrumb popovers. */}
+      <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
+        {sidebarNavigation === "ancestors" ? (
+          <div className="py-1">
+            <CourseTreeSidebar
+              courseId={courseId || ""}
+              sessionId={sessionId || ""}
+              subjects={courseSubjects}
+              currentSubjectId={subjectId || ""}
+              currentModuleId={moduleId || ""}
+              currentChapterId={chapterId || ""}
+              currentSlideId={slideId || ""}
+              currentSubjectModules={modulesWithChaptersData}
+              onSlideSelect={({ subjectId: targetSubjectId, moduleId: targetModuleId, chapterId: targetChapterId, slideId: targetSlideId }) => {
+                navigate({
+                  to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+                  search: {
+                    courseId,
+                    subjectId: targetSubjectId,
+                    moduleId: targetModuleId,
+                    chapterId: targetChapterId,
+                    slideId: targetSlideId,
+                    sessionId,
+                  },
+                });
+              }}
+            />
+          </div>
+        ) : (
+          <div className="p-2">
+            <ChapterSidebarSlides />
           </div>
         )}
       </div>
 
-      {/* --- Scrollable Content: Slides List --- */}
-      <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
-        <div className="p-2">
-          <ChapterSidebarSlides />
-        </div>
-      </div>
-
-      {/* --- Footer: Progress & Actions --- */}
+      {/* --- Footer: Progress & Actions ---
+          Prev / Up-next collapsed to single-line pills so the tree above
+          gets the screen real estate. The full chapter name still appears
+          inline (truncated with a native tooltip) so the learner doesn't
+          lose the context the larger cards used to provide. */}
       {slides && slides.length > 0 && (
-        <div className="flex-none px-3 py-2 border-t border-gray-100 bg-white space-y-2 z-10">
-          {/* Previous Chapter CTA Card */}
+        <div className="flex-none px-3 py-2 border-t border-gray-100 bg-white space-y-1.5 z-10">
           {previousChapter && (
             <button
               onClick={handlePreviousChapter}
-              className="w-full text-left rounded-lg border border-neutral-200 bg-neutral-50 p-2.5 hover:bg-neutral-100 hover:border-neutral-300 transition-colors group/prev [.ui-play_&]:rounded-xl [.ui-play_&]:border-2"
+              title={`Previous: ${toTitleCase(previousChapter.chapter.chapter_name)}`}
+              className="w-full flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1.5 hover:bg-neutral-100 hover:border-neutral-300 transition-colors group/prev text-left [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
             >
-              <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-0.5">
-                Previous
-              </p>
-              <div className="flex items-center gap-2">
-                <CaretLeft
-                  size={14}
-                  className="text-neutral-500 shrink-0 transition-transform group-hover/prev:-translate-x-0.5"
-                  weight="bold"
-                />
-                <p className="text-sm font-semibold text-neutral-700 truncate leading-tight">
-                  {toTitleCase(previousChapter.chapter.chapter_name)}
-                </p>
-              </div>
+              <CaretLeft
+                size={12}
+                className="text-neutral-500 shrink-0 transition-transform group-hover/prev:-translate-x-0.5"
+                weight="bold"
+              />
+              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider shrink-0">
+                Prev
+              </span>
+              <span className="text-[12px] font-semibold text-neutral-700 truncate leading-tight min-w-0">
+                {toTitleCase(previousChapter.chapter.chapter_name)}
+              </span>
             </button>
           )}
 
-          {/* Up Next CTA Card */}
           {nextChapter && (
             <button
               onClick={handleNextChapter}
-              className="w-full text-left rounded-lg border border-primary-200 bg-primary-50 p-2.5 hover:bg-primary-100 hover:border-primary-300 transition-colors group/next [.ui-play_&]:rounded-xl [.ui-play_&]:border-2"
+              title={`Up next: ${toTitleCase(nextChapter.chapter.chapter_name)}`}
+              className="w-full flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-2 py-1.5 hover:bg-primary-100 hover:border-primary-300 transition-colors group/next text-left [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
             >
-              <p className="text-[10px] font-bold text-primary-500 uppercase tracking-wider mb-0.5">
-                Up Next
-              </p>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-bold text-primary-700 truncate leading-tight">
-                  {toTitleCase(nextChapter.chapter.chapter_name)}
-                </p>
-                <CaretRight
-                  size={14}
-                  className="text-primary-500 shrink-0 transition-transform group-hover/next:translate-x-0.5"
-                  weight="bold"
-                />
-              </div>
+              <span className="text-[10px] font-bold text-primary-500 uppercase tracking-wider shrink-0">
+                Up next
+              </span>
+              <span className="text-[12px] font-bold text-primary-700 truncate leading-tight min-w-0 flex-1">
+                {toTitleCase(nextChapter.chapter.chapter_name)}
+              </span>
+              <CaretRight
+                size={12}
+                className="text-primary-500 shrink-0 transition-transform group-hover/next:translate-x-0.5"
+                weight="bold"
+              />
             </button>
           )}
 

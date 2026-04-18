@@ -587,9 +587,14 @@ const SlideItem = ({
               {/* Icon */}
               <div className="shrink-0">{getIcon(slide, "3.5")}</div>
 
-              {/* Title + type on one compact block */}
+              {/* Title + type on one compact block. Titles wrap so long names
+                  are fully readable; `title` attribute keeps the full string
+                  available to screen readers and as a native tooltip. */}
               <div className="min-w-0 flex-1">
-                <h4 className="text-sm font-medium leading-tight truncate [.ui-play_&]:font-bold">
+                <h4
+                  className="text-sm font-medium leading-tight break-words [.ui-play_&]:font-bold"
+                  title={getSlideTitle()}
+                >
                   {getSlideTitle()}
                 </h4>
                 <div className="flex items-center gap-1.5 mt-0.5">

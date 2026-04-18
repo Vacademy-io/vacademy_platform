@@ -510,13 +510,12 @@ export const AddCourseForm = ({
     // For edit mode, use the dialog
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger className="flex w-full ">
+            <DialogTrigger asChild>
                 <MyButton
                     type="button"
-                    buttonType="secondary"
+                    buttonType="primary"
                     layoutVariant="default"
                     scale="small"
-                    className="my-6 bg-white py-5 !font-semibold hover:bg-white"
                 >
                     Edit {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                 </MyButton>

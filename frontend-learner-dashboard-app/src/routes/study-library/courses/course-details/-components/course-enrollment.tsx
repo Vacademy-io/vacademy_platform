@@ -110,6 +110,54 @@ export const CourseEnrollment = ({
     (enrolledSession) => enrolledSession.package_dto.id === courseId,
   );
 
+  // Decide whether the card body would render anything meaningful — if not,
+  // hide the entire card so we don't show a header with nothing under it.
+  // Most commonly triggered when both session and level are the backend's
+  // "Default" placeholder, no batch picker is needed, and there's nothing
+  // tab-specific (preview notice / enroll CTA) to render either.
+  const safeSessionOptions = sessionOptions || [];
+  const sessionLabel = safeSessionOptions.find(
+    (o) => o.value === selectedSession,
+  )?.label;
+  const levelLabel = (levelOptions || []).find(
+    (o) => o.value === selectedLevel,
+  )?.label;
+  const isDefault = (n: string | null | undefined) =>
+    !n || n.trim().toLowerCase() === "default";
+  const showSessionField = !!sessionLabel && !isDefault(sessionLabel);
+  const showLevelField = !!levelLabel && !isDefault(levelLabel);
+  const showBatchPicker =
+    shouldShowBatchDropdown &&
+    (batchOptions || []).length > 0 &&
+    !!selectedSession &&
+    !!selectedLevel;
+  const showPreviewNotice =
+    safeSessionOptions.length > 0 &&
+    selectedTab === "ALL" &&
+    !isEnrolledInCourse;
+  const showNoSessionsWarning = safeSessionOptions.length === 0;
+  const isAlreadyEnrolledInCurrent = safeEnrolledSessions.some(
+    (enrolledSession) =>
+      enrolledSession.package_dto.id === courseId &&
+      enrolledSession.session.id === selectedSession &&
+      enrolledSession.level.id === selectedLevel &&
+      (!selectedBatchId || enrolledSession.id === selectedBatchId),
+  );
+  const showInlineEnroll =
+    !hasRightSidebar &&
+    selectedTab === "ALL" &&
+    !!selectedSession &&
+    !!selectedLevel &&
+    !isAlreadyEnrolledInCurrent;
+  const hasAnythingToShow =
+    showSessionField ||
+    showLevelField ||
+    showBatchPicker ||
+    showPreviewNotice ||
+    showNoSessionsWarning ||
+    showInlineEnroll;
+  if (!hasAnythingToShow) return null;
+
   return (
     <Card
       className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg animate-fade-in-up border-border/60"
@@ -167,7 +215,8 @@ export const CourseEnrollment = ({
                 const sessionLabel = sessionOptions.find(
                   (o) => o.value === selectedSession,
                 )?.label;
-                return sessionLabel && sessionLabel !== "default" ? (
+                return sessionLabel &&
+                  sessionLabel.toLowerCase() !== "default" ? (
                   <StaticField
                     label={getTerminology(
                       ContentTerms.Session,
@@ -183,7 +232,8 @@ export const CourseEnrollment = ({
                 const levelLabel = levelOptions.find(
                   (o) => o.value === selectedLevel,
                 )?.label;
-                return levelLabel && levelLabel !== "default" ? (
+                return levelLabel &&
+                  levelLabel.toLowerCase() !== "default" ? (
                   <StaticField
                     label={getTerminology(
                       ContentTerms.Level,

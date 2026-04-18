@@ -28,6 +28,11 @@ export const CourseHeader = ({
     (!!courseData.courseMediaId && isImageUrl(courseData.courseMediaId));
   const bannerSrc = courseData.courseBannerMediaId ||
     (isImageUrl(courseData.courseMediaId) ? courseData.courseMediaId : "");
+  // Banner aspect ratio is read off the loaded image so the container fits
+  // the natural shape exactly — `object-cover` against a fixed height was
+  // cropping the sides/top of admin-uploaded banners. Default to 16/9 while
+  // the image is loading so layout doesn't jump too much.
+  const [bannerAspectRatio, setBannerAspectRatio] = useState<number>(16 / 9);
   const [isDescExpanded, setIsDescExpanded] = useState(false);
   const [isDescClamped, setIsDescClamped] = useState(false);
   const descRef = useRef<HTMLDivElement>(null);
@@ -124,13 +129,17 @@ export const CourseHeader = ({
               )}
             </div>
 
-            {/* Media Section — Video or Banner on right */}
+            {/* Media Section — Video or Banner on right.
+                The VideoPlayer manages its own aspect ratio (matches the
+                video's natural width/height once metadata loads), so the
+                wrapper here just provides width and visual chrome — no
+                forced `aspect-video` that would crop portrait clips. */}
             {hasVideo ? (
               <div
                 className="w-full animate-fade-in-up"
                 style={{ animationDelay: "0.15s" }}
               >
-                <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10 aspect-video">
+                <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10">
                   <VideoPlayer src={courseData.courseMediaId} />
                 </div>
               </div>
@@ -139,11 +148,26 @@ export const CourseHeader = ({
                 className="w-full animate-fade-in-up"
                 style={{ animationDelay: "0.15s" }}
               >
-                <div className="relative w-full overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5 border border-border/50">
+                <div
+                  className="relative w-full mx-auto overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5 border border-border/50 bg-muted"
+                  // `maxHeight` caps very tall (portrait) banners so they
+                  // don't push the page height absurdly far — the container
+                  // shrinks in width proportionally instead, keeping the
+                  // image's natural ratio intact.
+                  style={{ aspectRatio: bannerAspectRatio, maxHeight: "60vh" }}
+                >
                   <img
                     src={bannerSrc}
                     alt={toTitleCase(courseData.title || "Course Banner")}
-                    className="w-full h-[180px] sm:h-[220px] lg:h-[260px] object-cover"
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      if (img.naturalWidth && img.naturalHeight) {
+                        setBannerAspectRatio(
+                          img.naturalWidth / img.naturalHeight
+                        );
+                      }
+                    }}
+                    className="w-full h-full object-cover"
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
                     }}

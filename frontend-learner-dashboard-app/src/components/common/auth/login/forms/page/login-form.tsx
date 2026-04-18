@@ -43,6 +43,15 @@ import {
   isNativeOAuthRequired,
   openOAuthInSystemBrowser,
 } from "@/lib/auth/nativeOAuth";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
+import {
+  ContentTerms,
+  RoleTerms,
+  SystemTerms,
+} from "@/types/naming-settings";
 
 export const getFromStorage = async (key: string) => {
   const result = await Preferences.get({ key });
@@ -746,7 +755,12 @@ export function LoginForm({
           try {
             await fetchAndStoreStudentDetails(instituteId, userId);
           } catch {
-            toast.error("Failed to fetch student details");
+            toast.error(
+              `Failed to fetch ${getTerminology(
+                RoleTerms.Learner,
+                SystemTerms.Learner
+              ).toLowerCase()} details`
+            );
           }
         } else {
           toast.error("Invalid user data received");
@@ -1097,7 +1111,11 @@ export function LoginForm({
                         navigate({ to: domainRouting.redirectPath as never })
                       }
                     >
-                      Explore Courses
+                      Explore{" "}
+                      {getTerminologyPlural(
+                        ContentTerms.Course,
+                        SystemTerms.Course
+                      )}
                     </Button>
                   </motion.div>
                 ) : null}

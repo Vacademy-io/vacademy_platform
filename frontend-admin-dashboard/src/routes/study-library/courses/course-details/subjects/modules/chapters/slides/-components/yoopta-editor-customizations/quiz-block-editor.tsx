@@ -44,6 +44,14 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
     const [showResult, setShowResult] = useState(false);
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propQuiz = element?.props?.quizData;
+        if (propQuiz && JSON.stringify(propQuiz) !== JSON.stringify(quizData)) {
+            setQuizData(propQuiz);
+        }
+    }, [element?.props?.quizData]);
+
     // Persist state to Yoopta/Slate store
     useEffect(() => {
         if (isFirstRender.current) {

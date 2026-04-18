@@ -13,6 +13,14 @@ export function PdfViewerBlock({ element, attributes, children, blockId }: Plugi
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propUrl = element?.props?.pdfUrl || '';
+        const propTitle = element?.props?.title || '';
+        if (propUrl !== pdfUrl) setPdfUrl(propUrl);
+        if (propTitle !== title) setTitle(propTitle);
+    }, [element?.props?.pdfUrl, element?.props?.title]);
+
     useEffect(() => {
         if (isFirstRender.current) {
             isFirstRender.current = false;

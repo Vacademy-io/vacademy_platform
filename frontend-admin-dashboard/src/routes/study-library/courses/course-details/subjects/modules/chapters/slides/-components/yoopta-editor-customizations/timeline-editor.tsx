@@ -19,6 +19,14 @@ export function TimelineBlock({ element, attributes, children, blockId }: Plugin
     const [isEditing, setIsEditing] = useState(!element?.props?.steps?.length);
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propSteps = element?.props?.steps;
+        if (propSteps && JSON.stringify(propSteps) !== JSON.stringify(steps)) {
+            setSteps(propSteps);
+        }
+    }, [element?.props?.steps]);
+
     // Persist state to Yoopta/Slate store
     useEffect(() => {
         if (isFirstRender.current) {

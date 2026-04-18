@@ -21,6 +21,18 @@ export function JupyterNotebook({
 
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propName = element?.props?.projectName || '';
+        const propUrl = element?.props?.contentUrl || '';
+        const propBranch = element?.props?.contentBranch || 'main';
+        const propLocation = element?.props?.notebookLocation || 'root';
+        if (propName !== projectName) setProjectName(propName);
+        if (propUrl !== contentUrl) setContentUrl(propUrl);
+        if (propBranch !== contentBranch) setContentBranch(propBranch);
+        if (propLocation !== notebookLocation) setNotebookLocation(propLocation);
+    }, [element?.props?.projectName, element?.props?.contentUrl, element?.props?.contentBranch, element?.props?.notebookLocation]);
+
     // Sync with Yoopta block state - save complete editor state
     // NOTE: Do NOT include Date.now() — it causes infinite re-render loops.
     useEffect(() => {

@@ -63,8 +63,8 @@ android {
 		shikshanation {
 			dimension "client"
 			applicationId "com.shikshanation.new.app"
-			versionCode 2
-			versionName "1.0.1"
+			versionCode 5
+			versionName "1.1.0"
 			// Change app name for Fivesep
 			resValue "string", "app_name", "Shiksha Nation"
 			// Set the deep link host for Fivesep (adjust to your domain)

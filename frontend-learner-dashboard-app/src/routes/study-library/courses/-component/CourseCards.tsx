@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronRight, Play, BookOpen, Users, Clock } from "lucide-react";
+import { ChevronRight, BookOpen, Clock } from "lucide-react";
 import { IconRocket, IconMoodSmile, IconAdjustments } from "@tabler/icons-react";
 import BoringAvatar from "boring-avatars";
 import { useRouter } from "@tanstack/react-router";
@@ -14,6 +14,7 @@ import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { Card, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatMinutesHuman } from "@/utils/courseTime";
 
 interface Instructor {
     id: string;
@@ -58,6 +59,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
 }) => {
     const [courseImageUrl, setCourseImageUrl] = useState<string | null>(null);
     const [loadingImage, setLoadingImage] = useState(true);
+    const [imageAspectRatio, setImageAspectRatio] = useState<number>(16 / 9);
     const router = useRouter();
 
     const instructor = instructors[0];
@@ -166,7 +168,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
     return (
         <Card className={cn(
-            "course-card group relative overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:shadow-sm flex flex-col w-full max-w-full animate-fade-in-up border-border/60 bg-card/50 hover:bg-card",
+            "course-card group relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-md flex flex-col w-full max-w-full animate-fade-in-up border-border/60 bg-card/50 hover:bg-card",
             // Vibrant Styles - Flat Pastel
             !isCompleted && "[.ui-vibrant_&]:bg-slate-50 dark:[.ui-vibrant_&]:bg-slate-900/30",
             !isCompleted && "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
@@ -185,48 +187,51 @@ const CourseCard: React.FC<CourseCardProps> = ({
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg pointer-events-none"></div>
 
-            {/* Image Container */}
-            {(loadingImage || courseImageUrl) && (
-                <div className="relative w-full h-36 sm:h-40 lg:h-44 bg-muted flex items-center justify-center overflow-hidden rounded-t-lg course-card-image border-b">
-                    {courseImageUrl && (
-                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors duration-300 flex items-center justify-center z-10">
-                            <div className={cn(
-                                "bg-background/90 backdrop-blur-sm rounded-full p-3 transform scale-75 opacity-0 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300 shadow-md",
-                                "[.ui-vibrant_&]:bg-white/90 [.ui-vibrant_&]:text-indigo-600 dark:[.ui-vibrant_&]:text-indigo-300"
-                            )}>
-                                <Play
-                                    size={20}
-                                    className="text-primary ml-1 fill-primary [.ui-vibrant_&]:text-inherit [.ui-vibrant_&]:fill-current"
-                                />
-                            </div>
+            {/* Image Container — matches the image's natural aspect ratio so the card doesn't letterbox */}
+            <div
+                className="relative w-full bg-muted flex items-center justify-center overflow-hidden rounded-t-lg course-card-image border-b"
+                style={{ aspectRatio: courseImageUrl ? imageAspectRatio : 16 / 9 }}
+            >
+                {loadingImage ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-muted">
+                        <div className="flex flex-col items-center space-y-3">
+                            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                         </div>
-                    )}
-
-                    {loadingImage ? (
-                        <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                            <div className="flex flex-col items-center space-y-3">
-                                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                            </div>
-                        </div>
-                    ) : courseImageUrl ? (
-                        <img
-                            src={courseImageUrl}
-                            alt={package_name}
-                            loading="lazy"
-                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    </div>
+                ) : courseImageUrl ? (
+                    <img
+                        src={courseImageUrl}
+                        alt={package_name}
+                        loading="lazy"
+                        onLoad={(e) => {
+                            const img = e.currentTarget;
+                            if (img.naturalWidth && img.naturalHeight) {
+                                setImageAspectRatio(img.naturalWidth / img.naturalHeight);
+                            }
+                        }}
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    />
+                ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
+                        <BookOpen
+                            size={40}
+                            className="text-primary/60 transition-transform duration-500 group-hover:scale-110"
                         />
-                    ) : null}
-                </div>
-            )}
+                        <span className="text-xs font-medium text-primary/70 px-3 text-center line-clamp-1">
+                            {package_name}
+                        </span>
+                    </div>
+                )}
+            </div>
 
             <div className="flex flex-col flex-grow p-4 lg:p-5 gap-3">
                 {/* Header */}
                 <div className="flex justify-between items-start gap-3">
                     <h3
                         className="text-lg font-bold leading-tight group-hover:text-primary transition-colors duration-200 line-clamp-2"
-                        title={toTitleCase(package_name)}
+                        title={package_name}
                     >
-                        {toTitleCase(package_name)}
+                        {package_name}
                     </h3>
 
                     <Badge
@@ -254,16 +259,11 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 </div>
 
                 {/* Description */}
-                <p className="text-sm text-muted-foreground line-clamp-4 leading-relaxed flex-grow">
-                    {(() => {
-                        const plainText = (description || "")
-                            .replace(/<[^>]*>/g, " ")
-                            .replace(/\s+/g, " ")
-                            .trim();
-                        return plainText.length > 200
-                            ? plainText.slice(0, 200) + "…"
-                            : plainText;
-                    })()}
+                <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed flex-grow">
+                    {(description || "")
+                        .replace(/<[^>]*>/g, " ")
+                        .replace(/\s+/g, " ")
+                        .trim()}
                 </p>
 
                 {/* Instructor */}
@@ -286,14 +286,14 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                         size={32}
                                         name={instructorName}
                                         variant="beam"
-                                        colors={["#FDE68A", "#C7D2FE", "#86EFAC", "#FCA5A5", "#93C5FD"]}
+                                        colors={["#FFE5CC", "#FFCDA8", "#FFA85C", "#E8751A", "#C45A00"]}
                                     />
                                 </div>
                             )}
                         </div>
                         <div className="min-w-0 flex-1">
-                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-0.5">
-                                {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
+                            <p className="text-[11px] text-muted-foreground font-medium mb-0.5">
+                                {toTitleCase(getTerminology(RoleTerms.Teacher, SystemTerms.Teacher))}
                             </p>
                             <div className="text-sm font-medium truncate">
                                 {instructors.map((instructor, index) => (
@@ -337,14 +337,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     </div>
 
                     <div className="flex items-center justify-end gap-3 text-xs text-muted-foreground">
-                        {readTimeInMinutes && (
+                        {readTimeInMinutes > 0 && (
                             <div className="flex items-center gap-1">
                                 <Clock size={14} />
-                                <span>
-                                    {readTimeInMinutes >= 60
-                                        ? `${Math.floor(readTimeInMinutes / 60)}h ${readTimeInMinutes % 60}m`
-                                        : `${readTimeInMinutes % 60}m`}
-                                </span>
+                                <span>{formatMinutesHuman(readTimeInMinutes)}</span>
                             </div>
                         )}
                     </div>
@@ -352,22 +348,34 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
                 {selectedTab === "PROGRESS" && (
                     <div className="space-y-1.5 pt-1">
-                        {/* Default / Vibrant: linear progress bar */}
-                        <div className="[.ui-play_&]:hidden">
-                            <div className="flex justify-between text-xs font-medium">
-                                <span>Progress</span>
-                                <span>{cappedPercentageCompleted.toFixed(0)}%</span>
-                            </div>
-                            <ProgressBar value={cappedPercentageCompleted} className="h-1.5" />
-                        </div>
-                        {/* Play: circular progress ring */}
-                        <div className="hidden [.ui-play_&]:flex items-center gap-3">
-                            <ProgressRing value={cappedPercentageCompleted} size={44} strokeWidth={4} />
-                            <div className="flex flex-col">
-                                <span className="text-xs font-bold">{cappedPercentageCompleted.toFixed(0)}% Complete</span>
-                                <span className="text-[10px] text-muted-foreground">Keep going!</span>
-                            </div>
-                        </div>
+                        {cappedPercentageCompleted === 0 ? (
+                            <Badge
+                                variant="outline"
+                                className="w-fit gap-1 border-dashed border-neutral-300 text-neutral-500 font-medium text-[11px] px-2 py-0.5"
+                            >
+                                <Clock size={12} />
+                                Not started
+                            </Badge>
+                        ) : (
+                            <>
+                                {/* Default / Vibrant: linear progress bar */}
+                                <div className="[.ui-play_&]:hidden">
+                                    <div className="flex justify-between text-xs font-medium">
+                                        <span>Progress</span>
+                                        <span>{cappedPercentageCompleted.toFixed(0)}%</span>
+                                    </div>
+                                    <ProgressBar value={cappedPercentageCompleted} className="h-1.5" />
+                                </div>
+                                {/* Play: circular progress ring */}
+                                <div className="hidden [.ui-play_&]:flex items-center gap-3">
+                                    <ProgressRing value={cappedPercentageCompleted} size={44} strokeWidth={4} />
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-bold">{cappedPercentageCompleted.toFixed(0)}% Complete</span>
+                                        <span className="text-[10px] text-muted-foreground">Keep going!</span>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
             </div>

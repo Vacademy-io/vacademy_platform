@@ -998,9 +998,9 @@ export const CourseStructureDetails = ({
 
   const tabContent: Record<TabType, React.ReactNode> = {
     [TabType.OUTLINE]: (
-      <div className="space-y-4">
+      <div className="space-y-3">
         {/* Expand/Collapse Controls */}
-        <div className="flex items-center justify-between border-b border-neutral-200 pb-3 gap-3 flex-wrap">
+        <div className="flex items-center justify-between border-b border-neutral-200 pb-2 gap-3 flex-wrap">
           <div className="flex items-center gap-2 min-w-0">
             <Steps size={18} className="text-primary-600 shrink-0" />
             <span className="text-sm font-medium text-neutral-700 truncate">
@@ -3141,20 +3141,20 @@ export const CourseStructureDetails = ({
       )}
 
       <PullToRefreshWrapper onRefresh={refreshData}>
-        <div className="flex size-full flex-col gap-4 rounded-lg bg-card pt-0 pb-4 text-neutral-700">
+        <div className="flex size-full flex-col gap-3 rounded-lg bg-card pt-0 pb-3 text-neutral-700">
           <Tabs
             value={selectedStructureTab}
             onValueChange={handleTabChange}
             className="w-full"
           >
             {renderTabs.length > 1 && (
-              <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0 flex flex-row flex-wrap items-center justify-start gap-2 overflow-x-auto w-full">
+              <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0 flex flex-row flex-wrap items-center justify-start gap-2 w-full">
                 {renderTabs.map((tab: { label: string; value: string }) => (
                   <TabsTrigger
                     key={tab.value}
                     value={tab.value}
-                    className={`inline-flex items-center data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 whitespace-nowrap 
-                                    py-2 text-sm font-medium transition-all duration-200 
+                    className={`inline-flex items-center data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 whitespace-nowrap
+                                    py-2 text-sm font-medium transition-all duration-200
                                     hover:bg-primary-50/60 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1
                                     data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg`}
                   >
@@ -3167,8 +3167,8 @@ export const CourseStructureDetails = ({
               key={selectedStructureTab}
               value={selectedStructureTab}
               className={`${
-                renderTabs.length > 1 ? "mt-4" : ""
-              } rounded-lg bg-white border border-neutral-200/60 p-4`}
+                renderTabs.length > 1 ? "mt-3" : ""
+              } rounded-lg bg-white border border-neutral-200/60 p-3 md:p-4`}
             >
               {tabContent[selectedStructureTab as TabType]}
             </TabsContent>

@@ -436,7 +436,7 @@ export function CourseDetailsRatingsComponent({
 
     return (
         <div className={cn(
-            "relative bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 lg:p-5 group overflow-hidden",
+            "relative bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 group overflow-hidden",
             // Vibrant Styles
             "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
             "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:shadow-md",
@@ -451,28 +451,28 @@ export function CourseDetailsRatingsComponent({
             <div className="absolute top-0 right-0 w-16 h-16 bg-primary-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 -translate-y-3 translate-x-6"></div>
             <div className="absolute bottom-0 left-0 w-20 h-20 bg-yellow-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-y-3 -translate-x-6"></div>
 
-            <div className="relative space-y-4 lg:space-y-6">
+            <div className="relative space-y-3">
                 {/* Enhanced Header */}
-                <div className="flex items-center space-x-2 sm:space-x-3 animate-fade-in-down">
+                <div className="flex items-center space-x-2 animate-fade-in-down">
                     <div className={cn(
-                        "p-1.5 sm:p-2 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-lg shadow-sm",
+                        "p-1 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-md shadow-sm",
                         "[.ui-vibrant_&]:bg-yellow-500/20 [.ui-vibrant_&]:text-yellow-600",
                         // Play Styles
                         "[.ui-play_&]:bg-[#ffc800] [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_#e6b400]"
                     )}>
                         <Star
-                            size={20}
+                            size={14}
                             className="text-yellow-600"
                             weight="duotone"
                         />
                     </div>
-                    <div>
-                        <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 tracking-tight">
+                    <div className="min-w-0">
+                        <h1 className="text-sm font-bold text-gray-900 tracking-tight leading-tight">
                             Ratings & Reviews
                         </h1>
-                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 flex items-center space-x-1.5">
+                        <p className="text-[11px] text-gray-600 flex items-center gap-1">
                             <ChatCircle
-                                size={12}
+                                size={10}
                                 className="text-primary-500"
                                 weight="duotone"
                             />
@@ -481,51 +481,48 @@ export function CourseDetailsRatingsComponent({
                     </div>
                 </div>
 
-                <form className="mb-6 flex flex-col gap-4 rounded-md border bg-gray-50 dark:bg-neutral-900 p-4">
-                    <label className="font-semibold text-neutral-700 dark:text-neutral-300">
+                <form className="flex flex-col gap-2 rounded-md border bg-gray-50 dark:bg-neutral-900 p-2.5">
+                    <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                         Your Feedback
                     </label>
                     <Textarea
                         value={feedbackText}
                         onChange={(e) => setFeedbackText(e.target.value)}
                         placeholder="Write your feedback..."
-                        rows={3}
-                        className="resize-none"
+                        rows={2}
+                        className="resize-none text-xs"
                     />
-                    <label className="font-semibold text-neutral-700 dark:text-neutral-300">
+                    <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                         Rating <span className="text-red-500">*</span>
                     </label>
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                                <button
-                                    type="button"
-                                    key={star}
-                                    onClick={() => handleStarClick(star)}
-                                    className="focus:outline-none"
-                                >
-                                    <Star
-                                        size={28}
-                                        weight={
-                                            selectedRating && selectedRating >= star
-                                                ? "fill"
-                                                : "regular"
-                                        }
-                                        className={
-                                            selectedRating && selectedRating >= star
-                                                ? "text-yellow-400"
-                                                : "text-gray-300"
-                                        }
-                                    />
-                                </button>
-                            ))}
-                            <span className="ml-2 text-sm text-neutral-500">
-                                {selectedRating
-                                    ? `${selectedRating} Star${selectedRating > 1 ? "s" : ""}`
-                                    : ""}
-                            </span>
-                        </div>
-
+                    <div className="flex items-center gap-1.5">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                                type="button"
+                                key={star}
+                                onClick={() => handleStarClick(star)}
+                                className="focus:outline-none"
+                            >
+                                <Star
+                                    size={20}
+                                    weight={
+                                        selectedRating && selectedRating >= star
+                                            ? "fill"
+                                            : "regular"
+                                    }
+                                    className={
+                                        selectedRating && selectedRating >= star
+                                            ? "text-yellow-400"
+                                            : "text-gray-300"
+                                    }
+                                />
+                            </button>
+                        ))}
+                        <span className="ml-1 text-[11px] text-neutral-500">
+                            {selectedRating
+                                ? `${selectedRating} Star${selectedRating > 1 ? "s" : ""}`
+                                : ""}
+                        </span>
                     </div>
                     <MyButton
                         type="button"
@@ -534,6 +531,7 @@ export function CourseDetailsRatingsComponent({
                             submitting ||
                             !selectedRating
                         }
+                        scale="small"
                         className="w-fit"
                         onClick={handleSubmit}
                     >
@@ -548,7 +546,7 @@ export function CourseDetailsRatingsComponent({
                     >
                         {/* Enhanced Overall Rating Section */}
                         <div className={cn(
-                            "relative bg-gradient-to-br from-yellow-50/80 to-orange-50/80 border border-yellow-200/60 rounded-md p-3 sm:p-4 lg:p-5 overflow-hidden group/rating",
+                            "relative bg-gradient-to-br from-yellow-50/80 to-orange-50/80 border border-yellow-200/60 rounded-md p-2.5 overflow-hidden group/rating",
                             // Vibrant Styles - Flat Pastel
                             "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-amber-50/50 dark:[.ui-vibrant_&]:bg-amber-950/20",
                             "[.ui-vibrant_&]:border-amber-200/50 dark:[.ui-vibrant_&]:border-amber-800/30",
@@ -563,11 +561,11 @@ export function CourseDetailsRatingsComponent({
                                 "[.ui-play_&]:hidden"
                             )}></div>
 
-                            <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-6">
+                            <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-3">
                                 {/* Rating Score */}
-                                <div className="lg:col-span-2 text-center lg:text-left space-y-3">
-                                    <div className="inline-flex flex-col items-center lg:items-start space-y-2">
-                                        <div className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900">
+                                <div className="lg:col-span-2 text-center lg:text-left space-y-1.5">
+                                    <div className="inline-flex flex-col items-center lg:items-start space-y-1">
+                                        <div className="text-2xl sm:text-3xl font-bold text-gray-900 leading-none">
                                             {overallRatingData?.average_rating !==
                                                 null &&
                                                 overallRatingData?.average_rating !==
@@ -612,7 +610,7 @@ export function CourseDetailsRatingsComponent({
                                 </div>
 
                                 {/* Rating Breakdown */}
-                                <div className="lg:col-span-3 space-y-2 sm:space-y-3">
+                                <div className="lg:col-span-3 space-y-1.5">
                                     {[5, 4, 3, 2, 1].map((stars) => {
                                         const percentKey =
                                             `percent_${stars === 5 ? "five" : stars === 4 ? "four" : stars === 3 ? "three" : stars === 2 ? "two" : "one"}_star` as keyof typeof overallRatingData;
@@ -653,47 +651,47 @@ export function CourseDetailsRatingsComponent({
 
                 {/* Reviews List */}
                 <div
-                    className={`${reviews.length === 0 ? "mt-0" : "mt-4 lg:mt-6"} space-y-3 sm:space-y-4 animate-fade-in-up`}
+                    className={`${reviews.length === 0 ? "mt-0" : "mt-3"} space-y-2.5 animate-fade-in-up`}
                     style={{ animationDelay: "0.2s" }}
                 >
                     {isRatingLoading ? (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                             {[1, 2, 3].map((i) => (
                                 <div
                                     key={i}
-                                    className="bg-white/60 rounded-md p-3 sm:p-4 animate-pulse"
+                                    className="bg-white/60 rounded-md p-2.5 animate-pulse"
                                 >
-                                    <div className="flex items-center space-x-3 mb-3">
-                                        <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
-                                        <div className="flex-1 space-y-1.5">
-                                            <div className="h-3 bg-gray-200 rounded w-1/4"></div>
-                                            <div className="h-2.5 bg-gray-200 rounded w-1/6"></div>
+                                    <div className="flex items-center space-x-2 mb-2">
+                                        <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
+                                        <div className="flex-1 space-y-1">
+                                            <div className="h-2.5 bg-gray-200 rounded w-1/4"></div>
+                                            <div className="h-2 bg-gray-200 rounded w-1/6"></div>
                                         </div>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <div className="h-3 bg-gray-200 rounded w-full"></div>
-                                        <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+                                    <div className="space-y-1">
+                                        <div className="h-2.5 bg-gray-200 rounded w-full"></div>
+                                        <div className="h-2.5 bg-gray-200 rounded w-3/4"></div>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     ) : reviews.length === 0 ? (
-                        <div className="relative bg-white/60 border border-gray-200/60 rounded-md p-6 sm:p-8 text-center overflow-hidden">
+                        <div className="relative bg-white/60 border border-gray-200/60 rounded-md p-4 text-center overflow-hidden">
                             {/* Background pattern */}
                             <div className="absolute inset-0 bg-gradient-to-br from-gray-50/30 via-transparent to-primary-50/20 pointer-events-none"></div>
 
                             <div className="relative">
-                                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-md mx-auto mb-3 sm:mb-4 flex items-center justify-center">
+                                <div className="w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-200 rounded-md mx-auto mb-2 flex items-center justify-center">
                                     <ChatCircle
-                                        size={24}
+                                        size={18}
                                         className="text-gray-500"
                                         weight="duotone"
                                     />
                                 </div>
-                                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1">
+                                <h3 className="text-sm font-bold text-gray-900 mb-0.5">
                                     No reviews yet
                                 </h3>
-                                <p className="text-gray-600 text-xs sm:text-sm">
+                                <p className="text-gray-600 text-[11px]">
                                     Be the first to share your experience with
                                     this course
                                 </p>
@@ -725,10 +723,10 @@ export function CourseDetailsRatingsComponent({
                     {/* Enhanced Pagination */}
                     {totalPages > 1 && (
                         <div
-                            className="flex justify-center mt-4 lg:mt-6 animate-fade-in-up"
+                            className="flex justify-center mt-3 animate-fade-in-up"
                             style={{ animationDelay: "0.5s" }}
                         >
-                            <div className="bg-white border border-gray-200 rounded-md shadow-sm p-2">
+                            <div className="bg-white border border-gray-200 rounded-md shadow-sm p-1.5">
                                 <MyPagination
                                     currentPage={page}
                                     totalPages={totalPages}

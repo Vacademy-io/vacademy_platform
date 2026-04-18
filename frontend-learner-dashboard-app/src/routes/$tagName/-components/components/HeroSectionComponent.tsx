@@ -59,6 +59,36 @@ const isPlaceholderImage = (imageUrl?: string | null): boolean => {
   return false;
 };
 
+// JSON templates sometimes ship raw field-name tokens (e.g. "about_the_course_html")
+// as placeholder text that should be swapped out with backend content. When the
+// backend value is missing we must not render the raw token to the user.
+const PLACEHOLDER_TEXT_TOKENS = new Set([
+  "about_the_course",
+  "about_the_course_html",
+  "course_html_description",
+  "course_html_description_html",
+  "who_should_learn",
+  "why_learn",
+  "package_name",
+  "course_name",
+  "course_title",
+  "title",
+  "description",
+]);
+
+const sanitizePlaceholderText = (text?: string | null): string => {
+  if (!text) return "";
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  if (PLACEHOLDER_TEXT_TOKENS.has(trimmed)) return "";
+  // Catch untagged snake_case / SCREAMING_SNAKE_CASE tokens that look like
+  // raw field identifiers (e.g. "SOME_HTML_FIELD") with no spaces and underscores.
+  if (/^[a-z0-9]+(?:_[a-z0-9]+)+$/i.test(trimmed) && !/\s/.test(trimmed)) {
+    return "";
+  }
+  return trimmed;
+};
+
 export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
   layout,
   backgroundImage,
@@ -71,10 +101,16 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
   const { roundedEdges = false, textAlign = "left" } = styles;
 
   return useMemo(() => {
-    const heroTitle = courseData?.title || left?.title || "";
-    const heroDescription = (courseData?.description?.trim()) ? courseData.description : (left?.description?.trim() || "");
+    const sanitizedCourseTitle = sanitizePlaceholderText(courseData?.title);
+    const sanitizedLeftTitle = sanitizePlaceholderText(left?.title);
+    const heroTitle = sanitizedCourseTitle || sanitizedLeftTitle || "";
+
+    const sanitizedCourseDescription = sanitizePlaceholderText(courseData?.description ?? undefined);
+    const sanitizedLeftDescription = sanitizePlaceholderText(left?.description);
+    const heroDescription = sanitizedCourseDescription || sanitizedLeftDescription || "";
+
     const heroImage = courseData?.previewImage || courseData?.bannerImage || right?.image || "";
-    const heroImageAlt = right?.alt || courseData?.title || "Course preview";
+    const heroImageAlt = right?.alt || sanitizedCourseTitle || "Course preview";
     const isHeroImagePlaceholder = isPlaceholderImage(heroImage);
     const isBackgroundImagePlaceholder = isPlaceholderImage(backgroundImage);
 

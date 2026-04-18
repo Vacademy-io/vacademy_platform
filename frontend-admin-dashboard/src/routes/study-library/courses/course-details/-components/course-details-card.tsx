@@ -40,7 +40,7 @@ export const CourseDetailsCard = ({
 
     return (
         <div
-            className={`relative flex h-[100px] w-full cursor-pointer items-center gap-4 rounded-xl border border-neutral-200 bg-neutral-50 py-5`}
+            className={`relative flex min-h-[88px] w-full cursor-pointer items-center gap-4 rounded-xl border border-neutral-200 border-l-4 border-l-primary-400 bg-neutral-50 py-4 transition-all hover:bg-white hover:shadow-sm hover:border-l-primary-500`}
             onClick={handleLevelCardClick}
         >
             <div className="flex w-full items-end justify-between gap-3 px-5">

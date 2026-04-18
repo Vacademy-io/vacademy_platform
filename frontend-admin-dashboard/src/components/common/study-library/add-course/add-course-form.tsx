@@ -2,7 +2,7 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 // add-course-form.tsx
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { MyButton } from '@/components/design-system/button';
@@ -455,10 +455,34 @@ export const AddCourseForm = ({
     if (!isEdit) {
         return (
             <div className="flex h-full flex-col">
-                <h1 className="bg-primary-50 p-4 font-semibold text-primary-500">
-                    Create {getTerminology(ContentTerms.Course, SystemTerms.Course)} - Step {step}{' '}
-                    of 2
-                </h1>
+                <div className="bg-primary-50 px-4 pt-4 pb-3">
+                    <div className="flex items-center justify-between gap-4">
+                        <h1 className="font-semibold text-primary-500">
+                            Create {getTerminology(ContentTerms.Course, SystemTerms.Course)} - Step {step} of 2
+                        </h1>
+                        <span className="text-xs font-medium text-primary-500/80">
+                            {step === 1 ? 'Course Details' : 'Course Structure'}
+                        </span>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                        {[1, 2].map((s) => (
+                            <React.Fragment key={s}>
+                                <div
+                                    className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                                        step >= s ? 'bg-primary-500' : 'bg-primary-200/60'
+                                    }`}
+                                />
+                                {s < 2 && (
+                                    <div
+                                        className={`size-2 rounded-full transition-all duration-300 ${
+                                            step > s ? 'bg-primary-500' : 'bg-primary-200/60'
+                                        }`}
+                                    />
+                                )}
+                            </React.Fragment>
+                        ))}
+                    </div>
+                </div>
                 {step === 1 ? (
                     <AddCourseStep1
                         onNext={handleStep1Submit}
@@ -486,23 +510,46 @@ export const AddCourseForm = ({
     // For edit mode, use the dialog
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger className="flex w-full ">
+            <DialogTrigger asChild>
                 <MyButton
                     type="button"
-                    buttonType="secondary"
+                    buttonType="primary"
                     layoutVariant="default"
                     scale="small"
-                    className="my-6 bg-white py-5 !font-semibold hover:bg-white"
                 >
                     Edit {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                 </MyButton>
             </DialogTrigger>
             <DialogContent className="z-[10000] flex !h-[97%] !max-h-[97%] w-[97%] flex-col overflow-hidden p-0">
                 <div className="flex h-full flex-col">
-                    <h1 className="bg-primary-50 p-4 font-semibold text-primary-500">
-                        {isEdit ? 'Edit' : 'Create'} {getTerminology(ContentTerms.Course, SystemTerms.Course)} - Step{' '}
-                        {step} of 2
-                    </h1>
+                    <div className="bg-primary-50 px-4 pt-4 pb-3">
+                        <div className="flex items-center justify-between gap-4">
+                            <h1 className="font-semibold text-primary-500">
+                                {isEdit ? 'Edit' : 'Create'} {getTerminology(ContentTerms.Course, SystemTerms.Course)} - Step {step} of 2
+                            </h1>
+                            <span className="text-xs font-medium text-primary-500/80">
+                                {step === 1 ? 'Course Details' : 'Course Structure'}
+                            </span>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2">
+                            {[1, 2].map((s) => (
+                                <React.Fragment key={s}>
+                                    <div
+                                        className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                                            step >= s ? 'bg-primary-500' : 'bg-primary-200/60'
+                                        }`}
+                                    />
+                                    {s < 2 && (
+                                        <div
+                                            className={`size-2 rounded-full transition-all duration-300 ${
+                                                step > s ? 'bg-primary-500' : 'bg-primary-200/60'
+                                            }`}
+                                        />
+                                    )}
+                                </React.Fragment>
+                            ))}
+                        </div>
+                    </div>
                     {step === 1 ? (
                         <AddCourseStep1
                             onNext={handleStep1Submit}

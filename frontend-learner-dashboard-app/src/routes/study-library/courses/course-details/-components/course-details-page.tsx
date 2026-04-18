@@ -1,5 +1,5 @@
 import { useRouter } from "@tanstack/react-router";
-import { CaretLeft } from "@phosphor-icons/react";
+import { CaretLeft, CaretDown, Info } from "@phosphor-icons/react";
 import { toTitleCase } from "@/lib/utils";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -2085,17 +2085,17 @@ export const CourseDetailsPage = () => {
                 /> */}
 
         {/* Main Content Container */}
-        <div className="relative z-10 w-full px-2 sm:px-0 py-3 lg:py-4">
+        <div className="relative z-10 w-full px-2 sm:px-0 py-2 lg:py-3">
           <div
             className={`grid grid-cols-1 ${
               hasRightSidebar ? "lg:grid-cols-3" : ""
-            } gap-3 lg:gap-4`}
+            } gap-3`}
           >
             {/* Left Column - Course Content (3/4) */}
             <div
               className={`${
                 hasRightSidebar ? "lg:col-span-2" : ""
-              } space-y-3 lg:space-y-4`}
+              } space-y-3`}
             >
               {/* Certificate Completion Banner - Show above course structure if threshold is met */}
               <CertificateCompletionBanner
@@ -2110,6 +2110,14 @@ export const CourseDetailsPage = () => {
                 }
                 percentageCompleted={completionPercentage}
                 threshold={certificateThreshold}
+              />
+
+              {/* Course highlights (collapsed by default). Sits above
+                  configuration so admin-authored overview copy is the first
+                  thing the learner sees after the banner, for both enrolled
+                  and not-enrolled cases. */}
+              <CourseDetailsCollapsible
+                courseData={form.getValues("courseData")}
               />
 
               {/* Course Enrollment Configuration */}
@@ -2173,25 +2181,12 @@ export const CourseDetailsPage = () => {
                 />
               </div>
 
-              {/* Content Sections with toggle on PROGRESS tab */}
-              {selectedTab === "PROGRESS" ? (
-                <div className="mt-4">
-                  <MoreDetailsToggle
-                    courseData={form.getValues("courseData")}
-                  />
-                </div>
-              ) : (
-                <CourseContentSections
-                  courseData={form.getValues("courseData")}
-                />
-              )}
             </div>
 
             {/* Right Column - Course Stats Sidebar (1/4) */}
             <div className="lg:col-span-1">
-              <div className="sticky top-24 self-start h-fit">
-                <div className="max-h-[calc(100vh-6rem)] overflow-auto pt-2">
-                  <CourseSidebar
+              <div className="sticky top-24 self-start">
+                <CourseSidebar
                     hasRightSidebar={hasRightSidebar}
                     levelOptions={levelOptions}
                     selectedLevel={selectedLevel}
@@ -2295,7 +2290,6 @@ export const CourseDetailsPage = () => {
                     }}
                     onRatingsLoadingChange={handleRatingsLoadingChange}
                   />
-                </div>
               </div>
             </div>
           </div>
@@ -2326,12 +2320,18 @@ type CourseDetailsForSections = {
   instructors: Array<{ name: string; email: string }>;
 };
 
-const MoreDetailsToggle = ({
+// Collapsible "Course details" panel rendered between the banner/enrollment
+// area and the course content list. Follows the Material Design expansion
+// panel pattern (https://m3.material.io): a full-width trigger row with a
+// rotating caret, aria-expanded for a11y, and an animated content region.
+// Hidden entirely when there's no admin-provided copy to show, so it never
+// appears as an empty control.
+const CourseDetailsCollapsible = ({
   courseData,
 }: {
   courseData: CourseDetailsForSections;
 }) => {
-  const [showMoreDetails, setShowMoreDetails] = useState<boolean>(false);
+  const [open, setOpen] = useState<boolean>(false);
   const hasWhatYoullLearn = !!extractTextFromHTML(courseData?.whatYoullLearn);
   const hasAboutTheCourse = !!extractTextFromHTML(courseData?.aboutTheCourse);
   const hasWhoShouldLearn = !!extractTextFromHTML(courseData?.whoShouldLearn);
@@ -2339,20 +2339,39 @@ const MoreDetailsToggle = ({
     hasWhatYoullLearn || hasAboutTheCourse || hasWhoShouldLearn;
 
   if (!hasAnyDetails) return null;
+
+  const contentId = "course-details-panel";
+
   return (
-    <div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setShowMoreDetails((v) => !v)}
+    <section
+      className="rounded-lg border border-border/60 bg-card shadow-sm overflow-hidden animate-fade-in-up"
+      style={{ animationDelay: "0.15s" }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={contentId}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
       >
-        {showMoreDetails ? "Hide details" : "More details"}
-      </Button>
-      {showMoreDetails && (
-        <div className="mt-3">
+        <span className="flex items-center gap-2 min-w-0">
+          <Info className="w-4 h-4 text-primary flex-shrink-0" weight="bold" />
+          <span className="text-sm font-semibold truncate">
+            {getTerminology(ContentTerms.Course, SystemTerms.Course)} highlights
+          </span>
+        </span>
+        <CaretDown
+          className={`w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform duration-200 ${
+            open ? "rotate-180" : "rotate-0"
+          }`}
+          weight="bold"
+        />
+      </button>
+      {open && (
+        <div id={contentId} className="px-4 pb-4 pt-1">
           <CourseContentSections courseData={courseData} />
         </div>
       )}
-    </div>
+    </section>
   );
 };

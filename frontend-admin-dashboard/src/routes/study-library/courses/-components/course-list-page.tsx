@@ -10,12 +10,14 @@ import {
 } from '@/components/ui/select';
 import { StarRatingComponent } from '@/components/common/star-rating-component';
 import { MyButton } from '@/components/design-system/button';
-import { TrashSimple, Funnel, X, Package, ListBullets } from '@phosphor-icons/react';
+import { TrashSimple, Funnel, X, Package, ListBullets, BookOpen } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { MyPagination } from '@/components/design-system/pagination';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { Eye, EyeSlash } from '@phosphor-icons/react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Badge } from '@/components/ui/badge';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -96,6 +98,7 @@ const CourseListPage = ({
     const navigate = useNavigate();
     const isMobile = useIsMobile();
     const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [isDesktopFilterOpen, setIsDesktopFilterOpen] = useState(false);
     const { instituteDetails } = useInstituteDetailsStore();
 
     const sessions = useMemo(
@@ -128,33 +131,43 @@ const CourseListPage = ({
         selectedFilters.session_ids.length;
 
     // Filter sidebar content - reused between mobile sheet and desktop sidebar
-    const FilterContent = () => (
+    const FilterContent = ({ onClose }: { onClose?: () => void } = {}) => (
         <div className="flex h-full flex-col gap-2">
-            <div className="mb-2 flex items-center justify-between">
-                <div className="text-base font-semibold">Filters</div>
-                {activeFilterCount > 0 && (
-                    <div className="flex gap-2">
+            <div className="mb-1 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Funnel size={16} className="text-neutral-500" />
+                    <div className="text-base font-semibold">Filters</div>
+                    {activeFilterCount > 0 && (
+                        <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                            {activeFilterCount}
+                        </Badge>
+                    )}
+                </div>
+                <div className="flex items-center gap-1">
+                    {activeFilterCount > 0 && (
                         <button
-                            className="text-xs font-medium text-primary-500 transition-transform hover:underline active:scale-95"
+                            className="rounded px-2 py-1 text-xs font-medium text-neutral-500 transition-colors hover:text-primary-500"
                             onClick={handleClearAll}
+                            type="button"
                         >
-                            Clear All
+                            Clear
                         </button>
+                    )}
+                    {onClose && (
                         <button
-                            className="hover:bg-primary-600 rounded bg-primary-500 px-3 py-1 text-xs font-medium text-white transition-transform active:scale-95"
-                            onClick={() => {
-                                handleApply();
-                                if (isMobile) setIsFilterOpen(false);
-                            }}
+                            className="rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+                            onClick={onClose}
+                            type="button"
+                            aria-label="Close filters"
                         >
-                            Apply
+                            <X size={16} />
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
             {/* Academic Session Filter — at top, only if >1 session */}
             {sessions.length > 1 && (
-                <>
+                <div className="mb-1">
                     <div className="mb-1 text-sm font-semibold">Academic Session</div>
                     <Select
                         value={selectedFilters.session_ids[0] ?? 'all'}
@@ -177,82 +190,138 @@ const CourseListPage = ({
                             ))}
                         </SelectContent>
                     </Select>
-                </>
+                </div>
             )}
-            <div className={`${sessions.length > 1 ? 'mt-4' : ''} mb-1 text-sm font-semibold`}>
-                {getTerminologyPlural(ContentTerms.Level, SystemTerms.Level)}
-            </div>
-            <div className="flex flex-col gap-2">
-                {levels.map((level: { id: string; name: string }) => (
-                    <label
-                        key={level.id}
-                        className="group flex cursor-pointer items-center gap-2"
-                    >
-                        <input
-                            type="checkbox"
-                            checked={selectedFilters.level_ids.includes(level.id)}
-                            onChange={() => handleLevelChange(level.id)}
-                            className="scale-110 accent-primary-500 transition-transform"
-                        />
-                        <span className="transition-colors group-hover:text-primary-500">
-                            {convertCapitalToTitleCase(level.name)}
-                        </span>
-                    </label>
-                ))}
-            </div>
-            {/* Tags Section */}
-            {tags.length > 0 && (
-                <>
-                    <div className="mb-1 mt-4 text-sm font-semibold">
-                        {getTerminology(ContentTerms.PopularTag, SystemTerms.PopularTag)}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        {tags.map((tagValue: string) => (
-                            <label
-                                key={tagValue}
-                                className="group flex cursor-pointer items-center gap-2"
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={selectedFilters.tag.includes(tagValue)}
-                                    onChange={() => handleTagChange(tagValue)}
-                                    className="scale-110 accent-primary-500 transition-transform"
-                                />
-                                <span className="transition-colors group-hover:text-primary-500">
-                                    {convertCapitalToTitleCase(tagValue)}
-                                </span>
-                            </label>
-                        ))}
-                    </div>
-                </>
-            )}
-            {/* Users Section */}
-            {Array.isArray(accessControlUsers) && accessControlUsers.length > 0 && (
-                <>
-                    <div className="mb-1 mt-4 text-sm font-semibold">
-                        {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        {(accessControlUsers as UserRolesDataEntry[]).map(
-                            (user: UserRolesDataEntry) => (
+            <Accordion type="multiple" defaultValue={[]} className="w-full">
+                <AccordionItem value="levels" className="border-b-0">
+                    <AccordionTrigger className="py-2 hover:no-underline">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold">
+                                {getTerminologyPlural(ContentTerms.Level, SystemTerms.Level)}
+                            </span>
+                            {selectedFilters.level_ids.length > 0 && (
+                                <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                    {selectedFilters.level_ids.length}
+                                </Badge>
+                            )}
+                        </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-2">
+                        <div className="flex flex-col gap-2">
+                            {levels.map((level: { id: string; name: string }) => (
                                 <label
-                                    key={user.id}
+                                    key={level.id}
                                     className="group flex cursor-pointer items-center gap-2"
                                 >
                                     <input
                                         type="checkbox"
-                                        checked={selectedFilters.faculty_ids.includes(user.id)}
-                                        onChange={() => handleUserChange(user.id)}
+                                        checked={selectedFilters.level_ids.includes(level.id)}
+                                        onChange={() => handleLevelChange(level.id)}
                                         className="scale-110 accent-primary-500 transition-transform"
                                     />
-                                    <span className="transition-colors group-hover:text-primary-500">
-                                        {user.full_name}
+                                    <span className="text-sm transition-colors group-hover:text-primary-500">
+                                        {convertCapitalToTitleCase(level.name)}
                                     </span>
                                 </label>
-                            )
-                        )}
-                    </div>
-                </>
+                            ))}
+                            {levels.length === 0 && (
+                                <div className="py-1 text-xs italic text-neutral-400">
+                                    No options available
+                                </div>
+                            )}
+                        </div>
+                    </AccordionContent>
+                </AccordionItem>
+
+                {tags.length > 0 && (
+                    <AccordionItem value="tags" className="border-b-0">
+                        <AccordionTrigger className="py-2 hover:no-underline">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold">
+                                    {getTerminology(ContentTerms.PopularTag, SystemTerms.PopularTag)}
+                                </span>
+                                {selectedFilters.tag.length > 0 && (
+                                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                        {selectedFilters.tag.length}
+                                    </Badge>
+                                )}
+                            </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-2">
+                            <div className="flex flex-col gap-2">
+                                {tags.map((tagValue: string) => (
+                                    <label
+                                        key={tagValue}
+                                        className="group flex cursor-pointer items-center gap-2"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedFilters.tag.includes(tagValue)}
+                                            onChange={() => handleTagChange(tagValue)}
+                                            className="scale-110 accent-primary-500 transition-transform"
+                                        />
+                                        <span className="text-sm transition-colors group-hover:text-primary-500">
+                                            {convertCapitalToTitleCase(tagValue)}
+                                        </span>
+                                    </label>
+                                ))}
+                            </div>
+                        </AccordionContent>
+                    </AccordionItem>
+                )}
+
+                {Array.isArray(accessControlUsers) && accessControlUsers.length > 0 && (
+                    <AccordionItem value="teachers" className="border-b-0">
+                        <AccordionTrigger className="py-2 hover:no-underline">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold">
+                                    {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
+                                </span>
+                                {selectedFilters.faculty_ids.length > 0 && (
+                                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                        {selectedFilters.faculty_ids.length}
+                                    </Badge>
+                                )}
+                            </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-2">
+                            <div className="flex flex-col gap-2">
+                                {(accessControlUsers as UserRolesDataEntry[]).map(
+                                    (user: UserRolesDataEntry) => (
+                                        <label
+                                            key={user.id}
+                                            className="group flex cursor-pointer items-center gap-2"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedFilters.faculty_ids.includes(user.id)}
+                                                onChange={() => handleUserChange(user.id)}
+                                                className="scale-110 accent-primary-500 transition-transform"
+                                            />
+                                            <span className="text-sm transition-colors group-hover:text-primary-500">
+                                                {user.full_name}
+                                            </span>
+                                        </label>
+                                    )
+                                )}
+                            </div>
+                        </AccordionContent>
+                    </AccordionItem>
+                )}
+            </Accordion>
+            {activeFilterCount > 0 && (
+                <div className="mt-auto border-t border-neutral-200 pt-3">
+                    <button
+                        className="hover:bg-primary-600 w-full rounded bg-primary-500 px-3 py-2 text-sm font-medium text-white transition-transform active:scale-95"
+                        onClick={() => {
+                            handleApply();
+                            if (isMobile) setIsFilterOpen(false);
+                        }}
+                        type="button"
+                    >
+                        Apply Filters
+                    </button>
+                </div>
             )}
         </div>
     );
@@ -282,16 +351,16 @@ const CourseListPage = ({
                                 <SheetHeader className="mb-4">
                                     <SheetTitle>Filter Courses</SheetTitle>
                                 </SheetHeader>
-                                <FilterContent />
+                                <FilterContent onClose={() => setIsFilterOpen(false)} />
                             </SheetContent>
                         </Sheet>
                     </div>
                 )}
 
-                {/* Desktop Filter Section - hidden for faculty users */}
-                {!hideFilters && (
-                    <div className="animate-fade-in hidden h-fit min-w-[240px] max-w-[260px] flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm lg:flex">
-                        <FilterContent />
+                {/* Desktop Filter Section - hidden for faculty users, togglable */}
+                {!hideFilters && isDesktopFilterOpen && (
+                    <div className="animate-fade-in sticky top-4 hidden h-fit min-w-[240px] max-w-[260px] flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm lg:flex">
+                        <FilterContent onClose={() => setIsDesktopFilterOpen(false)} />
                     </div>
                 )}
 
@@ -299,6 +368,22 @@ const CourseListPage = ({
                 <div className="animate-fade-in flex flex-1 flex-col gap-4">
                     {/* Search and Sort Row */}
                     <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        {/* Desktop Filter Toggle - only shown when filter panel is closed */}
+                        {!hideFilters && !isDesktopFilterOpen && (
+                            <button
+                                type="button"
+                                onClick={() => setIsDesktopFilterOpen(true)}
+                                className="hidden items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:border-primary-300 hover:bg-primary-50 lg:flex"
+                            >
+                                <Funnel size={16} />
+                                Filters
+                                {activeFilterCount > 0 && (
+                                    <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                                        {activeFilterCount}
+                                    </Badge>
+                                )}
+                            </button>
+                        )}
                         {/* Search Bar */}
                         <div className="relative flex-1 sm:max-w-xs">
                             {/* Search Icon */}
@@ -400,7 +485,13 @@ const CourseListPage = ({
                     </div>
 
                     {/* Course Grid - Responsive columns */}
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
+                    <div
+                        className={`grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 ${
+                            isDesktopFilterOpen
+                                ? 'lg:grid-cols-2 xl:grid-cols-3'
+                                : 'lg:grid-cols-3 xl:grid-cols-4'
+                        }`}
+                    >
                         {packageView && groupedCourses && groupedCourses.size > 0 ? (
                             Array.from(groupedCourses.entries()).map(([packageId, courseRows]) => {
                                 const course = courseRows[0]!;
@@ -422,18 +513,29 @@ const CourseListPage = ({
                                 return (
                                     <div
                                         key={packageId}
-                                        className="animate-fade-in group relative flex h-fit cursor-pointer flex-col rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-transform duration-500 hover:scale-[1.02] hover:shadow-md sm:hover:scale-[1.025]"
+                                        className="animate-fade-in group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
                                         onClick={() => navigate({ to: '/study-library/courses/course-details', search: { courseId: packageId, sessionId: course.session_id, levelId: course.level_id } })}
                                     >
-                                        {isLoadingImages ? (
-                                            <CourseImageShimmer />
-                                        ) : courseImageUrls[course.id] ? (
-                                            <div className="flex size-full w-full items-center justify-center overflow-hidden rounded-lg px-2 pb-0 pt-2 sm:px-3 sm:pt-4">
-                                                <img src={courseImageUrls[course.id] || course.thumbnail_file_id} alt={course.package_name} className="rounded-lg bg-white object-cover p-1 transition-transform duration-300 group-hover:scale-105 sm:p-2" />
-                                            </div>
-                                        ) : null}
-                                        <div className="flex flex-col gap-1 p-3 sm:p-4">
-                                            <div className="min-w-0 text-base font-extrabold text-neutral-800 sm:text-lg">
+                                        <div className="relative flex aspect-video w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
+                                            {isLoadingImages ? (
+                                                <CourseImageShimmer />
+                                            ) : courseImageUrls[course.id] ? (
+                                                <img
+                                                    src={courseImageUrls[course.id] || course.thumbnail_file_id}
+                                                    alt={course.package_name}
+                                                    className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                />
+                                            ) : (
+                                                <div className="flex flex-col items-center justify-center gap-1.5 p-3 text-center">
+                                                    <BookOpen size={32} weight="duotone" className="text-primary-400" />
+                                                    <span className="line-clamp-2 text-xs font-medium text-primary-600/80">
+                                                        {displayName}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-1 flex-col gap-1 p-3">
+                                            <div className="min-w-0 text-sm font-bold text-neutral-800 line-clamp-2">
                                                 {displayName}
                                             </div>
                                             {/* Level & Session badges */}
@@ -484,7 +586,7 @@ const CourseListPage = ({
                                             <span className="-mb-3 mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
                                                 {course.is_course_published_to_catalaouge ? (<><Eye className="size-4" /> In Catalog</>) : (<><EyeSlash className="size-4" /> Private</>)}
                                             </span>
-                                            <div className="mt-3 flex gap-2 sm:mt-4">
+                                            <div className="mt-auto flex gap-2 pt-3">
                                                 <MyButton className="flex-1 text-sm" buttonType="primary" onClick={(e) => { e.stopPropagation(); navigate({ to: '/study-library/courses/course-details', search: { courseId: packageId, sessionId: course.session_id, levelId: course.level_id } }); }}>
                                                     View {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                                                 </MyButton>
@@ -527,21 +629,32 @@ const CourseListPage = ({
                                 return (
                                     <div
                                         key={`${course.id}-${course.package_session_id}`}
-                                        className="animate-fade-in group relative flex h-fit cursor-pointer flex-col rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-transform duration-500 hover:scale-[1.02] hover:shadow-md sm:hover:scale-[1.025]"
+                                        className="animate-fade-in group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
                                         onClick={() => navigate({ to: '/study-library/courses/course-details', search: { courseId: course.id, sessionId: course.session_id, levelId: course.level_id } })}
                                     >
-                                        {isLoadingImages ? (
-                                            <CourseImageShimmer />
-                                        ) : courseImageUrls[course.id] ? (
-                                            <div className="flex size-full w-full items-center justify-center overflow-hidden rounded-lg px-2 pb-0 pt-2 sm:px-3 sm:pt-4">
-                                                <img src={courseImageUrls[course.id] || course.thumbnail_file_id} alt={course.package_name} className="rounded-lg bg-white object-cover p-1 transition-transform duration-300 group-hover:scale-105 sm:p-2" />
-                                            </div>
-                                        ) : null}
-                                        <div className="flex flex-col gap-1 p-3 sm:p-4">
+                                        <div className="relative flex aspect-video w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
+                                            {isLoadingImages ? (
+                                                <CourseImageShimmer />
+                                            ) : courseImageUrls[course.id] ? (
+                                                <img
+                                                    src={courseImageUrls[course.id] || course.thumbnail_file_id}
+                                                    alt={course.package_name}
+                                                    className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                />
+                                            ) : (
+                                                <div className="flex flex-col items-center justify-center gap-1.5 p-3 text-center">
+                                                    <BookOpen size={32} weight="duotone" className="text-primary-400" />
+                                                    <span className="line-clamp-2 text-xs font-medium text-primary-600/80">
+                                                        {displayName}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-1 flex-col gap-1 p-3">
                                             <div className="flex items-start justify-between gap-2">
-                                                <div className="min-w-0 flex-1 text-base font-extrabold text-neutral-800 sm:text-lg">{displayName}</div>
+                                                <div className="min-w-0 flex-1 text-sm font-bold text-neutral-800 line-clamp-2">{displayName}</div>
                                                 {!isDefaultName(course.level_name) && (
-                                                    <div className="flex-shrink-0 rounded-lg bg-gray-100 p-1 px-2 text-xs font-semibold text-gray-700">
+                                                    <div className="flex-shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700">
                                                         {convertCapitalToTitleCase(course.level_name)}
                                                     </div>
                                                 )}
@@ -584,7 +697,7 @@ const CourseListPage = ({
                                             <span className="-mb-3 mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
                                                 {course.is_course_published_to_catalaouge ? (<><Eye className="size-4" /> In Catalog</>) : (<><EyeSlash className="size-4" /> Private</>)}
                                             </span>
-                                            <div className="mt-3 flex gap-2 sm:mt-4">
+                                            <div className="mt-auto flex gap-2 pt-3">
                                                 <MyButton className="flex-1 text-sm" buttonType="primary" onClick={(e) => { e.stopPropagation(); navigate({ to: '/study-library/courses/course-details', search: { courseId: course.id, sessionId: course.session_id, levelId: course.level_id } }); }}>
                                                     View {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                                                 </MyButton>

@@ -136,6 +136,10 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
       showLearningPath: true,
       feedbackVisible: true,
       canAskDoubt: true,
+      // "breadcrumb" = legacy chapter-scoped slide list with cross-module
+      // navigation via breadcrumb popovers. Switch to "ancestors" to show
+      // the full Subject → Module → Chapter → Slide tree in the sidebar.
+      sidebarNavigation: "breadcrumb",
     },
   },
   courseSettings: {

@@ -58,6 +58,9 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     const [isSticky, setIsSticky] = useState(false);
     const [filterPanelWidth, setFilterPanelWidth] = useState(0);
     const [filterPanelLeft, setFilterPanelLeft] = useState(0);
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+    const activeFiltersCount = selectedLevels.length + selectedTags.length + selectedInstructors.length;
 
     // Smooth scroll on page change and dev log
     useEffect(() => {
@@ -169,11 +172,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
             <div
                 className={`flex flex-col lg:flex-row lg:items-start ${showFilters ? "gap-4 lg:gap-6" : ""} mx-auto relative`}
             >
-                {/* Sidebar - Only show if showFilters is true */}
+                {/* Sidebar — always rendered so mobile Sheet trigger is accessible */}
                 {showFilters && (
                     <>
                         {/* Spacer to maintain layout when filter panel becomes fixed */}
-                        {isSticky && (
+                        {isSticky && isFilterOpen && (
                             <div
                                 className="hidden lg:block flex-shrink-0"
                                 style={{ width: '20rem' }}
@@ -181,8 +184,13 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         )}
                         <aside
                             ref={filterPanelRef}
-                            className="w-full flex-shrink-0"
-                            style={{
+                            className={cn(
+                                "w-full flex-shrink-0",
+                                // Hide the desktop column when filter is closed;
+                                // mobile Sheet trigger inside is already lg:hidden so unaffected
+                                !isFilterOpen && "lg:hidden"
+                            )}
+                            style={isFilterOpen ? {
                                 position: isSticky ? 'fixed' : 'static',
                                 top: isSticky ? '5rem' : 'auto',
                                 left: isSticky ? `${filterPanelLeft}px` : 'auto',
@@ -191,9 +199,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 maxHeight: isSticky ? 'calc(100vh - 6rem)' : 'none',
                                 overflowY: isSticky ? 'auto' : 'visible',
                                 zIndex: isSticky ? 10 : 'auto'
-                            }}
+                            } : {}}
                         >
                             <FilterPanel
+                                isDesktopOpen={isFilterOpen}
+                                onClose={() => setIsFilterOpen(false)}
                                 selectedLevels={selectedLevels}
                                 onLevelChange={(id) =>
                                     toggleItem(
@@ -228,6 +238,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         onSearchChange={onSearchChange}
                         sortOption={sortOption}
                         onSortChange={onSortChange}
+                        showFilterToggle={showFilters}
+                        isFilterOpen={isFilterOpen}
+                        onFilterToggle={() => setIsFilterOpen((prev) => !prev)}
+                        activeFiltersCount={activeFiltersCount}
                     />
 
                     {isLoading ? (
@@ -242,7 +256,12 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         )}>
                             <div className="animate-pulse space-y-3 sm:space-y-4">
                                 <div className="h-4 bg-muted rounded w-1/3"></div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3 sm:gap-4">
+                                <div className={cn(
+                                    "grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4",
+                                    isFilterOpen
+                                        ? "lg:grid-cols-2 xl:grid-cols-3"
+                                        : "lg:grid-cols-3 xl:grid-cols-4"
+                                )}>
                                     {Array.from({ length: 4 }).map((_, i) => (
                                         <div key={i} className="bg-muted/10 border rounded-md p-3 sm:p-4">
                                             <div className="h-32 sm:h-36 bg-muted rounded mb-3"></div>
@@ -255,43 +274,45 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         </div>
                     ) : courseData.content.length === 0 ? (
                         <div className={cn(
-                            "bg-card border rounded-md shadow-sm p-5 sm:p-6 text-center",
-                            // Vibrant Styles
+                            "relative overflow-hidden bg-card border rounded-lg shadow-sm px-6 py-12 sm:py-16 text-center",
                             "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
                             "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
-                            // Play Styles — solid, bold, Duolingo-style
                             "[.ui-play_&]:!bg-primary-50 [.ui-play_&]:border-2 [.ui-play_&]:!border-primary-200 [.ui-play_&]:rounded-2xl",
                             "[.ui-play_&]:shadow-[0_4px_0_hsl(var(--primary-200))]"
                         )}>
-                            <div className={cn(
-                                "w-12 h-12 sm:w-16 sm:h-16 bg-muted rounded-md mx-auto mb-3 sm:mb-4 flex items-center justify-center",
-                                "[.ui-vibrant_&]:bg-primary/10",
-                                // Play Styles
-                                "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:rounded-xl"
-                            )}>
-                                <Search
-                                    size={20}
-                                    className={cn(
-                                        "text-muted-foreground sm:w-6 sm:h-6",
-                                        "[.ui-vibrant_&]:text-primary",
-                                        // Play Styles
-                                        "[.ui-play_&]:text-white"
-                                    )}
-                                />
+                            {/* Decorative background blobs */}
+                            <div className="pointer-events-none absolute -top-16 -left-10 w-48 h-48 rounded-full bg-primary-100/50 blur-3xl" aria-hidden="true" />
+                            <div className="pointer-events-none absolute -bottom-12 -right-8 w-40 h-40 rounded-full bg-primary-200/40 blur-3xl" aria-hidden="true" />
+
+                            <div className="relative">
+                                {/* Illustrated icon stack */}
+                                <div className="relative w-24 h-24 sm:w-28 sm:h-28 mx-auto mb-5">
+                                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary-100 to-primary-200 rotate-6 [.ui-play_&]:bg-[#58cc02]/30" aria-hidden="true" />
+                                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white to-primary-50 -rotate-3 border border-primary-100 flex items-center justify-center shadow-sm">
+                                        <Search
+                                            size={36}
+                                            className="text-primary-500 [.ui-play_&]:text-[#58cc02]"
+                                            strokeWidth={2.25}
+                                        />
+                                    </div>
+                                </div>
+                                <h3 className="text-lg sm:text-xl font-bold text-foreground mb-2">
+                                    No{" "}
+                                    {getTerminology(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ).toLocaleLowerCase()}
+                                    s found
+                                </h3>
+                                <p className="text-muted-foreground text-sm max-w-md mx-auto leading-relaxed">
+                                    We couldn&apos;t find anything matching your search. Try different keywords, adjust your filters, or clear them to see all available{" "}
+                                    {getTerminology(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ).toLocaleLowerCase()}
+                                    s.
+                                </p>
                             </div>
-                            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">
-                                No{" "}
-                                {getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                ).toLocaleLowerCase()}
-                                s found
-                            </h3>
-                            <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                                Try adjusting your search criteria or browse our
-                                popular categories to discover learning
-                                opportunities.
-                            </p>
                         </div>
                     ) : (
                         <div className="space-y-3 sm:space-y-4">
@@ -305,17 +326,24 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 s • Page {courseData.number + 1}/{courseData.totalPages} • Showing {courseData.numberOfElements} of {courseData.totalElements}
                             </div>
 
-                            {/* Course Grid */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-3 sm:gap-4">
+                            {/* Course Grid — extra column at xl so wide
+                                viewports show one more card per row without
+                                making the cards feel cramped on lg laptops. */}
+                            <div className={cn(
+                                "grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4",
+                                isFilterOpen
+                                    ? "lg:grid-cols-2 xl:grid-cols-3"
+                                    : "lg:grid-cols-3 xl:grid-cols-4"
+                            )}>
                                 {courseData.content.map((course, index) => {
                                     return (
                                         <CourseCard
                                             key={`${course.id || "no-id"}-${index}`}
                                             courseId={course.id}
-                                            package_name={toTitleCase(
+                                            package_name={
                                                 course.package_name ||
                                                 "Untitled Package"
-                                            )}
+                                            }
                                             level_name={toTitleCase(
                                                 course.level_name || "Beginner"
                                             )}

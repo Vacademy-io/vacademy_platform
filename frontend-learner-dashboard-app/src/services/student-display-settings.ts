@@ -184,6 +184,9 @@ function mergeWithDefaults(
         canAskDoubt:
           incoming?.courseDetails?.slidesView?.canAskDoubt ??
           d.courseDetails.slidesView.canAskDoubt,
+        sidebarNavigation:
+          incoming?.courseDetails?.slidesView?.sidebarNavigation ??
+          d.courseDetails.slidesView.sidebarNavigation,
       },
     },
     allCourses: {

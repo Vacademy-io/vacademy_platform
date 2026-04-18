@@ -20,7 +20,7 @@ import { TokenKey } from "@/constants/auth/tokens";
 import { SystemAlertsBar } from "@/components/announcements";
 import { handleGetPublicInstituteDetails } from "../services/navbar-services";
 import { useRouter, useRouterState } from "@tanstack/react-router";
-import { ArrowLeft } from "@phosphor-icons/react";
+import { ArrowLeft, House } from "@phosphor-icons/react";
 import { getInstituteLogoQuery } from "@/services/institute-logo";
 import { useIsIOS } from "@/hooks/useIsIOS";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
@@ -138,6 +138,14 @@ export function Navbar() {
     }
   };
 
+  const handleGoHome = () => {
+    if (homeIconClickRoute) {
+      window.location.href = homeIconClickRoute;
+    } else {
+      router.navigate({ to: "/dashboard" });
+    }
+  };
+
   const handleGoBack = () => {
     router.history.back();
   };
@@ -190,7 +198,27 @@ export function Navbar() {
               <TooltipContent
                 className="bg-primary-400 text-white"
                 side="bottom"
-              ></TooltipContent>
+              >
+                Go back
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {!isDashboard && (
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleGoHome}
+                  className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+                >
+                  <House className="w-4 h-4 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                className="bg-primary-400 text-white"
+                side="bottom"
+              >
+                Home
+              </TooltipContent>
             </Tooltip>
           )}
           {showSidebarControls && (
@@ -221,14 +249,22 @@ export function Navbar() {
                         className={`h-8 md:h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm${
                           homeIconClickRoute ? " cursor-pointer" : ""
                         }`}
-                        onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                        onClick={
+                          homeIconClickRoute
+                            ? handleInstituteLogoClick
+                            : undefined
+                        }
                       />
                     ) : (
                       <div
                         className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200${
                           homeIconClickRoute ? " cursor-pointer" : ""
                         }`}
-                        onClick={homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                        onClick={
+                          homeIconClickRoute
+                            ? handleInstituteLogoClick
+                            : undefined
+                        }
                       >
                         {(subOrgName[0] || "S").toUpperCase()}
                       </div>
@@ -238,11 +274,19 @@ export function Navbar() {
                         {subOrgName}
                       </span>
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] text-muted-foreground">Powered by</span>
+                        <span className="text-[9px] text-muted-foreground">
+                          Powered by
+                        </span>
                         {instituteLogoFileUrl ? (
-                          <img src={instituteLogoFileUrl} alt={instituteName} className="h-3 w-auto max-w-[60px] object-contain" />
+                          <img
+                            src={instituteLogoFileUrl}
+                            alt={instituteName}
+                            className="h-3 w-auto max-w-[60px] object-contain"
+                          />
                         ) : (
-                          <span className="text-[9px] font-medium text-muted-foreground">{instituteName}</span>
+                          <span className="text-[9px] font-medium text-muted-foreground">
+                            {instituteName}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -255,7 +299,9 @@ export function Navbar() {
                         src={instituteLogoFileUrl}
                         alt={instituteName || "Institute"}
                         onClick={
-                          homeIconClickRoute ? handleInstituteLogoClick : undefined
+                          homeIconClickRoute
+                            ? handleInstituteLogoClick
+                            : undefined
                         }
                         className={`h-8 md:h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm${
                           homeIconClickRoute ? " cursor-pointer" : ""
@@ -267,7 +313,9 @@ export function Navbar() {
                           homeIconClickRoute ? " cursor-pointer" : ""
                         }`}
                         onClick={
-                          homeIconClickRoute ? handleInstituteLogoClick : undefined
+                          homeIconClickRoute
+                            ? handleInstituteLogoClick
+                            : undefined
                         }
                       >
                         {(instituteName?.[0] || "I").toUpperCase()}
@@ -307,6 +355,16 @@ export function Navbar() {
 
       {/* Left Section */}
       <div className="flex items-center gap-2 md:gap-4 shrink-0">
+        {showSidebarControls && (
+          <SidebarTrigger>
+            <div
+              onClick={() => {}}
+              className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+            >
+              <FiSidebar className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
+            </div>
+          </SidebarTrigger>
+        )}
         {canGoBack && !isDashboard && (
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
@@ -317,21 +375,25 @@ export function Navbar() {
                 <ArrowLeft className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
               </button>
             </TooltipTrigger>
-            <TooltipContent
-              className="bg-primary-400 text-white"
-              side="bottom"
-            ></TooltipContent>
+            <TooltipContent className="bg-primary-400 text-white" side="bottom">
+              Go back
+            </TooltipContent>
           </Tooltip>
         )}
-        {showSidebarControls && (
-          <SidebarTrigger>
-            <div
-              onClick={() => {}}
-              className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
-            >
-              <FiSidebar className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
-            </div>
-          </SidebarTrigger>
+        {!isDashboard && (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleGoHome}
+                className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+              >
+                <House className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="bg-primary-400 text-white" side="bottom">
+              Home
+            </TooltipContent>
+          </Tooltip>
         )}
 
         {!(

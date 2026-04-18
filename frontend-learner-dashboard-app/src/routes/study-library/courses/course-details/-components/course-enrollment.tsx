@@ -110,6 +110,54 @@ export const CourseEnrollment = ({
     (enrolledSession) => enrolledSession.package_dto.id === courseId,
   );
 
+  // Decide whether the card body would render anything meaningful — if not,
+  // hide the entire card so we don't show a header with nothing under it.
+  // Most commonly triggered when both session and level are the backend's
+  // "Default" placeholder, no batch picker is needed, and there's nothing
+  // tab-specific (preview notice / enroll CTA) to render either.
+  const safeSessionOptions = sessionOptions || [];
+  const sessionLabel = safeSessionOptions.find(
+    (o) => o.value === selectedSession,
+  )?.label;
+  const levelLabel = (levelOptions || []).find(
+    (o) => o.value === selectedLevel,
+  )?.label;
+  const isDefault = (n: string | null | undefined) =>
+    !n || n.trim().toLowerCase() === "default";
+  const showSessionField = !!sessionLabel && !isDefault(sessionLabel);
+  const showLevelField = !!levelLabel && !isDefault(levelLabel);
+  const showBatchPicker =
+    shouldShowBatchDropdown &&
+    (batchOptions || []).length > 0 &&
+    !!selectedSession &&
+    !!selectedLevel;
+  const showPreviewNotice =
+    safeSessionOptions.length > 0 &&
+    selectedTab === "ALL" &&
+    !isEnrolledInCourse;
+  const showNoSessionsWarning = safeSessionOptions.length === 0;
+  const isAlreadyEnrolledInCurrent = safeEnrolledSessions.some(
+    (enrolledSession) =>
+      enrolledSession.package_dto.id === courseId &&
+      enrolledSession.session.id === selectedSession &&
+      enrolledSession.level.id === selectedLevel &&
+      (!selectedBatchId || enrolledSession.id === selectedBatchId),
+  );
+  const showInlineEnroll =
+    !hasRightSidebar &&
+    selectedTab === "ALL" &&
+    !!selectedSession &&
+    !!selectedLevel &&
+    !isAlreadyEnrolledInCurrent;
+  const hasAnythingToShow =
+    showSessionField ||
+    showLevelField ||
+    showBatchPicker ||
+    showPreviewNotice ||
+    showNoSessionsWarning ||
+    showInlineEnroll;
+  if (!hasAnythingToShow) return null;
+
   return (
     <Card
       className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg animate-fade-in-up border-border/60"
@@ -121,28 +169,28 @@ export const CourseEnrollment = ({
       {/* Floating orb effect */}
       <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3 pointer-events-none"></div>
 
-      <CardHeader className="pb-3 md:pb-4 space-y-0">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-primary/10 rounded-lg shadow-sm ring-1 ring-primary/20">
+      <CardHeader className="p-3 pb-2 space-y-0">
+        <div className="flex items-center space-x-2">
+          <div className="p-1 bg-primary/10 rounded-md shadow-sm ring-1 ring-primary/20">
             <GraduationCap
-              size={20}
+              size={16}
               className="text-primary"
               weight="duotone"
             />
           </div>
-          <CardTitle className="text-base md:text-lg font-bold">
+          <CardTitle className="text-sm font-bold">
             {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
             Configuration
           </CardTitle>
         </div>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="p-3 pt-0">
         {sessionOptions && sessionOptions.length > 0 ? (
-          <div className="space-y-4">
+          <div className="space-y-2.5">
             {/* Preview notice for ALL tab - only show if user is not enrolled */}
             {selectedTab === "ALL" && !isEnrolledInCourse && (
-              <div className="p-3 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
+              <div className="p-2 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md text-sm">
                 <div className="flex items-center space-x-2 text-blue-700 dark:text-blue-300 font-medium mb-1">
                   <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                   <span>
@@ -167,7 +215,8 @@ export const CourseEnrollment = ({
                 const sessionLabel = sessionOptions.find(
                   (o) => o.value === selectedSession,
                 )?.label;
-                return sessionLabel && sessionLabel !== "default" ? (
+                return sessionLabel &&
+                  sessionLabel.toLowerCase() !== "default" ? (
                   <StaticField
                     label={getTerminology(
                       ContentTerms.Session,
@@ -183,7 +232,8 @@ export const CourseEnrollment = ({
                 const levelLabel = levelOptions.find(
                   (o) => o.value === selectedLevel,
                 )?.label;
-                return levelLabel && levelLabel !== "default" ? (
+                return levelLabel &&
+                  levelLabel.toLowerCase() !== "default" ? (
                   <StaticField
                     label={getTerminology(
                       ContentTerms.Level,

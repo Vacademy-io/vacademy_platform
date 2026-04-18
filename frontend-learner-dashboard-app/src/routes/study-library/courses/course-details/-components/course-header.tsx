@@ -1,177 +1,185 @@
+import { useEffect, useRef, useState } from "react";
 import { cn, toTitleCase } from "@/lib/utils";
 import { VideoPlayer } from "../components/media/video-player";
 import { Badge } from "@/components/ui/badge";
 import { playIllustrations } from "@/assets/play-illustrations";
 
 interface CourseHeaderProps {
-    courseData: {
-        title: string;
-        description: string;
-        tags: string[];
-        courseBannerMediaId: string;
-        courseMediaId: string;
-    };
-    showConfetti?: boolean;
+  courseData: {
+    title: string;
+    description: string;
+    tags: string[];
+    courseBannerMediaId: string;
+    courseMediaId: string;
+  };
+  showConfetti?: boolean;
 }
 
-export const CourseHeader = ({ courseData, showConfetti = false }: CourseHeaderProps) => {
-    return (
-        <div className="relative w-full min-h-[220px] sm:min-h-[260px] lg:min-h-[340px] overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5 bg-background">
-            {/* Background Image or Neutral Fallback */}
-            {!courseData.courseBannerMediaId ? (
-                <div className="absolute inset-0 z-0 bg-muted" />
-            ) : (
-                <div className="absolute inset-0 z-0">
-                    <img
-                        src={courseData.courseBannerMediaId}
-                        alt="Course Banner"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                            e.currentTarget.parentElement?.classList.add(
-                                "bg-muted"
-                            );
-                        }}
-                    />
-                </div>
-            )}
+export const CourseHeader = ({
+  courseData,
+  showConfetti = false,
+}: CourseHeaderProps) => {
+  const isImageUrl = (url: string) =>
+    /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?.*)?$/i.test(url);
+  const hasVideo =
+    !!courseData.courseMediaId && !isImageUrl(courseData.courseMediaId);
+  const hasBanner =
+    !!courseData.courseBannerMediaId ||
+    (!!courseData.courseMediaId && isImageUrl(courseData.courseMediaId));
+  const bannerSrc = courseData.courseBannerMediaId ||
+    (isImageUrl(courseData.courseMediaId) ? courseData.courseMediaId : "");
+  // Banner aspect ratio is read off the loaded image so the container fits
+  // the natural shape exactly — `object-cover` against a fixed height was
+  // cropping the sides/top of admin-uploaded banners. Default to 16/9 while
+  // the image is loading so layout doesn't jump too much.
+  const [bannerAspectRatio, setBannerAspectRatio] = useState<number>(16 / 9);
+  const [isDescExpanded, setIsDescExpanded] = useState(false);
+  const [isDescClamped, setIsDescClamped] = useState(false);
+  const descRef = useRef<HTMLDivElement>(null);
 
-            {/* Neutral overlay for readability */}
-            <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/60 via-black/40 to-black/30 backdrop-blur-[1px]" />
+  useEffect(() => {
+    const el = descRef.current;
+    if (!el) return;
+    setIsDescClamped(el.scrollHeight > el.clientHeight);
+  }, [courseData.description]);
 
-            {/* Optional celebratory overlay */}
-            {showConfetti && (
-                <div className="absolute inset-0 z-30 pointer-events-none">
-                    <div className="absolute inset-0 bg-white/10 animate-pulse" />
-                </div>
-            )}
-
-            {/* Content Container */}
-            <div className="relative z-20 h-full">
-                <div className="h-full flex items-center py-6 sm:py-8">
-                    {courseData.courseMediaId ? (
-                        // Layout with video - 3/5 and 2/5 split
-                        <div className="w-full grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8 items-center container mx-auto px-4 sm:px-6 lg:px-8">
-                            {/* Left side - Course Info (3/5) */}
-                            <div className="lg:col-span-3 animate-fade-in-up">
-                                {!courseData.title ? (
-                                    <div className="space-y-4">
-                                        <div className="h-6 w-24 animate-pulse rounded bg-white/20" />
-                                        <div className="h-10 w-4/5 animate-pulse rounded bg-white/20" />
-                                        <div className="space-y-2">
-                                            <div className="h-4 w-full animate-pulse rounded bg-white/20" />
-                                            <div className="h-4 w-3/4 animate-pulse rounded bg-white/20" />
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className={cn(
-                                        "bg-background/95 backdrop-blur-md rounded-xl p-6 shadow-sm border border-border/50 text-foreground text-left ring-1 ring-black/5",
-                                        // Vibrant Styles - Flat Pastel
-                                        "[.ui-vibrant_&]:bg-slate-50/95 dark:[.ui-vibrant_&]:bg-slate-900/95",
-                                        "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
-                                        "[.ui-vibrant_&]:shadow-md",
-                                        // Play Styles
-                                        "[.ui-play_&]:rounded-2xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20",
-                                        "[.ui-play_&]:shadow-[0_6px_0_hsl(var(--primary-200))]"
-                                    )}>
-                                        {/* Tags */}
-                                        <div className="mb-4 flex flex-wrap gap-2">
-                                            {courseData.tags.map((tag, index) => (
-                                                <Badge
-                                                    key={index}
-                                                    variant="secondary"
-                                                    className={cn(
-                                                        "uppercase tracking-wide text-[10px] sm:text-xs font-semibold px-2.5 py-1",
-                                                        // Vibrant Styles - Flat Pastel
-                                                        "[.ui-vibrant_&]:bg-sky-100/50 [.ui-vibrant_&]:text-sky-700 dark:[.ui-vibrant_&]:bg-sky-900/30 dark:[.ui-vibrant_&]:text-sky-300",
-                                                        "[.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:border-sky-800/30 [.ui-vibrant_&]:border",
-                                                        // Play Styles
-                                                        "[.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:border-2"
-                                                    )}
-                                                >
-                                                    {tag}
-                                                </Badge>
-                                            ))}
-                                        </div>
-
-                                        {/* Title */}
-                                        <h1 className={cn(
-                                            "text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 leading-tight tracking-tight",
-                                            // Vibrant Styles - Flat Pastel
-                                            "[.ui-vibrant_&]:text-slate-900 dark:[.ui-vibrant_&]:text-slate-50"
-                                        )}>
-                                            {toTitleCase(courseData.title)}
-                                        </h1>
-
-                                        {/* Description */}
-                                        <div
-                                            className="text-sm sm:text-base text-muted-foreground leading-relaxed line-clamp-3"
-                                            dangerouslySetInnerHTML={{
-                                                __html: courseData.description || "",
-                                            }}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Right side - Video Player (2/5) */}
-                            <div
-                                className="lg:col-span-2 animate-fade-in-up"
-                                style={{ animationDelay: "0.2s" }}
-                            >
-                                <div className="rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 bg-black/50 aspect-video">
-                                    <VideoPlayer src={courseData.courseMediaId} />
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        // Layout without video - full width
-                        <div className="w-full animate-fade-in-up container mx-auto px-4 sm:px-6 lg:px-8">
-                            {!courseData.title ? (
-                                <div className="space-y-4 max-w-3xl">
-                                    <div className="h-6 w-32 animate-pulse rounded bg-white/20" />
-                                    <div className="h-12 w-3/4 animate-pulse rounded bg-white/20" />
-                                    <div className="space-y-2">
-                                        <div className="h-4 w-full animate-pulse rounded bg-white/20" />
-                                        <div className="h-4 w-2/3 animate-pulse rounded bg-white/20" />
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="max-w-5xl">
-                                    <div className="bg-background/95 backdrop-blur-md rounded-xl p-6 sm:p-8 shadow-sm border border-border/50 text-foreground text-left ring-1 ring-black/5">
-                                        {/* Tags */}
-                                        <div className="mb-4 flex flex-wrap gap-2">
-                                            {courseData.tags.map((tag, index) => (
-                                                <Badge
-                                                    key={index}
-                                                    variant="secondary"
-                                                    className="uppercase tracking-wide text-[10px] sm:text-xs font-semibold px-2.5 py-1"
-                                                >
-                                                    {tag}
-                                                </Badge>
-                                            ))}
-                                        </div>
-
-                                        {/* Title */}
-                                        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 leading-tight tracking-tight">
-                                            {toTitleCase(courseData.title)}
-                                        </h1>
-
-                                        {/* Description */}
-                                        <div
-                                            className="text-base sm:text-lg text-muted-foreground leading-relaxed line-clamp-4 max-w-3xl"
-                                            dangerouslySetInnerHTML={{
-                                                __html: courseData.description || "",
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
-            <playIllustrations.Learning className="hidden [.ui-play_&]:!block absolute bottom-2 right-2 h-28 w-auto pointer-events-none text-primary-300 opacity-30 z-20" />
+  return (
+    <div className="relative w-full bg-background">
+      {/* Optional celebratory overlay */}
+      {showConfetti && (
+        <div className="pointer-events-none absolute inset-0 z-30">
+          <div className="absolute inset-0 animate-pulse bg-primary-100/10" />
         </div>
-    );
+      )}
+
+      <div className="px-2 py-3 sm:px-0 lg:py-4">
+        {!courseData.title ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-center">
+            <div className="space-y-3 animate-fade-in-up">
+              <div className="h-5 w-24 animate-pulse rounded bg-muted" />
+              <div className="h-10 w-4/5 animate-pulse rounded bg-muted" />
+              <div className="space-y-2">
+                <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+              </div>
+            </div>
+            <div className="hidden lg:block h-48 w-full rounded-xl bg-muted animate-pulse" />
+          </div>
+        ) : (
+          <div
+            className={cn(
+              "grid grid-cols-1 gap-6 items-center",
+              (hasVideo || hasBanner) && "lg:grid-cols-2 lg:gap-10",
+            )}
+          >
+            {/* Text Content */}
+            <div className="animate-fade-in-up space-y-3 sm:space-y-4">
+              {/* Tags */}
+              {courseData.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {courseData.tags.map((tag, index) => (
+                    <Badge
+                      key={index}
+                      variant="secondary"
+                      className={cn(
+                        "uppercase tracking-wide text-[10px] sm:text-xs font-semibold px-2.5 py-1",
+                        // Vibrant Styles - Flat Pastel
+                        "[.ui-vibrant_&]:bg-sky-100/50 [.ui-vibrant_&]:text-sky-700 dark:[.ui-vibrant_&]:bg-sky-900/30 dark:[.ui-vibrant_&]:text-sky-300",
+                        "[.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:border-sky-800/30 [.ui-vibrant_&]:border",
+                        // Play Styles
+                        "[.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:border-2",
+                      )}
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {/* Title */}
+              <h1
+                className={cn(
+                  "text-xl sm:text-2xl lg:text-3xl font-bold leading-tight tracking-tight text-foreground",
+                  "[.ui-vibrant_&]:text-slate-900 dark:[.ui-vibrant_&]:text-slate-50",
+                )}
+              >
+                {courseData.title}
+              </h1>
+
+              {/* Description */}
+              {courseData.description && (
+                <div>
+                  <div
+                    ref={descRef}
+                    className={cn(
+                      "text-sm sm:text-base text-muted-foreground leading-relaxed",
+                      !isDescExpanded && "line-clamp-4"
+                    )}
+                    dangerouslySetInnerHTML={{ __html: courseData.description }}
+                  />
+                  {(isDescClamped || isDescExpanded) && (
+                    <button
+                      onClick={() => setIsDescExpanded((prev) => !prev)}
+                      className="mt-1 text-sm font-medium text-primary hover:underline focus:outline-none"
+                    >
+                      {isDescExpanded ? "View less" : "View more"}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Media Section — Video or Banner on right.
+                The VideoPlayer manages its own aspect ratio (matches the
+                video's natural width/height once metadata loads), so the
+                wrapper here just provides width and visual chrome — no
+                forced `aspect-video` that would crop portrait clips. */}
+            {hasVideo ? (
+              <div
+                className="w-full animate-fade-in-up"
+                style={{ animationDelay: "0.15s" }}
+              >
+                <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10">
+                  <VideoPlayer src={courseData.courseMediaId} />
+                </div>
+              </div>
+            ) : hasBanner ? (
+              <div
+                className="w-full animate-fade-in-up"
+                style={{ animationDelay: "0.15s" }}
+              >
+                <div
+                  className="relative w-full mx-auto overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5 border border-border/50 bg-muted"
+                  // `maxHeight` caps very tall (portrait) banners so they
+                  // don't push the page height absurdly far — the container
+                  // shrinks in width proportionally instead, keeping the
+                  // image's natural ratio intact.
+                  style={{ aspectRatio: bannerAspectRatio, maxHeight: "60vh" }}
+                >
+                  <img
+                    src={bannerSrc}
+                    alt={toTitleCase(courseData.title || "Course Banner")}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      if (img.naturalWidth && img.naturalHeight) {
+                        setBannerAspectRatio(
+                          img.naturalWidth / img.naturalHeight
+                        );
+                      }
+                    }}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <playIllustrations.Learning className="pointer-events-none absolute bottom-2 right-2 z-20 hidden h-28 w-auto text-primary-300 opacity-30 [.ui-play_&]:!block" />
+    </div>
+  );
 };

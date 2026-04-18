@@ -73,38 +73,49 @@ const roundUpToNearest15 = (minutes: number): number => {
   return Math.ceil(minutes / 15) * 15;
 };
 
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 60 * 24; // 1440
+const MINUTES_PER_WEEK = MINUTES_PER_DAY * 7; // 10080
+const MINUTES_PER_MONTH = MINUTES_PER_DAY * 30; // 43200 (approx.)
+
+// Break raw minutes down into months/weeks/days/hours/minutes and return
+// the top two most-significant non-zero units so the label stays concise.
+// e.g. 45 -> "45m" · 90 -> "1h 30m" · 2880 -> "2d" · 15000 -> "1w 3d"
+const cascadeFormat = (minutes: number): string => {
+  if (!minutes || minutes <= 0) return "0m";
+
+  const months = Math.floor(minutes / MINUTES_PER_MONTH);
+  let remainder = minutes % MINUTES_PER_MONTH;
+  const weeks = Math.floor(remainder / MINUTES_PER_WEEK);
+  remainder = remainder % MINUTES_PER_WEEK;
+  const days = Math.floor(remainder / MINUTES_PER_DAY);
+  remainder = remainder % MINUTES_PER_DAY;
+  const hours = Math.floor(remainder / MINUTES_PER_HOUR);
+  const mins = Math.round(remainder % MINUTES_PER_HOUR);
+
+  const parts: string[] = [];
+  if (months) parts.push(`${months}mo`);
+  if (weeks) parts.push(`${weeks}w`);
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (mins) parts.push(`${mins}m`);
+
+  if (parts.length === 0) return "0m";
+  return parts.slice(0, 2).join(" ");
+};
+
 export const formatMinutesHuman = (minutes: number): string => {
   if (!minutes || minutes <= 0) return "0m";
-  
-  // Round up to nearest 15-minute interval
-  const roundedMinutes = roundUpToNearest15(minutes);
-  
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  
-  if (hours > 0) {
-    if (mins === 0) {
-      return `${hours}h`;
-    }
-    return `${hours}h ${mins}m`;
-  }
-  return `${mins}m`;
+  // Round up small durations to nearest 15-minute interval for cleaner UX;
+  // long durations (>= 1h) stay precise since cascadeFormat already picks
+  // the two biggest units and minute noise gets dropped naturally.
+  const normalized = minutes < MINUTES_PER_HOUR ? roundUpToNearest15(minutes) : minutes;
+  return cascadeFormat(normalized);
 };
 
 // Format minutes without rounding (for exact backend data)
 export const formatMinutesExact = (minutes: number): string => {
-  if (!minutes || minutes <= 0) return "0m";
-  
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  
-  if (hours > 0) {
-    if (mins === 0) {
-      return `${hours}h`;
-    }
-    return `${hours}h ${mins}m`;
-  }
-  return `${mins}m`;
+  return cascadeFormat(minutes);
 };
 
 export const formatTotalCourseDuration = (entries: SlideCountEntry[] | undefined | null): string => {

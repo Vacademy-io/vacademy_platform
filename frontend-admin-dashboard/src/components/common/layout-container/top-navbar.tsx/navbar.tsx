@@ -205,8 +205,8 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
             const logoId = subOrgInstituteDetails?.institute_logo_file_id
                 ? subOrgInstituteDetails.institute_logo_file_id
                 : getEffectiveInstituteLogoFileId(
-                    instituteDetails?.institute_logo_file_id ?? undefined
-                );
+                      instituteDetails?.institute_logo_file_id ?? undefined
+                  );
             if (logoId && typeof logoId === 'string') {
                 getPublicUrl(logoId).then((url) => {
                     setInstituteLogo(url || '');
@@ -228,7 +228,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const effectiveInstituteName = subOrgInstituteDetails?.institute_name
         ? subOrgInstituteDetails.institute_name
         : getEffectiveInstituteName(instituteDetails?.institute_name) ??
-        instituteDetails?.institute_name;
+          instituteDetails?.institute_name;
 
     const isPartnershipLinkage = getSelectedSubOrgLinkageType() === 'PARTNERSHIP';
     const [mainInstituteLogoUrl, setMainInstituteLogoUrl] = useState<string>('');
@@ -260,7 +260,10 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
         macAppLink,
         learnerPortalUrl,
         instructorPortalUrl,
-    ].some((link) => !!link);
+    ].some((link) => {
+        console.log(link);
+        return !!link;
+    });
 
     const ensureProtocol = (url: string | null | undefined) => {
         if (!url) return undefined;
@@ -322,8 +325,10 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             {effectiveInstituteName ? (
                                 <span
                                     className={cn(
-                                        'min-w-0 break-words font-semibold text-neutral-800 line-clamp-2',
-                                        isCompact ? 'max-w-[140px] text-sm' : 'max-w-[220px] text-sm md:max-w-[260px] md:text-base'
+                                        'line-clamp-2 min-w-0 break-words font-semibold text-neutral-800',
+                                        isCompact
+                                            ? 'max-w-[140px] text-sm'
+                                            : 'max-w-[220px] text-sm md:max-w-[260px] md:text-base'
                                     )}
                                     title={effectiveInstituteName as string}
                                 >
@@ -338,7 +343,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                     instituteLogo && (isCompact ? 'ml-9' : 'ml-12')
                                 )}
                             >
-                                <span className="text-[10px] font-medium text-neutral-500 md:text-xs whitespace-nowrap">
+                                <span className="whitespace-nowrap text-[10px] font-medium text-neutral-500 md:text-xs">
                                     Powered by
                                 </span>
                                 {mainInstituteLogoUrl ? (
@@ -346,12 +351,12 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                         <img
                                             src={mainInstituteLogoUrl}
                                             alt={instituteDetails.institute_name}
-                                            className="h-5 w-auto object-contain max-w-[80px]"
+                                            className="h-5 w-auto max-w-[80px] object-contain"
                                             aria-hidden
                                         />
                                     </div>
                                 ) : (
-                                    <span className="text-[10px] font-bold text-neutral-700 md:text-xs truncate max-w-[150px]">
+                                    <span className="max-w-[150px] truncate text-[10px] font-bold text-neutral-700 md:text-xs">
                                         {instituteDetails.institute_name}
                                     </span>
                                 )}
@@ -423,100 +428,100 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                 appStoreAppLink ||
                                 windowsAppLink ||
                                 macAppLink) && (
-                                    <div>
-                                        {finalInstructorPortalUrl && <Separator className="my-1" />}
-                                        <div className="my-1 px-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                                            Learner Section
-                                        </div>
-                                        <div className="grid grid-cols-4 gap-2 px-2 py-1">
-                                            {finalLearnerPortalUrl && (
-                                                <a
-                                                    href={finalLearnerPortalUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                                    title="Learner Portal"
-                                                >
-                                                    <Student
-                                                        className="size-6 text-primary-500"
-                                                        weight="fill"
-                                                    />
-                                                    <span className="text-center text-[10px] leading-tight text-neutral-600">
-                                                        Portal
-                                                    </span>
-                                                </a>
-                                            )}
-                                            {playStoreAppLink && (
-                                                <a
-                                                    href={playStoreAppLink}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                                    title="Google Play Store"
-                                                >
-                                                    <AndroidLogo
-                                                        className="size-6 text-green-600"
-                                                        weight="fill"
-                                                    />
-                                                    <span className="text-[10px] text-neutral-600">
-                                                        Android
-                                                    </span>
-                                                </a>
-                                            )}
-                                            {appStoreAppLink && (
-                                                <a
-                                                    href={appStoreAppLink}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                                    title="App Store"
-                                                >
-                                                    <AppleLogo
-                                                        className="size-6 text-black"
-                                                        weight="fill"
-                                                    />
-                                                    <span className="text-[10px] text-neutral-600">
-                                                        iOS
-                                                    </span>
-                                                </a>
-                                            )}
-                                            {windowsAppLink && (
-                                                <a
-                                                    href={windowsAppLink}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                                    title="Windows App"
-                                                >
-                                                    <WindowsLogo
-                                                        className="size-6 text-blue-600"
-                                                        weight="fill"
-                                                    />
-                                                    <span className="text-[10px] text-neutral-600">
-                                                        Win
-                                                    </span>
-                                                </a>
-                                            )}
-                                            {macAppLink && (
-                                                <a
-                                                    href={macAppLink}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                                    title="Mac App"
-                                                >
-                                                    <Desktop
-                                                        className="size-6 text-neutral-600"
-                                                        weight="fill"
-                                                    />
-                                                    <span className="text-[10px] text-neutral-600">
-                                                        Mac
-                                                    </span>
-                                                </a>
-                                            )}
-                                        </div>
+                                <div>
+                                    {finalInstructorPortalUrl && <Separator className="my-1" />}
+                                    <div className="my-1 px-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                                        Learner Section
                                     </div>
-                                )}
+                                    <div className="grid grid-cols-4 gap-2 px-2 py-1">
+                                        {finalLearnerPortalUrl && (
+                                            <a
+                                                href={finalLearnerPortalUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
+                                                title="Learner Portal"
+                                            >
+                                                <Student
+                                                    className="size-6 text-primary-500"
+                                                    weight="fill"
+                                                />
+                                                <span className="text-center text-[10px] leading-tight text-neutral-600">
+                                                    Portal
+                                                </span>
+                                            </a>
+                                        )}
+                                        {playStoreAppLink && (
+                                            <a
+                                                href={playStoreAppLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
+                                                title="Google Play Store"
+                                            >
+                                                <AndroidLogo
+                                                    className="size-6 text-green-600"
+                                                    weight="fill"
+                                                />
+                                                <span className="text-[10px] text-neutral-600">
+                                                    Android
+                                                </span>
+                                            </a>
+                                        )}
+                                        {appStoreAppLink && (
+                                            <a
+                                                href={appStoreAppLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
+                                                title="App Store"
+                                            >
+                                                <AppleLogo
+                                                    className="size-6 text-black"
+                                                    weight="fill"
+                                                />
+                                                <span className="text-[10px] text-neutral-600">
+                                                    iOS
+                                                </span>
+                                            </a>
+                                        )}
+                                        {windowsAppLink && (
+                                            <a
+                                                href={windowsAppLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
+                                                title="Windows App"
+                                            >
+                                                <WindowsLogo
+                                                    className="size-6 text-blue-600"
+                                                    weight="fill"
+                                                />
+                                                <span className="text-[10px] text-neutral-600">
+                                                    Win
+                                                </span>
+                                            </a>
+                                        )}
+                                        {macAppLink && (
+                                            <a
+                                                href={macAppLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
+                                                title="Mac App"
+                                            >
+                                                <Desktop
+                                                    className="size-6 text-neutral-600"
+                                                    weight="fill"
+                                                />
+                                                <span className="text-[10px] text-neutral-600">
+                                                    Mac
+                                                </span>
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </DropdownMenuContent>
                     </DropdownMenu>
                 )}
@@ -581,12 +586,13 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                 </div>
                                                 {!!status && (
                                                     <span
-                                                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${isDelivered
-                                                            ? 'bg-green-100 text-green-700'
-                                                            : isFailed
-                                                                ? 'bg-red-100 text-red-700'
-                                                                : 'bg-neutral-100 text-neutral-700'
-                                                            }`}
+                                                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                                            isDelivered
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : isFailed
+                                                                  ? 'bg-red-100 text-red-700'
+                                                                  : 'bg-neutral-100 text-neutral-700'
+                                                        }`}
                                                     >
                                                         {status}
                                                     </span>
@@ -671,12 +677,13 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                             </div>
                                                             {!!status && (
                                                                 <span
-                                                                    className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-medium ${isDelivered
-                                                                        ? 'bg-green-100 text-green-700'
-                                                                        : isFailed
-                                                                            ? 'bg-red-100 text-red-700'
-                                                                            : 'bg-neutral-100 text-neutral-700'
-                                                                        }`}
+                                                                    className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-medium ${
+                                                                        isDelivered
+                                                                            ? 'bg-green-100 text-green-700'
+                                                                            : isFailed
+                                                                              ? 'bg-red-100 text-red-700'
+                                                                              : 'bg-neutral-100 text-neutral-700'
+                                                                    }`}
                                                                 >
                                                                     {status}
                                                                 </span>
@@ -789,7 +796,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                     {adminDetails.roles?.map((role, idx) => {
                                                         const bgColor =
                                                             roleColors[
-                                                            role.role_name.toUpperCase()
+                                                                role.role_name.toUpperCase()
                                                             ] || '#EDEDED';
                                                         return (
                                                             <Badge

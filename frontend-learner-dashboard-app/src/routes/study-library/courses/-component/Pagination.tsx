@@ -84,18 +84,17 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
 
   return (
     <div className="flex items-center justify-center mt-8 mb-4">
-      <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+      <nav className="flex items-center gap-1.5" aria-label="Pagination">
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
           className={cn(
-            "relative inline-flex items-center px-2 py-2 rounded-l-md border border-input bg-background text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50 transition-all focus:z-10",
-            // Vibrant Styles
+            "inline-flex items-center justify-center h-9 px-3 rounded-full border border-input bg-background text-sm font-medium text-muted-foreground hover:bg-primary-50 hover:text-primary hover:border-primary-200 disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground disabled:hover:border-input transition-all",
             "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
           )}
         >
+          <ChevronLeftIcon className="h-4 w-4" aria-hidden="true" />
           <span className="sr-only">Previous</span>
-          <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
         </button>
 
         {pagesToDisplay.map((page, index) => (
@@ -104,14 +103,13 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
             onClick={() => typeof page === 'number' && onPageChange(page)}
             aria-current={page === currentPage ? 'page' : undefined}
             className={cn(
-              "relative inline-flex items-center px-4 py-2 border text-sm font-medium transition-all focus:z-10",
+              "inline-flex items-center justify-center h-9 min-w-[36px] px-2 rounded-full text-sm font-medium transition-all",
               page === currentPage
-                ? "z-10 bg-primary text-primary-foreground border-primary hover:bg-primary/90"
-                : "bg-background text-muted-foreground border-input hover:bg-muted hover:text-foreground",
-              typeof page !== 'number' && "cursor-default hover:bg-background",
-              // Vibrant Styles
-              page === currentPage && "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary [.ui-vibrant_&]:to-primary/90 [.ui-vibrant_&]:shadow-md [.ui-vibrant_&]:border-primary",
-              page !== currentPage && typeof page === 'number' && "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
+                ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+                : "bg-background text-muted-foreground border border-transparent hover:bg-primary-50 hover:text-primary",
+              typeof page !== 'number' && "cursor-default hover:bg-background hover:text-muted-foreground",
+              page === currentPage && "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary [.ui-vibrant_&]:to-primary/90 [.ui-vibrant_&]:shadow-md",
+              page !== currentPage && typeof page === 'number' && "[.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
             )}
             disabled={typeof page !== 'number'}
           >
@@ -123,13 +121,12 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
           className={cn(
-            "relative inline-flex items-center px-2 py-2 rounded-r-md border border-input bg-background text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50 transition-all focus:z-10",
-            // Vibrant Styles
+            "inline-flex items-center justify-center h-9 px-3 rounded-full border border-input bg-background text-sm font-medium text-muted-foreground hover:bg-primary-50 hover:text-primary hover:border-primary-200 disabled:opacity-40 disabled:hover:bg-background disabled:hover:text-muted-foreground disabled:hover:border-input transition-all",
             "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
           )}
         >
+          <ChevronRightIcon className="h-4 w-4" aria-hidden="true" />
           <span className="sr-only">Next</span>
-          <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
         </button>
       </nav>
     </div>

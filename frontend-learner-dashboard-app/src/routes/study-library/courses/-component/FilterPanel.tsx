@@ -17,7 +17,7 @@ import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 // Internal reusable component for individual filter sections
 interface FilterListProps {
-    items: { id: string; name: string }[];
+    items: { id: string; name: string; count?: number }[];
     selectedItems: string[];
     handleChange: (itemId: string) => void;
     disabled?: boolean;
@@ -42,22 +42,30 @@ const FilterList: React.FC<FilterListProps> = ({
                 </div>
             )}
             {items.map((item) => (
-                <div key={item.id} className="flex items-center space-x-2">
-                    <Checkbox
-                        id={item.id}
-                        checked={selectedItems.includes(item.id)}
-                        onCheckedChange={() => handleChange(item.id)}
-                        disabled={disabled}
-                    />
-                    <Label
-                        htmlFor={item.id}
-                        className={cn(
-                            "text-sm cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-                            selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold [.ui-play_&]:font-extrabold [.ui-play_&]:text-[#58cc02]" : "font-normal [.ui-play_&]:font-bold"
-                        )}
-                    >
-                        {item.name}
-                    </Label>
+                <div key={item.id} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2 min-w-0 flex-1">
+                        <Checkbox
+                            id={item.id}
+                            checked={selectedItems.includes(item.id)}
+                            onCheckedChange={() => handleChange(item.id)}
+                            disabled={disabled}
+                        />
+                        <Label
+                            htmlFor={item.id}
+                            title={item.name}
+                            className={cn(
+                                "text-sm cursor-pointer leading-none truncate peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+                                selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold [.ui-play_&]:font-extrabold [.ui-play_&]:text-[#58cc02]" : "font-normal [.ui-play_&]:font-bold"
+                            )}
+                        >
+                            {item.name}
+                        </Label>
+                    </div>
+                    {typeof item.count === "number" && (
+                        <span className="shrink-0 text-[11px] font-medium text-muted-foreground tabular-nums">
+                            {item.count}
+                        </span>
+                    )}
                 </div>
             ))}
         </div>
@@ -77,6 +85,8 @@ interface FilterPanelProps {
     levelsDisabled?: boolean;
     tagsDisabled?: boolean;
     instructorsDisabled?: boolean;
+    isDesktopOpen?: boolean;
+    onClose?: () => void;
 }
 
 const FilterPanel: React.FC<FilterPanelProps> = ({
@@ -91,6 +101,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     levelsDisabled = false,
     tagsDisabled = false,
     instructorsDisabled = false,
+    isDesktopOpen = true,
+    onClose,
 }) => {
     const instructor = useCatalogStore((state) => state.instructor);
 
@@ -177,17 +189,29 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     <Filter size={18} className={cn("text-muted-foreground", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-[#ffc800]")} />
                     <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide")}>Filters</h2>
                 </div>
-                {hasActiveFilters && (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearAllFilters}
-                        className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
-                    >
-                        <X size={14} className="mr-1" />
-                        Clear All
-                    </Button>
-                )}
+                <div className="flex items-center gap-1">
+                    {hasActiveFilters && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={clearAllFilters}
+                            className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
+                        >
+                            <X size={14} className="mr-1" />
+                            Clear All
+                        </Button>
+                    )}
+                    {onClose && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onClose}
+                            className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
+                        >
+                            Close
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {hasActiveFilters && (
@@ -200,7 +224,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
             <ScrollArea className="h-[calc(100vh-300px)] min-h-[200px] lg:h-[min(600px,calc(100vh-14rem))] lg:min-h-[240px]">
                 <div className="p-4">
-                    <Accordion type="multiple" defaultValue={["levels", "tags", "instructors"]} className="w-full">
+                    <Accordion type="multiple" defaultValue={[]} className="w-full">
                         <AccordionItem value="levels" className="border-b-0">
                             <AccordionTrigger className="hover:no-underline py-3">
                                 <span className="text-sm font-semibold">{getTerminology(ContentTerms.Level, SystemTerms.Level)}</span>
@@ -285,10 +309,12 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
     return (
         <>
-            {/* Desktop View */}
-            <div className="hidden lg:block sticky top-4">
-                <FilterContent />
-            </div>
+            {/* Desktop View — only when isDesktopOpen */}
+            {isDesktopOpen && (
+                <div className="hidden lg:block sticky top-4">
+                    <FilterContent />
+                </div>
+            )}
 
             {/* Mobile View with Sheet */}
             <div className="lg:hidden mb-4">
@@ -341,7 +367,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                         </SheetHeader>
 
                         <div className="flex-1 overflow-auto p-4">
-                            <Accordion type="multiple" defaultValue={["levels", "tags"]} className="w-full">
+                            <Accordion type="multiple" defaultValue={[]} className="w-full">
                                 <AccordionItem value="levels" className="border-b-0 mb-4">
                                     <h4 className="font-semibold mb-3 text-sm flex items-center justify-between">
                                         {getTerminology(ContentTerms.Level, SystemTerms.Level)}

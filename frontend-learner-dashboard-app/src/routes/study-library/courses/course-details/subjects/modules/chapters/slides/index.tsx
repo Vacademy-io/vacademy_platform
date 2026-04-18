@@ -8,12 +8,13 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { toTitleCase } from "@/lib/utils";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { CaretLeft, BookOpen, GraduationCap, CaretRight } from "@phosphor-icons/react";
+import { CaretLeft, BookOpen, GraduationCap, CaretRight, CheckCircle } from "@phosphor-icons/react";
 import { SlideMaterial } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/slide-material";
 import {
   ChapterSidebarSlides,
   calculateOverallCompletion,
 } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
+import { CourseTreeSidebar } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/course-tree-sidebar";
 import { getModuleName } from "@/utils/study-library/get-name-by-id/getModuleNameById";
 import { getSubjectName } from "@/utils/study-library/get-name-by-id/getSubjectNameById";
 import { getChapterName } from "@/utils/study-library/get-name-by-id/getChapterById";
@@ -22,7 +23,7 @@ import { InitStudyLibraryProvider } from "@/providers/study-library/init-study-l
 import { ModulesWithChaptersProvider } from "@/providers/study-library/modules-with-chapters-provider";
 import { useSlides, Slide } from "@/hooks/study-library/use-slides";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
-import { useModulesWithChaptersStore } from "@/stores/study-library/use-modules-with-chapters-store";
+import { useModulesWithChaptersStore, ModulesWithChapters } from "@/stores/study-library/use-modules-with-chapters-store";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
 import { useDripConditions } from "@/hooks/use-drip-conditions";
 import {
@@ -36,6 +37,10 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { GET_COURSE_DETAILS } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { handleGetCourseInit } from "@/routes/study-library/courses/course-details/-services/get-course-details";
+import { getInstituteId } from "@/constants/helper";
+import { fetchModulesWithChapters, fetchModulesWithChaptersPublic } from "@/services/study-library/getModulesWithChapters";
+import { toast } from "sonner";
 import FeedbackPage from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/FeedbackPage";
 import { FiEdit } from "react-icons/fi";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
@@ -71,6 +76,104 @@ export const Route = createFileRoute(
   }),
 });
 
+// ── Module Accordion Item ────────────────────────────────────────────────────
+// Used inside the Module Switcher popover so each module manages its own
+// expanded/collapsed state independently (hooks cannot be called in a .map()).
+const ModuleAccordionItem = ({
+  modData,
+  isInitiallyExpanded,
+  currentChapterId,
+  onChapterSelect,
+}: {
+  modData: ModulesWithChapters;
+  isInitiallyExpanded: boolean;
+  currentChapterId: string;
+  onChapterSelect: (moduleId: string, chapterId: string) => void;
+}) => {
+  const [isExpanded, setIsExpanded] = useState(isInitiallyExpanded);
+  const completedChapters = modData.chapters.filter(
+    (c) => c.percentage_completed >= 90
+  ).length;
+
+  return (
+    <div className="border-b border-gray-100 last:border-0">
+      {/* Module header — tap to expand/collapse */}
+      <button
+        onClick={() => setIsExpanded((v) => !v)}
+        className={`w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors ${
+          isInitiallyExpanded ? "bg-primary-50/40" : "hover:bg-gray-50"
+        }`}
+      >
+        <div className="min-w-0 flex-1">
+          <span
+            className={`text-[11px] font-semibold leading-tight line-clamp-1 ${
+              isInitiallyExpanded ? "text-primary-700" : "text-gray-700"
+            }`}
+          >
+            {toTitleCase(modData.module.module_name)}
+          </span>
+          {modData.chapters.length > 0 && (
+            <span className="text-[10px] text-gray-400 mt-0.5 block">
+              {completedChapters}/{modData.chapters.length} {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()}
+            </span>
+          )}
+        </div>
+        <ChevronRightIcon
+          className={`w-3 h-3 flex-shrink-0 ml-2 transition-transform duration-200 ${
+            isExpanded ? "rotate-90 text-primary-500" : "text-gray-400"
+          }`}
+        />
+      </button>
+
+      {/* Chapter list */}
+      {isExpanded && modData.chapters.length > 0 && (
+        <div className="pb-1">
+          {modData.chapters.map((chapter) => {
+            const isCurrent = chapter.id === currentChapterId;
+            const isDone = chapter.percentage_completed >= 90;
+            return (
+              <button
+                key={chapter.id}
+                onClick={() => onChapterSelect(modData.module.id, chapter.id)}
+                className={`w-full text-left px-5 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${
+                  isCurrent
+                    ? "bg-primary-50 text-primary-700 font-semibold"
+                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                }`}
+              >
+                <div
+                  className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                    isCurrent
+                      ? "bg-primary-500"
+                      : isDone
+                      ? "bg-success-400"
+                      : "bg-gray-300"
+                  }`}
+                />
+                <span className="truncate flex-1">
+                  {toTitleCase(chapter.chapter_name)}
+                </span>
+                {isDone && !isCurrent && (
+                  <CheckCircle
+                    className="w-3 h-3 text-success-500 flex-shrink-0"
+                    weight="fill"
+                  />
+                )}
+                {isCurrent && (
+                  <span className="text-[9px] font-bold text-primary-500 uppercase tracking-wide flex-shrink-0">
+                    Now
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+// ────────────────────────────────────────────────────────────────────────────
+
 function Slides() {
   const { courseId, subjectId, moduleId, chapterId, slideId, sessionId } =
     Route.useSearch();
@@ -81,7 +184,7 @@ function Slides() {
     useContentStore();
   const { slides } = useSlides(chapterId || "");
   const { studyLibraryData } = useStudyLibraryStore();
-  const { modulesWithChaptersData } = useModulesWithChaptersStore();
+  const { modulesWithChaptersData, setModulesWithChaptersData } = useModulesWithChaptersStore();
 
   // Get drip conditions from store or fetch from API
   const {
@@ -109,6 +212,26 @@ function Slides() {
     enabled: !!courseId && !storedDripCondition, // Only fetch if not in store
     staleTime: 3600000, // 1 hour
   });
+
+  // Course-init response (same endpoint the outer course page uses) so the
+  // breadcrumb subject picker reads from the authoritative sessions →
+  // levelDetails → subjects tree. Resolves instituteId asynchronously.
+  const [instituteId, setInstituteId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getInstituteId().then((id) => {
+      if (!cancelled) setInstituteId(id || null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const { data: courseInitData } = useQuery(
+    handleGetCourseInit({
+      courseId: courseId || "",
+      instituteId: instituteId || "",
+    })
+  );
 
   // Save fetched drip condition to store
   useEffect(() => {
@@ -432,6 +555,101 @@ function Slides() {
   const [homeIconClickRoute, setHomeIconClickRoute] = useState<string | null>(
     null
   );
+
+  // Subjects for the breadcrumb picker. Reads from both known shapes of the
+  // course payload (`level_with_details` from package-detail, `levelDetails`
+  // from course-init) and falls back to `studyLibraryData` or the current
+  // subject so the crumb always populates.
+  const courseSubjects = useMemo<Array<{ id: string; subject_name: string; subject_order?: number | null }>>(() => {
+    type BreadcrumbSubject = { id: string; subject_name: string; subject_order?: number | null };
+    type LoosenedLevel = { subjects?: BreadcrumbSubject[] };
+    type LoosenedSession = { level_with_details?: LoosenedLevel[]; levelDetails?: LoosenedLevel[] };
+    const sources: Array<{ sessions?: LoosenedSession[] } | null | undefined> = [
+      courseInitData as { sessions?: LoosenedSession[] } | null | undefined,
+      courseDetails as { sessions?: LoosenedSession[] } | null | undefined,
+    ];
+    for (const src of sources) {
+      const sessions = src?.sessions;
+      if (!sessions?.length) continue;
+      for (const sess of sessions) {
+        const levels = sess.level_with_details ?? sess.levelDetails ?? [];
+        for (const level of levels) {
+          if (level.subjects?.some((s) => s.id === subjectId)) {
+            return level.subjects || [];
+          }
+        }
+      }
+      const firstSession = sessions[0];
+      const firstLevelSubjects = (firstSession?.level_with_details ?? firstSession?.levelDetails ?? [])[0]?.subjects;
+      if (firstLevelSubjects?.length) return firstLevelSubjects;
+    }
+    if (studyLibraryData?.length) {
+      return studyLibraryData.map((s) => ({
+        id: s.id,
+        subject_name: s.subject_name,
+        subject_order: s.subject_order,
+      }));
+    }
+    if (subjectId && subjectName) {
+      return [{ id: subjectId, subject_name: subjectName }];
+    }
+    return [];
+  }, [courseInitData, courseDetails, subjectId, studyLibraryData, subjectName]);
+
+  // Switch to a different subject: fetch that subject's modules/chapters
+  // and drop the learner on the first chapter's slides view. If the target
+  // subject has no content yet (or the fetch fails), route to the modules
+  // landing as a graceful fallback so the learner still arrives at the
+  // right place instead of a dead-end. `sessionId` from the URL is the
+  // same value the API calls "packageSessionId".
+  const [switchingSubjectId, setSwitchingSubjectId] = useState<string | null>(null);
+  const handleSubjectSelect = useCallback(
+    async (targetSubjectId: string) => {
+      if (!targetSubjectId || targetSubjectId === subjectId) return;
+      setSwitchingSubjectId(targetSubjectId);
+      try {
+        const pkgSessionId = sessionId || "";
+        // Try authenticated fetch first; the public variant is a fallback
+        // for unenrolled/public browsing contexts.
+        let modules: ModulesWithChapters[] | null = null;
+        try {
+          modules = await fetchModulesWithChapters(targetSubjectId, pkgSessionId);
+        } catch {
+          modules = await fetchModulesWithChaptersPublic(targetSubjectId, pkgSessionId);
+        }
+        const firstModule = (modules || []).find((m) => (m.chapters || []).length > 0) || modules?.[0];
+        const firstChapter = firstModule?.chapters?.[0];
+        if (firstModule && firstChapter) {
+          // Prime the store with the target subject's modules BEFORE
+          // navigating so the module popover doesn't briefly show the
+          // previous subject's list during the route transition.
+          if (modules) setModulesWithChaptersData(modules);
+          navigate({
+            to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+            search: {
+              courseId,
+              subjectId: targetSubjectId,
+              moduleId: firstModule.module.id,
+              chapterId: firstChapter.id,
+              slideId: "",
+              sessionId,
+            },
+          });
+          return;
+        }
+      } catch {
+        toast.error("Couldn't open that subject. Please try again.");
+      } finally {
+        setSwitchingSubjectId(null);
+      }
+      navigate({
+        to: "/study-library/courses/course-details/subjects/modules",
+        search: { courseId, subjectId: targetSubjectId, moduleId: "" },
+      });
+    },
+    [subjectId, sessionId, courseId, navigate, setModulesWithChaptersData]
+  );
+
   // truncatedChapterName removed (unused)
   const handleInstituteLogoClick = useCallback(() => {
     if (homeIconClickRoute) {
@@ -442,13 +660,16 @@ function Slides() {
   useEffect(() => {
     setModuleName(getModuleName(moduleId, modulesWithChaptersData));
     setChapterName(getChapterName(chapterId, modulesWithChaptersData) || "");
-    setSubjectName(getSubjectName(subjectId, studyLibraryData) || "");
+    const nameFromStore = getSubjectName(subjectId, studyLibraryData);
+    const nameFromCourse = courseSubjects.find((s) => s.id === subjectId)?.subject_name;
+    setSubjectName(nameFromStore || nameFromCourse || "");
   }, [
     chapterId,
     moduleId,
     subjectId,
     modulesWithChaptersData,
     studyLibraryData,
+    courseSubjects,
   ]);
 
   // Get course and level names, and institute logo
@@ -536,6 +757,13 @@ function Slides() {
 
   const [showLearningPath, setShowLearningPath] = useState(true);
   const [feedbackVisible, setFeedbackVisible] = useState(true);
+  // "breadcrumb" = legacy per-chapter slide list; cross-module navigation
+  // happens via the popovers in the breadcrumb. This is the default to keep
+  // existing learners on familiar terrain — admins can opt into the richer
+  // "ancestors" tree from Student Display Settings.
+  const [sidebarNavigation, setSidebarNavigation] = useState<
+    "ancestors" | "breadcrumb"
+  >("breadcrumb");
 
   // Load Student Display Settings for slides view
   useEffect(() => {
@@ -544,6 +772,9 @@ function Slides() {
         s?.courseDetails?.slidesView?.showLearningPath ?? true
       );
       setFeedbackVisible(s?.courseDetails?.slidesView?.feedbackVisible ?? true);
+      setSidebarNavigation(
+        s?.courseDetails?.slidesView?.sidebarNavigation ?? "breadcrumb"
+      );
     });
   }, []);
 
@@ -601,6 +832,60 @@ function Slides() {
     }
   }, [nextChapter, navigate, courseId, subjectId, sessionId]);
 
+  const previousChapter = useMemo(() => {
+    if (!modulesWithChaptersData?.length) return null;
+
+    const currentModIndex = modulesWithChaptersData.findIndex(
+      (m) => m.module.id === moduleId
+    );
+    if (currentModIndex === -1) return null;
+
+    const currentMod = modulesWithChaptersData[currentModIndex];
+    if (!currentMod?.chapters) return null;
+
+    const currentChapIndex = currentMod.chapters.findIndex(
+      (c) => c.id === chapterId
+    );
+    if (currentChapIndex === -1) return null;
+
+    // Check previous in same module
+    if (currentChapIndex - 1 >= 0) {
+      return {
+        module: currentMod.module,
+        chapter: currentMod.chapters[currentChapIndex - 1],
+      };
+    }
+
+    // Check last chapter of previous module
+    if (currentModIndex - 1 >= 0) {
+      const prevMod = modulesWithChaptersData[currentModIndex - 1];
+      if (prevMod.chapters?.length > 0) {
+        return {
+          module: prevMod.module,
+          chapter: prevMod.chapters[prevMod.chapters.length - 1],
+        };
+      }
+    }
+
+    return null;
+  }, [modulesWithChaptersData, moduleId, chapterId]);
+
+  const handlePreviousChapter = useCallback(() => {
+    if (previousChapter) {
+      navigate({
+        to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+        search: {
+          courseId,
+          subjectId,
+          moduleId: previousChapter.module.id,
+          chapterId: previousChapter.chapter.id,
+          slideId: "", // Default to first slide
+          sessionId,
+        },
+      });
+    }
+  }, [previousChapter, navigate, courseId, subjectId, sessionId]);
+
   const SidebarComponent = (
     <div className="flex flex-col h-full bg-white border-r border-gray-100">
       {/* --- Header Section: Title & Breadcrumbs --- */}
@@ -624,7 +909,7 @@ function Slides() {
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="text-[13px] font-semibold text-gray-900 leading-tight truncate">
-              {courseName ? toTitleCase(courseName) : "Course Details"}
+              {courseName ? toTitleCase(courseName) : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
             </h3>
             <p className="text-[10px] text-gray-400 font-medium tracking-wide uppercase mt-0.5">
               {levelName && levelName.toLowerCase() !== "default"
@@ -634,112 +919,293 @@ function Slides() {
           </div>
         </div>
 
-        {/* Minimal Breadcrumbs */}
-        {showLearningPath && (
+        {/* Breadcrumb: [Subject >] Module Switcher > Current Chapter.
+            Subject crumb is only rendered when the course structure actually
+            has subjects (`subjectId` set + studyLibraryData populated) —
+            otherwise the crumb collapses to Module > Chapter as before. */}
+        {showLearningPath && (() => {
+          // Backends frequently emit a "Default"-named subject / module /
+          // chapter as a placeholder when that level isn't really part of
+          // the course. Those crumbs aren't useful navigation context — hide
+          // them so the breadcrumb only shows real ancestors.
+          const isDefaultName = (n: string | null | undefined) =>
+            (n || "").trim().toLowerCase() === "default";
+          const showSubjectCrumb =
+            !!subjectId &&
+            courseSubjects.length > 0 &&
+            !isDefaultName(subjectName);
+          const showModuleCrumb = !isDefaultName(moduleName);
+          const showChapterCrumb = !isDefaultName(chapterName);
+          return (
           <div
-            className="flex items-center text-xs text-gray-500 font-medium overflow-hidden"
+            className="flex items-center gap-1.5 text-xs text-gray-500 font-medium min-w-0"
             id="slides-breadcrumb-row"
           >
-            <div className="flex items-center gap-1.5 flex-wrap truncate">
-              {/* Subject */}
-              <button
-                onClick={handleSubjectRoute}
-                className="hover:text-primary-600 hover:underline transition-colors truncate max-w-[80px] sm:max-w-[100px]"
-              >
-                {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
-              </button>
-              <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+            {/* Subject — tapping opens a picker listing all subjects in the
+                course. Selecting one routes to that subject's modules view
+                (we don't know its first chapter yet, so we drop the learner
+                at the modules list per HIG's "show the landing, don't guess"). */}
+            {showSubjectCrumb && (
+              <>
+                {sidebarNavigation === "breadcrumb" ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
+                        title={subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
+                      >
+                        <span className="truncate max-w-[90px] sm:max-w-[130px]">
+                          {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
+                        </span>
+                        <ChevronDownIcon className="w-3 h-3 flex-shrink-0 text-gray-400 group-hover:text-primary-400 transition-colors" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-64 p-0 shadow-md border border-gray-200 rounded-lg overflow-hidden"
+                      align="start"
+                      sideOffset={6}
+                    >
+                      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/80">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}s
+                        </p>
+                      </div>
+                      <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                        {courseSubjects.map((s) => {
+                          const isCurrent = s.id === subjectId;
+                          const isSwitching = switchingSubjectId === s.id;
+                          return (
+                            <button
+                              key={s.id}
+                              disabled={!!switchingSubjectId && !isSwitching}
+                              onClick={() => handleSubjectSelect(s.id)}
+                              className={`w-full text-left px-3 py-2 text-[11px] transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
+                                isCurrent
+                                  ? "bg-primary-50 text-primary-700 font-semibold"
+                                  : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                              }`}
+                            >
+                              <div
+                                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                  isCurrent ? "bg-primary-500" : "bg-gray-300"
+                                }`}
+                              />
+                              <span className="truncate flex-1">
+                                {toTitleCase(s.subject_name)}
+                              </span>
+                              {isSwitching ? (
+                                <div className="w-3 h-3 border-2 border-primary-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                              ) : isCurrent ? (
+                                <span className="text-[9px] font-bold text-primary-500 uppercase tracking-wide flex-shrink-0">
+                                  Now
+                                </span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  // Tree mode: crumb is a passive label; the sidebar tree
+                  // already exposes every cross-subject jump.
+                  <span
+                    className="truncate max-w-[90px] sm:max-w-[130px]"
+                    title={subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
+                  >
+                    {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
+                  </span>
+                )}
 
-              {/* Module */}
-              <button
-                onClick={handleModuleRoute}
-                className="hover:text-primary-600 hover:underline transition-colors truncate max-w-[80px] sm:max-w-[100px]"
-              >
-                {toTitleCase(moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules))}
-              </button>
-              <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                {(showModuleCrumb || showChapterCrumb) && (
+                  <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                )}
+              </>
+            )}
 
-              {/* Chapter (Active) */}
-              <span className="text-gray-900 font-semibold truncate max-w-[100px] sm:max-w-[120px]">
+            {/* Module — in breadcrumb mode this is a popover that lists all
+                modules (tap to jump). In tree mode we drop the popover since
+                the sidebar already shows the full module list; crumb becomes
+                a passive label. */}
+            {showModuleCrumb && (
+              <>
+                {sidebarNavigation === "breadcrumb" ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
+                        title={moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules)}
+                      >
+                        <span className="truncate max-w-[90px] sm:max-w-[130px]">
+                          {toTitleCase(moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules))}
+                        </span>
+                        <ChevronDownIcon className="w-3 h-3 flex-shrink-0 text-gray-400 group-hover:text-primary-400 transition-colors" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-72 p-0 shadow-md border border-gray-200 rounded-lg overflow-hidden"
+                      align="start"
+                      sideOffset={6}
+                    >
+                      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/80">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          {subjectName && !isDefaultName(subjectName)
+                            ? `${toTitleCase(subjectName)} · ${getTerminology(ContentTerms.Modules, SystemTerms.Modules)}s`
+                            : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Content`}
+                        </p>
+                      </div>
+                      <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                        {modulesWithChaptersData?.map((modData) => (
+                          <ModuleAccordionItem
+                            key={modData.module.id}
+                            modData={modData}
+                            isInitiallyExpanded={modData.module.id === moduleId}
+                            currentChapterId={chapterId}
+                            onChapterSelect={(targetModuleId, targetChapterId) => {
+                              navigate({
+                                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+                                search: {
+                                  courseId,
+                                  subjectId,
+                                  moduleId: targetModuleId,
+                                  chapterId: targetChapterId,
+                                  slideId: "",
+                                  sessionId,
+                                },
+                              });
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  <span
+                    className="truncate max-w-[90px] sm:max-w-[130px]"
+                    title={moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules)}
+                  >
+                    {toTitleCase(moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules))}
+                  </span>
+                )}
+
+                {showChapterCrumb && (
+                  <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                )}
+              </>
+            )}
+
+            {/* Chapter — current location; per HIG the active crumb is a label,
+                not a link. The native `title` attribute provides the full name
+                on hover without requiring an extra tooltip component. */}
+            {showChapterCrumb && (
+              <span
+                className="text-gray-900 font-semibold truncate"
+                title={chapterName || getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}
+              >
                 {toTitleCase(chapterName || getTerminology(ContentTerms.Chapters, SystemTerms.Chapters))}
               </span>
-            </div>
+            )}
+          </div>
+          );
+        })()}
+      </div>
 
-            {/* Mobile Hierarchy Popover (only visible on smallest screens if needed, otherwise handled by wrap) - kept for compatibility if needed, but the flex-wrap above handles most cases cleanly. 
-                 Re-adding the popover for mobile interactions just in case. */}
-            <div className="sm:hidden ml-auto">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className="p-1 hover:bg-gray-100 rounded">
-                    <ChevronDownIcon className="w-3 h-3 text-gray-400" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-2" align="end">
-                  <div className="flex flex-col gap-1 text-xs">
-                    <button
-                      onClick={handleSubjectRoute}
-                      className="text-left px-2 py-1.5 hover:bg-gray-50 rounded"
-                    >
-                      {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
-                    </button>
-                    <button
-                      onClick={handleModuleRoute}
-                      className="text-left px-2 py-1.5 hover:bg-gray-50 rounded"
-                    >
-                      {toTitleCase(moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules))}
-                    </button>
-                    <span className="px-2 py-1.5 font-semibold bg-gray-50 rounded text-primary-700">
-                      {toTitleCase(chapterName || getTerminology(ContentTerms.Chapters, SystemTerms.Chapters))}
-                    </span>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
+      {/* --- Scrollable Content ---
+          Admin-chosen via Student Display Settings → courseDetails.slidesView.
+          • "ancestors" renders the full Subject → Module → Chapter → Slide
+            tree so learners can jump anywhere from the sidebar.
+          • "breadcrumb" renders the legacy per-chapter flat slide list;
+            cross-module navigation happens via the breadcrumb popovers. */}
+      <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
+        {sidebarNavigation === "ancestors" ? (
+          <div className="py-1">
+            <CourseTreeSidebar
+              courseId={courseId || ""}
+              sessionId={sessionId || ""}
+              subjects={courseSubjects}
+              currentSubjectId={subjectId || ""}
+              currentModuleId={moduleId || ""}
+              currentChapterId={chapterId || ""}
+              currentSlideId={slideId || ""}
+              currentSubjectModules={modulesWithChaptersData}
+              onSlideSelect={({ subjectId: targetSubjectId, moduleId: targetModuleId, chapterId: targetChapterId, slideId: targetSlideId }) => {
+                navigate({
+                  to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+                  search: {
+                    courseId,
+                    subjectId: targetSubjectId,
+                    moduleId: targetModuleId,
+                    chapterId: targetChapterId,
+                    slideId: targetSlideId,
+                    sessionId,
+                  },
+                });
+              }}
+            />
+          </div>
+        ) : (
+          <div className="p-2">
+            <ChapterSidebarSlides />
           </div>
         )}
       </div>
 
-      {/* --- Scrollable Content: Slides List --- */}
-      <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
-        <div className="p-2">
-          <ChapterSidebarSlides />
-        </div>
-      </div>
-
-      {/* --- Footer: Progress & Actions --- */}
+      {/* --- Footer: Progress & Actions ---
+          Prev / Up-next collapsed to single-line pills so the tree above
+          gets the screen real estate. The full chapter name still appears
+          inline (truncated with a native tooltip) so the learner doesn't
+          lose the context the larger cards used to provide. */}
       {slides && slides.length > 0 && (
-        <div className="flex-none px-3 py-2 border-t border-gray-100 bg-white space-y-2 z-10">
-          {/* Next Chapter Button (Compact) */}
+        <div className="flex-none px-3 py-2 border-t border-gray-100 bg-white space-y-1.5 z-10">
+          {previousChapter && (
+            <button
+              onClick={handlePreviousChapter}
+              title={`Previous: ${toTitleCase(previousChapter.chapter.chapter_name)}`}
+              className="w-full flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1.5 hover:bg-neutral-100 hover:border-neutral-300 transition-colors group/prev text-left [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
+            >
+              <CaretLeft
+                size={12}
+                className="text-neutral-500 shrink-0 transition-transform group-hover/prev:-translate-x-0.5"
+                weight="bold"
+              />
+              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider shrink-0">
+                Prev
+              </span>
+              <span className="text-[12px] font-semibold text-neutral-700 truncate leading-tight min-w-0">
+                {toTitleCase(previousChapter.chapter.chapter_name)}
+              </span>
+            </button>
+          )}
+
           {nextChapter && (
             <button
               onClick={handleNextChapter}
-              className="w-full flex items-center justify-between gap-1.5 px-1.5 py-1 rounded hover:bg-gray-50 transition-colors group/next [.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200"
+              title={`Up next: ${toTitleCase(nextChapter.chapter.chapter_name)}`}
+              className="w-full flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-2 py-1.5 hover:bg-primary-100 hover:border-primary-300 transition-colors group/next text-left [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
             >
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide group-hover/next:text-primary-500 transition-colors">
-                  Next
-                </span>
-                <span className="text-[11px] font-medium text-gray-600 truncate group-hover/next:text-gray-900 transition-colors">
-                  {toTitleCase(nextChapter.chapter.chapter_name)}
-                </span>
-              </div>
+              <span className="text-[10px] font-bold text-primary-500 uppercase tracking-wider shrink-0">
+                Up next
+              </span>
+              <span className="text-[12px] font-bold text-primary-700 truncate leading-tight min-w-0 flex-1">
+                {toTitleCase(nextChapter.chapter.chapter_name)}
+              </span>
               <CaretRight
-                size={10}
-                className="text-gray-300 group-hover/next:text-primary-500 transition-colors flex-shrink-0"
+                size={12}
+                className="text-primary-500 shrink-0 transition-transform group-hover/next:translate-x-0.5"
                 weight="bold"
               />
             </button>
           )}
 
-          {/* Progress Bar (Minimal) */}
+          {/* Progress Bar */}
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] font-medium text-gray-400 uppercase tracking-wider [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+            <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500 uppercase tracking-wider [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
               <span>Progress</span>
-              <span className="text-gray-700 [.ui-play_&]:font-black">
+              <span className="text-gray-800 text-xs normal-case tracking-normal [.ui-play_&]:font-black">
                 {Math.min(calculateOverallCompletion(slides), 100)}%
               </span>
             </div>
-            <div className="h-1 w-full bg-gray-100 rounded-full overflow-hidden [.ui-play_&]:rounded-full [.ui-play_&]:h-3">
+            <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden [.ui-play_&]:rounded-full [.ui-play_&]:h-3">
               <div
                 className="h-full bg-primary-500 rounded-full transition-all duration-500 ease-out [.ui-play_&]:rounded-full [.ui-play_&]:h-3"
                 style={{
@@ -835,7 +1301,7 @@ function Slides() {
                   <button className="flex items-center gap-1 text-xs font-bold text-gray-900 truncate mb-0.5 max-w-full">
                     <span className="truncate">
                       {truncateString(
-                        toTitleCase(chapterName || "Course Details"),
+                        toTitleCase(chapterName || `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`),
                         25
                       )}
                     </span>
@@ -899,7 +1365,7 @@ function Slides() {
                         ? 15
                         : 25
                   )}`
-                  : "Course Details"}
+                  : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
               </h1>
             </div>
           </div>

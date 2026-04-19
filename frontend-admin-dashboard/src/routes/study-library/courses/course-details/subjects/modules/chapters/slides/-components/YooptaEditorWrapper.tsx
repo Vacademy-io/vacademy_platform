@@ -105,8 +105,9 @@ function cleanPastedHtml(rawHtml: string): string {
         if (!ALIGNABLE.has(el.tagName)) return;
         const style = (el.getAttribute('style') || '').toLowerCase();
         const m = /text-align\s*:\s*(left|center|right)/.exec(style);
-        if (m && !el.hasAttribute('data-meta-align')) {
-            el.setAttribute('data-meta-align', m[1]);
+        const align = m?.[1];
+        if (align && !el.hasAttribute('data-meta-align')) {
+            el.setAttribute('data-meta-align', align);
         }
     });
 

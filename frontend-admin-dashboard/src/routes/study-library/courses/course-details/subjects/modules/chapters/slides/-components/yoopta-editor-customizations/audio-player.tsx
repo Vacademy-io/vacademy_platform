@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
+import {
+    YooptaPlugin,
+    useYooptaEditor,
+    Elements,
+    Blocks,
+    PluginElementRenderProps,
+} from '@yoopta/editor';
 import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -12,21 +18,57 @@ export function AudioPlayerBlock({ element, attributes, children, blockId }: Plu
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isFirstRender = useRef(true);
 
+    // Persist to Yoopta via BOTH Elements.updateElement (covers re-renders
+    // in the editable sub-editor) and Blocks.updateBlock (writes straight to
+    // editor.children via applyTransforms, which serialize reads from).
+    // Using Elements alone failed when the block's sub-editor hadn't been
+    // registered in blockEditorsMap yet (Yoopta logs "No slate found" and
+    // silently does nothing) — so a Save Draft right after upload produced
+    // a "No audio uploaded" payload even though the upload succeeded.
+    const persistToYoopta = (nextAudioUrl: string, nextTitle: string) => {
+        const nextProps = {
+            ...(element?.props || {}),
+            nodeType: 'block',
+            audioUrl: nextAudioUrl,
+            title: nextTitle,
+            editorType: 'audioPlayer',
+        };
+
+        try {
+            Elements.updateElement(editor, blockId, {
+                type: 'audioPlayer',
+                props: nextProps,
+            });
+        } catch {
+            /* ignore — Blocks.updateBlock below is the authoritative path */
+        }
+
+        try {
+            const currentBlock = (editor.children as Record<string, any>)[blockId];
+            const currentElement = currentBlock?.value?.[0];
+            if (currentElement) {
+                Blocks.updateBlock(editor, blockId, {
+                    value: [
+                        {
+                            ...currentElement,
+                            props: { ...currentElement.props, ...nextProps },
+                        },
+                    ],
+                } as any);
+            }
+        } catch (err) {
+            console.warn('Audio: Blocks.updateBlock failed', err);
+        }
+    };
+
     // Persist state to Yoopta/Slate store
     useEffect(() => {
         if (isFirstRender.current) {
             isFirstRender.current = false;
             return;
         }
-        Elements.updateElement(editor, blockId, {
-            type: 'audioPlayer',
-            props: {
-                ...element.props,
-                audioUrl,
-                title,
-                editorType: 'audioPlayer',
-            },
-        });
+        persistToYoopta(audioUrl, title);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [audioUrl, title]);
 
     const handleFileUpload = async (file: File) => {
@@ -57,8 +99,16 @@ export function AudioPlayerBlock({ element, attributes, children, blockId }: Plu
             const publicUrl = await getPublicUrl(fileId);
             if (!publicUrl) throw new Error('Failed to get URL');
 
+            const newTitle = title || file.name.replace(/\.[^/.]+$/, '');
+
             setAudioUrl(publicUrl);
-            if (!title) setTitle(file.name.replace(/\.[^/.]+$/, ''));
+            if (!title) setTitle(newTitle);
+
+            // Persist synchronously so an immediate Save Draft / Publish
+            // click sees the new audioUrl on element.props and serializes
+            // it into the payload (the useEffect path alone wasn't enough
+            // when the sub-editor hadn't been registered yet).
+            persistToYoopta(publicUrl, newTitle);
         } catch (error) {
             console.error('Audio upload failed:', error);
             alert('Failed to upload audio file');
@@ -247,8 +297,13 @@ export const AudioPlugin = new YooptaPlugin<{ audioPlayer: any }>({
                         return undefined;
                     }
                     const title = element.getAttribute('data-title') || '';
+                    // Prefer data-audio-url on the wrapper — it survives any
+                    // intermediate DOM unwrapping. Fall back to the nested
+                    // <audio src> for backwards compatibility with older
+                    // saved payloads.
+                    const dataUrl = element.getAttribute('data-audio-url') || '';
                     const audioEl = element.querySelector?.('audio');
-                    const audioUrl = audioEl?.getAttribute('src') || '';
+                    const audioUrl = dataUrl || audioEl?.getAttribute('src') || '';
                     return {
                         id: `audio-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         type: 'audioPlayer',
@@ -258,15 +313,34 @@ export const AudioPlugin = new YooptaPlugin<{ audioPlayer: any }>({
                 },
             },
             serialize: (element, _children) => {
-                const props = element.props || {};
-                const audioUrl = props.audioUrl || '';
-                const title = (props.title || '').replace(/"/g, '&quot;');
+                // Robust HTML escaping for attribute values. Previous code
+                // only escaped double-quotes — an audioUrl containing '&'
+                // (e.g. signed URLs) or a title with '<'/'>' would break
+                // the attribute string and subsequent deserialize would
+                // miss the URL entirely.
+                const escapeAttr = (v: string) =>
+                    String(v || '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
+                const escapeText = (v: string) =>
+                    String(v || '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
 
-                if (!audioUrl) {
+                const props = element.props || {};
+                const rawAudioUrl = props.audioUrl || '';
+                const rawTitle = props.title || '';
+                const audioUrl = escapeAttr(rawAudioUrl);
+                const title = escapeAttr(rawTitle);
+
+                if (!rawAudioUrl) {
                     return `<div data-yoopta-type="audioPlayer" data-editor-type="audioPlayer" data-title="${title}" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin: 8px 0; background: #fafafa; text-align: center; color: #999;">No audio uploaded</div>`;
                 }
 
-                return `<div data-yoopta-type="audioPlayer" data-editor-type="audioPlayer" data-title="${title}" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin: 8px 0; background: #fafafa;">${title ? `<div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #333;">${title.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : ''}<audio controls src="${audioUrl}" style="width: 100%;" preload="metadata"></audio></div>`;
+                return `<div data-yoopta-type="audioPlayer" data-editor-type="audioPlayer" data-title="${title}" data-audio-url="${audioUrl}" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin: 8px 0; background: #fafafa;">${rawTitle ? `<div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #333;">${escapeText(rawTitle)}</div>` : ''}<audio controls src="${audioUrl}" style="width: 100%;" preload="metadata"></audio></div>`;
             },
         },
     },

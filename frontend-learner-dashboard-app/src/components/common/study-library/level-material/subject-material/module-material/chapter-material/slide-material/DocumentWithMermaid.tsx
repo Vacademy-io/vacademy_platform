@@ -314,6 +314,50 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             };
             mergeConsecutiveLists(tempDiv);
 
+            // Convert raw "\n" inside text nodes to <br/> so soft breaks the
+            // admin typed with Shift+Enter render on separate lines instead
+            // of collapsing into a single space the way HTML normally does.
+            // Old published payloads (saved before the admin-side save-path
+            // fix) still have raw newlines in heading/paragraph text — this
+            // keeps the learner view matching what the admin sees. Skip
+            // whitespace-sensitive tags and custom-plugin subtrees so code,
+            // mermaid sources, and plugin templates stay intact.
+            const NEWLINE_SKIP_TAGS = new Set([
+                'PRE', 'CODE', 'TEXTAREA', 'SCRIPT', 'STYLE',
+            ]);
+            const isNewlineSkippable = (n: Node): boolean => {
+                let p: Element | null = (n as ChildNode).parentElement;
+                while (p) {
+                    if (NEWLINE_SKIP_TAGS.has(p.tagName)) return true;
+                    if (p.classList?.contains('mermaid')) return true;
+                    if (p.hasAttribute?.('data-yoopta-type')) return true;
+                    p = p.parentElement;
+                }
+                return false;
+            };
+            const newlineWalker = document.createTreeWalker(tempDiv, NodeFilter.SHOW_TEXT);
+            const newlineTextNodes: Text[] = [];
+            let nlNode: Node | null;
+            while ((nlNode = newlineWalker.nextNode())) {
+                newlineTextNodes.push(nlNode as Text);
+            }
+            for (const textNode of newlineTextNodes) {
+                const text = textNode.nodeValue || '';
+                if (!text.includes('\n')) continue;
+                // Pure formatting whitespace between tags — leave alone.
+                if (!text.trim()) continue;
+                if (isNewlineSkippable(textNode)) continue;
+
+                const parts = text.split(/\r?\n/);
+                const frag = document.createDocumentFragment();
+                parts.forEach((part, i) => {
+                    const cleaned = i === 0 ? part : part.replace(/^[ \t]+/, '');
+                    if (cleaned) frag.appendChild(document.createTextNode(cleaned));
+                    if (i < parts.length - 1) frag.appendChild(document.createElement('br'));
+                });
+                textNode.replaceWith(frag);
+            }
+
             // First, check for div.mermaid elements (most common pattern for mermaid)
             const mermaidDivs = tempDiv.querySelectorAll('div.mermaid');
 

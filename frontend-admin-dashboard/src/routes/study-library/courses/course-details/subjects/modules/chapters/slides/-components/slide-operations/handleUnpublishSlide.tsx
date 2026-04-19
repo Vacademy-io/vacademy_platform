@@ -93,7 +93,9 @@ export const handleUnpublishSlide = async (
                 title: activeItem.title || '',
                 image_file_id: activeItem.image_file_id || '',
                 description: activeItem.description || '',
-                slide_order: 0,
+                // Preserve the slide's current position; hardcoded 0
+                // would make the backend reorder it to the top.
+                slide_order: activeItem?.slide_order ?? null,
                 document_slide: {
                     id: activeItem.document_slide?.id || '',
                     type: activeItem.document_slide?.type || '',

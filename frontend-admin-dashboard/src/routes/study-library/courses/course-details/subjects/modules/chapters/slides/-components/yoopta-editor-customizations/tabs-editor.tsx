@@ -1,11 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import {
-    YooptaPlugin,
-    useYooptaEditor,
-    useYooptaReadOnly,
-    Elements,
-    PluginElementRenderProps,
-} from '@yoopta/editor';
+import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
 
 interface TabItem {
     label: string;
@@ -24,17 +18,11 @@ export function TabsBlock({
     blockId,
 }: PluginElementRenderProps) {
     const editor = useYooptaEditor();
-    const isReadOnly = useYooptaReadOnly();
     const [tabs, setTabs] = useState<TabItem[]>(
         element?.props?.tabs || DEFAULT_TABS.map((t) => ({ ...t }))
     );
     const [activeTab, setActiveTab] = useState(0);
-    // In read-only mode (learner view) we never enter Edit mode — learners
-    // only switch between tabs and read content, never rename labels or
-    // toggle chrome. Force preview regardless of the default-on-empty check.
-    const [isEditing, setIsEditing] = useState(
-        !isReadOnly && !element?.props?.tabs?.length
-    );
+    const [isEditing, setIsEditing] = useState(!element?.props?.tabs?.length);
     const [renamingIndex, setRenamingIndex] = useState<number | null>(null);
     const isFirstRender = useRef(true);
     const renameInputRef = useRef<HTMLInputElement | null>(null);
@@ -118,44 +106,24 @@ export function TabsBlock({
                 backgroundColor: '#fafafa',
             }}
         >
-            {/* Header — admin chrome only. Hidden on learner (read-only)
-                views so students just see the clean tabs + content. */}
-            {!isReadOnly && (
-                <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '8px 12px',
-                        backgroundColor: '#f0f0f0',
-                        borderBottom: `1px solid ${BORDER_COLOR}`,
-                    }}
-                >
-                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#333' }}>
-                        Tabbed Content
-                    </span>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        {isEditing && (
-                            <button
-                                onClick={addTab}
-                                style={{
-                                    padding: '3px 10px',
-                                    fontSize: '12px',
-                                    border: '1px solid #ccc',
-                                    borderRadius: '4px',
-                                    backgroundColor: 'white',
-                                    color: MUTED_COLOR,
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                + Add Tab
-                            </button>
-                        )}
+            {/* Header */}
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    backgroundColor: '#f0f0f0',
+                    borderBottom: `1px solid ${BORDER_COLOR}`,
+                }}
+            >
+                <span style={{ fontSize: '14px', fontWeight: 600, color: '#333' }}>
+                    Tabbed Content
+                </span>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    {isEditing && (
                         <button
-                            onClick={() => {
-                                setIsEditing(!isEditing);
-                                setRenamingIndex(null);
-                            }}
+                            onClick={addTab}
                             style={{
                                 padding: '3px 10px',
                                 fontSize: '12px',
@@ -166,11 +134,28 @@ export function TabsBlock({
                                 cursor: 'pointer',
                             }}
                         >
-                            {isEditing ? 'Preview' : 'Edit'}
+                            + Add Tab
                         </button>
-                    </div>
+                    )}
+                    <button
+                        onClick={() => {
+                            setIsEditing(!isEditing);
+                            setRenamingIndex(null);
+                        }}
+                        style={{
+                            padding: '3px 10px',
+                            fontSize: '12px',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                            backgroundColor: 'white',
+                            color: MUTED_COLOR,
+                            cursor: 'pointer',
+                        }}
+                    >
+                        {isEditing ? 'Preview' : 'Edit'}
+                    </button>
                 </div>
-            )}
+            </div>
 
             {/* Tab Bar
                 UX notes:

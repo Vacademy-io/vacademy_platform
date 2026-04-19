@@ -26,6 +26,24 @@ export const formatHTMLString = (htmlString: string) => {
     // Strip expired query params from public S3 URLs
     cleanedHtml = stripAwsQueryParamsFromUrls(cleanedHtml);
 
+    // Preserve soft line breaks (Shift+Enter inside a heading / paragraph).
+    // Yoopta's HTML serializer emits raw "\n" inside a block's text content,
+    // but its deserializer ra() replaces /[\t\n\r\f\v]+/ with a single space
+    // — so without this conversion, two visually-separated lines inside one
+    // heading collapse into "lineA lineB" after publish → reload.
+    //
+    // Match a newline whose previous char is text (not whitespace/tag) and
+    // whose next non-horizontal-whitespace char is also text. This covers
+    // both `Limit:\n5 Minutes` AND the pretty-printed `Limit:\n    5 Minutes`
+    // that Yoopta emits, while still skipping `>\n<` / `>\n   <` tag
+    // boundaries — so multi-line template literals in custom plugins
+    // (quiz-block, jupyter, scratch, tabs, audio, timeline, etc.) don't
+    // get stray <br/>s injected between their internal <div>s.
+    cleanedHtml = cleanedHtml.replace(
+        /([^\s<>])\r?\n[ \t]*(?=[^\s<>])/g,
+        '$1<br/>'
+    );
+
     // Trim whitespace from stripping
     cleanedHtml = cleanedHtml.trim();
 

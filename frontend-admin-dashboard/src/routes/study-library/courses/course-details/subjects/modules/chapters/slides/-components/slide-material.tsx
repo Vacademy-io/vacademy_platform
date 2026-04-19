@@ -100,13 +100,16 @@ function checkIsHtmlEmpty(data: string | null): boolean {
         return true;
     }
 
-    // Media + Yoopta custom blocks + semantic elements (details/summary
-    // from the accordion serializer, figures, tables, lists, code, etc.)
-    // always count as content, even without visible text.
+    // Markers of real content that has meaning without visible text:
+    //   - Media elements the user intentionally inserted (img/video/iframe/…)
+    //   - Yoopta's accordion serializer output (<details>/<summary>)
+    //   - Yoopta's custom-block marker attributes
+    // Intentionally NOT including <table>/<ul>/<ol>/<pre>/<code>/<blockquote>/<hr>/<figure>
+    // because Yoopta serializes those with their inner text/rows/items; if
+    // they're truly empty wrappers the document really is empty and the
+    // anti-wipe guard should still fire.
     if (
-        /<(img|video|iframe|audio|source|embed|object|svg|canvas|details|summary|figure|table|ul|ol|pre|code|blockquote|hr)\b/i.test(
-            data
-        ) ||
+        /<(img|video|iframe|audio|source|embed|object|svg|canvas|details|summary)\b/i.test(data) ||
         /\b(data-yoopta-type|data-meta-align|data-meta-depth|data-tabs|data-front|data-back)\s*=/i.test(
             data
         )
@@ -382,7 +385,6 @@ export const SlideMaterial = ({
                         value={editor.children}
                         selectionBoxRoot={selectionRef}
                         autoFocus={true}
-                        readOnly={isLearnerView}
                         onChange={() => {
                             // Check emptiness from JSON structure (instant, no serialization)
                             setShowPlaceholder(checkIsEmptyFromEditor());
@@ -508,6 +510,69 @@ export const SlideMaterial = ({
                 doc.body.querySelectorAll('video').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('img').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('a[download]').forEach(unwrapFromDiv);
+
+                // Pre-process <li> elements BEFORE the general walker.
+                // Yoopta's list deserializer iterates <li>.childNodes and
+                // silently drops <br> elements — only text nodes contribute
+                // to the list item's content. So <li>a<br/>b</li> would
+                // deserialize to {text:"ab"} with no separator. Converting
+                // each <br/> inside <li> into a literal "\n" text node
+                // (then normalizing adjacent text nodes) gives the list
+                // reducer a single text node "a\nb"; its .trim() only
+                // touches outer whitespace, so the internal \n survives
+                // into the Slate tree where pre-wrap renders it as a break.
+                doc.body.querySelectorAll('li').forEach((li) => {
+                    Array.from(li.getElementsByTagName('br')).forEach((br) => {
+                        br.replaceWith(doc.createTextNode('\n'));
+                    });
+                    li.normalize();
+                });
+
+                // Convert literal "\n" inside text nodes to <br/> so
+                // Yoopta's deserializer (which replaces /[\t\n\r\f\v]+/ with
+                // a single space) doesn't flatten user-typed soft breaks
+                // that were stored as raw newlines by earlier saves. Skip
+                // whitespace-sensitive elements, custom-plugin subtrees,
+                // and list items (which are handled by the pre-processor
+                // above — they want raw \n, not <br/>).
+                const NEWLINE_SKIP_TAGS = new Set([
+                    'PRE', 'CODE', 'TEXTAREA', 'SCRIPT', 'STYLE', 'LI',
+                ]);
+                const isNewlineSkippable = (node: Node): boolean => {
+                    let p: Element | null = (node as ChildNode).parentElement;
+                    while (p) {
+                        if (NEWLINE_SKIP_TAGS.has(p.tagName)) return true;
+                        if (p.classList?.contains('mermaid')) return true;
+                        if (p.hasAttribute?.('data-yoopta-type')) return true;
+                        p = p.parentElement;
+                    }
+                    return false;
+                };
+                const newlineWalker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+                const newlineTextNodes: Text[] = [];
+                let nlNode: Node | null;
+                while ((nlNode = newlineWalker.nextNode())) {
+                    newlineTextNodes.push(nlNode as Text);
+                }
+                for (const textNode of newlineTextNodes) {
+                    const text = textNode.nodeValue || '';
+                    if (!text.includes('\n')) continue;
+                    // Pure formatting whitespace between tags — leave alone.
+                    if (!text.trim()) continue;
+                    if (isNewlineSkippable(textNode)) continue;
+
+                    const parts = text.split(/\r?\n/);
+                    const frag = doc.createDocumentFragment();
+                    parts.forEach((part, i) => {
+                        // Drop leading indentation on continuation lines so
+                        // pretty-printed source doesn't render as extra
+                        // spaces at the start of each new line.
+                        const cleaned = i === 0 ? part : part.replace(/^[ \t]+/, '');
+                        if (cleaned) frag.appendChild(doc.createTextNode(cleaned));
+                        if (i < parts.length - 1) frag.appendChild(doc.createElement('br'));
+                    });
+                    textNode.replaceWith(frag);
+                }
 
                 contentForDeserialization = doc.body.innerHTML.trim();
 
@@ -750,31 +815,22 @@ export const SlideMaterial = ({
 
     const getCurrentEditorHTMLContent: () => string = () => {
         const data = editor.getEditorValue();
+        let htmlString = '';
         try {
-            const htmlString = html.serialize(editor, data);
-            const formatted = formatHTMLString(htmlString);
-            // Keep the last-known-good snapshot in sync so future serialize
-            // failures (e.g. the Yoopta accordion "Cannot find descendant
-            // at path" Slate bug) have something to fall back to.
-            currentDocHtmlRef.current = formatted;
-            return formatted;
+            htmlString = html.serialize(editor, data);
         } catch (error) {
             console.error('Error serializing content in getCurrentEditorHTMLContent:', error);
-            // Serialize blew up (typically Yoopta/Slate throwing on a
-            // partially-normalized accordion/custom-block state). Fall
-            // back to the most recent successfully-serialized HTML
-            // (captured on every onChange), then to the slide's stored
-            // data. Returning '' used to land in SaveDraft's empty-guard
-            // and surface "Could not read editor content" — we'd rather
-            // preserve prior content than lose work.
-            if (currentDocHtmlRef.current) {
-                return currentDocHtmlRef.current;
-            }
-            if (activeItem?.document_slide?.data) {
-                return activeItem.document_slide.data;
-            }
+            // Return empty on serialize failure. SaveDraft / Publish guard
+            // against empty content and will surface a "Could not read
+            // editor content" error. Falling back to a cached or stored
+            // HTML here previously caused stale publishes — the Publish
+            // button would read this return value and send last-known
+            // content to the server, silently overwriting the user's
+            // latest edits with an older snapshot.
             return '';
         }
+        const formattedHtmlString = formatHTMLString(htmlString);
+        return formattedHtmlString;
     };
 
     // Unified handler to check and handle unsaved DOC changes for the previous slide
@@ -1765,6 +1821,27 @@ export const SlideMaterial = ({
         setIsSaving(true);
         try {
             const slide = slideToSave ? slideToSave : activeItem;
+
+            // Feedback safety net: if source_type is absent or unrecognized,
+            // every branch below would silently no-op and the user would see
+            // NO feedback after clicking Save Draft. Bail early with an
+            // explicit error so they know the click registered.
+            const knownSourceTypes = [
+                'ASSIGNMENT',
+                'VIDEO',
+                'QUESTION',
+                'QUIZ',
+                'AUDIO',
+                'SCORM',
+                'DOCUMENT',
+            ];
+            if (!slide?.source_type || !knownSourceTypes.includes(slide.source_type)) {
+                toast.error(
+                    `Cannot save slide — unknown type "${slide?.source_type ?? ''}".`
+                );
+                return;
+            }
+
             // Determine the correct status based on slide type and current state
             let status: string;
             if (
@@ -2607,15 +2684,48 @@ export const SlideMaterial = ({
                                                     activeItem?.document_slide?.type === 'DOC'
                                                 ) {
                                                     let currentHtml = getCurrentEditorHTMLContent();
+
+                                                    // Hard stop: if the editor can't produce current
+                                                    // HTML (serialize failed / editor empty), we must
+                                                    // NOT fall through to the stale activeItem.
+                                                    // handlePublishSlide's ||-fallback would otherwise
+                                                    // publish activeItem.document_slide.published_data,
+                                                    // which after a Save Draft is the PREVIOUS
+                                                    // published version — the user's latest edit
+                                                    // would silently be replaced by old content.
+                                                    if (
+                                                        !currentHtml ||
+                                                        checkIsHtmlEmpty(currentHtml)
+                                                    ) {
+                                                        toast.error(
+                                                            'Could not read editor content. Please try again.'
+                                                        );
+                                                        setIsPublishDialogOpen(false);
+                                                        return;
+                                                    }
+
                                                     if (containsBase64Images(currentHtml)) {
                                                         const { processedHtml } =
                                                             await processHtmlImages(currentHtml);
                                                         currentHtml = processedHtml;
                                                     }
+
+                                                    // Read the freshest slide snapshot from the
+                                                    // store so published_data / status / title
+                                                    // reflect any just-saved Save Draft mutation.
+                                                    // React-state activeItem stays stale after
+                                                    // refetch (by design, to avoid editor reload).
+                                                    const freshSlide =
+                                                        useContentStore
+                                                            .getState()
+                                                            .getSlideById(activeItem.id) ||
+                                                        activeItem;
+
                                                     itemToPublish = {
-                                                        ...activeItem,
+                                                        ...freshSlide,
                                                         document_slide: {
-                                                            ...activeItem.document_slide!,
+                                                            ...(freshSlide.document_slide ||
+                                                                activeItem.document_slide!),
                                                             data: currentHtml,
                                                             total_pages:
                                                                 estimatePageCount(currentHtml),

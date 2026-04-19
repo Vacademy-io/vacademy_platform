@@ -573,26 +573,25 @@ export const useSlidesMutations = (
             );
             return { data: response.data, isNewSlide: payload.new_slide };
         },
-        onSuccess: async (result) => {
+        onSuccess: async (result, payload) => {
             await queryClient.invalidateQueries({ queryKey: ['slides'] });
             queryClient.invalidateQueries({ queryKey: ['GET_MODULES_WITH_CHAPTERS'] });
             queryClient.invalidateQueries({ queryKey: ['GET_STUDENT_SUBJECTS_PROGRESS'] });
             queryClient.invalidateQueries({ queryKey: ['GET_STUDENT_SLIDES_PROGRESS'] });
 
-            // When a new DOC slide is created, auto-switch to it. New slides
-            // are inserted at slide_order 0, so items[0] IS the new slide
-            // after the refetch lands. Poll the store briefly instead of
-            // using a fixed setTimeout — the old 1s delay raced with slow
-            // networks (new slide didn't switch) and was redundantly late
-            // on fast ones. Callers that want to control the active slide
-            // themselves (e.g. AddDocDialog.reorderSlidesAfterNewSlide)
-            // will simply overwrite this with the same target.
-            if (result.isNewSlide) {
+            // When a new DOC slide is created, auto-switch to IT specifically.
+            // Look up by the payload id (what we just sent to the backend)
+            // rather than items[0] — using items[0] can land on the wrong
+            // slide if the refetch hasn't updated the store yet or if the
+            // backend sorts differently than slide_order ASC.
+            if (result.isNewSlide && payload?.id) {
+                const newSlideId = payload.id;
                 for (let i = 0; i < 15; i++) {
                     await new Promise((r) => setTimeout(r, 100));
-                    const { setActiveItem, items } = useContentStore.getState();
-                    if (items && items.length > 0) {
-                        setActiveItem(items[0] as Slide);
+                    const { setActiveItem, getSlideById } = useContentStore.getState();
+                    const newSlide = getSlideById(newSlideId);
+                    if (newSlide) {
+                        setActiveItem(newSlide as unknown as Slide);
                         break;
                     }
                 }

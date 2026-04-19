@@ -33,14 +33,14 @@ export const formatHTMLString = (htmlString: string) => {
     // heading collapse into "lineA lineB" after publish → reload.
     //
     // Match a newline whose previous char is text (not whitespace/tag) and
-    // whose next non-horizontal-whitespace char is also text. This covers
-    // both `Limit:\n5 Minutes` AND the pretty-printed `Limit:\n    5 Minutes`
-    // that Yoopta emits, while still skipping `>\n<` / `>\n   <` tag
-    // boundaries — so multi-line template literals in custom plugins
-    // (quiz-block, jupyter, scratch, tabs, audio, timeline, etc.) don't
-    // get stray <br/>s injected between their internal <div>s.
+    // whose next non-horizontal-whitespace char is also text. The leading
+    // spaces/tabs sit in the lookahead so they are NOT consumed — that's
+    // important because user-typed indentation (e.g. "OOPS\n    1.1")
+    // must survive the round trip. Tag boundaries like `>\n<` / `>\n   <`
+    // still don't match (the `<` fails the lookahead), so multi-line
+    // template literals in custom plugins keep their formatting.
     cleanedHtml = cleanedHtml.replace(
-        /([^\s<>])\r?\n[ \t]*(?=[^\s<>])/g,
+        /([^\s<>])\r?\n(?=[ \t]*[^\s<>])/g,
         '$1<br/>'
     );
 

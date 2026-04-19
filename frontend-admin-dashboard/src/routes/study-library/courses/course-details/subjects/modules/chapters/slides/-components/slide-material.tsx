@@ -564,11 +564,12 @@ export const SlideMaterial = ({
                     const parts = text.split(/\r?\n/);
                     const frag = doc.createDocumentFragment();
                     parts.forEach((part, i) => {
-                        // Drop leading indentation on continuation lines so
-                        // pretty-printed source doesn't render as extra
-                        // spaces at the start of each new line.
-                        const cleaned = i === 0 ? part : part.replace(/^[ \t]+/, '');
-                        if (cleaned) frag.appendChild(doc.createTextNode(cleaned));
+                        // Preserve leading spaces on continuation lines so
+                        // user-typed indentation (e.g. "OOPS\n    1.1")
+                        // survives the round trip. Slate renders the
+                        // editable with white-space: pre-wrap, so the
+                        // spaces become visible indentation.
+                        if (part) frag.appendChild(doc.createTextNode(part));
                         if (i < parts.length - 1) frag.appendChild(doc.createElement('br'));
                     });
                     textNode.replaceWith(frag);

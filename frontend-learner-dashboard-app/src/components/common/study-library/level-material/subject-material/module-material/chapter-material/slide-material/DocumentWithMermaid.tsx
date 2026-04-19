@@ -351,8 +351,10 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                 const parts = text.split(/\r?\n/);
                 const frag = document.createDocumentFragment();
                 parts.forEach((part, i) => {
-                    const cleaned = i === 0 ? part : part.replace(/^[ \t]+/, '');
-                    if (cleaned) frag.appendChild(document.createTextNode(cleaned));
+                    // Preserve leading spaces on continuation lines so
+                    // indentation (e.g. "OOPS\n    1.1") renders the
+                    // same way the admin authored it.
+                    if (part) frag.appendChild(document.createTextNode(part));
                     if (i < parts.length - 1) frag.appendChild(document.createElement('br'));
                 });
                 textNode.replaceWith(frag);

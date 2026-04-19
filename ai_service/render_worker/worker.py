@@ -209,11 +209,35 @@ class RenderWorker:
 
             # First, compute total frames by doing a dry-run parse of timeline + audio
             import json as _json
+            import re as _re
             tl_data = _json.loads(timeline_path.read_text())
             if isinstance(tl_data, dict) and "entries" in tl_data:
                 tl_entries = tl_data["entries"]
             else:
                 tl_entries = tl_data
+
+            # Strip <video data-source-clip> tags from SOURCE_CLIP entries so
+            # Playwright doesn't render the video (the compositor handles it).
+            # Without this, the video appears twice: once from Playwright and
+            # once from the compositor.
+            _video_tag_re = _re.compile(
+                r'<video\b[^>]*data-source-clip[^>]*>(?:</video>)?',
+                _re.IGNORECASE,
+            )
+            _modified_tl = False
+            for _entry in tl_entries:
+                if _entry.get("shot_type") == "SOURCE_CLIP" and "html" in _entry:
+                    _orig = _entry["html"]
+                    _stripped = _video_tag_re.sub("", _orig)
+                    if _stripped != _orig:
+                        _entry["html"] = _stripped
+                        _modified_tl = True
+            if _modified_tl:
+                timeline_path.write_text(_json.dumps(
+                    tl_data if isinstance(tl_data, dict) else tl_entries,
+                    ensure_ascii=False,
+                ))
+                logger.info("Stripped <video> tags from SOURCE_CLIP entries for render")
             from moviepy import AudioFileClip as _AFC
             _audio_dur = _AFC(str(audio_path)).duration
             tl_max_end = max((e.get("exitTime", 0) for e in tl_entries), default=0)

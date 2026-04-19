@@ -759,6 +759,14 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     * { box-sizing: border-box; }
                     html, body { margin:0; padding:0; width:100%; height:100%; font-family: 'Inter', 'Noto Sans', sans-serif; color: var(--text-color); }
 
+                    /* Fix word-smashing: LLM sometimes wraps each word in inline-block
+                       spans without whitespace between them. This ensures a gap. */
+                    span[style*="inline-block"] + span[style*="inline-block"] { margin-left: 0.25em; }
+                    div[style*="inline-block"] + div[style*="inline-block"] { margin-left: 0.25em; }
+                    /* Also catch class-based word wrappers */
+                    [class*="word"] { display: inline-block; margin-right: 0.2em; }
+                    .word-wrapper, .word-wrap, .word { margin-right: 0.2em; }
+
                     /* Default centering for content-wrapper — centers even if HTML lacks .full-screen-center */
                     #content-wrapper {
                       display: flex; flex-direction: column;

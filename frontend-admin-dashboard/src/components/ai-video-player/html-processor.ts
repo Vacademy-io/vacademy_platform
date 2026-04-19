@@ -90,6 +90,12 @@ function getBaseStyles(palette?: { background?: string; text?: string; text_seco
 
             * { box-sizing: border-box; }
 
+            /* Fix word-smashing: LLM wraps words in inline-block without whitespace */
+            span[style*="inline-block"] + span[style*="inline-block"] { margin-left: 0.25em; }
+            div[style*="inline-block"] + div[style*="inline-block"] { margin-left: 0.25em; }
+            [class*="word"] { display: inline-block; margin-right: 0.2em; }
+            .word-wrapper, .word-wrap, .word { margin-right: 0.2em; }
+
             html, body {
                 width: 100%;
                 height: 100%;

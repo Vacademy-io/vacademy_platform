@@ -3815,6 +3815,35 @@ class VideoGenerationPipeline:
 
             _scene_times = [f"{s.get('t', 0):.1f}s" for s in _iv_scenes[:20]]
 
+            # Demo-specific context: UI elements and key on-screen events
+            _demo_context_block = ""
+            if _iv_mode == "demo":
+                _iv_demo = _iv_ctx.get("demo_only", {})
+                _ui_elements = _iv_demo.get("ui_elements_seen", [])
+                _key_events = _iv_demo.get("key_onscreen_events", [])
+                if _ui_elements:
+                    _demo_context_block += (
+                        "\nUI elements visible in the demo:\n  "
+                        + ", ".join(_ui_elements[:20]) + "\n"
+                    )
+                if _key_events:
+                    _event_lines = [
+                        f"  {e.get('t', 0):.1f}s: {e.get('kind', '?')} near \"{e.get('near_text', '')}\""
+                        for e in _key_events[:15]
+                    ]
+                    _demo_context_block += (
+                        "\nKey on-screen events (what happens in the demo):\n"
+                        + "\n".join(_event_lines) + "\n"
+                    )
+                _demo_context_block += (
+                    "\n**CAPTION GUIDANCE FOR SOURCE_CLIP SHOTS**:\n"
+                    "- The title/caption MUST describe what the viewer is seeing in the demo "
+                    "at that specific timestamp. Use the transcript + UI elements + events above.\n"
+                    "- BAD: 'No More Tool Jumping' (generic marketing copy)\n"
+                    "- GOOD: 'Exploring Course Library' or 'Adding a New Module' (specific to what's on screen)\n"
+                    "- Match the caption to the source_start/source_end timestamp range.\n"
+                )
+
             _source_video_block = (
                 "\n\n## SOURCE VIDEO CONTEXT\n"
                 f"Duration: {_iv_meta.get('duration_s', 0):.1f}s | "
@@ -3826,7 +3855,8 @@ class VideoGenerationPipeline:
                 + "\n".join(_transcript_lines[:40]) + "\n\n"
                 "Emphasis marks:\n"
                 + "\n".join(_emphasis_lines) + "\n\n"
-                f"Scene cuts: {', '.join(_scene_times)}\n\n"
+                f"Scene cuts: {', '.join(_scene_times)}\n"
+                + _demo_context_block + "\n"
                 "**SOURCE_CLIP RULES**:\n"
                 "- Use SOURCE_CLIP shots to show the original video footage during key quotes.\n"
                 "- Each SOURCE_CLIP shot MUST include `source_start` and `source_end` fields — "
@@ -4394,8 +4424,12 @@ class VideoGenerationPipeline:
                         "- The video container MUST be pure #000000 — this is where the source "
                         "video will appear via compositing.\n"
                         "- Video container aspect-ratio should be 16/9 (for screen recordings).\n"
-                        "- Title: 1 line, concise, describes what the viewer will see.\n"
-                        "- Caption: 1-2 lines, brief context.\n"
+                        "- Title: 1 line, concise. Must describe what the demo is ACTUALLY "
+                        "SHOWING at this timestamp (e.g., 'Browsing the Course Library', "
+                        "'Setting Up Module Structure'). Use the visual_description and "
+                        "text_elements from the Director's shot plan. Do NOT use generic "
+                        "marketing copy like 'No More Tool Jumping'.\n"
+                        "- Caption: 1-2 lines, specific to the UI action being demonstrated.\n"
                         "- DO NOT create SVGs, diagrams, icons, step lists, UI mockups, or any "
                         "visual elements. The video IS the visual.\n"
                         "- DO NOT use <img> or data-img-prompt.\n"

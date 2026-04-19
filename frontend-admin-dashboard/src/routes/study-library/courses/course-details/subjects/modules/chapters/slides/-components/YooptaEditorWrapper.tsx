@@ -111,31 +111,71 @@ function cleanPastedHtml(rawHtml: string): string {
         }
     });
 
-    // 4. Unwrap <p> inside <li>. Google Docs (and most rich editors) emit
-    //    <li><p>...</p></li>, but Yoopta's list deserializer expects the
-    //    <li> to contain inline content directly — a nested <p> gets
-    //    re-parsed as a separate paragraph block, which flattens the
-    //    list structure.
-    body.querySelectorAll('li > p').forEach((p) => {
-        const parentLi = p.parentElement;
-        if (!parentLi) return;
-        // Only unwrap if the <p> is the sole block child; if the <li>
-        // has nested <ul>/<ol> siblings we leave it alone so nesting
-        // survives.
-        const fragment = doc.createDocumentFragment();
-        while (p.firstChild) fragment.appendChild(p.firstChild);
-        p.replaceWith(fragment);
+    // 4. KEEP <p> inside <li>. Yoopta's list deserializer processes
+    //    element children of <li> by calling its inline deserializer on
+    //    element.childNodes — so `<li><strong>X</strong></li>` loses
+    //    the bold mark (the deserializer never sees the <strong>, only
+    //    the text inside it). When the content sits inside a <p>,
+    //    deserialization walks the <p>'s children correctly and marks
+    //    survive. Google Docs already emits `<li><p>...</p></li>`, so
+    //    leaving the <p> in place is also what the load walker
+    //    (slide-material setEditorContent) produces for saves that
+    //    don't have one. The two paths stay consistent.
+
+    // 5. Propagate Google Docs' `aria-level` on <li> into `data-meta-depth`
+    //    on the parent <ol>/<ul>. Google Docs emits ONE <ol> per nesting
+    //    level (with all its <li>s carrying the same aria-level), so
+    //    reading the first <li>'s level is enough. Yoopta's list
+    //    deserializer reads data-meta-depth and produces NumberedList /
+    //    BulletedList blocks at the correct depth, which gives each
+    //    sub-level a consistent `margin-left: depth * 20px` indent.
+    //    Without this, every top-level <ol> starts at depth 0 and the
+    //    sub-items land flush-left.
+    body.querySelectorAll('ol, ul').forEach((list) => {
+        if (list.hasAttribute('data-meta-depth')) return;
+        const firstLi = list.querySelector(':scope > li');
+        if (!firstLi) return;
+        const raw = firstLi.getAttribute('aria-level');
+        if (!raw) return;
+        const ariaLevel = parseInt(raw, 10);
+        if (Number.isFinite(ariaLevel) && ariaLevel > 1) {
+            list.setAttribute('data-meta-depth', String(ariaLevel - 1));
+        }
     });
 
-    // 5. Strip remaining inline styles & class attrs so Yoopta doesn't
+    // 6. Trim pretty-print whitespace at the start/end of each block's
+    //    text. Google Docs ships HTML like `<p>\n    OOPS\n</p>` and
+    //    `<p>\n    1.1 …\n</p>`; Yoopta's text-node normalizer turns the
+    //    leading \n into a space, leaving 4–5 stray leading spaces that
+    //    vary with whatever pretty-printing the source used. Stripping
+    //    the boundary whitespace keeps sub-item indentation coming
+    //    purely from list depth (data-meta-depth above), not from text.
+    const TRIM_BLOCKS = new Set([
+        'P','LI','H1','H2','H3','H4','H5','H6','BLOCKQUOTE',
+    ]);
+    body.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote').forEach((el) => {
+        if (!TRIM_BLOCKS.has(el.tagName)) return;
+        el.normalize();
+        const first = el.firstChild;
+        if (first && first.nodeType === 3) {
+            first.nodeValue = (first.nodeValue || '').replace(/^[\s\u00a0]+/, '');
+        }
+        const last = el.lastChild;
+        if (last && last.nodeType === 3) {
+            last.nodeValue = (last.nodeValue || '').replace(/[\s\u00a0]+$/, '');
+        }
+    });
+
+    // 7. Strip remaining inline styles & class attrs so Yoopta doesn't
     //    carry over Google's margins / fonts / colors. The alignment
-    //    we cared about is now on data-meta-align.
+    //    and depth we cared about are now on data-meta-align /
+    //    data-meta-depth.
     body.querySelectorAll('[style], [class]').forEach((el) => {
         el.removeAttribute('style');
         el.removeAttribute('class');
     });
 
-    // 6. Drop meta / link / script noise Google Docs ships.
+    // 8. Drop meta / link / script noise Google Docs ships.
     body.querySelectorAll('meta, link, script, style').forEach((n) => n.remove());
 
     return body.innerHTML;

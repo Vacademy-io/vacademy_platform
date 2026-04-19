@@ -511,21 +511,183 @@ export const SlideMaterial = ({
                 doc.body.querySelectorAll('img').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('a[download]').forEach(unwrapFromDiv);
 
+                // Restructure flat sibling <ol>/<ul> with data-meta-depth
+                // into nested form Yoopta's recursive list deserializer
+                // expects. Yoopta's own serializer emits every NumberedList
+                // block as its own <ol>, so a slide with items at depths
+                // 0,1,1,1,0,1 stores as 6 sibling <ol>s. On deserialize,
+                // the first depth-1 sibling gets absorbed into the
+                // preceding depth-0 block's text (visible as "OOPS1.1..."
+                // on reload). Nesting each deeper <ol> inside the
+                // previous shallower list's last <li> lets rt() handle
+                // them via its own recursive path with correct depth.
+                const listsInOrder = Array.from(
+                    doc.body.querySelectorAll('ol, ul')
+                ) as HTMLElement[];
+                if (listsInOrder.length > 0) {
+                    // stack[i] = the <ol>/<ul> at depth i; direct <li>
+                    // children of stack[i] are the items at that depth
+                    let listStack: HTMLElement[] = [];
+                    let lastSeen: Node | null = null;
+                    for (const el of listsInOrder) {
+                        // If anything non-list sits between this list and
+                        // the previously seen one, reset the nesting
+                        // context — deeper items can't cross a paragraph.
+                        if (lastSeen) {
+                            let cursor: Node | null = lastSeen.nextSibling;
+                            let foundBreak = false;
+                            while (cursor && cursor !== el) {
+                                if (
+                                    cursor.nodeType === 1 &&
+                                    (cursor as Element).tagName !== 'OL' &&
+                                    (cursor as Element).tagName !== 'UL'
+                                ) {
+                                    foundBreak = true;
+                                    break;
+                                }
+                                cursor = cursor.nextSibling;
+                            }
+                            if (foundBreak) listStack = [];
+                        }
+                        lastSeen = el;
+
+                        const depth = parseInt(
+                            el.getAttribute('data-meta-depth') || '0',
+                            10
+                        );
+
+                        if (depth <= 0) {
+                            // New top-level list; reset nesting.
+                            listStack = [el];
+                            continue;
+                        }
+
+                        while (listStack.length > depth) listStack.pop();
+                        if (listStack.length < depth) {
+                            // Missing intermediate parent — leave in
+                            // place to avoid losing content.
+                            listStack = [];
+                            continue;
+                        }
+
+                        const parent = listStack[depth - 1];
+                        if (!parent) {
+                            listStack = [];
+                            continue;
+                        }
+                        const lastLi = Array.from(parent.children)
+                            .filter((c) => c.tagName === 'LI')
+                            .pop() as HTMLElement | undefined;
+                        if (!lastLi) {
+                            listStack = [];
+                            continue;
+                        }
+
+                        // If a nested list at this depth already lives
+                        // inside lastLi, merge our <li>s into it so
+                        // consecutive same-depth fragments collapse
+                        // into one list.
+                        const existingNested = Array.from(lastLi.children).find(
+                            (c) =>
+                                (c.tagName === 'OL' || c.tagName === 'UL') &&
+                                parseInt(
+                                    c.getAttribute('data-meta-depth') || '0',
+                                    10
+                                ) === depth
+                        ) as HTMLElement | undefined;
+
+                        if (existingNested) {
+                            Array.from(el.children)
+                                .filter((c) => c.tagName === 'LI')
+                                .forEach((li) => existingNested.appendChild(li));
+                            el.remove();
+                            listStack[depth] = existingNested;
+                            listStack.length = depth + 1;
+                        } else {
+                            lastLi.appendChild(el);
+                            listStack[depth] = el;
+                            listStack.length = depth + 1;
+                        }
+                    }
+                }
+
                 // Pre-process <li> elements BEFORE the general walker.
-                // Yoopta's list deserializer iterates <li>.childNodes and
-                // silently drops <br> elements — only text nodes contribute
-                // to the list item's content. So <li>a<br/>b</li> would
-                // deserialize to {text:"ab"} with no separator. Converting
-                // each <br/> inside <li> into a literal "\n" text node
-                // (then normalizing adjacent text nodes) gives the list
-                // reducer a single text node "a\nb"; its .trim() only
-                // touches outer whitespace, so the internal \n survives
-                // into the Slate tree where pre-wrap renders it as a break.
+                // Yoopta's list deserializer has two quirks on direct <li>
+                // children:
+                //   (a) for ELEMENT children (<strong>/<em>/…) it calls its
+                //       inline deserializer on *element.childNodes*, which
+                //       skips the wrapping element — so <strong>OOPS</strong>
+                //       loses its bold mark.
+                //   (b) for TEXT children it applies .trim(), stripping
+                //       leading/trailing soft-break \n characters.
+                // Both drop once we rewrap inline content inside a <p>:
+                // Yoopta's inline deserializer now sees <strong> as an
+                // element child of <p> (mark preserved), and the text
+                // nodes inside <p> are passed to hs() which doesn't trim.
+                // We also convert <br/> inside the <li> into literal \n
+                // text so soft breaks survive into the Slate tree (where
+                // pre-wrap renders them as real line breaks). Nested
+                // <ol>/<ul> stay as direct children of <li> so the list
+                // depth nesting handled by restructureFlatListsIntoNested
+                // above continues to work.
                 doc.body.querySelectorAll('li').forEach((li) => {
                     Array.from(li.getElementsByTagName('br')).forEach((br) => {
                         br.replaceWith(doc.createTextNode('\n'));
                     });
                     li.normalize();
+
+                    // Already wrapped (either by us or by the source) —
+                    // leave as-is. Check: single <p> child + only lists
+                    // after it (or no other children).
+                    const kids = Array.from(li.childNodes);
+                    const firstEl = kids.find((n) => n.nodeType === 1) as
+                        | Element
+                        | undefined;
+                    const inlineBeforeLists = kids.filter((n) => {
+                        if (n.nodeType === 1) {
+                            const tag = (n as Element).tagName;
+                            return tag !== 'OL' && tag !== 'UL';
+                        }
+                        return n.nodeType === 3;
+                    });
+                    if (
+                        inlineBeforeLists.length === 1 &&
+                        firstEl?.tagName === 'P'
+                    ) {
+                        return;
+                    }
+
+                    // Separate inline content from nested <ol>/<ul>.
+                    const inlineNodes: Node[] = [];
+                    const listNodes: Node[] = [];
+                    for (const child of kids) {
+                        if (
+                            child.nodeType === 1 &&
+                            ((child as Element).tagName === 'OL' ||
+                                (child as Element).tagName === 'UL')
+                        ) {
+                            listNodes.push(child);
+                        } else {
+                            inlineNodes.push(child);
+                        }
+                    }
+
+                    // Drop anything currently inside the <li>; we'll
+                    // re-attach with the <p> wrapper.
+                    while (li.firstChild) li.removeChild(li.firstChild);
+
+                    // Only wrap if there is actual inline content to
+                    // protect; an empty <li> stays empty.
+                    const hasInline = inlineNodes.some((n) => {
+                        if (n.nodeType === 3) return (n.nodeValue || '').length > 0;
+                        return true;
+                    });
+                    if (hasInline) {
+                        const p = doc.createElement('p');
+                        inlineNodes.forEach((n) => p.appendChild(n));
+                        li.appendChild(p);
+                    }
+                    listNodes.forEach((n) => li.appendChild(n));
                 });
 
                 // Convert literal "\n" inside text nodes to <br/> so

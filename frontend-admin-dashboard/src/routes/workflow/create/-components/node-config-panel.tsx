@@ -314,11 +314,9 @@ export function NodeConfigPanel() {
                             <div className="space-y-2 border-t pt-2 mt-2">
                                 <Label className="text-[10px] uppercase text-gray-400">Required Parameters</Label>
                                 {selectedQueryKey.required_params.map((param) => {
-                                    // Auto-fill system params that are always in context
                                     const isSystemParam = param === 'instituteId';
                                     const currentValue = (data.config[param] as string) ?? '';
 
-                                    // Auto-set instituteId if not already set
                                     if (isSystemParam && !currentValue) {
                                         setTimeout(() => handleConfigChange(param, "#ctx['instituteId']"), 0);
                                     }
@@ -336,7 +334,7 @@ export function NodeConfigPanel() {
                                                 <VariablePicker
                                                     value={currentValue}
                                                     onChange={(v) => handleConfigChange(param, v)}
-                                                    placeholder={`Pick value for ${param}...`}
+                                                    placeholder={`Pick or type value for ${param}...`}
                                                     nodeId={selectedNode.id}
                                                 />
                                             )}
@@ -345,41 +343,28 @@ export function NodeConfigPanel() {
                                 })}
                             </div>
                         )}
-                        {/* Optional params from catalog */}
+                        {/* Optional params from catalog — all use text input by default */}
                         {selectedQueryKey?.optional_params && selectedQueryKey.optional_params.length > 0 && (
                             <div className="space-y-2 border-t pt-2 mt-2">
                                 <Label className="text-[10px] uppercase text-gray-400">Optional Filters</Label>
-                                {selectedQueryKey.optional_params.map((param) => {
-                                    // For simple value params (daysAgo, startDate, etc.), use text input
-                                    const isSimpleValue = ['daysAgo', 'daysBack', 'daysUntilExpiry', 'startDate', 'endDate', 'status'].includes(param);
-
-                                    return (
-                                        <div key={param}>
-                                            <Label className="text-xs text-gray-500">{param} <span className="text-gray-300">(optional)</span></Label>
-                                            {isSimpleValue ? (
-                                                <Input
-                                                    value={(data.config[param] as string) ?? ''}
-                                                    onChange={(e) => handleConfigChange(param, e.target.value)}
-                                                    className="mt-1"
-                                                    placeholder={
-                                                        param === 'daysAgo' || param === 'daysBack' ? 'e.g. 5'
-                                                        : param === 'daysUntilExpiry' ? 'e.g. 7'
-                                                        : param === 'status' ? 'e.g. ACTIVE'
-                                                        : param.includes('Date') ? 'YYYY-MM-DD'
-                                                        : `Enter ${param}...`
-                                                    }
-                                                />
-                                            ) : (
-                                                <VariablePicker
-                                                    value={(data.config[param] as string) ?? ''}
-                                                    onChange={(v) => handleConfigChange(param, v)}
-                                                    placeholder={`Filter by ${param}...`}
-                                                    nodeId={selectedNode.id}
-                                                />
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                {selectedQueryKey.optional_params.map((param) => (
+                                    <div key={param}>
+                                        <Label className="text-xs text-gray-500">{param} <span className="text-gray-300">(optional)</span></Label>
+                                        <Input
+                                            value={(data.config[param] as string) ?? ''}
+                                            onChange={(e) => handleConfigChange(param, e.target.value)}
+                                            className="mt-1"
+                                            placeholder={
+                                                param === 'daysAgo' || param === 'daysBack' ? 'e.g. 5'
+                                                : param === 'daysUntilExpiry' ? 'e.g. 7'
+                                                : param === 'status' ? 'e.g. ACTIVE'
+                                                : param.includes('Date') ? 'YYYY-MM-DD'
+                                                : param.includes('Id') ? `Enter ${param} or leave empty for all`
+                                                : `Enter ${param}...`
+                                            }
+                                        />
+                                    </div>
+                                ))}
                             </div>
                         )}
                         <div>

@@ -764,7 +764,6 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       display: flex; flex-direction: column;
                       align-items: center; justify-content: center;
                       min-height: 100%; width: 100%;
-                      padding-bottom: 12%;
                       box-sizing: border-box;
                     }
 

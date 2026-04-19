@@ -925,6 +925,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   srcDoc={htmlDoc}
                   className="border-0 bg-transparent absolute"
                   sandbox="allow-scripts allow-same-origin allow-modals"
+                  allow="autoplay"
                   title={`AI Video Layer ${frame.id}`}
                   style={{
                     backgroundColor: index === 0 ? "#ffffff" : "transparent",

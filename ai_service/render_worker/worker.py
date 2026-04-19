@@ -610,13 +610,41 @@ class RenderWorker:
                     overlay_rgb = overlay[:, :, :3]
                     composited = (src_frame * (1 - alpha) + overlay_rgb * alpha).astype(np.uint8)
                 else:
-                    # No alpha — check if overlay is mostly black (transparent bg)
-                    # If so, use additive compositing; otherwise just use overlay
                     gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
-                    mask = (gray > 15).astype(float)  # pixels brighter than near-black
-                    mask = cv2.GaussianBlur(mask, (3, 3), 0)
-                    mask = mask[:, :, np.newaxis]
-                    composited = (src_frame * (1 - mask) + overlay * mask).astype(np.uint8)
+                    black_mask = gray <= 15
+                    black_ratio = np.sum(black_mask) / black_mask.size
+
+                    if black_ratio < 0.75:
+                        # Card layout — black region is the video container.
+                        # Find bounding box of the black region and fit source
+                        # video into it maintaining aspect ratio.
+                        coords = np.argwhere(black_mask)
+                        if len(coords) > 100:
+                            y0, x0 = coords.min(axis=0)
+                            y1, x1 = coords.max(axis=0) + 1
+                            card_w, card_h = x1 - x0, y1 - y0
+
+                            src_h, src_w = src_frame.shape[:2]
+                            scale = min(card_w / src_w, card_h / src_h)
+                            new_w = int(src_w * scale)
+                            new_h = int(src_h * scale)
+                            resized_src = cv2.resize(src_frame, (new_w, new_h))
+
+                            # Start with overlay as base (keeps card frame + text)
+                            composited = overlay.copy()
+
+                            # Center source video within the card bounds
+                            ox = x0 + (card_w - new_w) // 2
+                            oy = y0 + (card_h - new_h) // 2
+                            composited[oy:oy + new_h, ox:ox + new_w] = resized_src
+                        else:
+                            composited = overlay
+                    else:
+                        # Full-screen overlay (podcast mode) — brightness-based alpha
+                        mask = (gray > 15).astype(float)
+                        mask = cv2.GaussianBlur(mask, (3, 3), 0)
+                        mask = mask[:, :, np.newaxis]
+                        composited = (src_frame * (1 - mask) + overlay * mask).astype(np.uint8)
 
                 # Write composited frame back (as JPG to match existing format)
                 cv2.imwrite(str(frame_path), composited)

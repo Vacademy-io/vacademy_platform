@@ -4359,17 +4359,70 @@ class VideoGenerationPipeline:
 
             # ── SOURCE_CLIP shots: overlay-only constraints ──
             elif shot_type == "SOURCE_CLIP":
-                user_prompt = user_prompt + (
-                    "\n\n**🎬 SOURCE_CLIP SHOT — OVERLAY-ONLY CONSTRAINTS**:\n"
-                    "- Background MUST be solid #000000 (pure black). Black pixels become transparent "
-                    "during compositing — the source video plays behind everything.\n"
-                    "- DO NOT use any background images, gradients, or colors other than black.\n"
-                    "- All visual content (captions, lower thirds, name titles) should use "
-                    "semi-transparent dark boxes: `rgba(0,0,0,0.7)` with light text.\n"
-                    "- Keep overlays in the BOTTOM 30% of screen — don't cover the speaker's face.\n"
-                    "- DO NOT use <img> or data-img-prompt — the video itself IS the visual.\n"
-                    "- Animations should be subtle and quick (0.3-0.5s) — the video is the star.\n"
-                )
+                _iv_mode = ""
+                if self._input_video_context:
+                    _iv_mode = self._input_video_context.get("mode", "")
+
+                if _iv_mode == "demo":
+                    # Demo mode: card layout — video in a styled frame, caption outside
+                    user_prompt = user_prompt + (
+                        "\n\n**🎬 SOURCE_CLIP SHOT — DEMO VIDEO CARD LAYOUT**:\n"
+                        "The source video (a screen recording / demo) will be composited into the "
+                        "black (#000000) region of your HTML. Design a CARD LAYOUT where the video "
+                        "sits inside a styled container and a brief caption sits outside.\n\n"
+                        "**EXACT STRUCTURE REQUIRED** (follow this template closely):\n"
+                        "```html\n"
+                        "<div style='width:100%;height:100%;background:#111827;display:flex;"
+                        "flex-direction:column;align-items:center;justify-content:center;padding:3%;'>\n"
+                        "  <!-- Title above video -->\n"
+                        "  <div style='text-align:center;margin-bottom:2%;'>\n"
+                        "    <h2 style='font-size:1.6rem;font-weight:700;color:#fff;'>"
+                        "YOUR TITLE HERE</h2>\n"
+                        "  </div>\n"
+                        "  <!-- Video container — MUST be pure #000000 background -->\n"
+                        "  <div style='width:88%;aspect-ratio:16/9;max-height:60%;"
+                        "background:#000000;border-radius:12px;overflow:hidden;"
+                        "box-shadow:0 8px 32px rgba(0,0,0,0.6);'></div>\n"
+                        "  <!-- Caption below video -->\n"
+                        "  <div style='margin-top:2%;text-align:center;"
+                        "color:rgba(255,255,255,0.65);font-size:1rem;max-width:80%;'>"
+                        "Brief description here</div>\n"
+                        "</div>\n"
+                        "```\n\n"
+                        "**STRICT RULES:**\n"
+                        "- The outer background MUST be #111827 (dark blue-gray, NOT black).\n"
+                        "- The video container MUST be pure #000000 — this is where the source "
+                        "video will appear via compositing.\n"
+                        "- Video container aspect-ratio should be 16/9 (for screen recordings).\n"
+                        "- Title: 1 line, concise, describes what the viewer will see.\n"
+                        "- Caption: 1-2 lines, brief context.\n"
+                        "- DO NOT create SVGs, diagrams, icons, step lists, UI mockups, or any "
+                        "visual elements. The video IS the visual.\n"
+                        "- DO NOT use <img> or data-img-prompt.\n"
+                        "- Simple gsap fadeIn animation only (0.3s).\n"
+                        "- The ENTIRE HTML must be under 25 lines.\n"
+                    )
+                else:
+                    # Podcast/other mode: full-screen video with minimal caption overlay
+                    user_prompt = user_prompt + (
+                        "\n\n**🎬 SOURCE_CLIP SHOT — OVERLAY-ONLY CONSTRAINTS**:\n"
+                        "The source video footage plays BEHIND your HTML. Your HTML is composited "
+                        "on top — black pixels (#000000) become transparent. The viewer already sees "
+                        "the original video content (speaker, interview), so your overlay must NOT "
+                        "duplicate what's visible in the video.\n\n"
+                        "**STRICT RULES:**\n"
+                        "- Background MUST be solid #000000 (pure black). NO gradients, NO images.\n"
+                        "- ONLY generate a small lower-third caption in the BOTTOM 15% of screen.\n"
+                        "- Use `position:absolute; bottom:5%; left:5%; right:5%` for the caption.\n"
+                        "- Caption box: `background:rgba(0,0,0,0.75); padding:1rem 1.5rem; "
+                        "border-radius:0.5rem`.\n"
+                        "- Text: white, 1.4-1.8rem, Inter font, max 2 lines.\n"
+                        "- DO NOT create SVGs, diagrams, icons, step lists, UI mockups.\n"
+                        "- DO NOT use <img> or data-img-prompt.\n"
+                        "- DO NOT place elements in the top 70% of the screen.\n"
+                        "- Animations: simple fadeIn (0.3s) on the caption. Nothing else.\n"
+                        "- The ENTIRE HTML should be under 25 lines.\n"
+                    )
 
             # ── KINETIC_TEXT bypass — skip LLM, build exact word-sync HTML directly ──
             if shot_type == "KINETIC_TEXT" and self._tier_config.get("kinetic_text_shots", False):
@@ -4587,22 +4640,61 @@ class VideoGenerationPipeline:
                     _assets_urls = self._input_video_context.get("assets_urls", {})
                     _source_url = _assets_urls.get("source_video", "") or self._input_video_context.get("source_public_url", "") or self._input_video_context.get("source_url", "")
                 if _source_url and html:
-                    _video_bg = (
-                        f'<video data-source-clip="true" '
-                        f'data-source-start="{_src_start}" '
-                        f'src="{_source_url}#t={_src_start},{_src_end}" '
-                        f'autoplay muted playsinline '
-                        f'style="position:absolute;top:0;left:0;width:100%;height:100%;'
-                        f'object-fit:cover;z-index:0;pointer-events:none;"></video>'
-                    )
-                    # Wrap: video bg at z=0, original overlay HTML at z=1
-                    html = (
-                        f'<div style="position:relative;width:100%;height:100%;overflow:hidden;background:#000;">'
-                        f'{_video_bg}'
-                        f'<div style="position:relative;z-index:1;width:100%;height:100%;">'
-                        f'{html}'
-                        f'</div></div>'
-                    )
+                    _iv_mode_clip = ""
+                    if self._input_video_context:
+                        _iv_mode_clip = self._input_video_context.get("mode", "")
+
+                    if _iv_mode_clip == "demo":
+                        # Demo mode: inject <video> inside the black card container.
+                        # The HTML has a div with background:#000000 — that's the
+                        # video container. We inject the <video> tag inside it.
+                        _video_tag = (
+                            f'<video data-source-clip="true" '
+                            f'data-source-start="{_src_start}" '
+                            f'src="{_source_url}#t={_src_start},{_src_end}" '
+                            f'autoplay muted playsinline '
+                            f'style="width:100%;height:100%;object-fit:contain;'
+                            f'pointer-events:none;"></video>'
+                        )
+                        # Find the black container div and inject video inside it.
+                        # The LLM generates: background:#000000 or background: #000000
+                        import re as _re
+                        _black_bg_pattern = _re.compile(
+                            r"(background\s*:\s*#000000\s*;[^>]*>)",
+                            _re.IGNORECASE,
+                        )
+                        _match = _black_bg_pattern.search(html)
+                        if _match:
+                            _insert_pos = _match.end()
+                            html = html[:_insert_pos] + _video_tag + html[_insert_pos:]
+                        else:
+                            # Fallback: wrap the whole thing (old behavior)
+                            html = (
+                                f'<div style="position:relative;width:100%;height:100%;overflow:hidden;background:#000;">'
+                                f'<video data-source-clip="true" data-source-start="{_src_start}" '
+                                f'src="{_source_url}#t={_src_start},{_src_end}" autoplay muted playsinline '
+                                f'style="position:absolute;top:0;left:0;width:100%;height:100%;'
+                                f'object-fit:cover;z-index:0;pointer-events:none;"></video>'
+                                f'<div style="position:relative;z-index:1;width:100%;height:100%;">'
+                                f'{html}</div></div>'
+                            )
+                    else:
+                        # Podcast/other: full-screen video behind overlay
+                        _video_bg = (
+                            f'<video data-source-clip="true" '
+                            f'data-source-start="{_src_start}" '
+                            f'src="{_source_url}#t={_src_start},{_src_end}" '
+                            f'autoplay muted playsinline '
+                            f'style="position:absolute;top:0;left:0;width:100%;height:100%;'
+                            f'object-fit:cover;z-index:0;pointer-events:none;"></video>'
+                        )
+                        html = (
+                            f'<div style="position:relative;width:100%;height:100%;overflow:hidden;background:#000;">'
+                            f'{_video_bg}'
+                            f'<div style="position:relative;z-index:1;width:100%;height:100%;">'
+                            f'{html}'
+                            f'</div></div>'
+                        )
                     entry["html"] = html
             if "z" in data:
                 try:

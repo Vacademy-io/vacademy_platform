@@ -732,6 +732,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                                     }}
                                     title={`AI Video Layer ${frame.id}`}
                                     sandbox="allow-scripts allow-same-origin"
+                                    allow="autoplay"
                                     onLoad={() => {
                                         console.log(
                                             '🎬 AIVideoPlayer: iframe loaded successfully',

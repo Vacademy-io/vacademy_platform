@@ -2447,6 +2447,29 @@ export function processHtmlContent(
         );
     }
 
+    // Source clip video auto-play script — handles <video data-source-clip> elements
+    const sourceClipScript = processedHtml.includes('data-source-clip') ? `
+        <script>
+        (function() {
+            var vid = document.querySelector('video[data-source-clip]');
+            if (!vid) return;
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.loop = false;
+            var startTime = parseFloat(vid.getAttribute('data-source-start') || '0');
+            function tryPlay() {
+                vid.currentTime = startTime;
+                vid.play().catch(function(){});
+            }
+            if (vid.readyState >= 1) { tryPlay(); }
+            else { vid.addEventListener('loadedmetadata', tryPlay, {once:true}); }
+            vid.addEventListener('canplay', function() {
+                if (vid.paused) vid.play().catch(function(){});
+            }, {once:true});
+        })();
+        </script>
+    ` : '';
+
     return `
         <!DOCTYPE html>
         <html>
@@ -2461,6 +2484,7 @@ export function processHtmlContent(
         </head>
         <body>
             ${processedHtml}
+            ${sourceClipScript}
         </body>
         </html>
     `;

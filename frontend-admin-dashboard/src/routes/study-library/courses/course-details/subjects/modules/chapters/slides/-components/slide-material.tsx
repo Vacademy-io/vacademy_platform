@@ -537,6 +537,62 @@ export const SlideMaterial = ({
                 doc.body.querySelectorAll('img').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('a[download]').forEach(unwrapFromDiv);
 
+                // Convert in-text newlines to <br> so Yoopta's deserializer
+                // preserves line breaks in list items, paragraphs, etc.
+                // Background: Yoopta's ra() strips all whitespace chars
+                // from text nodes via replace(/[\t\n\r\f\v]+/g, " "), which
+                // collapses soft breaks in <li>/<p>/blockquote on reload.
+                // It has a special case for <BR> that yields {text: "\n"},
+                // so rewriting \n → <br> here keeps the breaks through the
+                // admin→learner round-trip. Skip <pre> (code block has its
+                // own data-code path) and inline <code> (single-line marks).
+                const convertNewlinesToBr = (node: Node) => {
+                    const children = Array.from(node.childNodes);
+                    for (const child of children) {
+                        if (child.nodeType === 3) {
+                            const raw = child.textContent || '';
+                            // Normalize \r\n and lone \r to \n before splitting
+                            const text = raw.replace(/\r\n?/g, '\n');
+                            if (!text.includes('\n')) continue;
+                            // Skip whitespace-only text nodes — those are
+                            // just the formatting indentation between tags
+                            // from formatHTMLString (e.g. "\n            "
+                            // between <body> and <div>). Converting them
+                            // to <br>s injects stray line breaks into the
+                            // body root and corrupts the wrapper-unwrap
+                            // logic below (it expects a single outer div).
+                            if (text.trim() === '') continue;
+                            const parent = child.parentNode;
+                            if (!parent) continue;
+                            const tag = (parent as Element).tagName;
+                            if (tag === 'PRE' || tag === 'CODE' || tag === 'SCRIPT' || tag === 'STYLE') continue;
+                            if ((parent as Element).closest?.('pre')) continue;
+                            // Skip blocks whose Yoopta plugin has a custom
+                            // parse built on deserializeTextNodes — that
+                            // helper preserves literal \n in text nodes on
+                            // its own and does NOT recognize <br>. Converting
+                            // \n to <br> here turns each soft break into an
+                            // empty text node, which Slate then merges —
+                            // collapsing "Hello\n1.1\n1.2" into "Hello1.11.2"
+                            // on Save Draft. Current denylist: lists (<li>),
+                            // callouts (<dl>).
+                            if ((parent as Element).closest?.('li, dl')) continue;
+                            const parts = text.split('\n');
+                            const frag = doc.createDocumentFragment();
+                            parts.forEach((part, i) => {
+                                if (i > 0) frag.appendChild(doc.createElement('br'));
+                                if (part) frag.appendChild(doc.createTextNode(part));
+                            });
+                            parent.replaceChild(frag, child);
+                        } else if (child.nodeType === 1) {
+                            const tag = (child as Element).tagName;
+                            if (tag === 'PRE' || tag === 'SCRIPT' || tag === 'STYLE') continue;
+                            convertNewlinesToBr(child);
+                        }
+                    }
+                };
+                convertNewlinesToBr(doc.body);
+
                 contentForDeserialization = doc.body.innerHTML.trim();
 
                 // Recursively unwrap divs until we get to actual content

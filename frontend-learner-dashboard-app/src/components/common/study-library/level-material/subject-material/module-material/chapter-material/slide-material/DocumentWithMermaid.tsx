@@ -288,6 +288,46 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = htmlContent;
 
+            // Preserve soft line breaks inside list items / paragraphs. The
+            // admin editor (Yoopta) stores pressed-Enter-without-new-block
+            // as a literal \n inside the text node. Default HTML rendering
+            // collapses whitespace, so "Hello\n1.1 Hello\n1.2 HAAE" shows
+            // as a single line on the learner side. Convert \n to <br>
+            // inside text nodes so the browser paints real line breaks.
+            // Skip <pre>/<code>/script/style and any Yoopta custom block
+            // whose semantics live in data-* attributes (text inside the
+            // wrapper isn't load-bearing, but shouldn't be mutated either).
+            const convertNewlinesToBr = (node: Node) => {
+                const children = Array.from(node.childNodes);
+                for (const child of children) {
+                    if (child.nodeType === 3) {
+                        const raw = (child.textContent || '').replace(/\r\n?/g, '\n');
+                        if (!raw.includes('\n')) continue;
+                        // Skip pure-whitespace text nodes (formatting
+                        // indentation between tags) — they'd inject stray
+                        // <br>s where there's no real content.
+                        if (raw.trim() === '') continue;
+                        const parent = child.parentNode;
+                        if (!parent) continue;
+                        const tag = (parent as Element).tagName;
+                        if (tag === 'PRE' || tag === 'CODE' || tag === 'SCRIPT' || tag === 'STYLE') continue;
+                        if ((parent as Element).closest?.('pre')) continue;
+                        const parts = raw.split('\n');
+                        const frag = document.createDocumentFragment();
+                        parts.forEach((part, i) => {
+                            if (i > 0) frag.appendChild(document.createElement('br'));
+                            if (part) frag.appendChild(document.createTextNode(part));
+                        });
+                        parent.replaceChild(frag, child);
+                    } else if (child.nodeType === 1) {
+                        const tag = (child as Element).tagName;
+                        if (tag === 'PRE' || tag === 'SCRIPT' || tag === 'STYLE') continue;
+                        convertNewlinesToBr(child);
+                    }
+                }
+            };
+            convertNewlinesToBr(tempDiv);
+
             // Merge consecutive sibling <ol>/<ul> so numbering is continuous.
             // Why: authored HTML wraps each <li> in its own <ol>, which resets the
             // CSS counter on every list and renders 1, 1, 1, 1 instead of 1, 2, 3, 4.

@@ -845,16 +845,20 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
         status,
         workflow_type: workflowType,
         institute_id: instituteId,
-        nodes: nodes.map((n, i) => ({
-            id: n.id,
-            name: n.data.name,
-            node_type: n.data.nodeType,
-            config: n.data.config ?? {},
-            position_x: n.position.x,
-            position_y: n.position.y,
-            is_start_node: n.data.isStartNode ?? i === 0,
-            is_end_node: n.data.isEndNode ?? false,
-        })),
+        nodes: nodes.map((n, i) => {
+            // Auto-detect end nodes: nodes with no outgoing edges
+            const hasOutgoingEdge = edges.some((e) => e.source === n.id);
+            return {
+                id: n.id,
+                name: n.data.name,
+                node_type: n.data.nodeType,
+                config: n.data.config ?? {},
+                position_x: n.position.x,
+                position_y: n.position.y,
+                is_start_node: n.data.isStartNode ?? i === 0,
+                is_end_node: n.data.isEndNode ?? !hasOutgoingEdge,
+            };
+        }),
         edges: edges.map((e) => ({
             id: e.id,
             source_node_id: e.source,

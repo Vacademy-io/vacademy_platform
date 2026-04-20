@@ -53,9 +53,21 @@ public class AutomationParserService {
 
             // 1. Find the correct parser for this node type from the registry and parse it.
             Optional<StepParser> parser = parserRegistry.getParser(nodeData);
-            AutomationDiagramDTO.Node node = parser.map(p -> p.parse(nodeId, nodeData))
-                    .orElse(AutomationDiagramDTO.Node.builder().id(nodeId).title("Unknown Step").type("UNKNOWN")
-                            .build());
+            AutomationDiagramDTO.Node node;
+            if (parser.isPresent()) {
+                node = parser.get().parse(nodeId, nodeData);
+            } else {
+                // Fallback: use _nodeType and _nodeName injected by the controller
+                String nodeType = (String) nodeData.getOrDefault("_nodeType", "UNKNOWN");
+                String nodeName = (String) nodeData.getOrDefault("_nodeName", "Unknown Step");
+                String diagramType = mapNodeTypeToDiagramType(nodeType);
+                node = AutomationDiagramDTO.Node.builder()
+                        .id(nodeId)
+                        .title(nodeName)
+                        .description(nodeType.replace("_", " "))
+                        .type(diagramType)
+                        .build();
+            }
 
             // Use a map to ensure unique nodes by ID
             nodeMap.put(nodeId, node);
@@ -119,6 +131,23 @@ public class AutomationParserService {
                 .filter(s -> s != null && !s.trim().isEmpty())
                 .map(s -> s.substring(0, 1).toUpperCase() + s.substring(1).toLowerCase())
                 .collect(Collectors.joining(" "));
+    }
+
+    /**
+     * Maps actual workflow node types to diagram display types.
+     */
+    public static String mapNodeTypeToDiagramType(String nodeType) {
+        if (nodeType == null) return "UNKNOWN";
+        return switch (nodeType.toUpperCase()) {
+            case "TRIGGER" -> "TRIGGER";
+            case "QUERY", "UPDATE_RECORD" -> "DATABASE";
+            case "SEND_EMAIL" -> "EMAIL";
+            case "SEND_WHATSAPP", "SEND_PUSH_NOTIFICATION" -> "NOTIFICATION";
+            case "HTTP_REQUEST", "COMBOT" -> "WEBHOOK";
+            case "CONDITION", "FILTER", "LOOP", "MERGE" -> "DECISION";
+            case "ACTION", "TRANSFORM", "AGGREGATE", "DELAY", "SCHEDULE_TASK" -> "ACTION";
+            default -> "ACTION";
+        };
     }
 
     @SuppressWarnings("unchecked")

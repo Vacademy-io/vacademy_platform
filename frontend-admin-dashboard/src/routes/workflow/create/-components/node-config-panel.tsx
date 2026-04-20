@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Trash, X } from '@phosphor-icons/react';
+import { Trash, X, Warning } from '@phosphor-icons/react';
 import { WORKFLOW_NODE_TYPES } from '@/types/workflow/workflow-types';
+import { getNodeIssues } from './workflow-custom-node';
 import { VariablePicker } from './variable-picker';
 import { ConditionBuilder } from './condition-builder';
 import { AggregateBuilder } from './aggregate-builder';
@@ -16,6 +18,51 @@ import {
     getTriggerEventsCatalogQuery,
     getTemplatesByTypeQuery,
 } from '@/services/workflow-service';
+
+/** Handles auto-fill of system params like instituteId using useEffect (not in render) */
+function QueryRequiredParams({ params, config, onConfigChange, nodeId }: {
+    params: string[];
+    config: Record<string, unknown>;
+    onConfigChange: (key: string, value: unknown) => void;
+    nodeId: string;
+}) {
+    // Auto-fill instituteId on mount
+    useEffect(() => {
+        if (params.includes('instituteId') && !config['instituteId']) {
+            onConfigChange('instituteId', "#ctx['instituteId']");
+        }
+    }, [params, config, onConfigChange]);
+
+    if (params.length === 0) return null;
+
+    return (
+        <div className="space-y-2 border-t pt-2 mt-2">
+            <Label className="text-[10px] uppercase text-gray-400">Required Parameters</Label>
+            {params.map((param) => {
+                const isSystemParam = param === 'instituteId';
+                return (
+                    <div key={param}>
+                        <Label className="text-xs">{param}</Label>
+                        {isSystemParam ? (
+                            <div className="mt-1">
+                                <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+                                    Auto-filled from workflow context
+                                </div>
+                            </div>
+                        ) : (
+                            <VariablePicker
+                                value={(config[param] as string) ?? ''}
+                                onChange={(v) => onConfigChange(param, v)}
+                                placeholder={`Pick or type value for ${param}...`}
+                                nodeId={nodeId}
+                            />
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
 
 export function NodeConfigPanel() {
     const selectedNodeId = useWorkflowBuilderStore((s) => s.selectedNodeId);
@@ -79,6 +126,21 @@ export function NodeConfigPanel() {
             </div>
 
             <div className="flex flex-col gap-4 p-4">
+                {/* Show validation issues */}
+                {(() => {
+                    const issues = getNodeIssues(data.nodeType, data.config ?? {});
+                    return issues.length > 0 ? (
+                        <div className="rounded-lg border border-orange-200 bg-orange-50 p-2.5 space-y-1">
+                            {issues.map((issue, i) => (
+                                <div key={i} className="flex items-center gap-1.5 text-xs text-orange-700">
+                                    <Warning size={12} weight="fill" className="shrink-0" />
+                                    {issue}
+                                </div>
+                            ))}
+                        </div>
+                    ) : null;
+                })()}
+
                 <div>
                     <Label className="text-xs">Node Name</Label>
                     <Input
@@ -311,39 +373,12 @@ export function NodeConfigPanel() {
                             )}
                         </div>
                         {/* Dynamic required params */}
-                        {selectedQueryKey?.required_params && selectedQueryKey.required_params.length > 0 && (
-                            <div className="space-y-2 border-t pt-2 mt-2">
-                                <Label className="text-[10px] uppercase text-gray-400">Required Parameters</Label>
-                                {selectedQueryKey.required_params.map((param) => {
-                                    const isSystemParam = param === 'instituteId';
-                                    const currentValue = (data.config[param] as string) ?? '';
-
-                                    if (isSystemParam && !currentValue) {
-                                        setTimeout(() => handleConfigChange(param, "#ctx['instituteId']"), 0);
-                                    }
-
-                                    return (
-                                        <div key={param}>
-                                            <Label className="text-xs">{param}</Label>
-                                            {isSystemParam ? (
-                                                <div className="mt-1">
-                                                    <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
-                                                        <span>Auto-filled from workflow context</span>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <VariablePicker
-                                                    value={currentValue}
-                                                    onChange={(v) => handleConfigChange(param, v)}
-                                                    placeholder={`Pick or type value for ${param}...`}
-                                                    nodeId={selectedNode.id}
-                                                />
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                        <QueryRequiredParams
+                            params={selectedQueryKey?.required_params ?? []}
+                            config={data.config}
+                            onConfigChange={handleConfigChange}
+                            nodeId={selectedNode.id}
+                        />
                         {/* Optional params from catalog */}
                         {selectedQueryKey?.optional_params && selectedQueryKey.optional_params.length > 0 && (
                             <div className="space-y-2 border-t pt-2 mt-2">

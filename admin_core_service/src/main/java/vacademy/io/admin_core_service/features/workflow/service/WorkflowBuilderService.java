@@ -201,6 +201,16 @@ public class WorkflowBuilderService {
         // Create trigger if applicable
         if ("EVENT_DRIVEN".equalsIgnoreCase(dto.getWorkflowType()) && dto.getTrigger() != null) {
             WorkflowBuilderDTO.TriggerDTO trig = dto.getTrigger();
+            // Build default idempotency settings based on event type
+            String defaultIdempotencySettings;
+            if (trig.getEventId() != null && !trig.getEventId().isEmpty()) {
+                // Specific entity — use EVENT_BASED idempotency
+                defaultIdempotencySettings = "{\"strategy\":\"EVENT_BASED\",\"includeTriggerId\":true,\"includeEventId\":true}";
+            } else {
+                // Global trigger — use CONTEXT_BASED to distinguish different event instances
+                defaultIdempotencySettings = "{\"strategy\":\"CONTEXT_BASED\",\"contextFields\":[\"eventId\"],\"includeTriggerId\":true}";
+            }
+
             WorkflowTrigger trigger = WorkflowTrigger.builder()
                     .triggerEventName(trig.getTriggerEventName())
                     .instituteId(dto.getInstituteId())
@@ -208,6 +218,7 @@ public class WorkflowBuilderService {
                     .status("ACTIVE")
                     .eventId(trig.getEventId())
                     .eventAppliedType(trig.getEventAppliedType())
+                    .idempotencyGenerationSetting(defaultIdempotencySettings)
                     .build();
             // Set workflow relationship - need to fetch the managed entity
             Workflow managedWorkflow = workflowRepository.findById(workflowId).orElseThrow();

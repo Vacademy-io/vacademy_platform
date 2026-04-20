@@ -1211,7 +1211,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             int daysUntilExpiry = 7; // default
             Object daysParam = params.get("daysUntilExpiry");
             if (daysParam != null) {
-                daysUntilExpiry = Integer.parseInt(String.valueOf(daysParam));
+                try { daysUntilExpiry = Integer.parseInt(String.valueOf(daysParam)); }
+                catch (NumberFormatException e) { log.warn("Invalid daysUntilExpiry: {}", daysParam); }
             }
 
             // Find UserPlans that are active and expiring within N days

@@ -15,6 +15,8 @@ import vacademy.io.admin_core_service.features.workflow.repository.NodeTemplateR
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowNodeMappingRepository;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowRepository;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -62,20 +64,28 @@ public class AutomationVisualizationController {
                     .map(WorkflowNodeMapping::getNodeTemplateId)
                     .distinct()
                     .collect(Collectors.toList());
-            Map<String, String> templateIdToConfigMap = nodeTemplateRepository.findAllById(templateIds).stream()
-                    .collect(Collectors.toMap(NodeTemplate::getId, NodeTemplate::getConfigJson));
+            Map<String, NodeTemplate> templateIdToTemplate = nodeTemplateRepository.findAllById(templateIds).stream()
+                    .collect(Collectors.toMap(NodeTemplate::getId, t -> t));
 
             // Step 4: Create the final map of [unique nodeId -> configJson] for the parser.
-            // Using LinkedHashMap preserves the execution order.
-            // IMPORTANT: We use the WorkflowNodeMapping ID as the key to ensure each node
-            // instance is unique
-            // even if the same template is used multiple times in the workflow.
-            Map<String, String> nodeTemplates = nodeMappings.stream()
-                    .collect(Collectors.toMap(
-                            WorkflowNodeMapping::getNodeTemplateId, // Use mapping ID for uniqueness
-                            mapping -> templateIdToConfigMap.get(mapping.getNodeTemplateId()),
-                            (u, v) -> u, // In case of duplicates (shouldn't happen), keep the first one
-                            LinkedHashMap::new));
+            // IMPORTANT: Inject nodeType and nodeName into the config JSON so parsers can identify the node type.
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, String> nodeTemplates = new LinkedHashMap<>();
+            for (WorkflowNodeMapping mapping : nodeMappings) {
+                NodeTemplate tmpl = templateIdToTemplate.get(mapping.getNodeTemplateId());
+                if (tmpl == null) continue;
+                try {
+                    // Inject nodeType and nodeName into config for the parser
+                    Map<String, Object> configMap = mapper.readValue(
+                            tmpl.getConfigJson() != null ? tmpl.getConfigJson() : "{}",
+                            new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+                    configMap.putIfAbsent("_nodeType", tmpl.getNodeType());
+                    configMap.putIfAbsent("_nodeName", tmpl.getNodeName());
+                    nodeTemplates.put(tmpl.getId(), mapper.writeValueAsString(configMap));
+                } catch (Exception e) {
+                    nodeTemplates.put(tmpl.getId(), tmpl.getConfigJson());
+                }
+            }
 
             try {
                 // Step 5: Pass the dynamically constructed map to the parser.

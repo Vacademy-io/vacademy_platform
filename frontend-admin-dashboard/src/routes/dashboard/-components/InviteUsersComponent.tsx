@@ -36,7 +36,8 @@ export const inviteUsersSchema = z.object({
 });
 export type inviteUsersFormValues = z.infer<typeof inviteUsersSchema>;
 
-const InviteUsersComponent = ({ refetchData }: { refetchData: () => void }) => {
+const InviteUsersComponent = ({ refetchData, availableRoles }: { refetchData: () => void; availableRoles?: { id: string; name: string }[] }) => {
+    const roleOptions = availableRoles || RoleType;
     const [open, setOpen] = useState(false);
     const instituteId = getInstituteId();
     const form = useForm<inviteUsersFormValues>({
@@ -163,7 +164,7 @@ const InviteUsersComponent = ({ refetchData }: { refetchData: () => void }) => {
                             form={form}
                             label="Role Type"
                             name="roleType"
-                            options={RoleType.map((option, index) => ({
+                            options={roleOptions.map((option, index) => ({
                                 value: option.name,
                                 label: mapRoleToCustomName(option.name),
                                 _id: index,

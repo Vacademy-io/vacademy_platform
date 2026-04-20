@@ -81,8 +81,10 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
       INNER JOIN institute_custom_fields icf
              ON icf.type     = 'SESSION'
             AND icf.type_id  = s.id
+            AND icf.status   = 'ACTIVE'
       LEFT JOIN custom_fields cf
              ON cf.id = icf.custom_field_id
+            AND cf.status = 'ACTIVE'
       WHERE s.id     = :sessionId
         AND s.status = 'LIVE'
       """, nativeQuery = true)

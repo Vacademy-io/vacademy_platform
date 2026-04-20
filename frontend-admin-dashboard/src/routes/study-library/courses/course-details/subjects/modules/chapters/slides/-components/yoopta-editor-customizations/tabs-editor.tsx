@@ -39,6 +39,14 @@ export function TabsBlock({
     const isFirstRender = useRef(true);
     const renameInputRef = useRef<HTMLInputElement | null>(null);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propTabs = element?.props?.tabs;
+        if (propTabs && JSON.stringify(propTabs) !== JSON.stringify(tabs)) {
+            setTabs(propTabs);
+        }
+    }, [element?.props?.tabs]);
+
     // Persist state
     useEffect(() => {
         if (isFirstRender.current) {

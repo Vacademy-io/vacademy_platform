@@ -14,6 +14,14 @@ export function FlashcardBlock({
     const [isEditing, setIsEditing] = useState(!element?.props?.front);
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propFront = element?.props?.front || '';
+        const propBack = element?.props?.back || '';
+        if (propFront !== front) setFront(propFront);
+        if (propBack !== back) setBack(propBack);
+    }, [element?.props?.front, element?.props?.back]);
+
     // Persist state to Yoopta/Slate store
     useEffect(() => {
         if (isFirstRender.current) {
@@ -337,10 +345,12 @@ export const FlashcardPlugin = new YooptaPlugin<{ flashcard: any }>({
                 const props = element.props || {};
                 const front = props.front || '';
                 const back = props.back || '';
-                const escapedFront = front.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br/>');
-                const escapedBack = back.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br/>');
+                const escapeForDisplay = (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br/>');
+                const escapeForAttr = (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
+                const escapedFront = escapeForDisplay(front);
+                const escapedBack = escapeForDisplay(back);
 
-                return `<div data-yoopta-type="flashcard" data-editor-type="flashcardEditor" data-front="${front.replace(/"/g, '&quot;')}" data-back="${back.replace(/"/g, '&quot;')}" style="border: 2px solid #007acc; border-radius: 8px; margin: 8px 0; overflow: hidden; cursor: pointer;"><div style="padding: 24px; text-align: center; background: #fff;"><div style="font-size: 10px; color: #007acc; font-weight: 600; text-transform: uppercase; margin-bottom: 12px;">Front</div><div style="font-size: 16px; color: #333;">${escapedFront}</div></div><div style="border-top: 2px dashed #007acc; padding: 24px; text-align: center; background: #f0f7ff;"><div style="font-size: 10px; color: #007acc; font-weight: 600; text-transform: uppercase; margin-bottom: 12px;">Back</div><div style="font-size: 16px; color: #333;">${escapedBack}</div></div></div>`;
+                return `<div data-yoopta-type="flashcard" data-editor-type="flashcardEditor" data-front="${escapeForAttr(front)}" data-back="${escapeForAttr(back)}" style="border: 2px solid #007acc; border-radius: 8px; margin: 8px 0; overflow: hidden; cursor: pointer;"><div style="padding: 24px; text-align: center; background: #fff;"><div style="font-size: 10px; color: #007acc; font-weight: 600; text-transform: uppercase; margin-bottom: 12px;">Front</div><div style="font-size: 16px; color: #333;">${escapedFront}</div></div><div style="border-top: 2px dashed #007acc; padding: 24px; text-align: center; background: #f0f7ff;"><div style="font-size: 10px; color: #007acc; font-weight: 600; text-transform: uppercase; margin-bottom: 12px;">Back</div><div style="font-size: 16px; color: #333;">${escapedBack}</div></div></div>`;
             },
         },
     },

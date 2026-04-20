@@ -41,6 +41,12 @@ export function FillBlanksBlock({
     const [showResults, setShowResults] = useState(false);
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propSentence = element?.props?.sentence || '';
+        if (propSentence !== sentence) setSentence(propSentence);
+    }, [element?.props?.sentence]);
+
     const parts = useMemo(() => parseSentence(sentence), [sentence]);
     const blanks = useMemo(() => parts.filter((p) => p.type === 'blank'), [parts]);
 

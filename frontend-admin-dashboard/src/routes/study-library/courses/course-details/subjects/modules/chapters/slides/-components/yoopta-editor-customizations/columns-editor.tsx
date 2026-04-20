@@ -20,6 +20,16 @@ export function ColumnsBlock({ element, attributes, children, blockId }: PluginE
     const [isEditing, setIsEditing] = useState(!element?.props?.columns?.length);
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propColumns = element?.props?.columns;
+        const propGap = element?.props?.gap;
+        if (propColumns && JSON.stringify(propColumns) !== JSON.stringify(columns)) {
+            setColumns(propColumns);
+        }
+        if (propGap !== undefined && propGap !== gap) setGap(propGap);
+    }, [element?.props?.columns, element?.props?.gap]);
+
     // Persist state to Yoopta/Slate store
     useEffect(() => {
         if (isFirstRender.current) {

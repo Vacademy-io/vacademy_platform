@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.workflow.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
@@ -30,6 +32,7 @@ public class WorkflowTriggerService {
     @Autowired
     private vacademy.io.admin_core_service.features.workflow.service.idempotency.IdempotencyStrategyFactory idempotencyStrategyFactory;
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Map<String, Object> handleTriggerEvents(String eventName, String eventId, String instituteId,
             Map<String, Object> contextData) {
         log.info("---- Workflow Trigger Event START ----");

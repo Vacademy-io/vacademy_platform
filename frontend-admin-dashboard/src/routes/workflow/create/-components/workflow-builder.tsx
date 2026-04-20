@@ -855,7 +855,7 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                 config: n.data.config ?? {},
                 position_x: n.position.x,
                 position_y: n.position.y,
-                is_start_node: n.data.isStartNode ?? i === 0,
+                is_start_node: n.data.isStartNode === true || i === 0,
                 is_end_node: n.data.isEndNode ?? !hasOutgoingEdge,
             };
         }),

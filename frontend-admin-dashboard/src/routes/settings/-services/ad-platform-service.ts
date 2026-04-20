@@ -129,6 +129,47 @@ export const deactivateConnector = async (connectorId: string): Promise<void> =>
     await authenticatedAxiosInstance.delete(`${BASE}/connectors/${connectorId}`);
 };
 
+/** Fetch custom fields configured for a specific audience (campaign). */
+export interface AudienceCustomField {
+    id: string;
+    fieldName: string;
+    fieldType: string;
+}
+
+export const fetchAudienceCustomFields = async (
+    instituteId: string,
+    audienceId: string
+): Promise<AudienceCustomField[]> => {
+    const res = await authenticatedAxiosInstance.get(
+        `${BASE_URL}/admin-core-service/common/custom-fields/feature-fields`,
+        { params: { instituteId, type: 'AUDIENCE_FORM', typeId: audienceId } }
+    );
+    const raw = Array.isArray(res.data) ? res.data : [];
+    return raw.map(
+        (r: { custom_field?: { id?: string; fieldName?: string; fieldType?: string } }) => ({
+            id: r.custom_field?.id ?? '',
+            fieldName: r.custom_field?.fieldName ?? '',
+            fieldType: r.custom_field?.fieldType ?? 'TEXT',
+        })
+    );
+};
+
+/** Build field_mapping_json from the UI mapping rows. */
+export const buildFieldMappingJson = (
+    mappings: { platformKey: string; targetFieldName: string }[]
+): string => {
+    return JSON.stringify({
+        mappings: mappings
+            .filter((m) => m.platformKey && m.targetFieldName)
+            .map((m) => ({
+                platform_key: m.platformKey,
+                // target uses the raw field_name — saveCustomFieldValuesByFieldName matches by name
+                target: m.targetFieldName,
+            })),
+        unmapped_field_action: 'KEEP_ORIGINAL',
+    });
+};
+
 /** Build the full Google webhook URL for display. */
 export const buildGoogleWebhookUrl = (googleKey: string): string =>
     `${WEBHOOK_BASE}/google/${googleKey}`;

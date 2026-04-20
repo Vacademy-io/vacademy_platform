@@ -72,7 +72,8 @@ class RenderJobRequest(BaseModel):
     caption_bg_color: Optional[str] = Field(default=None, description="CSS hex color for caption background")
     caption_bg_opacity: Optional[int] = Field(default=None, description="Caption background opacity 0-100")
     caption_font_size: Optional[int] = Field(default=None, description="Caption font size in px")
-    source_video_url: Optional[str] = Field(default=None, description="S3 URL of indexed source video for SOURCE_CLIP compositing")
+    source_video_url: Optional[str] = Field(default=None, description="(deprecated) Single source video URL — use source_video_urls")
+    source_video_urls: Optional[List[str]] = Field(default=None, description="S3 URLs of indexed source videos for SOURCE_CLIP compositing")
 
 
 class RenderJobResponse(BaseModel):
@@ -121,7 +122,7 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
             caption_bg_color=request.caption_bg_color,
             caption_bg_opacity=request.caption_bg_opacity,
             caption_font_size=request.caption_font_size,
-            source_video_url=request.source_video_url,
+            source_video_urls=request.source_video_urls or ([request.source_video_url] if request.source_video_url else None),
         )
 
         jobs[job_id]["status"] = "completed"

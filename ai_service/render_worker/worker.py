@@ -76,7 +76,7 @@ class RenderWorker:
         caption_bg_opacity: Optional[int] = None,
         caption_font_size: Optional[int] = None,
         audio_tracks: Optional[list] = None,
-        source_video_url: Optional[str] = None,
+        source_video_urls: Optional[list] = None,
     ) -> str:
         """
         Run the full render pipeline and return the S3 URL of the output MP4.
@@ -373,31 +373,36 @@ class RenderWorker:
 
             # ── SOURCE_CLIP compositing ──
             # For shots that use source video footage, overlay the rendered HTML
-            # frames (transparent background) on top of extracted source clips.
-            source_video_path: Optional[Path] = None
-            if source_video_url:
-                source_video_path = work_dir / "source_video.mp4"
-                self._download(source_video_url, source_video_path)
-                logger.info(f"Downloaded source video for compositing")
+            # frames on top of extracted source clips. Supports multiple sources.
+            if source_video_urls:
+                from collections import defaultdict
+                # Group SOURCE_CLIP entries by source_video_index
+                _clips_by_source: dict = defaultdict(list)
+                for _e in tl_entries:
+                    if _e.get("shot_type") == "SOURCE_CLIP" and _e.get("source_start") is not None:
+                        _sv_idx = _e.get("source_video_index", 0)
+                        _clips_by_source[_sv_idx].append(_e)
 
-            if source_video_path and source_video_path.exists():
-                source_clip_entries = [
-                    e for e in tl_entries
-                    if e.get("shot_type") == "SOURCE_CLIP"
-                    and e.get("source_start") is not None
-                ]
-                if source_clip_entries:
-                    logger.info(f"Compositing {len(source_clip_entries)} SOURCE_CLIP shots...")
+                if _clips_by_source:
+                    logger.info(f"Compositing SOURCE_CLIP shots from {len(_clips_by_source)} source(s)...")
+
+                for _sv_idx, _clip_entries in _clips_by_source.items():
+                    if _sv_idx >= len(source_video_urls):
+                        logger.warning(f"source_video_index {_sv_idx} out of range (have {len(source_video_urls)} URLs)")
+                        continue
+                    _sv_path = work_dir / f"source_video_{_sv_idx}.mp4"
+                    self._download(source_video_urls[_sv_idx], _sv_path)
+                    logger.info(f"Downloaded source video [{_sv_idx}] for {len(_clip_entries)} clips")
                     await self._composite_source_clips(
-                        source_video_path=source_video_path,
-                        source_clip_entries=source_clip_entries,
+                        source_video_path=_sv_path,
+                        source_clip_entries=_clip_entries,
                         frames_dir=frames_dir,
                         render_width=render_width,
                         render_height=render_height,
                         fps=FPS,
                     )
-                # Clean up source video to free disk space before FFmpeg assembly
-                source_video_path.unlink(missing_ok=True)
+                    # Free disk immediately after compositing this source
+                    _sv_path.unlink(missing_ok=True)
 
             if on_progress:
                 on_progress(75)
@@ -595,11 +600,47 @@ class RenderWorker:
                 f"source {source_start:.1f}-{source_end:.1f}s"
             )
 
-            # For each output frame in this shot's range, extract the corresponding
-            # source video frame and composite the HTML overlay on top.
+            # Detect compositing mode from the FIRST frame of this shot.
+            # Compute card bounds once and reuse for all frames to avoid flicker
+            # caused by per-frame bounding-box jitter from JPEG artifacts.
+            _first_path = frames_dir / f"frame_{first_frame_num:06d}.jpg"
+            _first_overlay = cv2.imread(str(_first_path)) if _first_path.exists() else None
+
+            # Compositing mode: "card" (video in a container) or "fullscreen" (video behind overlay)
+            _comp_mode = "fullscreen"
+            _card_bounds = None  # (y0, x0, card_h, card_w, new_h, new_w, oy, ox)
+
+            if _first_overlay is not None:
+                _fg = cv2.cvtColor(_first_overlay, cv2.COLOR_BGR2GRAY)
+                _bm = _fg <= 15
+                _br = np.sum(_bm) / _bm.size
+                if _br < 0.75:
+                    _coords = np.argwhere(_bm)
+                    if len(_coords) > 100:
+                        _comp_mode = "card"
+                        _y0, _x0 = _coords.min(axis=0)
+                        _y1, _x1 = _coords.max(axis=0) + 1
+                        _card_w, _card_h = _x1 - _x0, _y1 - _y0
+                        # Pre-compute source resize dimensions (stable for all frames)
+                        _src_fps_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        _src_fps_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        _scale = min(_card_w / max(_src_fps_w, 1), _card_h / max(_src_fps_h, 1))
+                        _nw = int(_src_fps_w * _scale)
+                        _nh = int(_src_fps_h * _scale)
+                        _ox = _x0 + (_card_w - _nw) // 2
+                        _oy = _y0 + (_card_h - _nh) // 2
+                        _card_bounds = (_oy, _ox, _nh, _nw)
+                        logger.info(f"    Card layout detected: card=({_x0},{_y0})-({_x1},{_y1}), "
+                                    f"video={_nw}x{_nh} at ({_ox},{_oy})")
+
+            # Seek to source_start and read frames sequentially (avoids costly random seeks)
+            cap.set(cv2.CAP_PROP_POS_MSEC, source_start * 1000)
+
             for frame_num in range(first_frame_num, last_frame_num + 1):
                 frame_path = frames_dir / f"frame_{frame_num:06d}.jpg"
                 if not frame_path.exists():
+                    # Still advance the video even if frame file is missing
+                    cap.read()
                     continue
 
                 # Calculate the source video timestamp for this output frame
@@ -613,14 +654,12 @@ class RenderWorker:
                 if not ret:
                     continue
 
-                # Resize source frame to match render dimensions
-                if src_frame.shape[1] != render_width or src_frame.shape[0] != render_height:
-                    src_frame = cv2.resize(src_frame, (render_width, render_height))
-
                 # Read the existing overlay frame (rendered by Playwright)
-                overlay = cv2.imread(str(frame_path), cv2.IMREAD_UNCHANGED)
+                overlay = cv2.imread(str(frame_path))
                 if overlay is None:
-                    # No overlay — just use source frame
+                    # Resize source and write directly
+                    if src_frame.shape[1] != render_width or src_frame.shape[0] != render_height:
+                        src_frame = cv2.resize(src_frame, (render_width, render_height))
                     cv2.imwrite(str(frame_path), src_frame)
                     continue
 
@@ -628,47 +667,21 @@ class RenderWorker:
                 if overlay.shape[1] != render_width or overlay.shape[0] != render_height:
                     overlay = cv2.resize(overlay, (render_width, render_height))
 
-                # If overlay has alpha channel (RGBA), use it for compositing
-                if overlay.shape[2] == 4:
-                    alpha = overlay[:, :, 3:4].astype(float) / 255.0
-                    overlay_rgb = overlay[:, :, :3]
-                    composited = (src_frame * (1 - alpha) + overlay_rgb * alpha).astype(np.uint8)
+                if _comp_mode == "card" and _card_bounds:
+                    # Card layout — place source video in the pre-computed card region
+                    oy, ox, nh, nw = _card_bounds
+                    resized_src = cv2.resize(src_frame, (nw, nh))
+                    composited = overlay.copy()
+                    composited[oy:oy + nh, ox:ox + nw] = resized_src
                 else:
+                    # Full-screen overlay — brightness-based alpha
+                    if src_frame.shape[1] != render_width or src_frame.shape[0] != render_height:
+                        src_frame = cv2.resize(src_frame, (render_width, render_height))
                     gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
-                    black_mask = gray <= 15
-                    black_ratio = np.sum(black_mask) / black_mask.size
-
-                    if black_ratio < 0.75:
-                        # Card layout — black region is the video container.
-                        # Find bounding box of the black region and fit source
-                        # video into it maintaining aspect ratio.
-                        coords = np.argwhere(black_mask)
-                        if len(coords) > 100:
-                            y0, x0 = coords.min(axis=0)
-                            y1, x1 = coords.max(axis=0) + 1
-                            card_w, card_h = x1 - x0, y1 - y0
-
-                            src_h, src_w = src_frame.shape[:2]
-                            scale = min(card_w / src_w, card_h / src_h)
-                            new_w = int(src_w * scale)
-                            new_h = int(src_h * scale)
-                            resized_src = cv2.resize(src_frame, (new_w, new_h))
-
-                            # Start with overlay as base (keeps card frame + text)
-                            composited = overlay.copy()
-
-                            # Center source video within the card bounds
-                            ox = x0 + (card_w - new_w) // 2
-                            oy = y0 + (card_h - new_h) // 2
-                            composited[oy:oy + new_h, ox:ox + new_w] = resized_src
-                        else:
-                            composited = overlay
-                    else:
-                        # Full-screen overlay (podcast mode) — brightness-based alpha
-                        mask = (gray > 15).astype(float)
-                        mask = cv2.GaussianBlur(mask, (3, 3), 0)
-                        mask = mask[:, :, np.newaxis]
-                        composited = (src_frame * (1 - mask) + overlay * mask).astype(np.uint8)
+                    mask = (gray > 15).astype(np.float32)
+                    mask = cv2.GaussianBlur(mask, (3, 3), 0)
+                    mask = mask[:, :, np.newaxis]
+                    composited = (src_frame * (1.0 - mask) + overlay * mask).astype(np.uint8)
 
                 # Write composited frame back (as JPG to match existing format)
                 cv2.imwrite(str(frame_path), composited)

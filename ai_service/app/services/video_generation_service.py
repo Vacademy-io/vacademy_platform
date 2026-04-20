@@ -100,6 +100,7 @@ class VideoGenerationService:
         visual_style: str = "standard",
         sound_effects_enabled: bool = True,
         input_video_id: Optional[str] = None,
+        input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -162,8 +163,12 @@ class VideoGenerationService:
                 gen_metadata["visual_style"] = visual_style
             if quality_tier and quality_tier != "ultra":
                 gen_metadata["quality_tier"] = quality_tier
-            if input_video_id:
-                gen_metadata["input_video_id"] = input_video_id
+            # Normalize: singular → list (backward compat)
+            if input_video_id and not input_video_ids:
+                input_video_ids = [input_video_id]
+            if input_video_ids:
+                gen_metadata["input_video_ids"] = input_video_ids
+                gen_metadata["input_video_id"] = input_video_ids[0]  # compat
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -233,7 +238,7 @@ class VideoGenerationService:
                     orientation=orientation,
                     visual_style=visual_style,
                     sound_effects_enabled=sound_effects_enabled,
-                    input_video_id=input_video_id,
+                    input_video_ids=input_video_ids,
                     input_video_audio=input_video_audio,
                 ):
                     # If we get an error event, refund credits and stop
@@ -315,7 +320,7 @@ class VideoGenerationService:
         orientation: str = "landscape",
         visual_style: str = "standard",
         sound_effects_enabled: bool = True,
-        input_video_id: Optional[str] = None,
+        input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -555,21 +560,27 @@ class VideoGenerationService:
                 logger.warning(f"[VideoGenService] Reference file processing failed (non-fatal): {e}")
                 reference_context = None
 
-        # ── Load indexed input video context (if provided) ──
-        input_video_context = None
-        logger.info(f"[VideoGenService] input_video_id={input_video_id}, input_video_audio={input_video_audio}")
-        if input_video_id:
+        # ── Load indexed input video contexts (if provided) ──
+        input_video_contexts = None
+        logger.info(f"[VideoGenService] input_video_ids={input_video_ids}, input_video_audio={input_video_audio}")
+        if input_video_ids:
             try:
+                import json as _json
                 from ..repositories.ai_input_video_repository import AiInputVideoRepository
                 iv_repo = AiInputVideoRepository(session=db_session)
-                iv_record = iv_repo.get_by_id(input_video_id)
-                logger.info(f"[VideoGenService] DB lookup result: record={'found' if iv_record else 'NOT FOUND'}, "
-                            f"status={iv_record.status if iv_record else 'N/A'}, "
-                            f"context_url={iv_record.context_json_url[:50] if iv_record and iv_record.context_json_url else 'None'}")
-                if iv_record and iv_record.status == "COMPLETED" and iv_record.context_json_url:
-                    # Download video_context.json — try S3 (handles private + public
-                    # buckets via IAM), fall back to HTTP for non-S3 URLs.
-                    context_path = run_dir / "input_video_context.json"
+                iv_records = iv_repo.get_by_ids(input_video_ids)
+                logger.info(f"[VideoGenService] Found {len(iv_records)}/{len(input_video_ids)} input videos")
+
+                loaded_contexts = []
+                source_video_urls = []
+                for idx, iv_record in enumerate(iv_records):
+                    if iv_record.status != "COMPLETED" or not iv_record.context_json_url:
+                        logger.warning(f"[VideoGenService] Input video {iv_record.id} skipped "
+                                       f"(status={iv_record.status})")
+                        continue
+
+                    # Download video_context.json
+                    context_path = run_dir / f"input_video_context_{idx}.json"
                     if not context_path.exists():
                         context_path.parent.mkdir(parents=True, exist_ok=True)
                         _ctx_url = iv_record.context_json_url
@@ -583,60 +594,59 @@ class VideoGenerationService:
                                             _bkt, _parts[1], str(context_path)
                                         )
                                         _downloaded = True
-                                        logger.info(f"[VideoGenService] Downloaded video context from S3 ({_bkt})")
                                         break
-                                except Exception as _s3e:
-                                    logger.warning(f"[VideoGenService] S3 download from {_bkt} failed: {_s3e}")
+                                except Exception:
                                     continue
                         if not _downloaded:
                             import httpx
-                            logger.info(f"[VideoGenService] Trying HTTP download for video context: {_ctx_url}")
                             resp = httpx.get(_ctx_url, timeout=60)
                             resp.raise_for_status()
                             context_path.write_bytes(resp.content)
-                    import json as _json
-                    # Resolve audio preference: explicit > mode default
+
+                    # Resolve audio preference
                     _audio_pref = input_video_audio
                     if not _audio_pref:
-                        _audio_pref = "original" if iv_record.mode == "podcast" else "tts"
+                        if len(input_video_ids) > 1:
+                            _audio_pref = "tts"  # multi-source always TTS
+                        else:
+                            _audio_pref = "original" if iv_record.mode == "podcast" else "tts"
 
-                    # Build public source URL from assets_urls if available
                     _iv_assets = iv_record.assets_urls or {}
-                    _source_public = _iv_assets.get("source_video", "")
-
-                    input_video_context = {
+                    ctx = {
+                        "index": idx,
                         "context": _json.loads(context_path.read_text()),
                         "source_url": iv_record.source_url,
-                        "source_public_url": _source_public,
+                        "source_public_url": _iv_assets.get("source_video", ""),
                         "assets_urls": _iv_assets,
                         "input_video_id": str(iv_record.id),
+                        "name": iv_record.name or f"Video {idx}",
                         "duration_seconds": iv_record.duration_seconds,
                         "mode": iv_record.mode,
                         "audio_preference": _audio_pref,
                     }
-                    logger.info(
-                        f"[VideoGenService] Loaded input video context: "
-                        f"{iv_record.name} ({iv_record.duration_seconds:.1f}s, mode={iv_record.mode})"
-                    )
-                    # Store source_video_url in video metadata so the render
-                    # endpoint can pass it to the render worker for compositing.
-                    # MERGE with existing metadata — don't overwrite.
+                    loaded_contexts.append(ctx)
+                    source_video_urls.append(iv_record.source_url)
+                    logger.info(f"[VideoGenService] Loaded input video [{idx}]: "
+                                f"{iv_record.name} ({iv_record.duration_seconds:.1f}s, mode={iv_record.mode})")
+
+                if loaded_contexts:
+                    input_video_contexts = loaded_contexts
+                    # Store in metadata for render endpoint
                     try:
                         video_record = self.repository.get_by_video_id(video_id)
                         if video_record:
                             existing_meta = video_record.extra_metadata or {}
-                            existing_meta["source_video_url"] = iv_record.source_url
-                            existing_meta["input_video_id"] = input_video_id
+                            existing_meta["source_video_urls"] = source_video_urls
+                            existing_meta["input_video_ids"] = input_video_ids
+                            # Backward compat: keep singular for old render path
+                            existing_meta["source_video_url"] = source_video_urls[0]
+                            existing_meta["input_video_id"] = input_video_ids[0]
                             self.repository.update_metadata(video_id, existing_meta)
                     except Exception:
                         pass  # non-fatal
-                elif iv_record:
-                    logger.warning(f"[VideoGenService] Input video {input_video_id} not COMPLETED (status={iv_record.status})")
-                else:
-                    logger.warning(f"[VideoGenService] Input video {input_video_id} not found")
             except Exception as e:
                 logger.warning(f"[VideoGenService] Input video context loading failed (non-fatal): {e}")
-                input_video_context = None
+                input_video_contexts = None
 
         # Calculate percentage per stage
         total_stages = target_stage_idx - start_stage_idx + 1
@@ -763,7 +773,7 @@ class VideoGenerationService:
                     video_height=_vid_height,
                     visual_style=visual_style,
                     sound_effects_enabled=sound_effects_enabled,
-                    input_video_context=input_video_context,
+                    input_video_contexts=input_video_contexts,
                 )
 
                 with ThreadPoolExecutor() as executor:

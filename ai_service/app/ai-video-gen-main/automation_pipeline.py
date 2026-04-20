@@ -1154,6 +1154,7 @@ class VideoGenerationPipeline:
         visual_style: str = "standard",  # deprecated: Director now picks styles per-shot
         sound_effects_enabled: bool = True,
         input_video_context: Optional[Dict[str, Any]] = None,
+        input_video_contexts: Optional[list] = None,
     ) -> Dict[str, Any]:
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
         self.video_width = video_width
@@ -1166,10 +1167,19 @@ class VideoGenerationPipeline:
         # regardless of tier config. Stored on the instance so _generate_html_per_shot
         # can read it alongside self._tier_config.
         self._sound_effects_enabled = bool(sound_effects_enabled)
-        # Input video context from an indexed source video. When set, the
-        # pipeline uses the video's transcript as the script, its audio as
-        # narration, and the Director can plan SOURCE_CLIP shots.
-        self._input_video_context = input_video_context
+        # Input video contexts from indexed source videos. List of dicts, each
+        # with keys: context, source_url, assets_urls, input_video_id, mode, etc.
+        # Backward compat: singular input_video_context is wrapped into a list.
+        if input_video_contexts:
+            self._input_video_contexts = input_video_contexts
+        elif input_video_context:
+            self._input_video_contexts = [input_video_context]
+        else:
+            self._input_video_contexts = None
+        # Convenience: first context for backward-compat code paths
+        self._input_video_context = (
+            self._input_video_contexts[0] if self._input_video_contexts else None
+        )
         # Dedup set for LLM-ranked stock video selection (super_ultra only).
         # Tracks Pexels video IDs already used in this run so shots don't reuse clips.
         self._used_pexels_video_ids: set = set()
@@ -3738,8 +3748,9 @@ class VideoGenerationPipeline:
         beat_outline = plan_data.get("beat_outline", [])
         subject_domain = getattr(self, '_current_subject_domain', 'general')
         # Override domain for input video modes so Director gets SOURCE_CLIP
-        if self._input_video_context:
-            _iv_mode = self._input_video_context.get("mode", "podcast")
+        if self._input_video_contexts:
+            # Use first video's mode as primary domain; mixed modes are fine
+            _iv_mode = self._input_video_contexts[0].get("mode", "podcast")
             subject_domain = f"input_video_{_iv_mode}"
             self._current_subject_domain = subject_domain
         _w = getattr(self, 'video_width', 1920)
@@ -3792,79 +3803,77 @@ class VideoGenerationPipeline:
         )
 
         # ── Input video context for Director ──────────────────────────
-        # Give the Director access to the source video's transcript, scenes,
+        # Give the Director access to source video transcripts, scenes,
         # and emphasis so it can plan SOURCE_CLIP shots at the right moments.
-        if self._input_video_context:
-            _iv_ctx = self._input_video_context.get("context", {})
-            _iv_meta = _iv_ctx.get("meta", {})
-            _iv_transcript = _iv_ctx.get("transcript", [])
-            _iv_emphasis = _iv_ctx.get("emphasis", [])
-            _iv_scenes = _iv_ctx.get("scenes", [])
-            _iv_highlight = _iv_meta.get("highlight_window", {})
+        if self._input_video_contexts:
+            _num_sources = len(self._input_video_contexts)
+            _labels = "ABCDEFGHIJ"
+            _lines_per_video = max(10, 40 // _num_sources)
 
-            _transcript_lines = []
-            for s in _iv_transcript:
-                _transcript_lines.append(
+            _video_sections = []
+            for _vidx, _vctx in enumerate(self._input_video_contexts):
+                _label = _labels[_vidx] if _vidx < len(_labels) else str(_vidx)
+                _iv_ctx = _vctx.get("context", {})
+                _iv_meta = _iv_ctx.get("meta", {})
+                _iv_transcript = _iv_ctx.get("transcript", [])
+                _iv_emphasis = _iv_ctx.get("emphasis", [])
+                _iv_scenes = _iv_ctx.get("scenes", [])
+                _iv_highlight = _iv_meta.get("highlight_window", {})
+                _v_name = _vctx.get("name", f"Video {_label}")
+                _v_mode = _vctx.get("mode", "unknown")
+                _v_dur = _iv_meta.get("duration_s", _vctx.get("duration_seconds", 0))
+
+                _transcript_lines = [
                     f"  [{s.get('start', 0):.1f}-{s.get('end', 0):.1f}s] \"{s.get('text', '')}\""
+                    for s in _iv_transcript[:_lines_per_video]
+                ]
+                _emphasis_lines = [
+                    f"  {e.get('t', 0):.1f}s \"{e.get('word', '')}\" ({e.get('reason', '')})"
+                    for e in _iv_emphasis[:8]
+                ]
+                _scene_times = [f"{s.get('t', 0):.1f}s" for s in _iv_scenes[:10]]
+
+                _section = (
+                    f"\n### Video {_label}: \"{_v_name}\" ({_v_mode}, {_v_dur:.0f}s)\n"
+                    f"source_video_index: {_vidx}\n"
+                    f"Highlight window: {_iv_highlight.get('t_start', 0):.1f}-"
+                    f"{_iv_highlight.get('t_end', 0):.1f}s "
+                    f"({_iv_highlight.get('reason', '')})\n\n"
+                    "Transcript:\n" + "\n".join(_transcript_lines) + "\n\n"
+                    "Emphasis marks:\n" + "\n".join(_emphasis_lines) + "\n\n"
+                    f"Scene cuts: {', '.join(_scene_times)}\n"
                 )
 
-            _emphasis_lines = [
-                f"  {e.get('t', 0):.1f}s \"{e.get('word', '')}\" ({e.get('reason', '')})"
-                for e in _iv_emphasis[:15]
-            ]
-
-            _scene_times = [f"{s.get('t', 0):.1f}s" for s in _iv_scenes[:20]]
-
-            # Demo-specific context: UI elements and key on-screen events
-            _demo_context_block = ""
-            if _iv_mode == "demo":
-                _iv_demo = _iv_ctx.get("demo_only", {})
-                _ui_elements = _iv_demo.get("ui_elements_seen", [])
-                _key_events = _iv_demo.get("key_onscreen_events", [])
-                if _ui_elements:
-                    _demo_context_block += (
-                        "\nUI elements visible in the demo:\n  "
-                        + ", ".join(_ui_elements[:20]) + "\n"
+                # Demo-specific context
+                if _v_mode == "demo":
+                    _iv_demo = _iv_ctx.get("demo_only", {})
+                    _ui_elements = _iv_demo.get("ui_elements_seen", [])
+                    _key_events = _iv_demo.get("key_onscreen_events", [])
+                    if _ui_elements:
+                        _section += f"\nUI elements: {', '.join(_ui_elements[:15])}\n"
+                    if _key_events:
+                        _ev = [f"  {e.get('t', 0):.1f}s: {e.get('kind', '?')} near \"{e.get('near_text', '')}\""
+                               for e in _key_events[:10]]
+                        _section += "\nKey events:\n" + "\n".join(_ev) + "\n"
+                    _section += (
+                        "\nCaption guidance: title MUST describe what's on screen at that timestamp. "
+                        "BAD: 'No More Tool Jumping'. GOOD: 'Exploring Course Library'.\n"
                     )
-                if _key_events:
-                    _event_lines = [
-                        f"  {e.get('t', 0):.1f}s: {e.get('kind', '?')} near \"{e.get('near_text', '')}\""
-                        for e in _key_events[:15]
-                    ]
-                    _demo_context_block += (
-                        "\nKey on-screen events (what happens in the demo):\n"
-                        + "\n".join(_event_lines) + "\n"
-                    )
-                _demo_context_block += (
-                    "\n**CAPTION GUIDANCE FOR SOURCE_CLIP SHOTS**:\n"
-                    "- The title/caption MUST describe what the viewer is seeing in the demo "
-                    "at that specific timestamp. Use the transcript + UI elements + events above.\n"
-                    "- BAD: 'No More Tool Jumping' (generic marketing copy)\n"
-                    "- GOOD: 'Exploring Course Library' or 'Adding a New Module' (specific to what's on screen)\n"
-                    "- Match the caption to the source_start/source_end timestamp range.\n"
-                )
+
+                _video_sections.append(_section)
 
             _source_video_block = (
-                "\n\n## SOURCE VIDEO CONTEXT\n"
-                f"Duration: {_iv_meta.get('duration_s', 0):.1f}s | "
-                f"Resolution: {_iv_meta.get('resolution', [0,0])} | "
-                f"Mode: {_iv_meta.get('mode', 'unknown')}\n"
-                f"Highlight window: {_iv_highlight.get('t_start', 0):.1f}-{_iv_highlight.get('t_end', 0):.1f}s "
-                f"({_iv_highlight.get('reason', '')})\n\n"
-                "Transcript (with timestamps in the SOURCE video):\n"
-                + "\n".join(_transcript_lines[:40]) + "\n\n"
-                "Emphasis marks:\n"
-                + "\n".join(_emphasis_lines) + "\n\n"
-                f"Scene cuts: {', '.join(_scene_times)}\n"
-                + _demo_context_block + "\n"
+                "\n\n## SOURCE VIDEO CONTEXTS\n"
+                f"You have {_num_sources} source video(s) available.\n"
+                + "".join(_video_sections) + "\n"
                 "**SOURCE_CLIP RULES**:\n"
-                "- Use SOURCE_CLIP shots to show the original video footage during key quotes.\n"
-                "- Each SOURCE_CLIP shot MUST include `source_start` and `source_end` fields — "
-                "these are timestamps (seconds) in the SOURCE video that will be played.\n"
-                "- Match source_start/source_end to the transcript timestamps above.\n"
-                "- Mix SOURCE_CLIP with other shot types (KINETIC_TITLE, TEXT_DIAGRAM, etc.) "
-                "for visual variety — don't use SOURCE_CLIP for every shot.\n"
-                "- The source video's audio plays during SOURCE_CLIP shots.\n"
+                "- Use SOURCE_CLIP shots to show original video footage during key moments.\n"
+                "- Each SOURCE_CLIP shot MUST include:\n"
+                "  - `source_video_index`: integer (0 = Video A, 1 = Video B, ...)\n"
+                "  - `source_start`: timestamp (seconds) in THAT video\n"
+                "  - `source_end`: timestamp (seconds) in THAT video\n"
+                "- Match source_start/source_end to the transcript timestamps of the CORRECT video.\n"
+                "- Mix SOURCE_CLIP with other shot types for visual variety.\n"
             )
             user_prompt = user_prompt + _source_video_block
 
@@ -4389,8 +4398,12 @@ class VideoGenerationPipeline:
 
             # ── SOURCE_CLIP shots: overlay-only constraints ──
             elif shot_type == "SOURCE_CLIP":
+                # Look up mode for the specific source video this shot references
+                _sv_idx = shot.get("source_video_index", 0)
                 _iv_mode = ""
-                if self._input_video_context:
+                if self._input_video_contexts and _sv_idx < len(self._input_video_contexts):
+                    _iv_mode = self._input_video_contexts[_sv_idx].get("mode", "")
+                elif self._input_video_context:
                     _iv_mode = self._input_video_context.get("mode", "")
 
                 if _iv_mode == "demo":
@@ -4660,23 +4673,27 @@ class VideoGenerationPipeline:
             if shot_type == "SOURCE_CLIP":
                 _src_start = float(shot.get("source_start", 0))
                 _src_end = float(shot.get("source_end", end_time - start_time))
+                _sv_idx = int(shot.get("source_video_index", 0))
                 entry["source_start"] = _src_start
                 entry["source_end"] = _src_end
+                entry["source_video_index"] = _sv_idx
 
                 # Inject background <video> into the shot HTML.
-                # Use the PUBLIC bucket URL (from assets_urls.source_video) so the
-                # browser can load it. Falls back to source_url (may be private).
+                # Look up the correct source video context by index.
                 _source_url = ""
-                if self._input_video_context:
-                    # Try public URL from indexed assets first
-                    _iv_assets = self._input_video_context.get("context", {}).get("meta", {})
-                    # The indexing pipeline stores a public copy at assets_urls.source_video
-                    _assets_urls = self._input_video_context.get("assets_urls", {})
-                    _source_url = _assets_urls.get("source_video", "") or self._input_video_context.get("source_public_url", "") or self._input_video_context.get("source_url", "")
+                _iv_mode_clip = ""
+                _clip_ctx = None
+                if self._input_video_contexts and _sv_idx < len(self._input_video_contexts):
+                    _clip_ctx = self._input_video_contexts[_sv_idx]
+                elif self._input_video_context:
+                    _clip_ctx = self._input_video_context
+                if _clip_ctx:
+                    _assets_urls = _clip_ctx.get("assets_urls", {})
+                    _source_url = (_assets_urls.get("source_video", "")
+                                   or _clip_ctx.get("source_public_url", "")
+                                   or _clip_ctx.get("source_url", ""))
+                    _iv_mode_clip = _clip_ctx.get("mode", "")
                 if _source_url and html:
-                    _iv_mode_clip = ""
-                    if self._input_video_context:
-                        _iv_mode_clip = self._input_video_context.get("mode", "")
 
                     if _iv_mode_clip == "demo":
                         # Demo mode: inject <video> inside the black card container.
@@ -7535,6 +7552,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 if entry.get("source_start") is not None:
                     timeline_entry["source_start"] = entry["source_start"]
                     timeline_entry["source_end"] = entry.get("source_end", 0)
+                    timeline_entry["source_video_index"] = entry.get("source_video_index", 0)
                     timeline_entry["shot_type"] = "SOURCE_CLIP"
 
                 # Pass through sound cues from the Sound Planner. The cue `t`
@@ -7685,12 +7703,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 }
 
         # Source video metadata for renderer compositing
-        if self._input_video_context:
-            meta_dict["source_video"] = {
-                "url": self._input_video_context.get("source_url", ""),
-                "input_video_id": self._input_video_context.get("input_video_id", ""),
-                "duration_s": self._input_video_context.get("duration_seconds", 0),
-            }
+        if self._input_video_contexts:
+            meta_dict["source_videos"] = [
+                {
+                    "index": i,
+                    "url": ctx.get("source_url", ""),
+                    "input_video_id": ctx.get("input_video_id", ""),
+                    "duration_s": ctx.get("duration_seconds", 0),
+                    "mode": ctx.get("mode", ""),
+                }
+                for i, ctx in enumerate(self._input_video_contexts)
+            ]
+            # Backward compat: keep singular for old code paths
+            meta_dict["source_video"] = meta_dict["source_videos"][0]
 
         if chapter_markers:
             meta_dict["chapters"] = chapter_markers

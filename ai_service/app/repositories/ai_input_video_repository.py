@@ -84,6 +84,23 @@ class AiInputVideoRepository:
                 return session.get(AiInputVideo, record_id)
             raise
 
+    def get_by_ids(self, record_ids: List[str]) -> List[AiInputVideo]:
+        """Fetch multiple records by ID, preserving the order of record_ids."""
+        if not record_ids:
+            return []
+        session = self._get_session()
+        try:
+            stmt = select(AiInputVideo).where(AiInputVideo.id.in_(record_ids))
+            rows = {str(r.id): r for r in session.execute(stmt).scalars().all()}
+            return [rows[rid] for rid in record_ids if rid in rows]
+        except Exception as e:
+            if _is_connection_error(e):
+                session = self._get_fresh_session()
+                stmt = select(AiInputVideo).where(AiInputVideo.id.in_(record_ids))
+                rows = {str(r.id): r for r in session.execute(stmt).scalars().all()}
+                return [rows[rid] for rid in record_ids if rid in rows]
+            raise
+
     def list_by_institute(self, institute_id: str) -> List[AiInputVideo]:
         session = self._get_session()
         try:

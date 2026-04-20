@@ -226,7 +226,7 @@ async def generate_video_external(
                         orientation=p.orientation,
                         visual_style=p.visual_style,
                         sound_effects_enabled=p.sound_effects_enabled,
-                        input_video_id=p.input_video_id,
+                        input_video_ids=p.input_video_ids,
                         input_video_audio=p.input_video_audio,
                     ):
                         await q.put(json.dumps(event))
@@ -387,7 +387,7 @@ async def resume_video_external(
                         target_duration=p.target_duration,
                         model=p.model or "",
                         sound_effects_enabled=p.sound_effects_enabled,
-                        input_video_id=p.input_video_id,
+                        input_video_ids=p.input_video_ids,
                         input_video_audio=p.input_video_audio,
                     ):
                         await q.put(json.dumps(event))
@@ -732,23 +732,32 @@ async def request_video_render(
     _caption_bg_opacity = (body.caption_bg_opacity if body and body.caption_bg_opacity is not None else None)
     _caption_font_size = (_CAPTION_SIZE_PX.get(body.caption_size) if body and body.caption_size else None)
 
-    # Check if this video uses an indexed source video (for SOURCE_CLIP compositing).
-    # Try metadata first; fall back to looking up the ai_input_videos record directly.
-    _source_video_url = _meta.get("source_video_url")
-    if not _source_video_url and _meta.get("input_video_id"):
-        try:
-            from ..repositories.ai_input_video_repository import AiInputVideoRepository
-            _iv_repo = AiInputVideoRepository(session=db)
-            _iv_rec = _iv_repo.get_by_id(_meta["input_video_id"])
-            if _iv_rec:
-                # Prefer public copy (from assets_urls), fall back to private source
-                _iv_assets = _iv_rec.assets_urls or {}
-                _source_video_url = (
-                    _iv_assets.get("source_video")
-                    or _iv_rec.source_url
-                )
-        except Exception:
-            pass
+    # Check if this video uses indexed source videos (for SOURCE_CLIP compositing).
+    # Try metadata first; fall back to looking up ai_input_videos records directly.
+    _source_video_urls = _meta.get("source_video_urls")
+    if not _source_video_urls:
+        # Backward compat: singular URL
+        _sv_url = _meta.get("source_video_url")
+        if _sv_url:
+            _source_video_urls = [_sv_url]
+    if not _source_video_urls:
+        # Look up from input_video_ids
+        _iv_ids = _meta.get("input_video_ids") or []
+        if not _iv_ids and _meta.get("input_video_id"):
+            _iv_ids = [_meta["input_video_id"]]
+        if _iv_ids:
+            try:
+                from ..repositories.ai_input_video_repository import AiInputVideoRepository
+                _iv_repo = AiInputVideoRepository(session=db)
+                _iv_recs = _iv_repo.get_by_ids(_iv_ids)
+                _source_video_urls = []
+                for _iv_rec in _iv_recs:
+                    _iv_assets = _iv_rec.assets_urls or {}
+                    _source_video_urls.append(
+                        _iv_assets.get("source_video") or _iv_rec.source_url
+                    )
+            except Exception:
+                pass
 
     try:
         job_id = render_svc.submit(
@@ -768,7 +777,7 @@ async def request_video_render(
             caption_bg_color=_caption_bg_color,
             caption_bg_opacity=_caption_bg_opacity,
             caption_font_size=_caption_font_size,
-            source_video_url=_source_video_url,
+            source_video_urls=_source_video_urls,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))

@@ -118,3 +118,36 @@ export interface AdjustmentHistoryPageResponse {
     totalPages?: number;
     last: boolean;
 }
+
+// ─── Institute-wide Adjustment History (Adjustment Approvals page) ─────────
+export interface InstituteAdjustmentHistoryFilter {
+    page?: number;
+    size?: number;
+    event_types?: ('SUBMITTED' | 'APPROVED' | 'REJECTED' | 'RETRACTED')[];
+    adjustment_types?: ('CONCESSION' | 'PENALTY')[];
+    resulting_statuses?: ('PENDING_FOR_APPROVAL' | 'APPROVED' | 'REJECTED' | 'RETRACTED')[];
+    actor_user_id?: string;
+    start_date?: string; // yyyy-MM-dd
+    end_date?: string;   // yyyy-MM-dd
+    student_search?: string;
+}
+
+export interface EnrichedAdjustmentHistoryDTO extends AdjustmentHistoryDTO {
+    student_user_id?: string | null;
+    student_name?: string | null;
+    student_phone?: string | null;
+    fee_type_name?: string | null;
+    cpo_name?: string | null;
+    installment_due_date?: string | null;
+}
+
+export interface EnrichedAdjustmentHistoryPageResponse {
+    content: EnrichedAdjustmentHistoryDTO[];
+    number: number;
+    size: number;
+    total_elements: number;
+    totalElements?: number;
+    total_pages: number;
+    totalPages?: number;
+    last: boolean;
+}

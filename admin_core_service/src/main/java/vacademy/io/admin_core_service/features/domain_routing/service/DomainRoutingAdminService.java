@@ -64,6 +64,7 @@ public class DomainRoutingAdminService {
                                 .hideInstituteName(request.getHideInstituteName())
                                 .logoWidthPx(request.getLogoWidthPx())
                                 .logoHeightPx(request.getLogoHeightPx())
+                                .applyNamingSetting(Boolean.TRUE.equals(request.getApplyNamingSetting()))
                                 .build();
                 return repository.save(entity);
         }
@@ -125,6 +126,8 @@ public class DomainRoutingAdminService {
                         existing.setHideInstituteName(request.getHideInstituteName());
                         existing.setLogoWidthPx(request.getLogoWidthPx());
                         existing.setLogoHeightPx(request.getLogoHeightPx());
+                        existing.setApplyNamingSetting(
+                                        Boolean.TRUE.equals(request.getApplyNamingSetting()));
                         return repository.save(existing);
                 });
         }

@@ -13,6 +13,7 @@ import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { applyTabBranding } from "@/utils/branding";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
 
 export interface DomainRoutingState {
   isLoading: boolean;
@@ -151,6 +152,29 @@ export const useDomainRouting = () => {
         key: learnerKey,
         value: JSON.stringify(learnerSettings),
       });
+
+      // Seed a minimal namingSettings entry in localStorage so pre-login
+      // screens (e.g. login page) can render institute-specific terminology.
+      // This is overwritten with the full set by fetchAndStoreInstituteDetails
+      // after the user logs in.
+      try {
+        const overrides = data.namingOverrides;
+        const seed: { key: string; customValue: string }[] = [];
+        if (overrides?.course) {
+          seed.push({ key: "Course", customValue: overrides.course });
+        }
+        if (overrides?.coursePlural) {
+          seed.push({
+            key: "Course_plural",
+            customValue: overrides.coursePlural,
+          });
+        }
+        if (seed.length > 0) {
+          localStorage.setItem(NAMING_SETTINGS_KEY, JSON.stringify(seed));
+        }
+      } catch (error) {
+        console.error("[Domain Routing] Error seeding naming settings:", error);
+      }
 
       // Update tab title and favicon immediately after storing
       await applyTabBranding(document.title);

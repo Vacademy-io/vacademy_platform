@@ -1,41 +1,63 @@
 import { useState, useEffect, useRef } from 'react';
-import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
+import {
+    YooptaPlugin,
+    useYooptaEditor,
+    useYooptaReadOnly,
+    PluginElementRenderProps,
+} from '@yoopta/editor';
 import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import { commitBlockProps } from './commitBlockProps';
 
 export function AudioPlayerBlock({ element, attributes, children, blockId }: PluginElementRenderProps) {
     const editor = useYooptaEditor();
+    const isReadOnly = useYooptaReadOnly();
     const [audioUrl, setAudioUrl] = useState(element?.props?.audioUrl || '');
     const [title, setTitle] = useState(element?.props?.title || '');
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const isFirstRender = useRef(true);
+
+    // Mirror audio state in refs so commit resolves against the freshest
+    // value even if two handlers fire in the same tick (e.g. upload sets
+    // both audioUrl and title near-simultaneously).
+    const audioUrlRef = useRef(audioUrl);
+    const titleRef = useRef(title);
+
+    // Push audio state to Yoopta via commitBlockProps (Slate + block.value
+    // atomically). A useEffect-based push leaves block.value stale —
+    // Save Draft then ships data-title="" and the upload vanishes on
+    // reload. No-op for learners.
+    const commitAudio = (patch: { audioUrl?: string; title?: string }) => {
+        if (patch.audioUrl !== undefined) {
+            audioUrlRef.current = patch.audioUrl;
+            setAudioUrl(patch.audioUrl);
+        }
+        if (patch.title !== undefined) {
+            titleRef.current = patch.title;
+            setTitle(patch.title);
+        }
+        if (isReadOnly) return;
+        commitBlockProps(editor, blockId, element, {
+            audioUrl: audioUrlRef.current,
+            title: titleRef.current,
+            editorType: 'audioPlayer',
+        });
+    };
 
     // Sync local state when element props change (e.g. after deserialization)
     useEffect(() => {
         const propUrl = element?.props?.audioUrl || '';
         const propTitle = element?.props?.title || '';
-        if (propUrl !== audioUrl) setAudioUrl(propUrl);
-        if (propTitle !== title) setTitle(propTitle);
-    }, [element?.props?.audioUrl, element?.props?.title]);
-
-    // Persist state to Yoopta/Slate store
-    useEffect(() => {
-        if (isFirstRender.current) {
-            isFirstRender.current = false;
-            return;
+        if (propUrl !== audioUrl) {
+            audioUrlRef.current = propUrl;
+            setAudioUrl(propUrl);
         }
-        Elements.updateElement(editor, blockId, {
-            type: 'audioPlayer',
-            props: {
-                ...element.props,
-                audioUrl,
-                title,
-                editorType: 'audioPlayer',
-            },
-        });
-    }, [audioUrl, title]);
+        if (propTitle !== title) {
+            titleRef.current = propTitle;
+            setTitle(propTitle);
+        }
+    }, [element?.props?.audioUrl, element?.props?.title]);
 
     const handleFileUpload = async (file: File) => {
         if (!file.type.startsWith('audio/')) {
@@ -65,8 +87,11 @@ export function AudioPlayerBlock({ element, attributes, children, blockId }: Plu
             const publicUrl = await getPublicUrl(fileId);
             if (!publicUrl) throw new Error('Failed to get URL');
 
-            setAudioUrl(publicUrl);
-            if (!title) setTitle(file.name.replace(/\.[^/.]+$/, ''));
+            // Commit audioUrl and title in a single transform so both
+            // land in block.value atomically — otherwise two separate
+            // commits race and the second clobbers the first.
+            const nextTitle = titleRef.current || file.name.replace(/\.[^/.]+$/, '');
+            commitAudio({ audioUrl: publicUrl, title: nextTitle });
         } catch (error) {
             console.error('Audio upload failed:', error);
             alert('Failed to upload audio file');
@@ -117,7 +142,7 @@ export function AudioPlayerBlock({ element, attributes, children, blockId }: Plu
                 <span style={{ fontSize: '14px', fontWeight: 600, color: '#333' }}>
                     Audio Player
                 </span>
-                {audioUrl && (
+                {audioUrl && !isReadOnly && (
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         style={{
@@ -136,7 +161,16 @@ export function AudioPlayerBlock({ element, attributes, children, blockId }: Plu
             </div>
 
             <div style={{ padding: '12px' }}>
-                {!audioUrl ? (
+                {!audioUrl && isReadOnly ? (
+                    <div style={{
+                        textAlign: 'center',
+                        padding: '16px',
+                        color: '#999',
+                        fontSize: '14px',
+                    }}>
+                        No audio uploaded
+                    </div>
+                ) : !audioUrl ? (
                     /* Upload area */
                     <div
                         onDrop={handleDrop}
@@ -176,23 +210,36 @@ export function AudioPlayerBlock({ element, attributes, children, blockId }: Plu
                 ) : (
                     /* Audio player */
                     <div>
-                        {/* Title input */}
-                        <input
-                            type="text"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            onKeyDown={handleInputKeyDown}
-                            placeholder="Audio title (optional)"
-                            style={{
-                                width: '100%',
-                                padding: '6px 10px',
-                                border: '1px solid #ddd',
-                                borderRadius: '4px',
-                                fontSize: '14px',
-                                marginBottom: '10px',
-                                backgroundColor: '#fff',
-                            }}
-                        />
+                        {/* Title: editable input for admins, static label for learners */}
+                        {isReadOnly ? (
+                            title && (
+                                <div style={{
+                                    fontSize: '14px',
+                                    fontWeight: 600,
+                                    color: '#333',
+                                    marginBottom: '10px',
+                                }}>
+                                    {title}
+                                </div>
+                            )
+                        ) : (
+                            <input
+                                type="text"
+                                value={title}
+                                onChange={(e) => commitAudio({ title: e.target.value })}
+                                onKeyDown={handleInputKeyDown}
+                                placeholder="Audio title (optional)"
+                                style={{
+                                    width: '100%',
+                                    padding: '6px 10px',
+                                    border: '1px solid #ddd',
+                                    borderRadius: '4px',
+                                    fontSize: '14px',
+                                    marginBottom: '10px',
+                                    backgroundColor: '#fff',
+                                }}
+                            />
+                        )}
                         {/* HTML5 audio player */}
                         <audio
                             controls

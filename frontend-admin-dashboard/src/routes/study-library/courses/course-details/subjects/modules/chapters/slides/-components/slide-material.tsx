@@ -504,6 +504,34 @@ export const SlideMaterial = ({
                     }
                 };
 
+                // Drop placeholder images (src="null" / "" / "undefined")
+                // left behind by the Yoopta Image plugin when a block is
+                // inserted without a successful upload. Otherwise learners
+                // see broken thumbnails on older published slides until a
+                // re-save sweeps them via formatHTMLString.
+                doc.body.querySelectorAll('img').forEach((img) => {
+                    const src = img.getAttribute('src');
+                    if (src && src !== 'null' && src !== 'undefined') return;
+                    const parent = img.parentElement;
+                    // Only strip the wrapper div when it's clearly the
+                    // Yoopta Image block container (no data-yoopta-type,
+                    // no data-tab-index, etc.) holding just this img.
+                    const isImageBlockWrapper =
+                        parent &&
+                        parent.tagName === 'DIV' &&
+                        parent.children.length === 1 &&
+                        parent.firstElementChild === img &&
+                        !parent.hasAttribute('data-yoopta-type') &&
+                        !parent.hasAttribute('data-tab-index') &&
+                        !parent.hasAttribute('data-front') &&
+                        !parent.hasAttribute('data-back');
+                    if (isImageBlockWrapper) {
+                        parent.remove();
+                    } else {
+                        img.remove();
+                    }
+                });
+
                 doc.body.querySelectorAll('iframe').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('video').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('img').forEach(unwrapFromDiv);

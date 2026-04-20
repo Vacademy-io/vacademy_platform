@@ -20,8 +20,23 @@ export const formatHTMLString = (htmlString: string) => {
         .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
         .replace(/<\/?body[^>]*>/gi, '');
 
-    // Remove data-meta attributes and style from paragraphs
-    cleanedHtml = cleanedHtml.replace(/<p[^>]*data-meta[^>]*style="[^"]*"[^>]*>/g, '<p>');
+    // Remove data-meta attributes and style from paragraphs. The \s guard
+    // prevents matching <pre …> (prefix-share with <p), which would turn
+    // <pre …>…</pre> into malformed <p>…</pre> and destroy code blocks.
+    cleanedHtml = cleanedHtml.replace(/<p\s[^>]*data-meta[^>]*style="[^"]*"[^>]*>/g, '<p>');
+
+    // Drop empty image blocks. The Yoopta Image plugin initialises new
+    // blocks with src=null; if the user opens the uploader and closes it
+    // without uploading, the template literal serializes src="null" and
+    // the block re-appears as a broken thumbnail on every reload.
+    cleanedHtml = cleanedHtml.replace(
+        /<div[^>]*>\s*<img[^>]*\ssrc="(?:null|undefined|)"[^>]*\/?>\s*<\/div>/gi,
+        ''
+    );
+    cleanedHtml = cleanedHtml.replace(
+        /<img[^>]*\ssrc="(?:null|undefined|)"[^>]*\/?>(?!\s*<\/div>)/gi,
+        ''
+    );
 
     // Strip expired query params from public S3 URLs
     cleanedHtml = stripAwsQueryParamsFromUrls(cleanedHtml);

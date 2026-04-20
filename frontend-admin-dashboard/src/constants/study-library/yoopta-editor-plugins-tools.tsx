@@ -12,6 +12,7 @@ import { NumberedList, BulletedList, TodoList } from '@yoopta/lists';
 import { Bold, Italic, CodeMark, Underline, Strike, Highlight } from '@yoopta/marks';
 import { HeadingOne, HeadingThree, HeadingTwo } from '@yoopta/headings';
 import Code from '@yoopta/code';
+import { CodeWithPreservedNewlines } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/code-plugin-override';
 import Table from '@yoopta/table';
 import Divider from '@yoopta/divider';
 import ActionMenuList, { DefaultActionMenuRender } from '@yoopta/action-menu-list';
@@ -72,7 +73,10 @@ export const plugins: YooptaPlugin<Record<string, SlateElement>, Record<string, 
     NumberedList,
     BulletedList,
     TodoList,
-    Code,
+    CodeWithPreservedNewlines(Code) as unknown as YooptaPlugin<
+        Record<string, SlateElement>,
+        Record<string, unknown>
+    >,
     Link,
     Embed,
     MermaidPlugin as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,

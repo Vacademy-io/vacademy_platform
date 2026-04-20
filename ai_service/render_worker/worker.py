@@ -76,6 +76,7 @@ class RenderWorker:
         caption_bg_opacity: Optional[int] = None,
         caption_font_size: Optional[int] = None,
         audio_tracks: Optional[list] = None,
+        source_video_urls: Optional[list] = None,
     ) -> str:
         """
         Run the full render pipeline and return the S3 URL of the output MP4.
@@ -208,11 +209,35 @@ class RenderWorker:
 
             # First, compute total frames by doing a dry-run parse of timeline + audio
             import json as _json
+            import re as _re
             tl_data = _json.loads(timeline_path.read_text())
             if isinstance(tl_data, dict) and "entries" in tl_data:
                 tl_entries = tl_data["entries"]
             else:
                 tl_entries = tl_data
+
+            # Strip <video data-source-clip> tags from SOURCE_CLIP entries so
+            # Playwright doesn't render the video (the compositor handles it).
+            # Without this, the video appears twice: once from Playwright and
+            # once from the compositor.
+            _video_tag_re = _re.compile(
+                r'<video\b[^>]*data-source-clip[^>]*>(?:</video>)?',
+                _re.IGNORECASE,
+            )
+            _modified_tl = False
+            for _entry in tl_entries:
+                if _entry.get("shot_type") == "SOURCE_CLIP" and "html" in _entry:
+                    _orig = _entry["html"]
+                    _stripped = _video_tag_re.sub("", _orig)
+                    if _stripped != _orig:
+                        _entry["html"] = _stripped
+                        _modified_tl = True
+            if _modified_tl:
+                timeline_path.write_text(_json.dumps(
+                    tl_data if isinstance(tl_data, dict) else tl_entries,
+                    ensure_ascii=False,
+                ))
+                logger.info("Stripped <video> tags from SOURCE_CLIP entries for render")
             from moviepy import AudioFileClip as _AFC
             _audio_dur = _AFC(str(audio_path)).duration
             tl_max_end = max((e.get("exitTime", 0) for e in tl_entries), default=0)
@@ -342,6 +367,42 @@ class RenderWorker:
                 logger.error(f"FRAME FORMAT MISMATCH: Found {stale_png_count} .png frames but expected .jpg. "
                              f"generate_video.py may be out of sync with worker.py.")
             logger.info(f"Total rendered frames: {len(rendered_frames)} (.jpg), stale .png: {stale_png_count}")
+
+            if on_progress:
+                on_progress(70)
+
+            # ── SOURCE_CLIP compositing ──
+            # For shots that use source video footage, overlay the rendered HTML
+            # frames on top of extracted source clips. Supports multiple sources.
+            if source_video_urls:
+                from collections import defaultdict
+                # Group SOURCE_CLIP entries by source_video_index
+                _clips_by_source: dict = defaultdict(list)
+                for _e in tl_entries:
+                    if _e.get("shot_type") == "SOURCE_CLIP" and _e.get("source_start") is not None:
+                        _sv_idx = _e.get("source_video_index", 0)
+                        _clips_by_source[_sv_idx].append(_e)
+
+                if _clips_by_source:
+                    logger.info(f"Compositing SOURCE_CLIP shots from {len(_clips_by_source)} source(s)...")
+
+                for _sv_idx, _clip_entries in _clips_by_source.items():
+                    if _sv_idx >= len(source_video_urls):
+                        logger.warning(f"source_video_index {_sv_idx} out of range (have {len(source_video_urls)} URLs)")
+                        continue
+                    _sv_path = work_dir / f"source_video_{_sv_idx}.mp4"
+                    self._download(source_video_urls[_sv_idx], _sv_path)
+                    logger.info(f"Downloaded source video [{_sv_idx}] for {len(_clip_entries)} clips")
+                    await self._composite_source_clips(
+                        source_video_path=_sv_path,
+                        source_clip_entries=_clip_entries,
+                        frames_dir=frames_dir,
+                        render_width=render_width,
+                        render_height=render_height,
+                        fps=FPS,
+                    )
+                    # Free disk immediately after compositing this source
+                    _sv_path.unlink(missing_ok=True)
 
             if on_progress:
                 on_progress(75)
@@ -490,6 +551,144 @@ class RenderWorker:
             logger.info(f"Downloaded (HTTP): {local_path.name}")
         except Exception as e:
             raise RuntimeError(f"Failed to download {url}: {e}")
+
+    async def _composite_source_clips(
+        self,
+        source_video_path: Path,
+        source_clip_entries: list,
+        frames_dir: Path,
+        render_width: int,
+        render_height: int,
+        fps: int,
+    ) -> None:
+        """Replace rendered HTML-only frames with source_video + HTML overlay composites.
+
+        For each SOURCE_CLIP entry in the timeline:
+        1. Extract the source video clip for [source_start, source_end]
+        2. Read the Playwright-rendered overlay frames (transparent bg) for this shot
+        3. Composite overlay on top of source clip → overwrite frame JPGs
+
+        The Playwright renderer produced frames with whatever background the HTML had
+        (should be transparent/black for SOURCE_CLIP). We replace those frames with
+        the source video underneath + the overlay on top.
+        """
+        import cv2
+        import numpy as np
+
+        cap = cv2.VideoCapture(str(source_video_path))
+        if not cap.isOpened():
+            logger.error(f"Cannot open source video for compositing: {source_video_path}")
+            return
+
+        for entry in source_clip_entries:
+            in_time = float(entry.get("inTime", 0))
+            exit_time = float(entry.get("exitTime", 0))
+            source_start = float(entry.get("source_start", 0))
+            source_end = float(entry.get("source_end", source_start + (exit_time - in_time)))
+
+            # Frame range in the output video
+            # Frames are named frame_000001.jpg (1-indexed)
+            first_frame_num = int(in_time * fps) + 1
+            last_frame_num = int(exit_time * fps) + 1
+            source_duration = source_end - source_start
+
+            if source_duration <= 0:
+                continue
+
+            logger.info(
+                f"  Compositing SOURCE_CLIP: output frames {first_frame_num}-{last_frame_num}, "
+                f"source {source_start:.1f}-{source_end:.1f}s"
+            )
+
+            # Detect compositing mode from the FIRST frame of this shot.
+            # Compute card bounds once and reuse for all frames to avoid flicker
+            # caused by per-frame bounding-box jitter from JPEG artifacts.
+            _first_path = frames_dir / f"frame_{first_frame_num:06d}.jpg"
+            _first_overlay = cv2.imread(str(_first_path)) if _first_path.exists() else None
+
+            # Compositing mode: "card" (video in a container) or "fullscreen" (video behind overlay)
+            _comp_mode = "fullscreen"
+            _card_bounds = None  # (y0, x0, card_h, card_w, new_h, new_w, oy, ox)
+
+            if _first_overlay is not None:
+                _fg = cv2.cvtColor(_first_overlay, cv2.COLOR_BGR2GRAY)
+                _bm = _fg <= 15
+                _br = np.sum(_bm) / _bm.size
+                if _br < 0.75:
+                    _coords = np.argwhere(_bm)
+                    if len(_coords) > 100:
+                        _comp_mode = "card"
+                        _y0, _x0 = _coords.min(axis=0)
+                        _y1, _x1 = _coords.max(axis=0) + 1
+                        _card_w, _card_h = _x1 - _x0, _y1 - _y0
+                        # Pre-compute source resize dimensions (stable for all frames)
+                        _src_fps_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        _src_fps_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        _scale = min(_card_w / max(_src_fps_w, 1), _card_h / max(_src_fps_h, 1))
+                        _nw = int(_src_fps_w * _scale)
+                        _nh = int(_src_fps_h * _scale)
+                        _ox = _x0 + (_card_w - _nw) // 2
+                        _oy = _y0 + (_card_h - _nh) // 2
+                        _card_bounds = (_oy, _ox, _nh, _nw)
+                        logger.info(f"    Card layout detected: card=({_x0},{_y0})-({_x1},{_y1}), "
+                                    f"video={_nw}x{_nh} at ({_ox},{_oy})")
+
+            # Seek to source_start and read frames sequentially (avoids costly random seeks)
+            cap.set(cv2.CAP_PROP_POS_MSEC, source_start * 1000)
+
+            for frame_num in range(first_frame_num, last_frame_num + 1):
+                frame_path = frames_dir / f"frame_{frame_num:06d}.jpg"
+                if not frame_path.exists():
+                    # Still advance the video even if frame file is missing
+                    cap.read()
+                    continue
+
+                # Calculate the source video timestamp for this output frame
+                t_in_shot = (frame_num - first_frame_num) / fps
+                t_ratio = t_in_shot / max(exit_time - in_time, 0.001)
+                source_t = source_start + t_ratio * source_duration
+
+                # Seek to source timestamp and read frame
+                cap.set(cv2.CAP_PROP_POS_MSEC, source_t * 1000)
+                ret, src_frame = cap.read()
+                if not ret:
+                    continue
+
+                # Read the existing overlay frame (rendered by Playwright)
+                overlay = cv2.imread(str(frame_path))
+                if overlay is None:
+                    # Resize source and write directly
+                    if src_frame.shape[1] != render_width or src_frame.shape[0] != render_height:
+                        src_frame = cv2.resize(src_frame, (render_width, render_height))
+                    cv2.imwrite(str(frame_path), src_frame)
+                    continue
+
+                # Resize overlay if needed
+                if overlay.shape[1] != render_width or overlay.shape[0] != render_height:
+                    overlay = cv2.resize(overlay, (render_width, render_height))
+
+                if _comp_mode == "card" and _card_bounds:
+                    # Card layout — place source video in the pre-computed card region
+                    oy, ox, nh, nw = _card_bounds
+                    resized_src = cv2.resize(src_frame, (nw, nh))
+                    composited = overlay.copy()
+                    composited[oy:oy + nh, ox:ox + nw] = resized_src
+                else:
+                    # Full-screen overlay — brightness-based alpha
+                    if src_frame.shape[1] != render_width or src_frame.shape[0] != render_height:
+                        src_frame = cv2.resize(src_frame, (render_width, render_height))
+                    gray = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
+                    mask = (gray > 15).astype(np.float32)
+                    mask = cv2.GaussianBlur(mask, (3, 3), 0)
+                    mask = mask[:, :, np.newaxis]
+                    composited = (src_frame * (1.0 - mask) + overlay * mask).astype(np.uint8)
+
+                # Write composited frame back (as JPG to match existing format)
+                cv2.imwrite(str(frame_path), composited)
+
+            logger.info(f"  ✅ Composited {last_frame_num - first_frame_num + 1} frames")
+
+        cap.release()
 
     def _upload(self, local_path: Path, s3_key: str) -> str:
         """Upload a file to S3 and return the public URL."""

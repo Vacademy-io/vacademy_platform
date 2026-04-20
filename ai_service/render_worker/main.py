@@ -72,6 +72,8 @@ class RenderJobRequest(BaseModel):
     caption_bg_color: Optional[str] = Field(default=None, description="CSS hex color for caption background")
     caption_bg_opacity: Optional[int] = Field(default=None, description="Caption background opacity 0-100")
     caption_font_size: Optional[int] = Field(default=None, description="Caption font size in px")
+    source_video_url: Optional[str] = Field(default=None, description="(deprecated) Single source video URL — use source_video_urls")
+    source_video_urls: Optional[List[str]] = Field(default=None, description="S3 URLs of indexed source videos for SOURCE_CLIP compositing")
 
 
 class RenderJobResponse(BaseModel):
@@ -120,6 +122,7 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
             caption_bg_color=request.caption_bg_color,
             caption_bg_opacity=request.caption_bg_opacity,
             caption_font_size=request.caption_font_size,
+            source_video_urls=request.source_video_urls or ([request.source_video_url] if request.source_video_url else None),
         )
 
         jobs[job_id]["status"] = "completed"
@@ -259,61 +262,59 @@ class IndexJobStatus(BaseModel):
     updated_at: str
 
 
-async def _run_index_job_stub(job_id: str, request: IndexJobRequest):
-    """Stub: simulates indexing by sleeping, then returning empty outputs.
-
-    Step 2 will replace this with the real extraction pipeline
-    (faster-whisper, mediapipe, matting, etc.).
-    """
+async def _run_index_job(job_id: str, request: IndexJobRequest):
+    """Run the real video extraction pipeline in a thread pool executor."""
     index_jobs[job_id]["status"] = "running"
-    index_jobs[job_id]["progress"] = 10
     index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    try:
-        # Simulate processing stages
-        for pct in (20, 40, 60, 80, 95):
-            await asyncio.sleep(1)
-            index_jobs[job_id]["progress"] = pct
-            index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+    def progress_cb(pct: float):
+        index_jobs[job_id]["progress"] = pct
+        index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-        # Stub outputs — S3 keys that would be produced by the real pipeline
-        base_key = f"ai-input-videos/{request.input_video_id}"
-        output_urls = {
-            "context_json": f"https://vacademy-media-storage.s3.amazonaws.com/{base_key}/video_context.json",
-            "spatial_db": f"https://vacademy-media-storage.s3.amazonaws.com/{base_key}/video_spatial.sqlite",
-            "assets": {
-                "speaker_fg": f"https://vacademy-media-storage.s3.amazonaws.com/{base_key}/assets/speaker_fg.webm",
-            },
-        }
+    try:
+        from extractor.pipeline import run_index_pipeline
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            run_index_pipeline,
+            request.input_video_id,
+            request.source_url,
+            request.mode,
+            progress_cb,
+        )
 
         index_jobs[job_id]["status"] = "completed"
         index_jobs[job_id]["progress"] = 100
-        index_jobs[job_id]["output_urls"] = output_urls
-        index_jobs[job_id]["duration_seconds"] = 30.0  # stub
-        index_jobs[job_id]["resolution"] = "1920x1080"  # stub
+        index_jobs[job_id]["output_urls"] = result["output_urls"]
+        index_jobs[job_id]["duration_seconds"] = result.get("duration_seconds")
+        index_jobs[job_id]["resolution"] = result.get("resolution")
         index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
-        logger.info(f"Index job {job_id} completed (stub)")
+        logger.info(f"Index job {job_id} completed: {list(result['output_urls'].keys())}")
 
         if request.callback_url:
             await _send_callback(request.callback_url, {
                 "input_video_id": request.input_video_id,
                 "job_id": job_id,
                 "status": "completed",
-                "output_urls": output_urls,
+                "output_urls": result["output_urls"],
+                "duration_seconds": result.get("duration_seconds"),
+                "resolution": result.get("resolution"),
             })
 
     except Exception as e:
+        error_msg = str(e)
         index_jobs[job_id]["status"] = "failed"
-        index_jobs[job_id]["error"] = str(e)
+        index_jobs[job_id]["error"] = error_msg
         index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
-        logger.error(f"Index job {job_id} failed: {e}")
+        logger.error(f"Index job {job_id} failed: {error_msg}", exc_info=True)
 
         if request.callback_url:
             await _send_callback(request.callback_url, {
                 "input_video_id": request.input_video_id,
                 "job_id": job_id,
                 "status": "failed",
-                "error": str(e),
+                "error": error_msg,
             })
 
 
@@ -350,7 +351,7 @@ async def submit_index_job(
         "updated_at": now,
     }
 
-    asyncio.create_task(_run_index_job_stub(job_id, request))
+    asyncio.create_task(_run_index_job(job_id, request))
 
     return IndexJobResponse(job_id=job_id, status="queued", message="Index job submitted")
 

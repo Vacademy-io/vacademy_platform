@@ -232,11 +232,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     const fetchCourseDetails = async () => {
       try {
         setIsLoading(true);
-        console.log("[CourseDetailsPage] Fetching course details for:", {
-          courseId,
-          tagName,
-          instituteId,
-        });
 
         // Fetch course details from /course-init API (scalable single course endpoint)
         const initApiResponse = await axios.get(
@@ -250,11 +245,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               "Content-Type": "application/json",
             },
           },
-        );
-
-        console.log(
-          "[CourseDetailsPage] Course Init API response:",
-          initApiResponse.data,
         );
 
         // Extract the first (and only) course from the response
@@ -275,26 +265,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           setError("This course is not available for public viewing.");
           return;
         }
-
-        console.log("[CourseDetailsPage] Course details from init API:", {
-          id: course.id,
-          package_name: course.package_name,
-          course_html_description: course.course_html_description,
-          course_preview_image_media_id: course.course_preview_image_media_id,
-          course_banner_media_id: course.course_banner_media_id,
-          why_learn: course.why_learn,
-          who_should_learn: course.who_should_learn,
-          about_the_course: course.about_the_course,
-          tags: course.tags,
-          course_depth: course.course_depth,
-          is_course_published_to_catalaouge:
-            course.is_course_published_to_catalaouge,
-        });
-
-        console.log("[CourseDetailsPage] Props from search API:", {
-          enrollInviteId,
-          packageSessionId,
-        });
 
         // Use banner image from props if available, otherwise use API fields (raw media IDs)
         let thumbnailUrl = "/api/placeholder/800/400";
@@ -373,14 +343,32 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           }
         }
 
+        // Known field-name placeholders that the backend sometimes echoes
+        // back when a course field is unset. Treat them as empty so we
+        // don't render raw identifiers to learners.
+        const PLACEHOLDER_FIELD_NAMES = new Set([
+          "about_the_course",
+          "about_the_course_html",
+          "course_html_description",
+          "course_html_description_html",
+          "who_should_learn",
+          "why_learn",
+          "course_preview_image_media_id",
+          "course_banner_media_id",
+          "thumbnail_file_id",
+        ]);
+
         // Parse HTML content safely
         const parseHtmlContent = (htmlString: string) => {
           if (!htmlString) return "";
           // Remove HTML tags and decode entities for display
-          return htmlString
+          const stripped = htmlString
             .replace(/<[^>]*>/g, "")
             .replace(/&nbsp;/g, " ")
             .trim();
+          if (!stripped) return "";
+          if (PLACEHOLDER_FIELD_NAMES.has(stripped)) return "";
+          return stripped;
         };
 
         // Extract learning outcomes from HTML content
@@ -472,10 +460,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           whyLearn:
             parseHtmlContent(course.why_learn) ||
             "Gain valuable skills and knowledge",
-          aboutCourse:
-            parseHtmlContent(course.about_the_course) ||
-            parseHtmlContent(course.course_html_description) ||
-            null,
+          aboutCourse: parseHtmlContent(course.course_html_description) || null,
           instructors:
             courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors?.map(
               (inst: any) => ({
@@ -505,13 +490,29 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           levelId: course.level_id, // Add levelId from API response
           courseId: course.course_id || courseId, // Add courseId from API response or use the route param
           course_banner_media_id: course.course_banner_media_id || "", // Explicitly pass the banner ID for BookDetailsComponent
-          // Preserve raw HTML fields for BookDetailsComponent
+          // Preserve raw HTML fields for BookDetailsComponent (filter placeholder field-name echoes)
           course_html_description_html:
-            course.course_html_description ||
-            course.course_html_description_html ||
+            (PLACEHOLDER_FIELD_NAMES.has(
+              (course.course_html_description || "").trim(),
+            )
+              ? ""
+              : course.course_html_description) ||
+            (PLACEHOLDER_FIELD_NAMES.has(
+              (course.course_html_description_html || "").trim(),
+            )
+              ? ""
+              : course.course_html_description_html) ||
             "",
           about_the_course_html:
-            course.about_the_course || course.about_the_course_html || "",
+            (PLACEHOLDER_FIELD_NAMES.has((course.about_the_course || "").trim())
+              ? ""
+              : course.about_the_course) ||
+            (PLACEHOLDER_FIELD_NAMES.has(
+              (course.about_the_course_html || "").trim(),
+            )
+              ? ""
+              : course.about_the_course_html) ||
+            "",
           comma_separeted_tags:
             course.tags || course.comma_separeted_tags || "",
           currency: finalCurrency,
@@ -519,17 +520,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         } as any;
 
         setCourseData(courseData);
-
-        // Debug: Log the courseData that was set
-        console.log("[CourseDetailsPage] CourseData set with values:", {
-          levelId: courseData.levelId,
-          courseId: courseData.courseId,
-          packageSessionId: courseData.packageSessionId,
-          levelIdFromAPI: course.level_id,
-          courseIdFromAPI: course.course_id,
-          price: courseData.price,
-          currency: courseData.currency,
-        });
 
         // Check if lead collection should be shown based on JSON configuration
         const globalSettings = catalogueData?.globalSettings as any;

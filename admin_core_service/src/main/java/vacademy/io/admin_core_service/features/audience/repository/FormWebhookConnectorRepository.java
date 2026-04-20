@@ -38,6 +38,12 @@ public interface FormWebhookConnectorRepository extends JpaRepository<FormWebhoo
     java.util.List<FormWebhookConnector> findByInstituteIdAndIsActiveTrue(String instituteId);
 
     /**
+     * Find existing connector by vendor + vendorId (unique constraint).
+     * Used by the save-connector endpoint to upsert instead of always inserting.
+     */
+    java.util.Optional<FormWebhookConnector> findByVendorAndVendorId(String vendor, String vendorId);
+
+    /**
      * Find connector by platform form ID and vendor — used for ad platform webhooks.
      * Meta sends form_id in webhook payload; Google sends campaign_id as google_key context.
      */

@@ -1,0 +1,217 @@
+"""
+Stage 1 audio layer: demux, transcribe, prosody analysis, emphasis detection.
+
+Runs on the FULL video (not just the highlight window) because the transcript
+is needed to select the highlight.
+"""
+from __future__ import annotations
+
+import logging
+import subprocess
+import threading
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+
+from .schemas import EmphasisMark, ProsodySummary, Sentence, WordTimestamp
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# faster-whisper singleton (lazy, thread-safe)
+# ---------------------------------------------------------------------------
+_whisper_model = None
+_whisper_lock = threading.Lock()
+
+
+def _get_whisper_model(model_size: str = "base"):
+    global _whisper_model
+    if _whisper_model is None:
+        with _whisper_lock:
+            if _whisper_model is None:
+                from faster_whisper import WhisperModel
+                logger.info(f"Loading faster-whisper model: {model_size} (int8, CPU)")
+                _whisper_model = WhisperModel(
+                    model_size, device="cpu", compute_type="int8",
+                )
+                logger.info("faster-whisper model loaded")
+    return _whisper_model
+
+
+# ---------------------------------------------------------------------------
+# Audio demux
+# ---------------------------------------------------------------------------
+
+def demux_audio(video_path: Path, output_wav: Path) -> None:
+    """Extract audio as 16kHz mono WAV via ffmpeg."""
+    output_wav.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "ffmpeg", "-y", "-i", str(video_path),
+        "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+        str(output_wav),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg demux failed: {result.stderr[:500]}")
+    logger.info(f"Demuxed audio: {output_wav} ({output_wav.stat().st_size / 1024:.0f} KB)")
+
+
+# ---------------------------------------------------------------------------
+# Transcription
+# ---------------------------------------------------------------------------
+
+def transcribe(
+    wav_path: Path,
+    model_size: str = "base",
+    language: Optional[str] = None,
+) -> tuple[list[Sentence], list[WordTimestamp]]:
+    """Run faster-whisper on 16kHz mono WAV.
+
+    Returns (sentences, flat_words).
+    """
+    model = _get_whisper_model(model_size)
+    segments, info = model.transcribe(
+        str(wav_path),
+        word_timestamps=True,
+        language=language,
+        vad_filter=True,
+    )
+    logger.info(f"Whisper detected language: {info.language} (p={info.language_probability:.2f})")
+
+    sentences: list[Sentence] = []
+    all_words: list[WordTimestamp] = []
+
+    for seg in segments:
+        seg_words: list[WordTimestamp] = []
+        for w in (seg.words or []):
+            wt = WordTimestamp(word=w.word.strip(), start=round(w.start, 3), end=round(w.end, 3))
+            seg_words.append(wt)
+            all_words.append(wt)
+
+        if seg_words:
+            sentences.append(Sentence(
+                text=seg.text.strip(),
+                start=round(seg.start, 3),
+                end=round(seg.end, 3),
+                words=seg_words,
+            ))
+
+    logger.info(f"Transcribed: {len(sentences)} sentences, {len(all_words)} words")
+    return sentences, all_words
+
+
+# ---------------------------------------------------------------------------
+# Prosody analysis
+# ---------------------------------------------------------------------------
+
+def analyze_prosody(wav_path: Path, hop_ms: int = 100) -> tuple[ProsodySummary, np.ndarray, np.ndarray]:
+    """Compute RMS energy, pitch, and detect pauses.
+
+    Returns (summary, rms_times, rms_values) — the raw arrays are needed
+    by the energy-based highlight fallback.
+    """
+    import librosa
+
+    y, sr = librosa.load(str(wav_path), sr=16000)
+    hop_length = int(sr * hop_ms / 1000)
+
+    # RMS energy
+    rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
+    rms_times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length)
+
+    # Pitch via pyin
+    f0, voiced_flag, _ = librosa.pyin(
+        y, fmin=librosa.note_to_hz("C2"), fmax=librosa.note_to_hz("C6"),
+        sr=sr, hop_length=hop_length,
+    )
+    f0_valid = f0[~np.isnan(f0)] if f0 is not None else np.array([])
+
+    mean_rms = float(np.mean(rms)) if len(rms) > 0 else 0.0
+    peak_rms = float(np.max(rms)) if len(rms) > 0 else 0.0
+    mean_pitch = float(np.mean(f0_valid)) if len(f0_valid) > 0 else 0.0
+
+    # Pause detection: stretches where RMS < 0.1 * mean for > 0.4s
+    threshold = mean_rms * 0.1
+    pauses: list[dict] = []
+    in_pause = False
+    pause_start = 0.0
+    for i, val in enumerate(rms):
+        t = float(rms_times[i])
+        if val < threshold:
+            if not in_pause:
+                in_pause = True
+                pause_start = t
+        else:
+            if in_pause:
+                dur = t - pause_start
+                if dur >= 0.4:
+                    pauses.append({"start": round(pause_start, 3), "end": round(t, 3),
+                                   "duration_s": round(dur, 3)})
+                in_pause = False
+    # Handle trailing pause
+    if in_pause:
+        dur = float(rms_times[-1]) - pause_start
+        if dur >= 0.4:
+            pauses.append({"start": round(pause_start, 3), "end": round(float(rms_times[-1]), 3),
+                           "duration_s": round(dur, 3)})
+
+    summary = ProsodySummary(
+        mean_rms=round(mean_rms, 6),
+        peak_rms=round(peak_rms, 6),
+        mean_pitch_hz=round(mean_pitch, 2),
+        pause_count=len(pauses),
+        pauses=pauses,
+    )
+    logger.info(f"Prosody: mean_rms={mean_rms:.4f}, pauses={len(pauses)}, pitch={mean_pitch:.0f}Hz")
+    return summary, rms_times, rms
+
+
+# ---------------------------------------------------------------------------
+# Emphasis detection
+# ---------------------------------------------------------------------------
+
+def detect_emphasis(
+    words: list[WordTimestamp],
+    rms_times: np.ndarray,
+    rms_values: np.ndarray,
+    prosody: ProsodySummary,
+    rms_factor: float = 1.5,
+    pause_threshold_s: float = 0.8,
+) -> list[EmphasisMark]:
+    """Heuristic emphasis detection based on prosody signals.
+
+    Reasons:
+      - energy_spike: word coincides with RMS > mean * rms_factor
+      - long_pause_before: pause > threshold_s immediately before the word
+    """
+    if len(rms_values) == 0 or not words:
+        return []
+
+    mean_rms = float(np.mean(rms_values))
+    marks: list[EmphasisMark] = []
+    seen_times: set[float] = set()
+
+    for w in words:
+        t = w.start
+        if t in seen_times:
+            continue
+
+        # Energy spike check
+        idx = np.searchsorted(rms_times, t)
+        idx = min(idx, len(rms_values) - 1)
+        if rms_values[idx] > mean_rms * rms_factor:
+            marks.append(EmphasisMark(t=round(t, 3), word=w.word, reason="energy_spike"))
+            seen_times.add(t)
+            continue
+
+        # Long pause before
+        for p in prosody.pauses:
+            if abs(p["end"] - t) < 0.3 and p["duration_s"] >= pause_threshold_s:
+                marks.append(EmphasisMark(t=round(t, 3), word=w.word, reason="long_pause_before"))
+                seen_times.add(t)
+                break
+
+    marks.sort(key=lambda m: m.t)
+    logger.info(f"Emphasis: {len(marks)} marks detected")
+    return marks

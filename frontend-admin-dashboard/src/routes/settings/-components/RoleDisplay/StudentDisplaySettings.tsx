@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import {
     Select,
     SelectContent,
@@ -22,6 +22,7 @@ import type {
     PasswordStrategy,
     PasswordDelivery,
     StudentUiType,
+    SlidesSidebarNavigation,
 } from '@/types/student-display-settings';
 import {
     getStudentDisplaySettings,
@@ -862,6 +863,27 @@ export default function StudentDisplaySettings(): JSX.Element {
                             <Label className="text-xs">Can Ask Doubt</Label>
                         </div>
                     </div>
+
+                    {/* ── Sidebar content navigation picker ─────────────────
+                        Two visual options for how the learner navigates inside
+                        the slide viewer. The cards double as a live preview so
+                        the admin can see at a glance what each mode looks like
+                        without switching accounts to test. */}
+                    <SidebarNavigationPicker
+                        value={
+                            settings.courseDetails.slidesView.sidebarNavigation ??
+                            'breadcrumb'
+                        }
+                        onChange={(v) =>
+                            update('courseDetails', {
+                                ...settings.courseDetails,
+                                slidesView: {
+                                    ...settings.courseDetails.slidesView,
+                                    sidebarNavigation: v,
+                                },
+                            })
+                        }
+                    />
                 </div>
             </Card>
 
@@ -1027,6 +1049,224 @@ export default function StudentDisplaySettings(): JSX.Element {
                     {saving ? 'Saving...' : 'Save Settings'}
                 </Button>
             </div>
+        </div>
+    );
+}
+
+// ── Sidebar content navigation picker ───────────────────────────────────────
+// Two mutually-exclusive modes for the slide viewer sidebar. Rendered as a
+// pair of radio-style cards, each containing a tiny live mock of how the
+// learner's sidebar will look. The mocks are pure markup (no data fetches)
+// so the admin sees the outcome before saving.
+function SidebarNavigationPicker({
+    value,
+    onChange,
+}: {
+    value: SlidesSidebarNavigation;
+    onChange: (v: SlidesSidebarNavigation) => void;
+}): JSX.Element {
+    return (
+        <div className="mt-4 pt-4 border-t">
+            <div className="mb-1 flex items-baseline justify-between gap-2">
+                <div>
+                    <div className="text-sm font-semibold">Sidebar Navigation</div>
+                    <p className="text-xs text-muted-foreground max-w-prose">
+                        Controls how the learner moves across subjects, modules
+                        and chapters from the slide viewer. Each option changes
+                        what the left sidebar shows — pick whichever fits your
+                        learners&apos; mental model.
+                    </p>
+                </div>
+            </div>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <NavOptionCard
+                    selected={value === 'breadcrumb'}
+                    onSelect={() => onChange('breadcrumb')}
+                    title="Breadcrumb dropdowns"
+                    badge="Compact"
+                    description={
+                        <>
+                            Sidebar lists <strong>only the current chapter&apos;s slides</strong>.
+                            To jump to another module or subject, the learner
+                            taps the breadcrumb at the top and picks from a
+                            dropdown. Best when courses are small or you want
+                            learners focused on the current chapter.
+                        </>
+                    }
+                    preview={<BreadcrumbModePreview />}
+                />
+                <NavOptionCard
+                    selected={value === 'ancestors'}
+                    onSelect={() => onChange('ancestors')}
+                    title="Full course tree"
+                    badge="Richer"
+                    description={
+                        <>
+                            Sidebar shows the <strong>entire Subject → Module → Chapter → Slide tree</strong>.
+                            Learners can scan, expand and jump to any slide
+                            without leaving the viewer. The breadcrumb becomes
+                            a passive label. Best for longer courses where
+                            side-by-side discovery matters.
+                        </>
+                    }
+                    preview={<TreeModePreview />}
+                />
+            </div>
+        </div>
+    );
+}
+
+function NavOptionCard({
+    selected,
+    onSelect,
+    title,
+    badge,
+    description,
+    preview,
+}: {
+    selected: boolean;
+    onSelect: () => void;
+    title: string;
+    badge?: string;
+    description: React.ReactNode;
+    preview: React.ReactNode;
+}): JSX.Element {
+    return (
+        <button
+            type="button"
+            onClick={onSelect}
+            aria-pressed={selected}
+            className={`relative text-left rounded-lg border-2 p-3 transition-all focus:outline-none focus:ring-2 focus:ring-primary-300 ${
+                selected
+                    ? 'border-primary-400 bg-primary-50/50 shadow-sm'
+                    : 'border-neutral-200 bg-white hover:border-neutral-300'
+            }`}
+        >
+            {selected && (
+                <span className="absolute top-2 right-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary-500 text-white shadow-sm">
+                    <Check className="h-3 w-3" />
+                </span>
+            )}
+            <div className="flex items-center gap-2">
+                <div className="text-sm font-semibold">{title}</div>
+                {badge && (
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-primary-600 bg-primary-100 rounded-full px-1.5 py-0.5">
+                        {badge}
+                    </span>
+                )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                {description}
+            </p>
+            <div className="mt-3">{preview}</div>
+        </button>
+    );
+}
+
+// Mock of the legacy view: breadcrumb with a dropdown arrow + a flat slide list.
+function BreadcrumbModePreview(): JSX.Element {
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden">
+            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-200 text-[10px] text-neutral-600 bg-white">
+                <span className="flex items-center gap-0.5 rounded px-1 py-0.5 bg-neutral-100">
+                    S1 <ChevronDown className="h-2.5 w-2.5" />
+                </span>
+                <ChevronRight className="h-2.5 w-2.5 text-neutral-400" />
+                <span className="flex items-center gap-0.5 rounded px-1 py-0.5 bg-neutral-100">
+                    M1 <ChevronDown className="h-2.5 w-2.5" />
+                </span>
+                <ChevronRight className="h-2.5 w-2.5 text-neutral-400" />
+                <span className="font-semibold text-neutral-800">C1</span>
+            </div>
+            <div className="p-2 space-y-1">
+                <MockSlideRow label="Intro video" active />
+                <MockSlideRow label="Reading note" />
+                <MockSlideRow label="Practice quiz" />
+            </div>
+        </div>
+    );
+}
+
+// Mock of the tree view: nested subjects/modules/chapters/slides with chevrons.
+function TreeModePreview(): JSX.Element {
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden">
+            <div className="px-2 py-1.5 border-b border-neutral-200 text-[10px] text-neutral-500 bg-white font-medium tracking-wide uppercase">
+                Course content
+            </div>
+            <div className="py-1">
+                <MockTreeRow indent={0} chevron="down" label="S1 · Algebra" bold />
+                <MockTreeRow indent={1} chevron="down" label="M1 · Numbers" />
+                <MockTreeRow indent={2} chevron="right" label="C1 · Basics" />
+                <MockTreeRow indent={2} chevron="down" label="C2 · Integers" activeAncestor />
+                <MockSlideRow label="Integer line" depth={3} />
+                <MockSlideRow label="Practice set" depth={3} active />
+                <MockTreeRow indent={1} chevron="right" label="M2 · Fractions" muted />
+                <MockTreeRow indent={0} chevron="right" label="S2 · Geometry" muted />
+            </div>
+        </div>
+    );
+}
+
+function MockSlideRow({
+    label,
+    active,
+    depth = 0,
+}: {
+    label: string;
+    active?: boolean;
+    depth?: number;
+}): JSX.Element {
+    return (
+        <div
+            style={{ paddingLeft: `${depth * 10 + 8}px` }}
+            className={`flex items-center gap-1.5 px-2 py-1 text-[10px] rounded ${
+                active
+                    ? 'bg-primary-100 text-primary-700 font-semibold'
+                    : 'text-neutral-600'
+            }`}
+        >
+            <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                    active ? 'bg-primary-500' : 'bg-neutral-300'
+                }`}
+            />
+            <span className="truncate">{label}</span>
+        </div>
+    );
+}
+
+function MockTreeRow({
+    indent,
+    chevron,
+    label,
+    bold,
+    muted,
+    activeAncestor,
+}: {
+    indent: number;
+    chevron: 'down' | 'right';
+    label: string;
+    bold?: boolean;
+    muted?: boolean;
+    activeAncestor?: boolean;
+}): JSX.Element {
+    const Icon = chevron === 'down' ? ChevronDown : ChevronRight;
+    return (
+        <div
+            style={{ paddingLeft: `${indent * 10 + 4}px` }}
+            className={`flex items-center gap-1 px-2 py-1 text-[10px] ${
+                muted
+                    ? 'text-neutral-400'
+                    : activeAncestor
+                    ? 'text-primary-700 bg-primary-50/60 font-semibold'
+                    : bold
+                    ? 'text-neutral-800 font-semibold'
+                    : 'text-neutral-700'
+            }`}
+        >
+            <Icon className="h-2.5 w-2.5 flex-shrink-0" />
+            <span className="truncate">{label}</span>
         </div>
     );
 }

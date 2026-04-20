@@ -1153,6 +1153,8 @@ class VideoGenerationPipeline:
         video_height: int = 1080,
         visual_style: str = "standard",  # deprecated: Director now picks styles per-shot
         sound_effects_enabled: bool = True,
+        input_video_context: Optional[Dict[str, Any]] = None,
+        input_video_contexts: Optional[list] = None,
     ) -> Dict[str, Any]:
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
         self.video_width = video_width
@@ -1165,6 +1167,19 @@ class VideoGenerationPipeline:
         # regardless of tier config. Stored on the instance so _generate_html_per_shot
         # can read it alongside self._tier_config.
         self._sound_effects_enabled = bool(sound_effects_enabled)
+        # Input video contexts from indexed source videos. List of dicts, each
+        # with keys: context, source_url, assets_urls, input_video_id, mode, etc.
+        # Backward compat: singular input_video_context is wrapped into a list.
+        if input_video_contexts:
+            self._input_video_contexts = input_video_contexts
+        elif input_video_context:
+            self._input_video_contexts = [input_video_context]
+        else:
+            self._input_video_contexts = None
+        # Convenience: first context for backward-compat code paths
+        self._input_video_context = (
+            self._input_video_contexts[0] if self._input_video_contexts else None
+        )
         # Dedup set for LLM-ranked stock video selection (super_ultra only).
         # Tracks Pexels video IDs already used in this run so shots don't reuse clips.
         self._used_pexels_video_ids: set = set()
@@ -1238,6 +1253,173 @@ class VideoGenerationPipeline:
         do_avatar = stage_idx <= self.STAGE_INDEX["avatar"] and self.STAGE_INDEX["avatar"] < stop_idx and generate_avatar
         do_render = stage_idx <= self.STAGE_INDEX["render"] and self.STAGE_INDEX["render"] < stop_idx
 
+        # Path variables must be defined before any bypass block or stage uses them
+        script_path = run_dir / "script.txt"
+        response_json = run_dir / "narration_raw.json"
+        audio_path = run_dir / "narration.mp3"
+        words_json = run_dir / "narration.words.json"
+        words_csv = run_dir / "narration.words.csv"
+        alignment_json = run_dir / "alignment.json"
+        timeline_path = run_dir / "time_based_frame.json"
+
+        # ── Input video context handling ──
+        # Two modes based on audio_preference:
+        #   "original" → skip SCRIPT+TTS, use source video audio + transcript
+        #   "tts"      → run SCRIPT+TTS normally, inject video context into prompts
+        _iv_audio_pref = (self._input_video_context or {}).get("audio_preference", "original")
+        if self._input_video_context and _iv_audio_pref == "original":
+            print("🎬 INPUT VIDEO MODE — skipping Script/TTS/Words stages")
+            _iv_ctx = self._input_video_context.get("context", {})
+            _iv_transcript = _iv_ctx.get("transcript", [])
+            _iv_source_url = self._input_video_context.get("source_url", "")
+
+            # Build script_text from indexed transcript
+            _iv_script_text = " ".join(s.get("text", "") for s in _iv_transcript).strip()
+            if not _iv_script_text:
+                _iv_script_text = str(base_prompt or "")
+
+            # Write script.txt
+            script_path.write_text(_iv_script_text, encoding="utf-8")
+
+            # Build beat_outline from scenes + transcript
+            _iv_scenes = _iv_ctx.get("scenes", [])
+            _iv_highlight = _iv_ctx.get("meta", {}).get("highlight_window", {})
+            _iv_beats = []
+            for i, sent in enumerate(_iv_transcript):
+                _iv_beats.append({
+                    "label": f"beat_{i}",
+                    "narration": sent.get("text", ""),
+                    "visual_idea": "",
+                    "visual_type": "SOURCE_CLIP",
+                })
+
+            script_plan = {
+                "plan": {
+                    "script": _iv_script_text,
+                    "beat_outline": _iv_beats,
+                    "subject_domain": "general",
+                },
+                "script_path": script_path,
+                "script_text": _iv_script_text,
+            }
+            (run_dir / "script_plan.json").write_text(
+                json.dumps(script_plan["plan"], indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+
+            # Extract audio from source video → narration.mp3
+            if not audio_path.exists():
+                print(f"🔊 Extracting audio from source video: {_iv_source_url}")
+                _iv_video_local = run_dir / "source_video_for_audio"
+                # Download source video
+                import httpx as _httpx
+                # Try S3 download first for private bucket videos
+                try:
+                    import boto3 as _boto3
+                    _s3c = _boto3.client("s3",
+                        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
+                        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                        region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+                    )
+                    for _bkt in ["vacademy-media-storage", "vacademy-media-storage-public"]:
+                        if _bkt in _iv_source_url:
+                            _parts = _iv_source_url.split(f"{_bkt}.s3.amazonaws.com/")
+                            if len(_parts) == 2:
+                                _s3c.download_file(_bkt, _parts[1], str(_iv_video_local))
+                                break
+                    else:
+                        # HTTP fallback
+                        _resp = _httpx.get(_iv_source_url, timeout=300, follow_redirects=True)
+                        _resp.raise_for_status()
+                        _iv_video_local.write_bytes(_resp.content)
+                except Exception:
+                    _resp = _httpx.get(_iv_source_url, timeout=300, follow_redirects=True)
+                    _resp.raise_for_status()
+                    _iv_video_local.write_bytes(_resp.content)
+
+                # ffmpeg extract audio
+                _ffmpeg_cmd = [
+                    "ffmpeg", "-y", "-i", str(_iv_video_local),
+                    "-vn", "-acodec", "libmp3lame", "-q:a", "2",
+                    str(audio_path),
+                ]
+                subprocess.run(_ffmpeg_cmd, capture_output=True, check=True, timeout=120)
+                # Clean up the large video file
+                _iv_video_local.unlink(missing_ok=True)
+                print(f"   ✅ Audio extracted: {audio_path.stat().st_size / 1024:.0f} KB")
+
+            tts_outputs = {"response_json": response_json, "audio_path": audio_path}
+
+            # Create placeholder files expected by downstream resume-path checks
+            # (the elif branches in do_tts/do_words require these files to exist)
+            if not response_json.exists():
+                response_json.write_text("{}", encoding="utf-8")
+            if not words_csv.exists():
+                words_csv.write_text("word,start,end\n", encoding="utf-8")
+
+            # Build word timestamps from indexed transcript
+            _iv_words_list = []
+            for sent in _iv_transcript:
+                for w in sent.get("words", []):
+                    _iv_words_list.append({
+                        "word": w.get("word", ""),
+                        "start": w.get("start", 0.0),
+                        "end": w.get("end", 0.0),
+                    })
+            if _iv_words_list:
+                words_json.write_text(json.dumps(_iv_words_list, ensure_ascii=False), encoding="utf-8")
+            word_outputs = {"words_json": words_json if _iv_words_list else None, "words_csv": None}
+            words = _iv_words_list
+
+            # Skip all three stages
+            do_script = False
+            do_tts = False
+            do_words = False
+
+            print(f"   📝 Script: {len(_iv_transcript)} sentences, {len(_iv_words_list)} words")
+            print(f"   🎯 Highlight: {_iv_highlight.get('t_start', 0):.1f}-{_iv_highlight.get('t_end', 0):.1f}s")
+
+        elif self._input_video_context and _iv_audio_pref == "tts":
+            # TTS mode: script+TTS run normally. We enrich base_prompt with
+            # video context so the script LLM knows what's on screen.
+            print("🎬 INPUT VIDEO MODE (TTS) — enriching prompt with video context")
+            _iv_ctx = self._input_video_context.get("context", {})
+            _iv_demo = _iv_ctx.get("demo_only", {})
+            _iv_transcript = _iv_ctx.get("transcript", [])
+
+            # Build a context block describing what's in the video
+            _context_parts = []
+            if _iv_demo:
+                ui_elements = _iv_demo.get("ui_elements_seen", [])
+                if ui_elements:
+                    _context_parts.append(f"UI elements visible: {', '.join(ui_elements[:15])}")
+                key_events = _iv_demo.get("key_onscreen_events", [])
+                if key_events:
+                    event_descs = [f"{e.get('kind', '?')} near '{e.get('near_text', '?')}' at {e.get('t', 0):.1f}s"
+                                  for e in key_events[:10]]
+                    _context_parts.append(f"Key events: {'; '.join(event_descs)}")
+            if _iv_transcript:
+                transcript_text = " ".join(s.get("text", "") for s in _iv_transcript[:20])
+                if transcript_text.strip():
+                    _context_parts.append(f"Narration heard: {transcript_text[:500]}")
+
+            if _context_parts:
+                _video_context_block = (
+                    "\n\n--- SOURCE VIDEO CONTEXT ---\n"
+                    "The user has provided a screen recording / demo video. "
+                    "Write the narration script based on what happens in this video:\n\n"
+                    + "\n".join(f"- {p}" for p in _context_parts)
+                    + "\n\nUse this context to write an accurate, engaging narration "
+                    "that describes what the viewer sees on screen.\n"
+                    "--- END SOURCE VIDEO CONTEXT ---\n"
+                )
+                if base_prompt:
+                    base_prompt = base_prompt + _video_context_block
+                else:
+                    base_prompt = _video_context_block
+                self._base_prompt = base_prompt
+
+            print(f"   📝 Enriched prompt with {len(_context_parts)} context items")
+
         # Token usage aggregation
         total_usage = {
             "prompt_tokens": 0,
@@ -1254,14 +1436,6 @@ class VideoGenerationPipeline:
             total_usage["total_tokens"] += u.get("total_tokens", 0)
             total_usage["image_count"] += u.get("image_count", 0)
             total_usage["tts_character_count"] += u.get("tts_character_count", 0)
-
-        script_path = run_dir / "script.txt"
-        response_json = run_dir / "narration_raw.json"
-        audio_path = run_dir / "narration.mp3"
-        words_json = run_dir / "narration.words.json"
-        words_csv = run_dir / "narration.words.csv"
-        alignment_json = run_dir / "alignment.json"
-        timeline_path = run_dir / "time_based_frame.json"
 
         # Initialize outputs to safe defaults in case stages are skipped
         tts_outputs = {"response_json": None, "audio_path": None}
@@ -1638,7 +1812,22 @@ class VideoGenerationPipeline:
                 audio_path=tts_outputs.get("audio_path"),
                 style_guide=style_guide,
             )
-        
+
+            # ── Per-shot audio mixing ──
+            # When TTS mode + SOURCE_CLIP shots exist, mix source video audio
+            # into the narration (TTS during graphics, source audio during clips).
+            _iv_audio_pref = (self._input_video_contexts[0] if self._input_video_contexts else {}).get("audio_preference", "")
+            _tts_audio = tts_outputs.get("audio_path")
+            if _iv_audio_pref == "tts" and _tts_audio and self._input_video_contexts:
+                _words_path = word_outputs.get("words_json")
+                if _words_path:
+                    self._mix_audio_with_source_clips(
+                        audio_path=Path(_tts_audio),
+                        words_json_path=Path(_words_path),
+                        timeline_path=timeline_path,
+                        run_dir=run_dir,
+                    )
+
         avatar_video_path = None
         if do_avatar:
             if content_type == "VIDEO":
@@ -3573,6 +3762,12 @@ class VideoGenerationPipeline:
         script_text = str(plan_data.get("script") or script_plan.get("script_text", "")).strip()
         beat_outline = plan_data.get("beat_outline", [])
         subject_domain = getattr(self, '_current_subject_domain', 'general')
+        # Override domain for input video modes so Director gets SOURCE_CLIP
+        if self._input_video_contexts:
+            # Use first video's mode as primary domain; mixed modes are fine
+            _iv_mode = self._input_video_contexts[0].get("mode", "podcast")
+            subject_domain = f"input_video_{_iv_mode}"
+            self._current_subject_domain = subject_domain
         _w = getattr(self, 'video_width', 1920)
         _h = getattr(self, 'video_height', 1080)
 
@@ -3621,6 +3816,81 @@ class VideoGenerationPipeline:
             emphasis_map=emphasis_map,
             require_shot_density=bool(self._tier_config.get("director_shot_density")),
         )
+
+        # ── Input video context for Director ──────────────────────────
+        # Give the Director access to source video transcripts, scenes,
+        # and emphasis so it can plan SOURCE_CLIP shots at the right moments.
+        if self._input_video_contexts:
+            _num_sources = len(self._input_video_contexts)
+            _labels = "ABCDEFGHIJ"
+            _lines_per_video = max(10, 40 // _num_sources)
+
+            _video_sections = []
+            for _vidx, _vctx in enumerate(self._input_video_contexts):
+                _label = _labels[_vidx] if _vidx < len(_labels) else str(_vidx)
+                _iv_ctx = _vctx.get("context", {})
+                _iv_meta = _iv_ctx.get("meta", {})
+                _iv_transcript = _iv_ctx.get("transcript", [])
+                _iv_emphasis = _iv_ctx.get("emphasis", [])
+                _iv_scenes = _iv_ctx.get("scenes", [])
+                _iv_highlight = _iv_meta.get("highlight_window", {})
+                _v_name = _vctx.get("name", f"Video {_label}")
+                _v_mode = _vctx.get("mode", "unknown")
+                _v_dur = _iv_meta.get("duration_s", _vctx.get("duration_seconds", 0))
+
+                _transcript_lines = [
+                    f"  [{s.get('start', 0):.1f}-{s.get('end', 0):.1f}s] \"{s.get('text', '')}\""
+                    for s in _iv_transcript[:_lines_per_video]
+                ]
+                _emphasis_lines = [
+                    f"  {e.get('t', 0):.1f}s \"{e.get('word', '')}\" ({e.get('reason', '')})"
+                    for e in _iv_emphasis[:8]
+                ]
+                _scene_times = [f"{s.get('t', 0):.1f}s" for s in _iv_scenes[:10]]
+
+                _section = (
+                    f"\n### Video {_label}: \"{_v_name}\" ({_v_mode}, {_v_dur:.0f}s)\n"
+                    f"source_video_index: {_vidx}\n"
+                    f"Highlight window: {_iv_highlight.get('t_start', 0):.1f}-"
+                    f"{_iv_highlight.get('t_end', 0):.1f}s "
+                    f"({_iv_highlight.get('reason', '')})\n\n"
+                    "Transcript:\n" + "\n".join(_transcript_lines) + "\n\n"
+                    "Emphasis marks:\n" + "\n".join(_emphasis_lines) + "\n\n"
+                    f"Scene cuts: {', '.join(_scene_times)}\n"
+                )
+
+                # Demo-specific context
+                if _v_mode == "demo":
+                    _iv_demo = _iv_ctx.get("demo_only", {})
+                    _ui_elements = _iv_demo.get("ui_elements_seen", [])
+                    _key_events = _iv_demo.get("key_onscreen_events", [])
+                    if _ui_elements:
+                        _section += f"\nUI elements: {', '.join(_ui_elements[:15])}\n"
+                    if _key_events:
+                        _ev = [f"  {e.get('t', 0):.1f}s: {e.get('kind', '?')} near \"{e.get('near_text', '')}\""
+                               for e in _key_events[:10]]
+                        _section += "\nKey events:\n" + "\n".join(_ev) + "\n"
+                    _section += (
+                        "\nCaption guidance: title MUST describe what's on screen at that timestamp. "
+                        "BAD: 'No More Tool Jumping'. GOOD: 'Exploring Course Library'.\n"
+                    )
+
+                _video_sections.append(_section)
+
+            _source_video_block = (
+                "\n\n## SOURCE VIDEO CONTEXTS\n"
+                f"You have {_num_sources} source video(s) available.\n"
+                + "".join(_video_sections) + "\n"
+                "**SOURCE_CLIP RULES**:\n"
+                "- Use SOURCE_CLIP shots to show original video footage during key moments.\n"
+                "- Each SOURCE_CLIP shot MUST include:\n"
+                "  - `source_video_index`: integer (0 = Video A, 1 = Video B, ...)\n"
+                "  - `source_start`: timestamp (seconds) in THAT video\n"
+                "  - `source_end`: timestamp (seconds) in THAT video\n"
+                "- Match source_start/source_end to the transcript timestamps of the CORRECT video.\n"
+                "- Mix SOURCE_CLIP with other shot types for visual variety.\n"
+            )
+            user_prompt = user_prompt + _source_video_block
 
         # Super Ultra: bias the Director toward motion-graphics shot types
         director_system = DIRECTOR_SYSTEM_PROMPT
@@ -3786,6 +4056,7 @@ class VideoGenerationPipeline:
             "LOWER_THIRD", "ANNOTATION_MAP", "DATA_STORY", "PROCESS_STEPS",
             "EQUATION_BUILD", "ANIMATED_ASSET", "KINETIC_TEXT",
             "INFOGRAPHIC_SVG", "KINETIC_TITLE", "PRODUCT_HERO",
+            "SOURCE_CLIP",
         }
         for i, shot in enumerate(shots):
             if shot.get("shot_type") not in valid_types:
@@ -4140,6 +4411,81 @@ class VideoGenerationPipeline:
                     "- For motionPath shots: guard with `if(window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);`.\n"
                 )
 
+            # ── SOURCE_CLIP shots: overlay-only constraints ──
+            elif shot_type == "SOURCE_CLIP":
+                # Look up mode for the specific source video this shot references
+                _sv_idx = shot.get("source_video_index", 0)
+                _iv_mode = ""
+                if self._input_video_contexts and _sv_idx < len(self._input_video_contexts):
+                    _iv_mode = self._input_video_contexts[_sv_idx].get("mode", "")
+                elif self._input_video_context:
+                    _iv_mode = self._input_video_context.get("mode", "")
+
+                if _iv_mode == "demo":
+                    # Demo mode: card layout — video in a styled frame, caption outside
+                    user_prompt = user_prompt + (
+                        "\n\n**🎬 SOURCE_CLIP SHOT — DEMO VIDEO CARD LAYOUT**:\n"
+                        "The source video (a screen recording / demo) will be composited into the "
+                        "black (#000000) region of your HTML. Design a CARD LAYOUT where the video "
+                        "sits inside a styled container and a brief caption sits outside.\n\n"
+                        "**EXACT STRUCTURE REQUIRED** (follow this template closely):\n"
+                        "```html\n"
+                        "<div style='width:100%;height:100%;background:#111827;display:flex;"
+                        "flex-direction:column;align-items:center;justify-content:center;padding:3%;'>\n"
+                        "  <!-- Title above video -->\n"
+                        "  <div style='text-align:center;margin-bottom:2%;'>\n"
+                        "    <h2 style='font-size:1.6rem;font-weight:700;color:#fff;'>"
+                        "YOUR TITLE HERE</h2>\n"
+                        "  </div>\n"
+                        "  <!-- Video container — MUST be pure #000000 background -->\n"
+                        "  <div style='width:88%;aspect-ratio:16/9;max-height:60%;"
+                        "background:#000000;border-radius:12px;overflow:hidden;"
+                        "box-shadow:0 8px 32px rgba(0,0,0,0.6);'></div>\n"
+                        "  <!-- Caption below video -->\n"
+                        "  <div style='margin-top:2%;text-align:center;"
+                        "color:rgba(255,255,255,0.65);font-size:1rem;max-width:80%;'>"
+                        "Brief description here</div>\n"
+                        "</div>\n"
+                        "```\n\n"
+                        "**STRICT RULES:**\n"
+                        "- The outer background MUST be #111827 (dark blue-gray, NOT black).\n"
+                        "- The video container MUST be pure #000000 — this is where the source "
+                        "video will appear via compositing.\n"
+                        "- Video container aspect-ratio should be 16/9 (for screen recordings).\n"
+                        "- Title: 1 line, concise. Must describe what the demo is ACTUALLY "
+                        "SHOWING at this timestamp (e.g., 'Browsing the Course Library', "
+                        "'Setting Up Module Structure'). Use the visual_description and "
+                        "text_elements from the Director's shot plan. Do NOT use generic "
+                        "marketing copy like 'No More Tool Jumping'.\n"
+                        "- Caption: 1-2 lines, specific to the UI action being demonstrated.\n"
+                        "- DO NOT create SVGs, diagrams, icons, step lists, UI mockups, or any "
+                        "visual elements. The video IS the visual.\n"
+                        "- DO NOT use <img> or data-img-prompt.\n"
+                        "- Simple gsap fadeIn animation only (0.3s).\n"
+                        "- The ENTIRE HTML must be under 25 lines.\n"
+                    )
+                else:
+                    # Podcast/other mode: full-screen video with minimal caption overlay
+                    user_prompt = user_prompt + (
+                        "\n\n**🎬 SOURCE_CLIP SHOT — OVERLAY-ONLY CONSTRAINTS**:\n"
+                        "The source video footage plays BEHIND your HTML. Your HTML is composited "
+                        "on top — black pixels (#000000) become transparent. The viewer already sees "
+                        "the original video content (speaker, interview), so your overlay must NOT "
+                        "duplicate what's visible in the video.\n\n"
+                        "**STRICT RULES:**\n"
+                        "- Background MUST be solid #000000 (pure black). NO gradients, NO images.\n"
+                        "- ONLY generate a small lower-third caption in the BOTTOM 15% of screen.\n"
+                        "- Use `position:absolute; bottom:5%; left:5%; right:5%` for the caption.\n"
+                        "- Caption box: `background:rgba(0,0,0,0.75); padding:1rem 1.5rem; "
+                        "border-radius:0.5rem`.\n"
+                        "- Text: white, 1.4-1.8rem, Inter font, max 2 lines.\n"
+                        "- DO NOT create SVGs, diagrams, icons, step lists, UI mockups.\n"
+                        "- DO NOT use <img> or data-img-prompt.\n"
+                        "- DO NOT place elements in the top 70% of the screen.\n"
+                        "- Animations: simple fadeIn (0.3s) on the caption. Nothing else.\n"
+                        "- The ENTIRE HTML should be under 25 lines.\n"
+                    )
+
             # ── KINETIC_TEXT bypass — skip LLM, build exact word-sync HTML directly ──
             if shot_type == "KINETIC_TEXT" and self._tier_config.get("kinetic_text_shots", False):
                 kinetic_html = self._build_kinetic_text_html(
@@ -4335,6 +4681,87 @@ class VideoGenerationPipeline:
                 # Stashed for the Sound Planner — stripped before serialization.
                 "_skill_audio_events": _shot_skill_audio_events,
             }
+            # SOURCE_CLIP: propagate source video time range + inject <video> into
+            # the HTML so the FE player (iframe preview) shows the actual footage
+            # instead of a black rectangle. The render worker will composite
+            # properly later, but this gives a meaningful preview.
+            if shot_type == "SOURCE_CLIP":
+                _src_start = float(shot.get("source_start", 0))
+                _src_end = float(shot.get("source_end", end_time - start_time))
+                _sv_idx = int(shot.get("source_video_index", 0))
+                entry["source_start"] = _src_start
+                entry["source_end"] = _src_end
+                entry["source_video_index"] = _sv_idx
+
+                # Inject background <video> into the shot HTML.
+                # Look up the correct source video context by index.
+                _source_url = ""
+                _iv_mode_clip = ""
+                _clip_ctx = None
+                if self._input_video_contexts and _sv_idx < len(self._input_video_contexts):
+                    _clip_ctx = self._input_video_contexts[_sv_idx]
+                elif self._input_video_context:
+                    _clip_ctx = self._input_video_context
+                if _clip_ctx:
+                    _assets_urls = _clip_ctx.get("assets_urls", {})
+                    _source_url = (_assets_urls.get("source_video", "")
+                                   or _clip_ctx.get("source_public_url", "")
+                                   or _clip_ctx.get("source_url", ""))
+                    _iv_mode_clip = _clip_ctx.get("mode", "")
+                if _source_url and html:
+
+                    if _iv_mode_clip == "demo":
+                        # Demo mode: inject <video> inside the black card container.
+                        # The HTML has a div with background:#000000 — that's the
+                        # video container. We inject the <video> tag inside it.
+                        _video_tag = (
+                            f'<video data-source-clip="true" '
+                            f'data-source-start="{_src_start}" '
+                            f'src="{_source_url}#t={_src_start},{_src_end}" '
+                            f'autoplay muted playsinline '
+                            f'style="width:100%;height:100%;object-fit:contain;'
+                            f'pointer-events:none;"></video>'
+                        )
+                        # Find the black container div and inject video inside it.
+                        # The LLM generates: background:#000000 or background: #000000
+                        import re as _re
+                        _black_bg_pattern = _re.compile(
+                            r"(background\s*:\s*#000000\s*;[^>]*>)",
+                            _re.IGNORECASE,
+                        )
+                        _match = _black_bg_pattern.search(html)
+                        if _match:
+                            _insert_pos = _match.end()
+                            html = html[:_insert_pos] + _video_tag + html[_insert_pos:]
+                        else:
+                            # Fallback: wrap the whole thing (old behavior)
+                            html = (
+                                f'<div style="position:relative;width:100%;height:100%;overflow:hidden;background:#000;">'
+                                f'<video data-source-clip="true" data-source-start="{_src_start}" '
+                                f'src="{_source_url}#t={_src_start},{_src_end}" autoplay muted playsinline '
+                                f'style="position:absolute;top:0;left:0;width:100%;height:100%;'
+                                f'object-fit:cover;z-index:0;pointer-events:none;"></video>'
+                                f'<div style="position:relative;z-index:1;width:100%;height:100%;">'
+                                f'{html}</div></div>'
+                            )
+                    else:
+                        # Podcast/other: full-screen video behind overlay
+                        _video_bg = (
+                            f'<video data-source-clip="true" '
+                            f'data-source-start="{_src_start}" '
+                            f'src="{_source_url}#t={_src_start},{_src_end}" '
+                            f'autoplay muted playsinline '
+                            f'style="position:absolute;top:0;left:0;width:100%;height:100%;'
+                            f'object-fit:cover;z-index:0;pointer-events:none;"></video>'
+                        )
+                        html = (
+                            f'<div style="position:relative;width:100%;height:100%;overflow:hidden;background:#000;">'
+                            f'{_video_bg}'
+                            f'<div style="position:relative;z-index:1;width:100%;height:100%;">'
+                            f'{html}'
+                            f'</div></div>'
+                        )
+                    entry["html"] = html
             if "z" in data:
                 try:
                     entry["z"] = int(data["z"])
@@ -5469,6 +5896,38 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               --primary-color: {primary_color};
               --accent-color: {accent_color};
               --text-color: {text_color};
+            }}
+
+            /* --- TEXT SAFETY: prevent word-smashing and overflow --- */
+            * {{
+              overflow-wrap: break-word;
+              word-break: break-word;
+              box-sizing: border-box;
+            }}
+            /* Prevent any element from exceeding the viewport */
+            body, html {{
+              overflow: hidden;
+              width: 100%;
+              height: 100%;
+              margin: 0;
+              padding: 0;
+            }}
+            /* LLM often generates inline-block word wrappers without gap/margin.
+               This catches the common pattern: parent > inline-block children. */
+            [class*="-word-wrap"],
+            [class*="-word-row"] > div {{
+              margin-right: 0.25em;
+            }}
+            /* Flexbox word rows — ensure gap if not set */
+            [class*="-word-row"],
+            [class*="-words"],
+            [class*="word-row"] {{
+              gap: 0.25em;
+            }}
+            /* Ensure large display text doesn't overflow */
+            h1, h2, h3, .text-display {{
+              max-width: 100%;
+              padding: 0 4%;
             }}
 
             /* --- FULL SCREEN CENTER CONTAINER (CRITICAL) --- */
@@ -7104,6 +7563,13 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 if "entry_meta" in entry:
                     timeline_entry["entry_meta"] = entry["entry_meta"]
 
+                # SOURCE_CLIP: propagate source video time range for the renderer
+                if entry.get("source_start") is not None:
+                    timeline_entry["source_start"] = entry["source_start"]
+                    timeline_entry["source_end"] = entry.get("source_end", 0)
+                    timeline_entry["source_video_index"] = entry.get("source_video_index", 0)
+                    timeline_entry["shot_type"] = "SOURCE_CLIP"
+
                 # Pass through sound cues from the Sound Planner. The cue `t`
                 # values are shot-relative (0 = segment start). We ALSO emit an
                 # `absolute_time` field that's offset by `content_starts_at`
@@ -7251,6 +7717,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     "accent": _palette.get("accent", "#f59e0b"),
                 }
 
+        # Source video metadata for renderer compositing
+        if self._input_video_contexts:
+            meta_dict["source_videos"] = [
+                {
+                    "index": i,
+                    "url": ctx.get("source_url", ""),
+                    "input_video_id": ctx.get("input_video_id", ""),
+                    "duration_s": ctx.get("duration_seconds", 0),
+                    "mode": ctx.get("mode", ""),
+                }
+                for i, ctx in enumerate(self._input_video_contexts)
+            ]
+            # Backward compat: keep singular for old code paths
+            meta_dict["source_video"] = meta_dict["source_videos"][0]
+
         if chapter_markers:
             meta_dict["chapters"] = chapter_markers
 
@@ -7314,6 +7795,258 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         branding_meta_path.write_text(json.dumps(branding_meta, indent=2))
         
         return timeline_path
+
+    # ------------------------------------------------------------------
+    # Per-shot audio mixing: TTS + source video audio for SOURCE_CLIP
+    # ------------------------------------------------------------------
+
+    def _mix_audio_with_source_clips(
+        self,
+        audio_path: Path,
+        words_json_path: Path,
+        timeline_path: Path,
+        run_dir: Path,
+    ) -> Path:
+        """Mix source video audio into TTS narration for SOURCE_CLIP shots.
+
+        Reads the timeline JSON to find SOURCE_CLIP entries, extracts audio
+        segments from source videos, and builds an FFmpeg filter_complex that
+        mutes TTS during those ranges and overlays the source audio with
+        crossfades. Replaces narration.mp3 in-place.
+
+        Returns the (possibly updated) audio path.
+        """
+        import subprocess as _sp
+
+        # Read timeline to find SOURCE_CLIP entries
+        tl_data = json.loads(timeline_path.read_text())
+        tl_entries = tl_data.get("entries", tl_data if isinstance(tl_data, list) else [])
+        meta = tl_data.get("meta", {}) if isinstance(tl_data, dict) else {}
+        content_starts_at = meta.get("content_starts_at", 0.0)
+
+        clips = []
+        for e in tl_entries:
+            if e.get("shot_type") != "SOURCE_CLIP":
+                continue
+            if e.get("source_start") is None:
+                continue
+            clips.append({
+                "in_time": float(e["inTime"]),
+                "exit_time": float(e["exitTime"]),
+                "source_start": float(e["source_start"]),
+                "source_end": float(e.get("source_end", 0)),
+                "source_video_index": int(e.get("source_video_index", 0)),
+            })
+
+        if not clips:
+            return audio_path
+
+        print(f"🎵 Mixing audio: {len(clips)} SOURCE_CLIP segments")
+
+        mix_dir = run_dir / "_audio_mix"
+        mix_dir.mkdir(exist_ok=True)
+
+        # Download source videos (one per unique index) and extract audio
+        source_audio_cache: Dict[int, Path] = {}
+        for clip in clips:
+            sv_idx = clip["source_video_index"]
+            if sv_idx in source_audio_cache:
+                continue
+            if not self._input_video_contexts or sv_idx >= len(self._input_video_contexts):
+                print(f"  ⚠️ source_video_index {sv_idx} out of range, skipping")
+                continue
+            ctx = self._input_video_contexts[sv_idx]
+            source_url = (
+                ctx.get("assets_urls", {}).get("source_video", "")
+                or ctx.get("source_public_url", "")
+                or ctx.get("source_url", "")
+            )
+            if not source_url:
+                continue
+
+            # Download source video
+            src_path = mix_dir / f"source_{sv_idx}.mp4"
+            try:
+                if "s3.amazonaws.com/" in source_url:
+                    import boto3
+                    s3 = boto3.client("s3",
+                        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
+                        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                        region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+                    )
+                    for bkt in ["vacademy-media-storage-public", "vacademy-media-storage"]:
+                        if bkt in source_url:
+                            parts = source_url.split(f"{bkt}.s3.amazonaws.com/")
+                            if len(parts) == 2:
+                                try:
+                                    s3.download_file(bkt, parts[1], str(src_path))
+                                    break
+                                except Exception:
+                                    continue
+                if not src_path.exists():
+                    from urllib.request import Request, urlopen
+                    req = Request(source_url, headers={"User-Agent": "VacademyMixer/1.0"})
+                    with urlopen(req, timeout=120) as resp:
+                        src_path.write_bytes(resp.read())
+
+                # Extract full audio track (we'll seek per-segment in the mix command)
+                audio_track = mix_dir / f"source_audio_{sv_idx}.wav"
+                _sp.run(
+                    ["ffmpeg", "-y", "-i", str(src_path), "-vn",
+                     "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
+                     str(audio_track)],
+                    capture_output=True, timeout=120,
+                )
+                if audio_track.exists():
+                    source_audio_cache[sv_idx] = audio_track
+                    print(f"  ✅ Extracted audio from source [{sv_idx}]")
+                # Clean up video file to save disk
+                src_path.unlink(missing_ok=True)
+            except Exception as exc:
+                print(f"  ⚠️ Failed to get source [{sv_idx}] audio: {exc}")
+                src_path.unlink(missing_ok=True)
+
+        # Filter clips to only those with available audio
+        clips = [c for c in clips if c["source_video_index"] in source_audio_cache]
+        if not clips:
+            print("  ⚠️ No source audio available, skipping mix")
+            import shutil
+            shutil.rmtree(mix_dir, ignore_errors=True)
+            return audio_path
+
+        # Extract per-clip segments from full source audio
+        segment_paths: List[Path] = []
+        for i, clip in enumerate(clips):
+            src_audio = source_audio_cache[clip["source_video_index"]]
+            seg_path = mix_dir / f"segment_{i}.wav"
+            dur = clip["source_end"] - clip["source_start"]
+            if dur <= 0:
+                continue
+            _sp.run(
+                ["ffmpeg", "-y", "-i", str(src_audio),
+                 "-ss", str(clip["source_start"]),
+                 "-t", str(dur),
+                 "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
+                 str(seg_path)],
+                capture_output=True, timeout=30,
+            )
+            if seg_path.exists():
+                segment_paths.append(seg_path)
+            else:
+                segment_paths.append(None)
+
+        # Build FFmpeg filter_complex
+        # Input 0: TTS narration
+        # Inputs 1..N: source audio segments
+        inputs = ["-i", str(audio_path)]
+        valid_clips = []
+        input_idx = 1
+        for i, clip in enumerate(clips):
+            if i < len(segment_paths) and segment_paths[i] and segment_paths[i].exists():
+                inputs.extend(["-i", str(segment_paths[i])])
+                valid_clips.append((clip, input_idx))
+                input_idx += 1
+
+        if not valid_clips:
+            import shutil
+            shutil.rmtree(mix_dir, ignore_errors=True)
+            return audio_path
+
+        # Volume-gate TTS during SOURCE_CLIP ranges
+        crossfade = 0.15
+        vol_filters = []
+        for clip, _ in valid_clips:
+            # Convert timeline time to audio time
+            audio_start = max(0, clip["in_time"] - content_starts_at - crossfade)
+            audio_end = clip["exit_time"] - content_starts_at + crossfade
+            vol_filters.append(
+                f"volume=enable='between(t,{audio_start:.3f},{audio_end:.3f})':volume=0"
+            )
+
+        tts_chain = ",".join(vol_filters)
+        filter_parts = [f"[0:a]{tts_chain}[tts_gated]"]
+
+        # Delay and fade each source segment
+        src_labels = []
+        for clip, idx in valid_clips:
+            label = f"src{idx}"
+            audio_t = max(0, clip["in_time"] - content_starts_at)
+            delay_ms = int(audio_t * 1000)
+            dur = clip["exit_time"] - clip["in_time"]
+            fade_dur = min(0.3, dur / 3)
+            fade_out_start = max(0, dur - fade_dur)
+            filter_parts.append(
+                f"[{idx}:a]adelay={delay_ms}|{delay_ms},"
+                f"afade=t=in:st=0:d={fade_dur:.2f},"
+                f"afade=t=out:st={fade_out_start:.2f}:d={fade_dur:.2f}"
+                f"[{label}]"
+            )
+            src_labels.append(f"[{label}]")
+
+        # Mix all streams
+        all_inputs = "[tts_gated]" + "".join(src_labels)
+        n_inputs = 1 + len(src_labels)
+        filter_parts.append(
+            f"{all_inputs}amix=inputs={n_inputs}:duration=first:normalize=0[aout]"
+        )
+
+        filter_complex = ";".join(filter_parts)
+
+        mixed_path = mix_dir / "narration_mixed.mp3"
+        cmd = [
+            "ffmpeg", "-y",
+            *inputs,
+            "-filter_complex", filter_complex,
+            "-map", "[aout]",
+            "-acodec", "libmp3lame", "-q:a", "2",
+            str(mixed_path),
+        ]
+
+        try:
+            result = _sp.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                print(f"  ⚠️ FFmpeg mix failed: {result.stderr[:300]}")
+                import shutil
+                shutil.rmtree(mix_dir, ignore_errors=True)
+                return audio_path
+        except Exception as exc:
+            print(f"  ⚠️ FFmpeg mix error: {exc}")
+            import shutil
+            shutil.rmtree(mix_dir, ignore_errors=True)
+            return audio_path
+
+        # Replace narration.mp3 with mixed version
+        import shutil
+        backup = audio_path.with_suffix(".mp3.bak")
+        shutil.copy2(audio_path, backup)
+        shutil.copy2(mixed_path, audio_path)
+        print(f"  ✅ Mixed audio written ({len(valid_clips)} source clips)")
+
+        # Filter words: remove TTS words that fall within SOURCE_CLIP ranges
+        if words_json_path.exists():
+            try:
+                words = json.loads(words_json_path.read_text())
+                clip_ranges = [
+                    (max(0, c["in_time"] - content_starts_at),
+                     c["exit_time"] - content_starts_at)
+                    for c, _ in valid_clips
+                ]
+                filtered = [
+                    w for w in words
+                    if not any(r[0] <= w.get("start", 0) <= r[1] for r in clip_ranges)
+                ]
+                if len(filtered) < len(words):
+                    words_json_path.write_text(
+                        json.dumps(filtered, ensure_ascii=False)
+                    )
+                    print(f"  ✅ Filtered words: {len(words)} → {len(filtered)} "
+                          f"(suppressed {len(words) - len(filtered)} during SOURCE_CLIP)")
+            except Exception:
+                pass  # non-fatal
+
+        # Cleanup
+        shutil.rmtree(mix_dir, ignore_errors=True)
+        return audio_path
 
     def _render_video(
         self,

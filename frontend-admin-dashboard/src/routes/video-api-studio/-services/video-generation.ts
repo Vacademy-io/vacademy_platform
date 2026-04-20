@@ -166,6 +166,12 @@ export interface GenerateVideoRequest {
     orientation?: VideoOrientation;
     visual_style?: VisualStyle;
     target_stage?: VideoStage; // Stop at this stage (default: HTML). Use 'SCRIPT' for review mode.
+    /** @deprecated Use input_video_ids instead */
+    input_video_id?: string;
+    /** List of indexed input video IDs (max 5). Director plans SOURCE_CLIP shots from any of them. */
+    input_video_ids?: string[];
+    /** Audio source: 'original' (single video only) or 'tts' (AI narration). Forced to 'tts' for multi-source. */
+    input_video_audio?: 'original' | 'tts';
 }
 
 export const QUALITY_TIERS: Array<{

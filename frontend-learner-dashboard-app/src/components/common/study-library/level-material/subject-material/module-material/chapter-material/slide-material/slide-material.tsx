@@ -969,24 +969,29 @@ export const SlideMaterial = () => {
           {heading || "No content"}
         </h3>
 
-        <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
           <button
             onClick={goToPrev}
             disabled={!canGoPrev}
             aria-label="Previous slide"
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-40 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-neutral-200 disabled:hover:text-neutral-700 transition-colors"
           >
-            <CaretLeft size={12} />
-            <span className="hidden md:inline">Prev</span>
+            <CaretLeft size={14} />
+            <span>Previous</span>
           </button>
+          {slidesList.length > 0 && currentIndex > -1 && (
+            <span className="text-xs font-medium text-neutral-500 tabular-nums">
+              {currentIndex + 1} / {slidesList.length}
+            </span>
+          )}
           <button
             onClick={goToNext}
             disabled={!canGoNext}
             aria-label="Next slide"
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-40 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-neutral-200 disabled:hover:text-neutral-700 transition-colors"
           >
-            <span className="hidden md:inline">Next</span>
-            <CaretRight size={12} />
+            <span>Next</span>
+            <CaretRight size={14} />
           </button>
           <div className="h-4 w-px bg-neutral-200"></div>
           <AskDoubtButton />
@@ -998,18 +1003,19 @@ export const SlideMaterial = () => {
           {content}
         </div>
 
-        {/* Loading overlay with professional animation */}
+        {/* Loading skeleton of slide content */}
         {isLoading && (
-          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-300">
-            <div className="relative">
-              <div className="w-12 h-12 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin"></div>
-              <div
-                className="absolute inset-0 w-12 h-12 border-4 border-transparent border-r-blue-400 rounded-full animate-spin"
-                style={{
-                  animationDelay: "0.1s",
-                  animationDirection: "reverse",
-                }}
-              ></div>
+          <div className="absolute inset-0 bg-white z-50 animate-in fade-in duration-200 p-4 sm:p-6 overflow-hidden">
+            <div className="max-w-4xl mx-auto space-y-4">
+              <div className="h-6 w-2/3 rounded-md bg-neutral-200 animate-pulse" />
+              <div className="h-3 w-1/3 rounded-md bg-neutral-100 animate-pulse" />
+              <div className="aspect-video w-full rounded-lg bg-neutral-100 animate-pulse mt-4" />
+              <div className="space-y-2 mt-6">
+                <div className="h-3 w-full rounded bg-neutral-100 animate-pulse" />
+                <div className="h-3 w-[94%] rounded bg-neutral-100 animate-pulse" />
+                <div className="h-3 w-[88%] rounded bg-neutral-100 animate-pulse" />
+                <div className="h-3 w-[72%] rounded bg-neutral-100 animate-pulse" />
+              </div>
             </div>
           </div>
         )}
@@ -1044,6 +1050,17 @@ export const SlideMaterial = () => {
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40">
         <div className="pointer-events-none absolute -top-3 left-0 right-0 h-3 bg-gradient-to-t from-white to-transparent"></div>
         <div className="bg-white border-t border-neutral-100 shadow-[0_-2px_8px_-2px_rgba(0,0,0,0.08)] px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+10px)]">
+          {/* Context strip: slide title + position */}
+          <div className="flex items-center justify-between gap-2 border-b border-neutral-100 pb-1.5 mb-2">
+            <span className="text-[11px] font-medium text-neutral-600 truncate flex-1 min-w-0">
+              {heading || "No content"}
+            </span>
+            {slidesList.length > 0 && currentIndex > -1 && (
+              <span className="text-[11px] font-semibold text-neutral-400 shrink-0 tabular-nums">
+                {currentIndex + 1} / {slidesList.length}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <MyButton
               scale="large"

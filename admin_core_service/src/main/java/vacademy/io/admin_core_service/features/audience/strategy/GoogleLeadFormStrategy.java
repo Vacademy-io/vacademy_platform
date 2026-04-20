@@ -100,15 +100,20 @@ public class GoogleLeadFormStrategy implements AdPlatformStrategy {
             String campaignId = root.path("campaign_id").asText(null);
             if (campaignId != null) rawFields.put("campaign_id", campaignId);
 
+            // Extract standard fields from raw (before mapping changes keys)
+            String rawEmail = rawFields.get("email");
+            String rawPhone = rawFields.get("phone_number");
+            String rawName = rawFields.get("full_name");
+
             // Apply field mapping from connector config
             Map<String, String> mappedFields = applyFieldMapping(rawFields, connector.getFieldMappingJson());
 
             NormalizedLeadData lead = NormalizedLeadData.builder()
                     .platformLeadId(leadId)
                     .fields(mappedFields)
-                    .email(mappedFields.getOrDefault("email", rawFields.get("email")))
-                    .phone(mappedFields.getOrDefault("phone_number", rawFields.get("phone_number")))
-                    .fullName(mappedFields.getOrDefault("full_name", rawFields.get("full_name")))
+                    .email(rawEmail)
+                    .phone(rawPhone)
+                    .fullName(rawName)
                     .sourceType("GOOGLE_ADS")
                     .targetAudienceId(connector.getAudienceId())
                     .testLead(isTest)

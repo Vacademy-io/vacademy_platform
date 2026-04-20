@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { isYouTubeUrl, isVimeoUrl, getVimeoVideoId } from '../../-utils/helper';
 import { YouTubeVideoPlayer } from './youtube-video-player';
 
@@ -11,6 +11,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   src,
   className = ""
 }) => {
+  // Native videos report their natural dimensions via `loadedmetadata`. We
+  // size the container to match so portrait clips aren't cropped to a 16/9
+  // box. Defaults to 16/9 until the metadata arrives so the layout doesn't
+  // jump too aggressively.
+  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
+
   if (!src) {
     return null;
   }
@@ -20,7 +26,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return <YouTubeVideoPlayer url={src} className={className} />;
   }
 
-  // If it's a Vimeo URL, use Vimeo embed
+  // If it's a Vimeo URL, use Vimeo embed (iframe has no metadata event we
+  // can hook into without the Vimeo SDK, so we keep the 16/9 default).
   if (isVimeoUrl(src)) {
     const vimeoId = getVimeoVideoId(src);
     if (vimeoId) {
@@ -40,17 +47,33 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }
 
-  // Otherwise, use the regular video element
+  // Otherwise, use the regular video element with a dynamic aspect ratio.
+  // The wrapper caps height at 60vh so portrait videos (aspect < 1) don't
+  // stretch the page vertically — instead the container shrinks in width
+  // proportionally and centers itself within the available column. Landscape
+  // videos still fill the column at their natural ratio.
   return (
-    <div className={`relative overflow-hidden rounded-md shadow-md border border-black/10 bg-black/20 group ${className}`}>
-      <div className="relative aspect-video">
+    <div className={`relative overflow-hidden rounded-md shadow-md border border-black/10 bg-black group ${className}`}>
+      <div
+        className="relative w-full mx-auto"
+        style={{ aspectRatio, maxHeight: "60vh" }}
+      >
         <video
           src={src}
           controls
           controlsList="nodownload noremoteplayback"
           disablePictureInPicture
           disableRemotePlayback
-          className="w-full h-full object-cover rounded-md"
+          // `object-contain` keeps the video undistorted; combined with the
+          // dynamic aspect-ratio wrapper there's no visible letterboxing once
+          // metadata loads (the container hugs the video).
+          className="w-full h-full object-contain rounded-md"
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget;
+            if (v.videoWidth && v.videoHeight) {
+              setAspectRatio(v.videoWidth / v.videoHeight);
+            }
+          }}
           onError={(e) => {
             e.currentTarget.style.display = "none";
             e.currentTarget.parentElement?.classList.add("bg-black");
@@ -63,4 +86,4 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none rounded-md"></div>
     </div>
   );
-}; 
+};

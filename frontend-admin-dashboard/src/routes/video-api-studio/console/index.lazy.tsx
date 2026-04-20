@@ -1206,6 +1206,7 @@ function VideoConsole() {
                         onOptionsChange={setOptions}
                         reviewModeEnabled={reviewModeEnabled}
                         onReviewModeChange={setReviewModeEnabled}
+                        apiKey={activeApiKey}
                     />
                 </div>
             </div>

@@ -12,6 +12,15 @@ export function MathBlock({ element, attributes, children, blockId }: PluginElem
     const [isEditing, setIsEditing] = useState(!element?.props?.latex);
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propLatex = element?.props?.latex || '';
+        if (propLatex !== latex) setLatex(propLatex);
+        if (element?.props?.displayMode !== undefined && element.props.displayMode !== displayMode) {
+            setDisplayMode(element.props.displayMode);
+        }
+    }, [element?.props?.latex, element?.props?.displayMode]);
+
     // Persist state to Yoopta/Slate store via Elements.updateElement
     useEffect(() => {
         if (isFirstRender.current) {

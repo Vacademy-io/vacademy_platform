@@ -22,7 +22,6 @@ import java.util.Optional;
 public class DomainRoutingService {
 
     private static final ObjectMapper NAMING_OBJECT_MAPPER = new ObjectMapper();
-    private static final String INSTITUTE_TYPE_LIBRARY = "LIBRARY";
 
     private final InstituteDomainRoutingRepository routingRepository;
     private final InstituteRepository instituteRepository;
@@ -85,10 +84,9 @@ public class DomainRoutingService {
                     .learnerPortalUrl(institute.getLearnerPortalBaseUrl())
                     .instructorPortalUrl(institute.getAdminPortalBaseUrl());
 
-            // Naming overrides are only meaningful for library-type institutes
-            // today. Skip the JSON parse for every other tenant to keep this
-            // hot public endpoint fast.
-            if (INSTITUTE_TYPE_LIBRARY.equalsIgnoreCase(institute.getInstituteType())) {
+            // Opt-in per domain routing row so the JSON parse only runs for
+            // tenants that actually need custom terminology on pre-login screens.
+            if (mapping.isApplyNamingSetting()) {
                 NamingOverridesDto namingOverrides = extractNamingOverrides(institute.getSetting());
                 if (namingOverrides != null) {
                     responseBuilder.namingOverrides(namingOverrides);

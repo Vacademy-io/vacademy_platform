@@ -18,8 +18,6 @@ import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeSourceE
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.service.DoubtService;
-import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
-import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -28,8 +26,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -37,9 +33,6 @@ public class DoubtsManager {
 
     @Autowired
     DoubtService doubtService;
-
-    @Autowired
-    FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
 
     public ResponseEntity<String> updateOrCreateDoubt(CustomUserDetails userDetails, String doubtId, DoubtsDto request) {
         if(StringUtils.hasText(doubtId)){
@@ -126,61 +119,25 @@ public class DoubtsManager {
         Sort sortColumns = ListService.createSortObject(filter.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo,pageSize,sortColumns);
 
-        if (!applyFacultyAccessFilter(userDetails, filter)) {
-            return ResponseEntity.ok(createDoubtAllResponse(Page.empty(pageable)));
-        }
+        String viewerUserId = resolveViewerUserId(userDetails);
 
-        Page<Doubts> paginatedDoubts = doubtService.getAllDoubtsWithFilter(filter.getContentTypes(), filter.getContentPositions(),filter.getSources(),
-                filter.getSourceIds(),filter.getStartDate(),filter.getEndDate(), filter.getUserIds(), filter.getStatus(), filter.getBatchIds(), pageable);
-
+        Page<Doubts> paginatedDoubts = doubtService.getAllDoubtsWithFilter(filter.getContentTypes(), filter.getContentPositions(), filter.getSources(),
+                filter.getSourceIds(), filter.getStartDate(), filter.getEndDate(), filter.getUserIds(), filter.getStatus(), filter.getBatchIds(),
+                viewerUserId, pageable);
 
         return ResponseEntity.ok(createDoubtAllResponse(paginatedDoubts));
     }
 
     /**
-     * Restricts the doubt query to only the package sessions where the user is an assigned faculty.
-     * Admins and root users see all doubts unchanged. Returns false if the user is a faculty member
-     * with no overlap between accessible and requested batches — caller should short-circuit to empty.
+     * Returns {@code null} for admin/root callers (no visibility restriction) or the user id for
+     * everyone else. The SQL in {@code DoubtsRepository#findDoubtsWithFilterForViewer} then limits
+     * results to doubts the viewer can see via doubt_assignee or FSPSSM (batch-level or subject-level).
      */
-    private boolean applyFacultyAccessFilter(CustomUserDetails user, DoubtsRequestFilter filter) {
+    private String resolveViewerUserId(CustomUserDetails user) {
         if (user == null || user.isRootUser() || hasRole(user, "ADMIN")) {
-            return true;
+            return null;
         }
-        if (!hasFacultyAssignedPermission(user)) {
-            return true;
-        }
-
-        Set<String> accessiblePsIds = facultyMappingRepository.findByUserId(user.getUserId()).stream()
-                .filter(m -> "ACTIVE".equalsIgnoreCase(m.getStatus()))
-                .flatMap(m -> {
-                    List<String> ids = new ArrayList<>();
-                    if (m.getPackageSessionId() != null) ids.add(m.getPackageSessionId());
-                    if ("PACKAGE_SESSION".equalsIgnoreCase(m.getAccessType()) && m.getAccessId() != null) {
-                        ids.add(m.getAccessId());
-                    }
-                    return ids.stream();
-                })
-                .collect(Collectors.toSet());
-
-        if (accessiblePsIds.isEmpty()) {
-            return false;
-        }
-
-        List<String> requestedBatchIds = filter.getBatchIds();
-        List<String> effective;
-        if (requestedBatchIds == null || requestedBatchIds.isEmpty()) {
-            effective = new ArrayList<>(accessiblePsIds);
-        } else {
-            effective = requestedBatchIds.stream()
-                    .filter(id -> id != null && !id.isEmpty() && accessiblePsIds.contains(id))
-                    .collect(Collectors.toList());
-        }
-
-        if (effective.isEmpty()) {
-            return false;
-        }
-        filter.setBatchIds(effective);
-        return true;
+        return user.getUserId();
     }
 
     private boolean hasRole(CustomUserDetails user, String... roles) {
@@ -192,15 +149,6 @@ public class DoubtsManager {
                     }
                     return false;
                 });
-    }
-
-    private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
-        boolean fromAuthorities = user.getAuthorities().stream()
-                .map(auth -> auth.getAuthority())
-                .anyMatch(authority -> "HAS_FACULTY_ASSIGNED".equalsIgnoreCase(authority));
-        if (fromAuthorities) return true;
-        List<FacultySubjectPackageSessionMapping> mappings = facultyMappingRepository.findByUserId(user.getUserId());
-        return mappings.stream().anyMatch(m -> "ACTIVE".equalsIgnoreCase(m.getStatus()));
     }
 
     private AllDoubtsResponse createDoubtAllResponse(Page<Doubts> paginatedDoubts) {

@@ -6,6 +6,7 @@ import {
     InstallmentDetailDTO,
     StudentFeeDueDTO,
     AllocateSelectedRequest,
+    AdjustmentHistoryPageResponse,
 } from '@/types/manage-finances';
 import { BASE_URL, NOTIFICATION_SERVICE_BASE } from '@/constants/urls';
 
@@ -288,6 +289,23 @@ export const getReceiptUrlForInstallment = async (
 ): Promise<InstallmentReceiptResponse> => {
     const response = await authenticatedAxiosInstance.get<InstallmentReceiptResponse>(
         `${BASE_URL}/admin-core-service/v1/admin/student-fee/installment/${installmentId}/receipt-url`
+    );
+    return response.data;
+};
+
+// ─── Adjustment History (Pay Installments dialog) ──────────────────────────
+
+export const getAdjustmentHistoryQueryKey = (installmentId: string, page: number, size: number) =>
+    ['ADJUSTMENT_HISTORY', installmentId, page, size];
+
+export const fetchAdjustmentHistory = async (
+    installmentId: string,
+    page: number = 0,
+    size: number = 20
+): Promise<AdjustmentHistoryPageResponse> => {
+    const response = await authenticatedAxiosInstance.get<AdjustmentHistoryPageResponse>(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/installment/${installmentId}/adjustment-history`,
+        { params: { page, size } }
     );
     return response.data;
 };

@@ -1,17 +1,21 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import dayjs from 'dayjs';
+import { CaretDown, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { StudentFeeDueDTO } from '@/types/manage-finances';
+import { StudentFeeDueDTO, AdjustmentHistoryDTO } from '@/types/manage-finances';
 import {
     submitAdjustment,
     retractAdjustment,
     getStudentDuesQueryKey,
+    fetchAdjustmentHistory,
+    getAdjustmentHistoryQueryKey,
 } from '@/services/manage-finances';
 import { cn } from '@/lib/utils';
 
@@ -44,6 +48,19 @@ export function AdjustmentDialog({
 
     const hasExistingAdjustment =
         installment.adjustment_status !== null && installment.adjustment_status !== undefined;
+
+    // ── Adjustment history (paginated, 20 per page) ─────────────────────────
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [historyPage, setHistoryPage] = useState(0);
+    const HISTORY_SIZE = 20;
+
+    const { data: historyData, isLoading: isHistoryLoading } = useQuery({
+        queryKey: getAdjustmentHistoryQueryKey(installment.id, historyPage, HISTORY_SIZE),
+        queryFn: () => fetchAdjustmentHistory(installment.id, historyPage, HISTORY_SIZE),
+        enabled: open && historyOpen,
+        staleTime: 10000,
+        placeholderData: keepPreviousData,
+    });
 
     const submitMutation = useMutation({
         mutationFn: () =>
@@ -291,6 +308,114 @@ export function AdjustmentDialog({
                         )}
                     </div>
                 )}
+
+                {/* Adjustment history — collapsible, paginated 20/page */}
+                <div className="rounded-lg border border-gray-200 bg-white">
+                    <button
+                        type="button"
+                        onClick={() => setHistoryOpen((v) => !v)}
+                        className="flex w-full items-center justify-between px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                        <span>History</span>
+                        <CaretDown
+                            size={14}
+                            className={cn('transition-transform', historyOpen && 'rotate-180')}
+                        />
+                    </button>
+                    {historyOpen && (
+                        <div className="border-t border-gray-100 px-3 py-2 space-y-2">
+                            {isHistoryLoading && !historyData && (
+                                <p className="text-xs text-gray-400 text-center py-4">
+                                    Loading history…
+                                </p>
+                            )}
+                            {historyData && historyData.content.length === 0 && (
+                                <p className="text-xs text-gray-400 text-center py-4">
+                                    No adjustment activity yet.
+                                </p>
+                            )}
+                            {historyData && historyData.content.length > 0 && (
+                                <>
+                                    <ul className="space-y-2 max-h-64 overflow-y-auto">
+                                        {historyData.content.map((evt: AdjustmentHistoryDTO) => (
+                                            <li
+                                                key={evt.id}
+                                                className="rounded border border-gray-100 bg-gray-50 p-2 text-xs"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span
+                                                        className={cn(
+                                                            'rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase',
+                                                            evt.event_type === 'SUBMITTED' &&
+                                                                'bg-blue-100 text-blue-700',
+                                                            evt.event_type === 'APPROVED' &&
+                                                                'bg-emerald-100 text-emerald-700',
+                                                            evt.event_type === 'REJECTED' &&
+                                                                'bg-red-100 text-red-700',
+                                                            evt.event_type === 'RETRACTED' &&
+                                                                'bg-gray-200 text-gray-700'
+                                                        )}
+                                                    >
+                                                        {evt.event_type}
+                                                    </span>
+                                                    <span className="text-gray-500">
+                                                        {dayjs(evt.created_at).format(
+                                                            'DD MMM YYYY, HH:mm'
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-1 flex items-center justify-between text-gray-700">
+                                                    <span>
+                                                        {evt.adjustment_type === 'PENALTY'
+                                                            ? 'Penalty'
+                                                            : 'Concession'}{' '}
+                                                        · {formatCurrency(evt.amount)}
+                                                    </span>
+                                                    <span className="text-gray-500">
+                                                        by {evt.actor_name || evt.actor_user_id}
+                                                    </span>
+                                                </div>
+                                                {evt.reason && (
+                                                    <div className="mt-1 text-gray-500">
+                                                        Reason: {evt.reason}
+                                                    </div>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    {(historyData.total_pages ?? historyData.totalPages ?? 1) > 1 && (
+                                        <div className="flex items-center justify-between pt-1 text-[11px] text-gray-500">
+                                            <span>
+                                                Page {historyPage + 1} of{' '}
+                                                {historyData.total_pages ?? historyData.totalPages}
+                                            </span>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setHistoryPage((p) => Math.max(0, p - 1))
+                                                    }
+                                                    disabled={historyPage === 0}
+                                                    className="rounded border border-gray-200 p-1 disabled:opacity-40"
+                                                >
+                                                    <CaretLeft size={12} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setHistoryPage((p) => p + 1)}
+                                                    disabled={historyData.last}
+                                                    className="rounded border border-gray-200 p-1 disabled:opacity-40"
+                                                >
+                                                    <CaretRight size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
             </DialogContent>
         </Dialog>
     );

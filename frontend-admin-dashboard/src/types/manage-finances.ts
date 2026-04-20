@@ -90,3 +90,31 @@ export interface AllocateSelectedRequest {
     amount: number;
     remarks?: string;
 }
+
+// ─── Adjustment History (Pay Installments dialog) ──────────────────────────
+export interface AdjustmentHistoryDTO {
+    id: string;
+    student_fee_payment_id: string;
+    event_type: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'RETRACTED';
+    adjustment_type: string;
+    amount: number;
+    reason: string | null;
+    resulting_status: string;
+    actor_user_id: string;
+    actor_name: string | null;
+    actor_role: string | null;
+    previous_event_id: string | null;
+    metadata: string | null;
+    created_at: string;
+}
+
+export interface AdjustmentHistoryPageResponse {
+    content: AdjustmentHistoryDTO[];
+    number: number;
+    size: number;
+    total_elements: number;
+    totalElements?: number;
+    total_pages: number;
+    totalPages?: number;
+    last: boolean;
+}

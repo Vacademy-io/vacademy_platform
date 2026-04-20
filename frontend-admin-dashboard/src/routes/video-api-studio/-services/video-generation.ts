@@ -658,7 +658,7 @@ export async function fetchScriptText(scriptUrl: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 export type RenderResolution = '720p' | '1080p';
-export type RenderFps = 15 | 20 | 25;
+export type RenderFps = 15 | 20 | 25 | 30 | 45 | 60;
 export type CaptionSize = 'S' | 'M' | 'L';
 export type CaptionPosition = 'top' | 'bottom';
 

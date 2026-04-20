@@ -2850,6 +2850,13 @@ export function processHtmlContent(
 ): string {
     let processedHtml = html;
 
+    // Strip LLM-generated stage-drift camera animations — causes jitter
+    // when duplicated and adds movement that differs between FE and render.
+    processedHtml = processedHtml.replace(
+        /gsap\.fromTo\(\s*['"]\.stage-drift['"].*?\);/gs,
+        ''
+    );
+
     // Replace any unresolved placeholder.png (image generation failed on backend)
     // with a 1×1 transparent GIF so: no broken-image icon, Ken Burns CSS still works,
     // and the image-hero gradient overlay renders cleanly over the dark background.

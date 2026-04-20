@@ -750,11 +750,9 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       --background-color: #ffffff;
                     }
 
-                    /* Ensure content visible — GSAP timeline seeking doesn't reliably
-                       update computed styles inside shadow DOM. This may show elements
-                       that should be hidden at certain timestamps, but it's better than
-                       having all content invisible. */
-                    * { opacity: 1 !important; visibility: visible !important; }
+                    /* NOTE: Do NOT force opacity:1 !important here — it breaks GSAP
+                       animations that use opacity:0 as their starting state, causing
+                       elements to appear before their animated reveal. */
 
                     * { box-sizing: border-box; }
                     html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; font-family: 'Inter', 'Noto Sans', sans-serif; color: var(--text-color); }
@@ -767,10 +765,12 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     [class*="word"] { display: inline-block; margin-right: 0.2em; }
                     .word-wrapper, .word-wrap, .word { margin-right: 0.2em; }
 
-                    /* Prevent text from overflowing the viewport */
+                    /* Prevent text from overflowing — shrink to fit, never break mid-word */
                     h1, h2, h3, .text-display, .text-h2 {
-                      max-width: 95vw; overflow-wrap: break-word; word-wrap: break-word;
+                      max-width: 95vw; word-break: keep-all; overflow-wrap: normal;
                       padding-left: 3%; padding-right: 3%;
+                      /* Scale down oversized text to fit viewport width */
+                      max-inline-size: 95vw;
                     }
 
                     /* Default centering for content-wrapper — centers even if HTML lacks .full-screen-center */
@@ -2326,9 +2326,11 @@ def render_video_from_json(
                 "--allow-file-access-from-files",
                 "--disable-web-security",
                 "--autoplay-policy=no-user-gesture-required",
-                "--disable-gpu",
-                "--use-gl=angle",
-                "--use-angle=swiftshader",
+                # Use SwiftShader for GPU compositing (software GL) — enables
+                # the same CSS compositor pipeline as headed Chrome, producing
+                # smoother transforms and SVG rendering than --disable-gpu.
+                "--use-gl=swiftshader",
+                "--enable-gpu-rasterization",
             ],
         )
         _dpi_scale = device_scale_factor if device_scale_factor is not None else 1
@@ -2393,8 +2395,35 @@ def render_video_from_json(
                 if (state.character && window.__updateCharacter) window.__updateCharacter(state.character);
                 // 4. Update caption
                 if (window.__updateCaption) window.__updateCaption(state.caption || null);
-                // 5. Sync GSAP
-                try { gsap.globalTimeline.totalTime(state.t); } catch(e) {}
+                // 5. Sync GSAP — unpause → seek → re-pause to ensure all
+                // child tweens (including those created after init) render correctly.
+                try {
+                    gsap.globalTimeline.paused(false);
+                    gsap.globalTimeline.totalTime(state.t);
+                    gsap.globalTimeline.paused(true);
+                    // Force layout recalc on shadow DOMs
+                    document.querySelectorAll('[id^="shot-"]').forEach(host => {
+                        if (host.shadowRoot) host.offsetHeight;
+                    });
+                    // Diagnostic: log tween count and a sample tween's progress
+                    // at key timestamps (helps debug animation smoothness)
+                    if (state.t > 45.0 && state.t < 48.0 && Math.round(state.t * 10) % 5 === 0) {
+                        const tweens = gsap.globalTimeline.getChildren(true, true, false);
+                        const activeTweens = tweens.filter(tw => tw.isActive && tw.isActive());
+                        console.log('[GSAP-DIAG] t=' + state.t.toFixed(3) +
+                            ' totalTweens=' + tweens.length +
+                            ' active=' + activeTweens.length +
+                            ' globalTime=' + gsap.globalTimeline.totalTime().toFixed(3));
+                        // Log first 3 active tween targets
+                        activeTweens.slice(0, 3).forEach(tw => {
+                            try {
+                                const targets = tw.targets ? tw.targets() : [];
+                                const id = targets[0] ? (targets[0].id || targets[0].className || '?') : '?';
+                                console.log('  tween: ' + id + ' progress=' + (tw.progress ? tw.progress().toFixed(3) : '?'));
+                            } catch(e) {}
+                        });
+                    }
+                } catch(e) {}
                 // 5b. Sync Anime.js registered timelines
                 try { if (window._animeSeek) window._animeSeek(state.t); } catch(e) {}
                 // 6. Seek stock videos (skip entirely if none exist)
@@ -2482,14 +2511,11 @@ def render_video_from_json(
                 if (state.segmentChanged && svgCount > 0) {
                     console.log('[ANNOT-DIAG] forced visible on ' + svgCount + ' rough-annotation SVGs');
                 }
-                // 8. Wait for paint — always at least one RAF to ensure video frames
-                // and DOM mutations are rendered before screenshot capture.
-                // Double-RAF on segment changes for layout/annotation settling.
-                if (state.segmentChanged) {
-                    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-                } else {
-                    await new Promise(r => requestAnimationFrame(r));
-                }
+                // 8. Wait for paint — double-RAF ensures the browser has fully
+                // composited GSAP transform updates AND SVG stroke repaints
+                // before screenshot capture. Single RAF was insufficient for
+                // SVG strokeDashoffset animations (tape draw, line reveals).
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
             };
         }""")
 
@@ -2580,86 +2606,10 @@ def render_video_from_json(
 
                 _prev_active_ids = _cur_active_ids
 
-            # --- Calculate Camera Drift (content-aware + eased transitions) ---
-            primary_visuals = [e for e in active if e.get("id") != "branding"]
-
+            # --- Camera: static (matches FE preview — no drift/zoom/pan) ---
             cam_scale = 1.0
             cam_x = 0.0
             cam_y = 0.0
-
-            if primary_visuals:
-                active_ids = {e["id"] for e in primary_visuals}
-                relevant_items = [
-                    item for item in timeline
-                    if item["id"] in active_ids
-                    and item["id"] != "branding"
-                ]
-                if relevant_items:
-                    focus_item = sorted(relevant_items, key=lambda x: x["inTime"])[-1]
-
-                    # ── Content-aware camera selection ──
-                    # Analyze the first 2000 chars of HTML (avoids scanning huge base64 data URIs)
-                    _html_content = focus_item.get("html", "")
-                    _html_lower = _html_content[:2000].lower() if _html_content else ""
-
-                    if any(kw in _html_lower for kw in ("<code", "<pre>", "fira code", "monospace", "mermaid", "katex")):
-                        # Code / math / diagrams → minimal motion so text stays readable
-                        move_type = "semistatic"
-                    elif any(kw in _html_lower for kw in ("image-hero", "kb-zoom", "video-hero", "background-image")):
-                        # Hero images → cinematic zoom in
-                        move_type = "zoom_in"
-                    elif any(kw in _html_lower for kw in ("image-split", "split-image", "grid-template-columns")):
-                        # Split layouts → gentle pan across
-                        move_type = "pan_right"
-                    elif any(kw in _html_lower for kw in ("process-flow", "step", "timeline")):
-                        # Step/process content → slow zoom out to reveal
-                        move_type = "zoom_out"
-                    else:
-                        # Default: deterministic pick from remaining suitable types
-                        shot_hash = sum(ord(c) for c in str(focus_item["id"]))
-                        _content_moves = ["zoom_in", "zoom_out", "pan_right", "pan_left", "semistatic"]
-                        move_type = _content_moves[shot_hash % len(_content_moves)]
-
-                    # ── Shot progress with ease-in-out ──
-                    shot_duration = max(0.1, focus_item["exitTime"] - focus_item["inTime"])
-                    raw_progress = (t - focus_item["inTime"]) / shot_duration
-                    raw_progress = max(0.0, min(1.0, raw_progress))
-                    # Smoothstep ease-in-out: 3p^2 - 2p^3
-                    shot_progress = raw_progress * raw_progress * (3.0 - 2.0 * raw_progress)
-
-                    # ── Apply transform ──
-                    if move_type == "zoom_in":
-                        cam_scale = 1.0 + (shot_progress * 0.15)
-                    elif move_type == "zoom_out":
-                        cam_scale = 1.15 - (shot_progress * 0.15)
-                    elif move_type == "pan_right":
-                        cam_scale = 1.05
-                        cam_x = shot_progress * 60.0
-                    elif move_type == "pan_left":
-                        cam_scale = 1.05
-                        cam_x = -60.0 + (shot_progress * 60.0)
-                    else:  # semistatic
-                        cam_scale = 1.02 + (math.sin(shot_progress * 3.14) * 0.02)
-
-                    # ── Shot-to-shot transition easing ──
-                    # Ease camera in/out at shot boundaries (first/last 0.3s)
-                    _TRANSITION_SECS = 0.3
-                    _t_into_shot = t - focus_item["inTime"]
-                    _t_until_end = focus_item["exitTime"] - t
-                    if _t_into_shot < _TRANSITION_SECS:
-                        # Ease in from neutral
-                        _blend = _t_into_shot / _TRANSITION_SECS
-                        _blend = _blend * _blend * (3.0 - 2.0 * _blend)  # smoothstep
-                        cam_scale = 1.0 + (cam_scale - 1.0) * _blend
-                        cam_x *= _blend
-                        cam_y *= _blend
-                    elif _t_until_end < _TRANSITION_SECS:
-                        # Ease out to neutral
-                        _blend = _t_until_end / _TRANSITION_SECS
-                        _blend = _blend * _blend * (3.0 - 2.0 * _blend)
-                        cam_scale = 1.0 + (cam_scale - 1.0) * _blend
-                        cam_x *= _blend
-                        cam_y *= _blend
 
             # ── Build batched frame state (Python-side) ──
             # Camera

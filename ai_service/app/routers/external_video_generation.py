@@ -59,7 +59,7 @@ class ResumeRequest(BaseModel):
 
 class RenderOptionsBody(BaseModel):
     resolution: Optional[str] = Field(None, description="720p or 1080p")
-    fps: Optional[int] = Field(None, description="15, 20, 25, or 30")
+    fps: Optional[int] = Field(None, description="15, 20, 25, 30, 45, or 60")
     show_captions: Optional[bool] = Field(None)
     show_branding: Optional[bool] = Field(None)
     caption_position: Optional[str] = Field(None, description="top or bottom")
@@ -387,8 +387,8 @@ async def resume_video_external(
                         target_duration=p.target_duration,
                         model=p.model or "",
                         sound_effects_enabled=p.sound_effects_enabled,
-                        input_video_ids=p.input_video_ids,
-                        input_video_audio=p.input_video_audio,
+                        input_video_ids=_meta.get("input_video_ids"),
+                        input_video_audio=_meta.get("input_video_audio"),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -723,7 +723,7 @@ async def request_video_render(
         _render_height = 1920 if _orientation == "portrait" else 1080
 
     # Build optional render params — explicit None checks so `False` / `0` values are respected
-    _fps = (body.fps if body is not None and body.fps is not None and body.fps in (15, 20, 25, 30) else None)
+    _fps = (body.fps if body is not None and body.fps is not None and body.fps in (15, 20, 25, 30, 45, 60) else None)
     _show_captions = body.show_captions if (body is not None and body.show_captions is not None) else True
     _show_branding = body.show_branding if (body is not None and body.show_branding is not None) else True
     _caption_position = (body.caption_position if body is not None and body.caption_position in ("top", "bottom") else None)

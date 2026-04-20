@@ -156,7 +156,7 @@ class RenderWorker:
             # Split frames across N parallel Playwright processes for speed.
             # Each process renders a subset of frames, then we assemble with FFmpeg.
             NUM_WORKERS = int(os.environ.get("RENDER_PARALLEL_WORKERS", "4"))
-            FPS = fps if fps and fps in (15, 20, 25, 30) else 25
+            FPS = fps if fps and fps in (15, 20, 25, 30, 45, 60) else 25
             output_path = work_dir / "output.mp4"
             frames_dir = work_dir / ".render_frames"
             frames_dir.mkdir(parents=True, exist_ok=True)
@@ -232,12 +232,28 @@ class RenderWorker:
                     if _stripped != _orig:
                         _entry["html"] = _stripped
                         _modified_tl = True
+            # Strip LLM-generated stage-drift camera animations from ALL entries.
+            # The LLM adds gsap.fromTo('.stage-drift', ...) which creates a slow
+            # zoom/pan that looks smooth in FE (60fps real-time) but choppy in
+            # render (screenshot-based GSAP seeking). Disabling it makes render stable.
+            _drift_re = _re.compile(
+                r"gsap\.fromTo\(\s*['\"]\.stage-drift['\"].*?\);",
+                _re.DOTALL,
+            )
+            for _entry in tl_entries:
+                if "html" in _entry:
+                    _orig = _entry["html"]
+                    _cleaned = _drift_re.sub("", _orig)
+                    if _cleaned != _orig:
+                        _entry["html"] = _cleaned
+                        _modified_tl = True
+
             if _modified_tl:
                 timeline_path.write_text(_json.dumps(
                     tl_data if isinstance(tl_data, dict) else tl_entries,
                     ensure_ascii=False,
                 ))
-                logger.info("Stripped <video> tags from SOURCE_CLIP entries for render")
+                logger.info("Stripped <video> tags and stage-drift animations for render")
             from moviepy import AudioFileClip as _AFC
             _audio_dur = _AFC(str(audio_path)).duration
             tl_max_end = max((e.get("exitTime", 0) for e in tl_entries), default=0)

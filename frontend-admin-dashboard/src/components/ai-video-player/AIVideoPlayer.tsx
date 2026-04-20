@@ -22,6 +22,8 @@ export interface Frame {
     htmlEndY?: number;
     /** Sound Planner cues — scheduled live via useSoundScheduler. */
     sound_cues?: SoundCue[];
+    /** Shot type from Director (e.g. "SOURCE_CLIP" for source video segments). */
+    shot_type?: string;
 }
 
 /**
@@ -861,6 +863,22 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                                 e.currentTarget.style.height = '5px';
                             }}
                         >
+                            {/* SOURCE_CLIP segment indicators */}
+                            {duration > 0 && frames.filter(f => f.shot_type === 'SOURCE_CLIP').map((f, i) => (
+                                <div
+                                    key={`src-seg-${i}`}
+                                    style={{
+                                        position: 'absolute',
+                                        left: `${(f.inTime / duration) * 100}%`,
+                                        width: `${((f.exitTime - f.inTime) / duration) * 100}%`,
+                                        height: '100%',
+                                        background: 'rgba(99, 102, 241, 0.45)',
+                                        borderRadius: '3px',
+                                        zIndex: 0,
+                                    }}
+                                    title="Source video audio"
+                                />
+                            ))}
                             <div
                                 className="progress-fill"
                                 style={{
@@ -869,6 +887,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                                     background: '#ef4444',
                                     borderRadius: '3px',
                                     transition: 'width 0.1s ease',
+                                    position: 'relative',
+                                    zIndex: 1,
                                 }}
                             />
                         </div>

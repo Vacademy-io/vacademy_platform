@@ -1812,7 +1812,22 @@ class VideoGenerationPipeline:
                 audio_path=tts_outputs.get("audio_path"),
                 style_guide=style_guide,
             )
-        
+
+            # ── Per-shot audio mixing ──
+            # When TTS mode + SOURCE_CLIP shots exist, mix source video audio
+            # into the narration (TTS during graphics, source audio during clips).
+            _iv_audio_pref = (self._input_video_contexts[0] if self._input_video_contexts else {}).get("audio_preference", "")
+            _tts_audio = tts_outputs.get("audio_path")
+            if _iv_audio_pref == "tts" and _tts_audio and self._input_video_contexts:
+                _words_path = word_outputs.get("words_json")
+                if _words_path:
+                    self._mix_audio_with_source_clips(
+                        audio_path=Path(_tts_audio),
+                        words_json_path=Path(_words_path),
+                        timeline_path=timeline_path,
+                        run_dir=run_dir,
+                    )
+
         avatar_video_path = None
         if do_avatar:
             if content_type == "VIDEO":
@@ -7780,6 +7795,258 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         branding_meta_path.write_text(json.dumps(branding_meta, indent=2))
         
         return timeline_path
+
+    # ------------------------------------------------------------------
+    # Per-shot audio mixing: TTS + source video audio for SOURCE_CLIP
+    # ------------------------------------------------------------------
+
+    def _mix_audio_with_source_clips(
+        self,
+        audio_path: Path,
+        words_json_path: Path,
+        timeline_path: Path,
+        run_dir: Path,
+    ) -> Path:
+        """Mix source video audio into TTS narration for SOURCE_CLIP shots.
+
+        Reads the timeline JSON to find SOURCE_CLIP entries, extracts audio
+        segments from source videos, and builds an FFmpeg filter_complex that
+        mutes TTS during those ranges and overlays the source audio with
+        crossfades. Replaces narration.mp3 in-place.
+
+        Returns the (possibly updated) audio path.
+        """
+        import subprocess as _sp
+
+        # Read timeline to find SOURCE_CLIP entries
+        tl_data = json.loads(timeline_path.read_text())
+        tl_entries = tl_data.get("entries", tl_data if isinstance(tl_data, list) else [])
+        meta = tl_data.get("meta", {}) if isinstance(tl_data, dict) else {}
+        content_starts_at = meta.get("content_starts_at", 0.0)
+
+        clips = []
+        for e in tl_entries:
+            if e.get("shot_type") != "SOURCE_CLIP":
+                continue
+            if e.get("source_start") is None:
+                continue
+            clips.append({
+                "in_time": float(e["inTime"]),
+                "exit_time": float(e["exitTime"]),
+                "source_start": float(e["source_start"]),
+                "source_end": float(e.get("source_end", 0)),
+                "source_video_index": int(e.get("source_video_index", 0)),
+            })
+
+        if not clips:
+            return audio_path
+
+        print(f"🎵 Mixing audio: {len(clips)} SOURCE_CLIP segments")
+
+        mix_dir = run_dir / "_audio_mix"
+        mix_dir.mkdir(exist_ok=True)
+
+        # Download source videos (one per unique index) and extract audio
+        source_audio_cache: Dict[int, Path] = {}
+        for clip in clips:
+            sv_idx = clip["source_video_index"]
+            if sv_idx in source_audio_cache:
+                continue
+            if not self._input_video_contexts or sv_idx >= len(self._input_video_contexts):
+                print(f"  ⚠️ source_video_index {sv_idx} out of range, skipping")
+                continue
+            ctx = self._input_video_contexts[sv_idx]
+            source_url = (
+                ctx.get("assets_urls", {}).get("source_video", "")
+                or ctx.get("source_public_url", "")
+                or ctx.get("source_url", "")
+            )
+            if not source_url:
+                continue
+
+            # Download source video
+            src_path = mix_dir / f"source_{sv_idx}.mp4"
+            try:
+                if "s3.amazonaws.com/" in source_url:
+                    import boto3
+                    s3 = boto3.client("s3",
+                        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
+                        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                        region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+                    )
+                    for bkt in ["vacademy-media-storage-public", "vacademy-media-storage"]:
+                        if bkt in source_url:
+                            parts = source_url.split(f"{bkt}.s3.amazonaws.com/")
+                            if len(parts) == 2:
+                                try:
+                                    s3.download_file(bkt, parts[1], str(src_path))
+                                    break
+                                except Exception:
+                                    continue
+                if not src_path.exists():
+                    from urllib.request import Request, urlopen
+                    req = Request(source_url, headers={"User-Agent": "VacademyMixer/1.0"})
+                    with urlopen(req, timeout=120) as resp:
+                        src_path.write_bytes(resp.read())
+
+                # Extract full audio track (we'll seek per-segment in the mix command)
+                audio_track = mix_dir / f"source_audio_{sv_idx}.wav"
+                _sp.run(
+                    ["ffmpeg", "-y", "-i", str(src_path), "-vn",
+                     "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
+                     str(audio_track)],
+                    capture_output=True, timeout=120,
+                )
+                if audio_track.exists():
+                    source_audio_cache[sv_idx] = audio_track
+                    print(f"  ✅ Extracted audio from source [{sv_idx}]")
+                # Clean up video file to save disk
+                src_path.unlink(missing_ok=True)
+            except Exception as exc:
+                print(f"  ⚠️ Failed to get source [{sv_idx}] audio: {exc}")
+                src_path.unlink(missing_ok=True)
+
+        # Filter clips to only those with available audio
+        clips = [c for c in clips if c["source_video_index"] in source_audio_cache]
+        if not clips:
+            print("  ⚠️ No source audio available, skipping mix")
+            import shutil
+            shutil.rmtree(mix_dir, ignore_errors=True)
+            return audio_path
+
+        # Extract per-clip segments from full source audio
+        segment_paths: List[Path] = []
+        for i, clip in enumerate(clips):
+            src_audio = source_audio_cache[clip["source_video_index"]]
+            seg_path = mix_dir / f"segment_{i}.wav"
+            dur = clip["source_end"] - clip["source_start"]
+            if dur <= 0:
+                continue
+            _sp.run(
+                ["ffmpeg", "-y", "-i", str(src_audio),
+                 "-ss", str(clip["source_start"]),
+                 "-t", str(dur),
+                 "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
+                 str(seg_path)],
+                capture_output=True, timeout=30,
+            )
+            if seg_path.exists():
+                segment_paths.append(seg_path)
+            else:
+                segment_paths.append(None)
+
+        # Build FFmpeg filter_complex
+        # Input 0: TTS narration
+        # Inputs 1..N: source audio segments
+        inputs = ["-i", str(audio_path)]
+        valid_clips = []
+        input_idx = 1
+        for i, clip in enumerate(clips):
+            if i < len(segment_paths) and segment_paths[i] and segment_paths[i].exists():
+                inputs.extend(["-i", str(segment_paths[i])])
+                valid_clips.append((clip, input_idx))
+                input_idx += 1
+
+        if not valid_clips:
+            import shutil
+            shutil.rmtree(mix_dir, ignore_errors=True)
+            return audio_path
+
+        # Volume-gate TTS during SOURCE_CLIP ranges
+        crossfade = 0.15
+        vol_filters = []
+        for clip, _ in valid_clips:
+            # Convert timeline time to audio time
+            audio_start = max(0, clip["in_time"] - content_starts_at - crossfade)
+            audio_end = clip["exit_time"] - content_starts_at + crossfade
+            vol_filters.append(
+                f"volume=enable='between(t,{audio_start:.3f},{audio_end:.3f})':volume=0"
+            )
+
+        tts_chain = ",".join(vol_filters)
+        filter_parts = [f"[0:a]{tts_chain}[tts_gated]"]
+
+        # Delay and fade each source segment
+        src_labels = []
+        for clip, idx in valid_clips:
+            label = f"src{idx}"
+            audio_t = max(0, clip["in_time"] - content_starts_at)
+            delay_ms = int(audio_t * 1000)
+            dur = clip["exit_time"] - clip["in_time"]
+            fade_dur = min(0.3, dur / 3)
+            fade_out_start = max(0, dur - fade_dur)
+            filter_parts.append(
+                f"[{idx}:a]adelay={delay_ms}|{delay_ms},"
+                f"afade=t=in:st=0:d={fade_dur:.2f},"
+                f"afade=t=out:st={fade_out_start:.2f}:d={fade_dur:.2f}"
+                f"[{label}]"
+            )
+            src_labels.append(f"[{label}]")
+
+        # Mix all streams
+        all_inputs = "[tts_gated]" + "".join(src_labels)
+        n_inputs = 1 + len(src_labels)
+        filter_parts.append(
+            f"{all_inputs}amix=inputs={n_inputs}:duration=first:normalize=0[aout]"
+        )
+
+        filter_complex = ";".join(filter_parts)
+
+        mixed_path = mix_dir / "narration_mixed.mp3"
+        cmd = [
+            "ffmpeg", "-y",
+            *inputs,
+            "-filter_complex", filter_complex,
+            "-map", "[aout]",
+            "-acodec", "libmp3lame", "-q:a", "2",
+            str(mixed_path),
+        ]
+
+        try:
+            result = _sp.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                print(f"  ⚠️ FFmpeg mix failed: {result.stderr[:300]}")
+                import shutil
+                shutil.rmtree(mix_dir, ignore_errors=True)
+                return audio_path
+        except Exception as exc:
+            print(f"  ⚠️ FFmpeg mix error: {exc}")
+            import shutil
+            shutil.rmtree(mix_dir, ignore_errors=True)
+            return audio_path
+
+        # Replace narration.mp3 with mixed version
+        import shutil
+        backup = audio_path.with_suffix(".mp3.bak")
+        shutil.copy2(audio_path, backup)
+        shutil.copy2(mixed_path, audio_path)
+        print(f"  ✅ Mixed audio written ({len(valid_clips)} source clips)")
+
+        # Filter words: remove TTS words that fall within SOURCE_CLIP ranges
+        if words_json_path.exists():
+            try:
+                words = json.loads(words_json_path.read_text())
+                clip_ranges = [
+                    (max(0, c["in_time"] - content_starts_at),
+                     c["exit_time"] - content_starts_at)
+                    for c, _ in valid_clips
+                ]
+                filtered = [
+                    w for w in words
+                    if not any(r[0] <= w.get("start", 0) <= r[1] for r in clip_ranges)
+                ]
+                if len(filtered) < len(words):
+                    words_json_path.write_text(
+                        json.dumps(filtered, ensure_ascii=False)
+                    )
+                    print(f"  ✅ Filtered words: {len(words)} → {len(filtered)} "
+                          f"(suppressed {len(words) - len(filtered)} during SOURCE_CLIP)")
+            except Exception:
+                pass  # non-fatal
+
+        # Cleanup
+        shutil.rmtree(mix_dir, ignore_errors=True)
+        return audio_path
 
     def _render_video(
         self,

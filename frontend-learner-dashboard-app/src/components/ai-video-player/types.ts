@@ -75,6 +75,7 @@ export interface Entry {
   htmlEndY?: number;
   audio_url?: string; // Optional per-entry audio (for user_driven)
   sound_cues?: SoundCue[]; // Sound Planner cues — scheduled via useSoundScheduler
+  shot_type?: string; // e.g. "SOURCE_CLIP" for source video segments
   entry_meta?: {
     text?: string;
     audio_text?: string;

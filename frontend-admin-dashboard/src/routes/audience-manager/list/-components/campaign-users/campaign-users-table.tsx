@@ -180,6 +180,28 @@ export const CampaignUsersTable = ({
         return map;
     }, [customFields]);
 
+    // Build field metadata map from API response (custom_field_metadata)
+    const fieldMetadataMap = useMemo(() => {
+        const map = new Map<string, { fieldName?: string; fieldKey?: string; fieldType?: string }>();
+        if (!usersResponse?.content) return map;
+
+        usersResponse.content.forEach((lead: any) => {
+            const metadata = lead.custom_field_metadata;
+            if (metadata && typeof metadata === 'object') {
+                Object.entries(metadata).forEach(([fieldId, meta]: [string, any]) => {
+                    if (!map.has(fieldId) && meta) {
+                        map.set(fieldId, {
+                            fieldName: meta.fieldName || meta.field_name,
+                            fieldKey: meta.fieldKey || meta.field_key,
+                            fieldType: meta.fieldType || meta.field_type,
+                        });
+                    }
+                });
+            }
+        });
+        return map;
+    }, [usersResponse]);
+
     const handleDeleteLead = useCallback(async (responseId: string) => {
         if (!confirm('Delete this lead? This action cannot be undone.')) return;
         try {
@@ -203,9 +225,9 @@ export const CampaignUsersTable = ({
         }
 
         const fieldIdsToUse = allCustomFieldsArray.length > 0 ? allCustomFieldsArray : customFields;
-        const generatedColumns = generateDynamicColumns(fieldIdsToUse, customFieldMap, handleDeleteLead);
+        const generatedColumns = generateDynamicColumns(fieldIdsToUse, customFieldMap, handleDeleteLead, campaignFieldsMap, fieldMetadataMap);
         return generatedColumns;
-    }, [customFields, allFieldIdsFromAllUsers, customFieldMap, handleDeleteLead]);
+    }, [customFields, allFieldIdsFromAllUsers, customFieldMap, handleDeleteLead, campaignFieldsMap, fieldMetadataMap]);
 
     const tableKey = useMemo(() => {
         const fieldIdsKey =
@@ -263,6 +285,34 @@ export const CampaignUsersTable = ({
 
                     let value: any = customValues[fieldId];
 
+                    // If direct lookup by fieldId failed, try alternative keys
+                    // from custom_field_values (handles cases where data is stored
+                    // under field_key/field_name instead of UUID, or vice-versa)
+                    if (value === undefined || value === null || value === '') {
+                        if (fieldInfo) {
+                            if (fieldInfo.field_key && customValues[fieldInfo.field_key]) {
+                                value = customValues[fieldInfo.field_key];
+                            }
+                            if (
+                                (value === undefined || value === null || value === '') &&
+                                fieldInfo.custom_field_id &&
+                                fieldInfo.custom_field_id !== fieldId &&
+                                customValues[fieldInfo.custom_field_id]
+                            ) {
+                                value = customValues[fieldInfo.custom_field_id];
+                            }
+                            if (
+                                (value === undefined || value === null || value === '') &&
+                                fieldInfo.field_name
+                            ) {
+                                value =
+                                    customValues[fieldInfo.field_name] ||
+                                    customValues[fieldInfo.field_name.toLowerCase()];
+                            }
+                        }
+                    }
+
+                    // Fallback to user object properties
                     if (value === undefined || value === null || value === '') {
                         if (fieldInfo && fieldInfo.field_key) {
                             const fieldKey = fieldInfo.field_key;
@@ -413,7 +463,35 @@ export const CampaignUsersTable = ({
                             customFieldMap.get(fieldId) ||
                             customFieldMap.get(fieldId.toLowerCase());
 
-                        if (fieldInfo && fieldInfo.field_key) {
+                        // Try alternative keys in custom_field_values
+                        if (fieldInfo) {
+                            if (fieldInfo.field_key && customValues[fieldInfo.field_key]) {
+                                value = customValues[fieldInfo.field_key];
+                            }
+                            if (
+                                (value === undefined || value === null || value === '') &&
+                                fieldInfo.custom_field_id &&
+                                fieldInfo.custom_field_id !== fieldId &&
+                                customValues[fieldInfo.custom_field_id]
+                            ) {
+                                value = customValues[fieldInfo.custom_field_id];
+                            }
+                            if (
+                                (value === undefined || value === null || value === '') &&
+                                fieldInfo.field_name
+                            ) {
+                                value =
+                                    customValues[fieldInfo.field_name] ||
+                                    customValues[fieldInfo.field_name.toLowerCase()];
+                            }
+                        }
+
+                        // Fallback to user object properties
+                        if (
+                            (value === undefined || value === null || value === '') &&
+                            fieldInfo &&
+                            fieldInfo.field_key
+                        ) {
                             const k = fieldInfo.field_key;
                             if (k === 'email') value = user.email;
                             else if (k === 'phone' || k === 'phone_number')

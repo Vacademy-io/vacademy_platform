@@ -13,7 +13,7 @@ interface WorkflowNodeData {
 }
 
 /** Check if a node has its minimum required config filled */
-function getNodeIssues(nodeType: string, config: Record<string, unknown>): string[] {
+export function getNodeIssues(nodeType: string, config: Record<string, unknown>): string[] {
     const issues: string[] = [];
     const has = (key: string) => {
         const v = config[key];

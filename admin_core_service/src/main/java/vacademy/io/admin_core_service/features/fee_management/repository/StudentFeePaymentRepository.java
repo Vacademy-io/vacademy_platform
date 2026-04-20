@@ -54,6 +54,19 @@ public interface StudentFeePaymentRepository extends JpaRepository<StudentFeePay
             @Param("windowEnd") Date windowEnd
     );
 
-    List<StudentFeePayment> findByInstituteIdAndAdjustmentStatus(String instituteId, String adjustmentStatus);
+    /**
+     * Return bills whose current adjustment event has the given resulting_status.
+     * Uses a join with student_fee_adjustment_history via the FK
+     * current_adjustment_history_id (replaces the removed adjustment_status column).
+     */
+    @Query(value = "SELECT sfp.* FROM student_fee_payment sfp " +
+                   "JOIN student_fee_adjustment_history h " +
+                   "  ON h.id = sfp.current_adjustment_history_id " +
+                   "WHERE sfp.institute_id = :instituteId " +
+                   "  AND h.resulting_status = :resultingStatus",
+           nativeQuery = true)
+    List<StudentFeePayment> findBillsWithCurrentResultingStatus(
+            @Param("instituteId") String instituteId,
+            @Param("resultingStatus") String resultingStatus);
 }
 

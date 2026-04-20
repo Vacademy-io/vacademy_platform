@@ -564,7 +564,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             const m = f.html.match(/src="([^"]+)"/);
             if (m) {
                 const idx = f.source_video_index ?? 0;
-                if (!urls.has(idx)) urls.set(idx, m[1].split('#')[0]);
+                if (!urls.has(idx) && m[1]) urls.set(idx, m[1].split('#')[0] ?? '');
             }
         }
         return urls;

@@ -1211,7 +1211,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             int daysUntilExpiry = 7; // default
             Object daysParam = params.get("daysUntilExpiry");
             if (daysParam != null) {
-                daysUntilExpiry = Integer.parseInt(String.valueOf(daysParam));
+                try { daysUntilExpiry = Integer.parseInt(String.valueOf(daysParam)); }
+                catch (NumberFormatException e) { log.warn("Invalid daysUntilExpiry: {}", daysParam); }
             }
 
             // Find UserPlans that are active and expiring within N days
@@ -1319,6 +1320,11 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 lead.put("id", resp.getId());
                 lead.put("userId", resp.getUserId());
                 lead.put("createdAt", resp.getCreatedAt());
+                // Map email fields so SEND_EMAIL can find the recipient
+                lead.put("email", resp.getParentEmail());
+                lead.put("parentEmail", resp.getParentEmail());
+                lead.put("parentName", resp.getParentName());
+                lead.put("mobileNumber", resp.getParentMobile());
 
                 List<CustomFieldValues> cfvs = cfvByResponseId.getOrDefault(resp.getId(), List.of());
                 for (CustomFieldValues cfv : cfvs) {
@@ -1506,10 +1512,11 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         int totalChats = 0;
                         int totalHandRaises = 0;
                         for (var el : engagementLogs) {
-                            if (el.get("providerTotalDurationMinutes") != null) {
-                                totalDurationMinutes += (Integer) el.get("providerTotalDurationMinutes");
+                            Object durationObj = el.get("providerTotalDurationMinutes");
+                            if (durationObj instanceof Number) {
+                                totalDurationMinutes += ((Number) durationObj).intValue();
                             }
-                            String engJson = (String) el.get("engagementData");
+                            String engJson = el.get("engagementData") != null ? String.valueOf(el.get("engagementData")) : null;
                             if (engJson != null && !engJson.isEmpty()) {
                                 try {
                                     var engNode = objectMapper.readTree(engJson);

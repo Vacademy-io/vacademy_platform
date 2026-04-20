@@ -1,13 +1,16 @@
+import { useEffect } from 'react';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Trash, X } from '@phosphor-icons/react';
+import { Trash, X, Warning } from '@phosphor-icons/react';
 import { WORKFLOW_NODE_TYPES } from '@/types/workflow/workflow-types';
+import { getNodeIssues } from './workflow-custom-node';
 import { VariablePicker } from './variable-picker';
 import { ConditionBuilder } from './condition-builder';
 import { AggregateBuilder } from './aggregate-builder';
 import { KeyValueBuilder } from './key-value-builder';
+import { EventEntityPicker } from './event-entity-picker';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import {
@@ -16,9 +19,55 @@ import {
     getTemplatesByTypeQuery,
 } from '@/services/workflow-service';
 
+/** Handles auto-fill of system params like instituteId using useEffect (not in render) */
+function QueryRequiredParams({ params, config, onConfigChange, nodeId }: {
+    params: string[];
+    config: Record<string, unknown>;
+    onConfigChange: (key: string, value: unknown) => void;
+    nodeId: string;
+}) {
+    // Auto-fill instituteId on mount
+    useEffect(() => {
+        if (params.includes('instituteId') && !config['instituteId']) {
+            onConfigChange('instituteId', "#ctx['instituteId']");
+        }
+    }, [params, config, onConfigChange]);
+
+    if (params.length === 0) return null;
+
+    return (
+        <div className="space-y-2 border-t pt-2 mt-2">
+            <Label className="text-[10px] uppercase text-gray-400">Required Parameters</Label>
+            {params.map((param) => {
+                const isSystemParam = param === 'instituteId';
+                return (
+                    <div key={param}>
+                        <Label className="text-xs">{param}</Label>
+                        {isSystemParam ? (
+                            <div className="mt-1">
+                                <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+                                    Auto-filled from workflow context
+                                </div>
+                            </div>
+                        ) : (
+                            <VariablePicker
+                                value={(config[param] as string) ?? ''}
+                                onChange={(v) => onConfigChange(param, v)}
+                                placeholder={`Pick or type value for ${param}...`}
+                                nodeId={nodeId}
+                            />
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 export function NodeConfigPanel() {
     const selectedNodeId = useWorkflowBuilderStore((s) => s.selectedNodeId);
     const nodes = useWorkflowBuilderStore((s) => s.nodes);
+    const edges = useWorkflowBuilderStore((s) => s.edges);
     const updateNodeConfig = useWorkflowBuilderStore((s) => s.updateNodeConfig);
     const updateNodeName = useWorkflowBuilderStore((s) => s.updateNodeName);
     const removeNode = useWorkflowBuilderStore((s) => s.removeNode);
@@ -78,6 +127,21 @@ export function NodeConfigPanel() {
             </div>
 
             <div className="flex flex-col gap-4 p-4">
+                {/* Show validation issues */}
+                {(() => {
+                    const issues = getNodeIssues(data.nodeType, data.config ?? {});
+                    return issues.length > 0 ? (
+                        <div className="rounded-lg border border-orange-200 bg-orange-50 p-2.5 space-y-1">
+                            {issues.map((issue, i) => (
+                                <div key={i} className="flex items-center gap-1.5 text-xs text-orange-700">
+                                    <Warning size={12} weight="fill" className="shrink-0" />
+                                    {issue}
+                                </div>
+                            ))}
+                        </div>
+                    ) : null;
+                })()}
+
                 <div>
                     <Label className="text-xs">Node Name</Label>
                     <Input
@@ -114,66 +178,151 @@ export function NodeConfigPanel() {
                     </div>
                 )}
 
-                {/* Email node config — upgraded with template dropdown + dynamic params */}
-                {data.nodeType === 'SEND_EMAIL' && (
-                    <>
-                        <div>
-                            <Label className="text-xs">Email Template</Label>
-                            <select
-                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                value={(data.config.templateName as string) ?? ''}
-                                onChange={(e) => {
-                                    handleConfigChange('templateName', e.target.value);
-                                    const tmpl = emailTemplates?.find((t) => t.name === e.target.value);
-                                    if (tmpl?.dynamic_parameters) {
-                                        try {
-                                            const params = JSON.parse(tmpl.dynamic_parameters);
-                                            handleConfigChange('_templateParams', params);
-                                        } catch {
-                                            // ignore parse errors
-                                        }
-                                    }
-                                }}
-                            >
-                                <option value="">Select template...</option>
-                                {emailTemplates?.map((t) => (
-                                    <option key={t.id} value={t.name}>
-                                        {t.name} {t.subject ? `— ${t.subject}` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <Label className="text-xs">Recipients (list expression)</Label>
-                            <VariablePicker
-                                value={(data.config.on as string) ?? ''}
-                                onChange={(v) => handleConfigChange('on', v)}
-                                placeholder="Pick a list of recipients..."
-                                nodeId={selectedNode.id}
-                            />
-                        </div>
-                        {/* Dynamic template parameters */}
-                        {data.config._templateParams && typeof data.config._templateParams === 'object' && (
-                            <div className="space-y-2 border-t pt-2 mt-2">
-                                <Label className="text-[10px] uppercase text-gray-400">Template Variables</Label>
-                                {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => (
-                                    <div key={key}>
-                                        <Label className="text-xs">{label || key}</Label>
-                                        <VariablePicker
-                                            value={((data.config.templateVars as Record<string, string>)?.[key]) ?? ''}
-                                            onChange={(v) => {
-                                                const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: v };
-                                                handleConfigChange('templateVars', vars);
+                {/* Email node config — smart UI, no SpEL needed for common cases */}
+                {data.nodeType === 'SEND_EMAIL' && (() => {
+                    // Auto-detect available data sources from upstream nodes
+                    const upstreamNodes = nodes.filter((n) => {
+                        // Find nodes that have an edge pointing to this node
+                        return edges.some((e) => e.target === selectedNode.id && e.source === n.id);
+                    });
+
+                    // Build data source options based on upstream node types
+                    const dataSources: Array<{ label: string; value: string; description: string }> = [];
+
+                    for (const upstream of upstreamNodes) {
+                        const uType = upstream.data?.nodeType;
+                        const uConfig = upstream.data?.config as Record<string, unknown> | undefined;
+
+                        if (uType === 'TRIGGER') {
+                            dataSources.push(
+                                { label: 'Respondent emails (from trigger)', value: "#ctx['respondentEmailRequests']", description: 'Pre-built email with to/subject/body from the form submission' },
+                                { label: 'Admin emails (from trigger)', value: "#ctx['adminEmailRequests']", description: 'Email notifications for admins' },
+                            );
+                        }
+                        if (uType === 'QUERY') {
+                            const queryKey = uConfig?.prebuiltKey as string;
+                            if (queryKey === 'fetch_audience_responses_filtered') {
+                                dataSources.push({ label: 'Audience leads (from query)', value: "#ctx['leads']", description: 'List of leads with custom field data' });
+                            } else if (queryKey === 'fetch_batch_attendance_report') {
+                                dataSources.push({ label: 'Students (from attendance query)', value: "#ctx['students']", description: 'List of students with attendance & engagement data' });
+                            } else if (queryKey === 'fetch_ssigm_by_package' || queryKey === 'getSSIGMByStatusAndPackageSessionIds') {
+                                dataSources.push({ label: 'Enrolled students (from query)', value: "#ctx['ssigmList']", description: 'List of enrolled students' });
+                            } else if (queryKey) {
+                                dataSources.push({ label: `Query results (${queryKey})`, value: "#ctx['queryResult']", description: 'Results from the query node' });
+                            }
+                        }
+                    }
+
+                    // Always offer manual entry as fallback
+                    const currentOn = (data.config.on as string) ?? '';
+
+                    return (
+                        <>
+                            {/* Send to — smart dropdown */}
+                            <div>
+                                <Label className="text-xs">Send emails to</Label>
+                                {dataSources.length > 0 ? (
+                                    <>
+                                        <select
+                                            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                            value={currentOn}
+                                            onChange={(e) => {
+                                                handleConfigChange('on', e.target.value);
+                                                // Auto-set forEach
+                                                handleConfigChange('forEach', { operation: 'SEND_EMAIL', eval: "#ctx['item']" });
                                             }}
-                                            placeholder={`Value for ${label || key}...`}
+                                        >
+                                            <option value="">Select data source...</option>
+                                            {dataSources.map((ds) => (
+                                                <option key={ds.value} value={ds.value}>{ds.label}</option>
+                                            ))}
+                                        </select>
+                                        {/* Show description of selected source */}
+                                        {currentOn && (() => {
+                                            const selected = dataSources.find((ds) => ds.value === currentOn);
+                                            return selected ? (
+                                                <p className="mt-1 text-[10px] text-gray-400">{selected.description}</p>
+                                            ) : (
+                                                <p className="mt-1 text-[10px] text-gray-400 font-mono">{currentOn}</p>
+                                            );
+                                        })()}
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="mt-1 text-[10px] text-gray-400 mb-1.5">
+                                            Connect a Trigger or Query node upstream to auto-detect data sources.
+                                        </p>
+                                        <VariablePicker
+                                            value={currentOn}
+                                            onChange={(v) => {
+                                                handleConfigChange('on', v);
+                                                handleConfigChange('forEach', { operation: 'SEND_EMAIL', eval: "#ctx['item']" });
+                                            }}
+                                            placeholder="Pick a list of recipients..."
                                             nodeId={selectedNode.id}
                                         />
-                                    </div>
-                                ))}
+                                    </>
+                                )}
                             </div>
-                        )}
-                    </>
-                )}
+
+                            {/* Email template */}
+                            <div>
+                                <Label className="text-xs">Email Template <span className="text-gray-300 text-[10px]">(optional — skip to use pre-built email from data source)</span></Label>
+                                <select
+                                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={(data.config.templateName as string) ?? ''}
+                                    onChange={(e) => {
+                                        const templateName = e.target.value;
+                                        handleConfigChange('templateName', templateName);
+                                        const tmpl = emailTemplates?.find((t) => t.name === templateName);
+                                        if (tmpl?.dynamic_parameters) {
+                                            try {
+                                                const params = JSON.parse(tmpl.dynamic_parameters);
+                                                handleConfigChange('_templateParams', params);
+                                            } catch { /* ignore */ }
+                                        } else {
+                                            handleConfigChange('_templateParams', null);
+                                        }
+                                    }}
+                                >
+                                    <option value="">No template (use data source's subject/body)</option>
+                                    {emailTemplates?.map((t) => (
+                                        <option key={t.id} value={t.name}>
+                                            {t.name} {t.subject ? `— ${t.subject}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Template variables — only shown when a template is selected */}
+                            {data.config._templateParams && typeof data.config._templateParams === 'object' && (
+                                <div className="space-y-2 border-t pt-2 mt-2">
+                                    <Label className="text-[10px] uppercase text-gray-400">Template Variables</Label>
+                                    <p className="text-[10px] text-gray-400">
+                                        Map each template variable to a field from the data source. Each item in the list has fields you can reference.
+                                    </p>
+                                    {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => (
+                                        <div key={key}>
+                                            <Label className="text-xs">{label || key}</Label>
+                                            <Input
+                                                value={((data.config.templateVars as Record<string, string>)?.[key]) ?? ''}
+                                                onChange={(e) => {
+                                                    const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: e.target.value };
+                                                    handleConfigChange('templateVars', vars);
+                                                }}
+                                                className="mt-1"
+                                                placeholder={`e.g. fullName, email, attendancePercentage`}
+                                            />
+                                            <p className="text-[10px] text-gray-300">
+                                                Field name from each item in the data source
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    );
+                })()}
 
                 {/* WhatsApp node config — upgraded with template dropdown + dynamic params */}
                 {data.nodeType === 'SEND_WHATSAPP' && (
@@ -310,61 +459,55 @@ export function NodeConfigPanel() {
                             )}
                         </div>
                         {/* Dynamic required params */}
-                        {selectedQueryKey?.required_params && selectedQueryKey.required_params.length > 0 && (
+                        <QueryRequiredParams
+                            params={selectedQueryKey?.required_params ?? []}
+                            config={data.config}
+                            onConfigChange={handleConfigChange}
+                            nodeId={selectedNode.id}
+                        />
+                        {/* Optional params from catalog */}
+                        {selectedQueryKey?.optional_params && selectedQueryKey.optional_params.length > 0 && (
                             <div className="space-y-2 border-t pt-2 mt-2">
-                                <Label className="text-[10px] uppercase text-gray-400">Required Parameters</Label>
-                                {selectedQueryKey.required_params.map((param) => {
-                                    const isSystemParam = param === 'instituteId';
-                                    const currentValue = (data.config[param] as string) ?? '';
-
-                                    if (isSystemParam && !currentValue) {
-                                        setTimeout(() => handleConfigChange(param, "#ctx['instituteId']"), 0);
-                                    }
+                                <Label className="text-[10px] uppercase text-gray-400">Optional Filters</Label>
+                                {selectedQueryKey.optional_params.map((param) => {
+                                    // Map param names to EventEntityPicker types
+                                    const entityTypeMap: Record<string, string> = {
+                                        audienceId: 'AUDIENCE',
+                                        batchId: 'PACKAGE_SESSION',
+                                        liveSessionId: 'LIVE_SESSION',
+                                        inviteId: 'ENROLL_INVITE',
+                                    };
+                                    const entityType = entityTypeMap[param];
 
                                     return (
                                         <div key={param}>
-                                            <Label className="text-xs">{param}</Label>
-                                            {isSystemParam ? (
+                                            <Label className="text-xs text-gray-500">{param} <span className="text-gray-300">(optional)</span></Label>
+                                            {entityType ? (
                                                 <div className="mt-1">
-                                                    <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
-                                                        <span>Auto-filled from workflow context</span>
-                                                    </div>
+                                                    <EventEntityPicker
+                                                        eventAppliedType={entityType}
+                                                        value={(data.config[param] as string) || undefined}
+                                                        onChange={(id) => handleConfigChange(param, id ?? '')}
+                                                        instituteId={instituteId}
+                                                    />
                                                 </div>
                                             ) : (
-                                                <VariablePicker
-                                                    value={currentValue}
-                                                    onChange={(v) => handleConfigChange(param, v)}
-                                                    placeholder={`Pick or type value for ${param}...`}
-                                                    nodeId={selectedNode.id}
+                                                <Input
+                                                    value={(data.config[param] as string) ?? ''}
+                                                    onChange={(e) => handleConfigChange(param, e.target.value)}
+                                                    className="mt-1"
+                                                    placeholder={
+                                                        param === 'daysAgo' || param === 'daysBack' ? 'e.g. 5'
+                                                        : param === 'daysUntilExpiry' ? 'e.g. 7'
+                                                        : param === 'status' ? 'e.g. ACTIVE'
+                                                        : param.includes('Date') ? 'YYYY-MM-DD'
+                                                        : `Enter ${param}...`
+                                                    }
                                                 />
                                             )}
                                         </div>
                                     );
                                 })}
-                            </div>
-                        )}
-                        {/* Optional params from catalog — all use text input by default */}
-                        {selectedQueryKey?.optional_params && selectedQueryKey.optional_params.length > 0 && (
-                            <div className="space-y-2 border-t pt-2 mt-2">
-                                <Label className="text-[10px] uppercase text-gray-400">Optional Filters</Label>
-                                {selectedQueryKey.optional_params.map((param) => (
-                                    <div key={param}>
-                                        <Label className="text-xs text-gray-500">{param} <span className="text-gray-300">(optional)</span></Label>
-                                        <Input
-                                            value={(data.config[param] as string) ?? ''}
-                                            onChange={(e) => handleConfigChange(param, e.target.value)}
-                                            className="mt-1"
-                                            placeholder={
-                                                param === 'daysAgo' || param === 'daysBack' ? 'e.g. 5'
-                                                : param === 'daysUntilExpiry' ? 'e.g. 7'
-                                                : param === 'status' ? 'e.g. ACTIVE'
-                                                : param.includes('Date') ? 'YYYY-MM-DD'
-                                                : param.includes('Id') ? `Enter ${param} or leave empty for all`
-                                                : `Enter ${param}...`
-                                            }
-                                        />
-                                    </div>
-                                ))}
                             </div>
                         )}
                         <div>

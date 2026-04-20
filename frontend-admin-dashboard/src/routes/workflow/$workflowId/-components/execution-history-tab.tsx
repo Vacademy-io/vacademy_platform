@@ -44,15 +44,16 @@ export function ExecutionHistoryTab({ workflowId, instituteId, onViewOnDiagram }
     const pageSize = 10;
 
     // Date range: default last 7 days
-    const [startDate, setStartDate] = useState(() => {
-        const d = new Date();
-        d.setDate(d.getDate() - 7);
-        return d.toISOString().slice(0, 16);
-    });
-    const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 16));
+    // Use date-only inputs (YYYY-MM-DD) and append UTC boundaries when sending to API
+    const todayStr = new Date().toISOString().slice(0, 10); // "2026-04-20"
+    const weekAgoStr = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10); // "2026-04-13"
 
-    const startIso = startDate ? new Date(startDate).toISOString() : undefined;
-    const endIso = endDate ? new Date(endDate).toISOString() : undefined;
+    const [startDate, setStartDate] = useState(weekAgoStr);
+    const [endDate, setEndDate] = useState(todayStr);
+
+    // Append UTC boundaries: start at 00:00:00Z, end at 23:59:59Z
+    const startIso = startDate ? `${startDate}T00:00:00.000Z` : undefined;
+    const endIso = endDate ? `${endDate}T23:59:59.999Z` : undefined;
 
     // Fetch execution list
     const { data: executionData, isLoading } = useQuery({
@@ -117,14 +118,14 @@ export function ExecutionHistoryTab({ workflowId, instituteId, onViewOnDiagram }
                 ))}
                 <div className="flex-1" />
                 <input
-                    type="datetime-local"
+                    type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                     className="h-7 text-xs border rounded px-2"
                 />
                 <span className="text-xs text-muted-foreground">to</span>
                 <input
-                    type="datetime-local"
+                    type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                     className="h-7 text-xs border rounded px-2"
@@ -152,8 +153,15 @@ export function ExecutionHistoryTab({ workflowId, instituteId, onViewOnDiagram }
                             </tr>
                         ) : executions.length === 0 ? (
                             <tr>
-                                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                                    No executions found
+                                <td colSpan={5} className="px-4 py-12 text-center">
+                                    <div className="space-y-2">
+                                        <p className="text-sm font-medium text-muted-foreground">No executions found</p>
+                                        <p className="text-xs text-gray-400 max-w-md mx-auto">
+                                            For event-driven workflows, executions appear when the trigger event fires (e.g., form submission, enrollment).
+                                            For scheduled workflows, wait for the next scheduled run.
+                                            Try adjusting the date range or status filter above.
+                                        </p>
+                                    </div>
                                 </td>
                             </tr>
                         ) : (

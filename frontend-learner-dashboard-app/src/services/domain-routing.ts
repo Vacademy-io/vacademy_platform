@@ -45,6 +45,13 @@ export interface DomainRoutingResponse {
   hideInstituteName?: boolean | null;
   logoWidthPx?: number | null;
   logoHeightPx?: number | null;
+  // Minimal naming overrides surfaced pre-login so screens like the login page
+  // can honor institute-specific terminology before the full settings payload
+  // is fetched post-login.
+  namingOverrides?: {
+    course?: string | null;
+    coursePlural?: string | null;
+  } | null;
 }
 
 export interface DomainRoutingError {

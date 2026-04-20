@@ -65,8 +65,23 @@ export function PdfViewerBlock({ element, attributes, children, blockId }: Plugi
             const publicUrl = await getPublicUrl(fileId);
             if (!publicUrl) throw new Error('Failed to get URL');
 
+            const nextTitle = title || file.name.replace(/\.pdf$/i, '');
+
+            // Persist to the Yoopta element synchronously — if we rely
+            // solely on the [pdfUrl, title] effect, a save that races the
+            // next render serializes the "No PDF uploaded" placeholder.
+            Elements.updateElement(editor, blockId, {
+                type: 'pdfViewer',
+                props: {
+                    ...element.props,
+                    pdfUrl: publicUrl,
+                    title: nextTitle,
+                    editorType: 'pdfViewer',
+                },
+            });
+
             setPdfUrl(publicUrl);
-            if (!title) setTitle(file.name.replace(/\.pdf$/i, ''));
+            if (nextTitle !== title) setTitle(nextTitle);
         } catch (error) {
             console.error('PDF upload failed:', error);
             alert('Failed to upload PDF file');

@@ -34,4 +34,5 @@ public class DomainRoutingUpsertRequest {
     private Boolean hideInstituteName;
     private Integer logoWidthPx;
     private Integer logoHeightPx;
+    private Boolean applyNamingSetting;
 }

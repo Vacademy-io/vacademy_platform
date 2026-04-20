@@ -201,6 +201,10 @@ public class WorkflowBuilderService {
         // Create trigger if applicable
         if ("EVENT_DRIVEN".equalsIgnoreCase(dto.getWorkflowType()) && dto.getTrigger() != null) {
             WorkflowBuilderDTO.TriggerDTO trig = dto.getTrigger();
+            // Default: UUID strategy — every trigger event creates a unique execution.
+            // Users can configure stricter dedup (EVENT_BASED, CONTEXT_BASED) via the API if needed.
+            String defaultIdempotencySettings = "{\"strategy\":\"UUID\"}";
+
             WorkflowTrigger trigger = WorkflowTrigger.builder()
                     .triggerEventName(trig.getTriggerEventName())
                     .instituteId(dto.getInstituteId())
@@ -208,6 +212,7 @@ public class WorkflowBuilderService {
                     .status("ACTIVE")
                     .eventId(trig.getEventId())
                     .eventAppliedType(trig.getEventAppliedType())
+                    .idempotencyGenerationSetting(defaultIdempotencySettings)
                     .build();
             // Set workflow relationship - need to fetch the managed entity
             Workflow managedWorkflow = workflowRepository.findById(workflowId).orElseThrow();

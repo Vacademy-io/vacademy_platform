@@ -411,7 +411,8 @@ public class AudienceService {
                     saveCustomFieldValues(
                             savedResponse.getId(),
                             requestDTO.getCustomFieldValues(),
-                            audience.getInstituteId());
+                            audience.getInstituteId(),
+                            audience.getId());
                 }
 
                 // 4. Build custom field map for email
@@ -694,7 +695,8 @@ public class AudienceService {
                     saveCustomFieldValues(
                             savedResponse.getId(),
                             requestDTO.getCustomFieldValues(),
-                            audience.getInstituteId());
+                            audience.getInstituteId(),
+                            audience.getId());
                 }
 
                 // 4. Build custom field map for email (to pass to workflow)
@@ -1089,7 +1091,8 @@ public class AudienceService {
             saveCustomFieldValues(
                     savedResponse.getId(),
                     requestDTO.getCustomFieldValues(),
-                    audience.getInstituteId());
+                    audience.getInstituteId(),
+                    audience.getId());
         }
 
         linkCounsellorToEnquiry(instituteId, requestDTO.getAudienceId(), enquiry, requestDTO.getCounsellorId());
@@ -1434,8 +1437,46 @@ public class AudienceService {
                 : linkedUsersRepository.findBySourceAndSourceIdIn("ENQUIRY", enquiryIds).stream()
                         .collect(Collectors.toMap(LinkedUsers::getSourceId, LinkedUsers::getUserId, (a, b) -> a));
 
+        // Batch fetch all custom field values for these responses
+        List<CustomFieldValues> allCfValues = customFieldValuesRepository
+                .findBySourceTypeAndSourceIdIn("AUDIENCE_RESPONSE", responseIds);
+
+        // Group by sourceId (response ID)
+        Map<String, List<CustomFieldValues>> cfValuesByResponseId = allCfValues.stream()
+                .collect(Collectors.groupingBy(CustomFieldValues::getSourceId));
+
+        // Batch fetch custom field definitions for field names
+        Set<String> allCustomFieldIds = allCfValues.stream()
+                .map(CustomFieldValues::getCustomFieldId)
+                .collect(Collectors.toSet());
+        Map<String, CustomFields> fieldDefsById = allCustomFieldIds.isEmpty()
+                ? Collections.emptyMap()
+                : customFieldRepository.findAllById(allCustomFieldIds).stream()
+                        .collect(Collectors.toMap(CustomFields::getId, cf -> cf, (a, b) -> a));
+
         return responses.map(response -> {
-            Map<String, String> customFieldValues = getCustomFieldValuesForResponse(response.getId());
+            // Build custom field values map from batch-fetched data
+            List<CustomFieldValues> responseCfValues = cfValuesByResponseId
+                    .getOrDefault(response.getId(), Collections.emptyList());
+            Map<String, String> customFieldValues = responseCfValues.stream()
+                    .collect(Collectors.toMap(
+                            CustomFieldValues::getCustomFieldId,
+                            CustomFieldValues::getValue,
+                            (v1, v2) -> v2));
+
+            // Build metadata: fieldId -> { fieldName, fieldKey, fieldType }
+            Map<String, Object> customFieldMetadata = new HashMap<>();
+            for (CustomFieldValues cfv : responseCfValues) {
+                CustomFields fieldDef = fieldDefsById.get(cfv.getCustomFieldId());
+                if (fieldDef != null) {
+                    Map<String, String> meta = new HashMap<>();
+                    meta.put("fieldName", fieldDef.getFieldName());
+                    meta.put("fieldKey", fieldDef.getFieldKey());
+                    meta.put("fieldType", fieldDef.getFieldType());
+                    customFieldMetadata.put(cfv.getCustomFieldId(), meta);
+                }
+            }
+
             var score = scoreByResponseId.get(response.getId());
             String counselorId = response.getEnquiryId() != null
                     ? enquiryIdToCounselor.get(response.getEnquiryId()) : null;
@@ -1450,6 +1491,7 @@ public class AudienceService {
                     .sourceId(response.getSourceId())
                     .submittedAtLocal(response.getSubmittedAt())
                     .customFieldValues(customFieldValues)
+                    .customFieldMetadata(customFieldMetadata)
                     .isDuplicate(response.getIsDuplicate())
                     .primaryResponseId(response.getPrimaryResponseId())
                     .overallStatus(response.getOverallStatus())
@@ -1518,20 +1560,53 @@ public class AudienceService {
     }
 
     private void saveCustomFieldValues(String responseId, Map<String, String> fieldValues, String instituteId) {
+        saveCustomFieldValues(responseId, fieldValues, instituteId, null);
+    }
+
+    private void saveCustomFieldValues(String responseId, Map<String, String> fieldValues, String instituteId,
+            String audienceId) {
+        // Build a lookup to resolve incoming keys (field_key, field_name, or
+        // alternate UUID) to the canonical custom_field_id for this audience.
+        Map<String, String> keyToCanonicalId = new HashMap<>();
+        if (StringUtils.hasText(audienceId)) {
+            try {
+                List<Object[]> icfData = instituteCustomFieldRepository.findInstituteCustomFieldsWithDetails(
+                        instituteId, CustomFieldTypeEnum.AUDIENCE_FORM.name(), audienceId);
+                for (Object[] row : icfData) {
+                    CustomFields cf = (CustomFields) row[1];
+                    String canonicalId = cf.getId();
+                    // Register by custom_field_id, field_key, and field_name
+                    keyToCanonicalId.put(canonicalId, canonicalId);
+                    if (StringUtils.hasText(cf.getFieldKey())) {
+                        keyToCanonicalId.put(cf.getFieldKey().toLowerCase().trim(), canonicalId);
+                    }
+                    if (StringUtils.hasText(cf.getFieldName())) {
+                        keyToCanonicalId.put(cf.getFieldName().toLowerCase().trim(), canonicalId);
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Could not build canonical field lookup for audience {}: {}", audienceId, e.getMessage());
+            }
+        }
+
         List<CustomFieldValues> customFieldValuesList = new ArrayList<>();
 
         for (Map.Entry<String, String> entry : fieldValues.entrySet()) {
-            String fieldKey = entry.getKey();
+            String incomingKey = entry.getKey();
             String value = entry.getValue();
 
             if (!StringUtils.hasText(value)) {
-                continue; // Skip empty values
+                continue;
             }
+
+            // Resolve to canonical ID: try exact match, then lowercase
+            String resolvedId = keyToCanonicalId.getOrDefault(incomingKey,
+                    keyToCanonicalId.getOrDefault(incomingKey.toLowerCase().trim(), incomingKey));
 
             CustomFieldValues cfValue = CustomFieldValues.builder()
                     .sourceType("AUDIENCE_RESPONSE")
                     .sourceId(responseId)
-                    .customFieldId(fieldKey) // This could be field key or field ID
+                    .customFieldId(resolvedId)
                     .value(value)
                     .build();
 

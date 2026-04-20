@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
+import {
+    YooptaPlugin,
+    useYooptaEditor,
+    useYooptaReadOnly,
+    PluginElementRenderProps,
+} from '@yoopta/editor';
+import { commitBlockProps } from './commitBlockProps';
 
 interface QuizOption {
     text: string;
@@ -37,54 +43,84 @@ const DEFAULT_TRUE_FALSE: QuizData = {
 
 export function QuizBlock({ element, attributes, children, blockId }: PluginElementRenderProps) {
     const editor = useYooptaEditor();
-    const initialData: QuizData = element?.props?.quizData || { ...DEFAULT_MCQ, options: DEFAULT_MCQ.options.map(o => ({ ...o })) };
+    const isReadOnly = useYooptaReadOnly();
+    const hasStoredQuiz =
+        !!element?.props?.quizData &&
+        typeof element.props.quizData === 'object';
+    const initialData: QuizData = hasStoredQuiz
+        ? element!.props!.quizData
+        : { ...DEFAULT_MCQ, options: DEFAULT_MCQ.options.map((o) => ({ ...o })) };
     const [quizData, setQuizData] = useState<QuizData>(initialData);
-    const [isEditing, setIsEditing] = useState(!element?.props?.quizData?.question);
+    // Learners never enter edit mode — they only take the quiz. For
+    // admins, open in edit mode if the question is empty (new block).
+    const [isEditing, setIsEditing] = useState(
+        !isReadOnly && !element?.props?.quizData?.question
+    );
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
     const [showResult, setShowResult] = useState(false);
-    const isFirstRender = useRef(true);
+
+    // Mirror quizData in a ref so commitQuiz always resolves functional
+    // updaters against the freshest value even if two handlers fire in
+    // the same render tick (original code used React's prev-safe
+    // setState, which we preserve here via the ref).
+    const quizDataRef = useRef<QuizData>(initialData);
+
+    // Push quiz data to Yoopta via commitBlockProps (Slate + block.value
+    // atomically). No-op for learners — they must never mutate the
+    // editor tree.
+    const commitQuiz = (next: QuizData | ((prev: QuizData) => QuizData)) => {
+        const resolved =
+            typeof next === 'function' ? (next as any)(quizDataRef.current) : next;
+        quizDataRef.current = resolved;
+        setQuizData(resolved);
+        if (isReadOnly) return;
+        commitBlockProps(editor, blockId, element, {
+            quizData: resolved,
+            editorType: 'quizBlockEditor',
+        });
+    };
+
+    // Seed Yoopta on first mount if the block has no stored quiz data.
+    // Without this, element.props.quizData stays undefined and a first
+    // Save Draft ships the DEFAULT_MCQ fallback instead of whatever the
+    // user has typed locally. Skipped for learners — they shouldn't
+    // mutate published content.
+    useEffect(() => {
+        if (!isReadOnly && !hasStoredQuiz) {
+            commitBlockProps(editor, blockId, element, {
+                quizData: initialData,
+                editorType: 'quizBlockEditor',
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Sync local state when element props change (e.g. after deserialization)
     useEffect(() => {
         const propQuiz = element?.props?.quizData;
         if (propQuiz && JSON.stringify(propQuiz) !== JSON.stringify(quizData)) {
+            quizDataRef.current = propQuiz;
             setQuizData(propQuiz);
         }
     }, [element?.props?.quizData]);
 
-    // Persist state to Yoopta/Slate store
-    useEffect(() => {
-        if (isFirstRender.current) {
-            isFirstRender.current = false;
-            return;
-        }
-        Elements.updateElement(editor, blockId, {
-            type: 'quizBlock',
-            props: {
-                ...element.props,
-                quizData,
-                editorType: 'quizBlockEditor',
-            },
-        });
-    }, [quizData]);
-
     const updateQuestion = (question: string) => {
-        setQuizData((prev) => ({ ...prev, question }));
+        commitQuiz((prev) => ({ ...prev, question }));
     };
 
     const updateExplanation = (explanation: string) => {
-        setQuizData((prev) => ({ ...prev, explanation }));
+        commitQuiz((prev) => ({ ...prev, explanation }));
     };
 
     const updateOptionText = (index: number, text: string) => {
-        setQuizData((prev) => ({
+        commitQuiz((prev) => ({
             ...prev,
             options: prev.options.map((opt, i) => (i === index ? { ...opt, text } : opt)),
         }));
     };
 
     const toggleCorrect = (index: number) => {
-        setQuizData((prev) => ({
+        commitQuiz((prev) => ({
             ...prev,
             options: prev.options.map((opt, i) => ({
                 ...opt,
@@ -95,7 +131,7 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
 
     const addOption = () => {
         if (quizData.options.length >= 6) return;
-        setQuizData((prev) => ({
+        commitQuiz((prev) => ({
             ...prev,
             options: [...prev.options, { text: '', isCorrect: false }],
         }));
@@ -103,7 +139,7 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
 
     const removeOption = (index: number) => {
         if (quizData.options.length <= 2) return;
-        setQuizData((prev) => ({
+        commitQuiz((prev) => ({
             ...prev,
             options: prev.options.filter((_, i) => i !== index),
         }));
@@ -111,7 +147,7 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
 
     const switchType = (type: 'mcq' | 'trueFalse') => {
         if (type === 'trueFalse') {
-            setQuizData((prev) => ({
+            commitQuiz((prev) => ({
                 ...prev,
                 type,
                 options: [
@@ -120,7 +156,7 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                 ],
             }));
         } else {
-            setQuizData((prev) => ({
+            commitQuiz((prev) => ({
                 ...prev,
                 type,
                 options: DEFAULT_MCQ.options.map((o) => ({ ...o })),
@@ -175,7 +211,7 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                     Quiz Block
                 </span>
                 <div style={{ display: 'flex', gap: '6px' }}>
-                    {isEditing && (
+                    {!isReadOnly && isEditing && (
                         <>
                             <button
                                 onClick={() => switchType('mcq')}
@@ -207,23 +243,25 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                             </button>
                         </>
                     )}
-                    <button
-                        onClick={() => {
-                            setIsEditing(!isEditing);
-                            handleReset();
-                        }}
-                        style={{
-                            padding: '3px 10px',
-                            fontSize: '12px',
-                            border: '1px solid #c7d2fe',
-                            borderRadius: '4px',
-                            backgroundColor: 'white',
-                            color: '#666',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        {isEditing ? 'Preview' : 'Edit'}
-                    </button>
+                    {!isReadOnly && (
+                        <button
+                            onClick={() => {
+                                setIsEditing(!isEditing);
+                                handleReset();
+                            }}
+                            style={{
+                                padding: '3px 10px',
+                                fontSize: '12px',
+                                border: '1px solid #c7d2fe',
+                                borderRadius: '4px',
+                                backgroundColor: 'white',
+                                color: '#666',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            {isEditing ? 'Preview' : 'Edit'}
+                        </button>
+                    )}
                 </div>
             </div>
 

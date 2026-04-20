@@ -313,31 +313,55 @@ export function NodeConfigPanel() {
                         {selectedQueryKey?.required_params && selectedQueryKey.required_params.length > 0 && (
                             <div className="space-y-2 border-t pt-2 mt-2">
                                 <Label className="text-[10px] uppercase text-gray-400">Required Parameters</Label>
-                                {selectedQueryKey.required_params.map((param) => (
-                                    <div key={param}>
-                                        <Label className="text-xs">{param}</Label>
-                                        <VariablePicker
-                                            value={(data.config[param] as string) ?? ''}
-                                            onChange={(v) => handleConfigChange(param, v)}
-                                            placeholder={`Pick value for ${param}...`}
-                                            nodeId={selectedNode.id}
-                                        />
-                                    </div>
-                                ))}
+                                {selectedQueryKey.required_params.map((param) => {
+                                    const isSystemParam = param === 'instituteId';
+                                    const currentValue = (data.config[param] as string) ?? '';
+
+                                    if (isSystemParam && !currentValue) {
+                                        setTimeout(() => handleConfigChange(param, "#ctx['instituteId']"), 0);
+                                    }
+
+                                    return (
+                                        <div key={param}>
+                                            <Label className="text-xs">{param}</Label>
+                                            {isSystemParam ? (
+                                                <div className="mt-1">
+                                                    <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+                                                        <span>Auto-filled from workflow context</span>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <VariablePicker
+                                                    value={currentValue}
+                                                    onChange={(v) => handleConfigChange(param, v)}
+                                                    placeholder={`Pick or type value for ${param}...`}
+                                                    nodeId={selectedNode.id}
+                                                />
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
-                        {/* Optional params from catalog */}
+                        {/* Optional params from catalog — all use text input by default */}
                         {selectedQueryKey?.optional_params && selectedQueryKey.optional_params.length > 0 && (
                             <div className="space-y-2 border-t pt-2 mt-2">
                                 <Label className="text-[10px] uppercase text-gray-400">Optional Filters</Label>
                                 {selectedQueryKey.optional_params.map((param) => (
                                     <div key={param}>
                                         <Label className="text-xs text-gray-500">{param} <span className="text-gray-300">(optional)</span></Label>
-                                        <VariablePicker
+                                        <Input
                                             value={(data.config[param] as string) ?? ''}
-                                            onChange={(v) => handleConfigChange(param, v)}
-                                            placeholder={`Filter by ${param}...`}
-                                            nodeId={selectedNode.id}
+                                            onChange={(e) => handleConfigChange(param, e.target.value)}
+                                            className="mt-1"
+                                            placeholder={
+                                                param === 'daysAgo' || param === 'daysBack' ? 'e.g. 5'
+                                                : param === 'daysUntilExpiry' ? 'e.g. 7'
+                                                : param === 'status' ? 'e.g. ACTIVE'
+                                                : param.includes('Date') ? 'YYYY-MM-DD'
+                                                : param.includes('Id') ? `Enter ${param} or leave empty for all`
+                                                : `Enter ${param}...`
+                                            }
                                         />
                                     </div>
                                 ))}

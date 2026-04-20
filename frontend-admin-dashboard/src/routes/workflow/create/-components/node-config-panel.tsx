@@ -8,6 +8,7 @@ import { VariablePicker } from './variable-picker';
 import { ConditionBuilder } from './condition-builder';
 import { AggregateBuilder } from './aggregate-builder';
 import { KeyValueBuilder } from './key-value-builder';
+import { EventEntityPicker } from './event-entity-picker';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import {
@@ -343,28 +344,49 @@ export function NodeConfigPanel() {
                                 })}
                             </div>
                         )}
-                        {/* Optional params from catalog — all use text input by default */}
+                        {/* Optional params from catalog */}
                         {selectedQueryKey?.optional_params && selectedQueryKey.optional_params.length > 0 && (
                             <div className="space-y-2 border-t pt-2 mt-2">
                                 <Label className="text-[10px] uppercase text-gray-400">Optional Filters</Label>
-                                {selectedQueryKey.optional_params.map((param) => (
-                                    <div key={param}>
-                                        <Label className="text-xs text-gray-500">{param} <span className="text-gray-300">(optional)</span></Label>
-                                        <Input
-                                            value={(data.config[param] as string) ?? ''}
-                                            onChange={(e) => handleConfigChange(param, e.target.value)}
-                                            className="mt-1"
-                                            placeholder={
-                                                param === 'daysAgo' || param === 'daysBack' ? 'e.g. 5'
-                                                : param === 'daysUntilExpiry' ? 'e.g. 7'
-                                                : param === 'status' ? 'e.g. ACTIVE'
-                                                : param.includes('Date') ? 'YYYY-MM-DD'
-                                                : param.includes('Id') ? `Enter ${param} or leave empty for all`
-                                                : `Enter ${param}...`
-                                            }
-                                        />
-                                    </div>
-                                ))}
+                                {selectedQueryKey.optional_params.map((param) => {
+                                    // Map param names to EventEntityPicker types
+                                    const entityTypeMap: Record<string, string> = {
+                                        audienceId: 'AUDIENCE',
+                                        batchId: 'PACKAGE_SESSION',
+                                        liveSessionId: 'LIVE_SESSION',
+                                        inviteId: 'ENROLL_INVITE',
+                                    };
+                                    const entityType = entityTypeMap[param];
+
+                                    return (
+                                        <div key={param}>
+                                            <Label className="text-xs text-gray-500">{param} <span className="text-gray-300">(optional)</span></Label>
+                                            {entityType ? (
+                                                <div className="mt-1">
+                                                    <EventEntityPicker
+                                                        eventAppliedType={entityType}
+                                                        value={(data.config[param] as string) || undefined}
+                                                        onChange={(id) => handleConfigChange(param, id ?? '')}
+                                                        instituteId={instituteId}
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <Input
+                                                    value={(data.config[param] as string) ?? ''}
+                                                    onChange={(e) => handleConfigChange(param, e.target.value)}
+                                                    className="mt-1"
+                                                    placeholder={
+                                                        param === 'daysAgo' || param === 'daysBack' ? 'e.g. 5'
+                                                        : param === 'daysUntilExpiry' ? 'e.g. 7'
+                                                        : param === 'status' ? 'e.g. ACTIVE'
+                                                        : param.includes('Date') ? 'YYYY-MM-DD'
+                                                        : `Enter ${param}...`
+                                                    }
+                                                />
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                         <div>

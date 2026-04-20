@@ -76,4 +76,18 @@ public class UserInternalController {
         return CsvUtil.convertUserListToCsv(users, "inactive_users.csv");
     }
 
+    /**
+     * Internal, HMAC-authenticated equivalent of the public autosuggest-users
+     * endpoint. Lets other services do a free-text user search against
+     * auth_service's DB (full_name / email / mobile_number) scoped to an
+     * institute. Returns up to 10 matches.
+     */
+    @GetMapping("/autosuggest-users")
+    public ResponseEntity<List<UserDTO>> autoSuggestUsersInternal(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "roles", required = false) List<String> roles,
+            @RequestParam("query") String query) {
+        return ResponseEntity.ok(userService.autoSuggestUsers(instituteId, roles, query));
+    }
+
 }

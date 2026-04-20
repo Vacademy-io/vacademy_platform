@@ -304,6 +304,37 @@ public class AuthService {
      * @param mobileNumber User's phone number in any format
      * @return UserDTO if found, null if not found
      */
+    /**
+     * Search users in auth_service by free-text query (name/email/mobile),
+     * scoped to an institute. Backed by the autosuggest-users endpoint.
+     * Returns up to 10 matches.
+     */
+    public List<UserDTO> autosuggestUsers(String instituteId, String query) {
+        if (instituteId == null || instituteId.isBlank() || query == null || query.isBlank()) {
+            return List.of();
+        }
+        try {
+            String endpoint = AuthServiceRoutes.AUTOSUGGEST_USERS
+                    + "?instituteId=" + java.net.URLEncoder.encode(instituteId, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&query=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    null);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                ObjectMapper objectMapper = new ObjectMapper();
+                return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {});
+            }
+            return List.of();
+        } catch (Exception e) {
+            throw new VacademyException("Failed to autosuggest users: " + e.getMessage());
+        }
+    }
+
     public UserDTO getUserByMobileNumber(String mobileNumber) {
         if (mobileNumber == null || mobileNumber.isBlank()) {
             return null;

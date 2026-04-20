@@ -19,4 +19,5 @@ public class AuthServiceRoutes {
     public static final String GET_USERS_WITH_CHILDREN = "/auth-service/v1/user/internal/users-with-children";
     public static final String GET_USER_BY_MOBILE = "/auth-service/v1/user/internal/user-by-mobile";
     public static final String UPDATE_INSTITUTE_SETTINGS = "/auth-service/internal/institute-settings";
+    public static final String AUTOSUGGEST_USERS = "/auth-service/internal/user/autosuggest-users";
 }

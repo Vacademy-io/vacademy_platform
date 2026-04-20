@@ -29,23 +29,42 @@ public class CollectionDashboardRepositoryImpl implements CollectionDashboardRep
         return clause.append(")) ").toString();
     }
 
+    // Reusable JOIN to the current adjustment history row. A RETRACTED event counts
+    // as "no effective adjustment" — the CASE expressions below gate on event_type.
+    private static final String ADJUSTMENT_JOIN =
+            "LEFT JOIN student_fee_adjustment_history h " +
+            "       ON h.id = sfp.current_adjustment_history_id ";
+
+    // Signed delta to apply on top of amount_expected for an approved adjustment.
+    private static final String ADJUSTMENT_DELTA =
+            "(CASE " +
+            "   WHEN h.event_type <> 'RETRACTED' AND h.resulting_status = 'APPROVED' AND h.adjustment_type = 'PENALTY' " +
+            "     THEN COALESCE(h.amount, 0) " +
+            "   WHEN h.event_type <> 'RETRACTED' AND h.resulting_status = 'APPROVED' AND h.adjustment_type = 'CONCESSION' " +
+            "     THEN -1 * COALESCE(h.amount, 0) " +
+            "   ELSE 0 " +
+            " END)";
+
+    private static final String NET_EXPECTED = "(sfp.amount_expected + " + ADJUSTMENT_DELTA + ")";
+
     private static final String BASE_WHERE =
             "FROM student_fee_payment sfp " +
             "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
+            ADJUSTMENT_JOIN +
             "WHERE cpo.institute_id = :instituteId " +
             "  AND sfp.status NOT IN ('CANCELLED','DROPPED') ";
 
     private static final String SUMMARY_SELECT =
             "SELECT " +
-            "  COALESCE(SUM(sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)),0), " +
+            "  COALESCE(SUM(" + NET_EXPECTED + "),0), " +
             "  COALESCE(SUM(CASE WHEN sfp.due_date <= CURRENT_DATE " +
-            "    THEN (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) ELSE 0 END),0), " +
+            "    THEN " + NET_EXPECTED + " ELSE 0 END),0), " +
             "  COALESCE(SUM(sfp.amount_paid),0), " +
             "  COALESCE(SUM(CASE " +
             "    WHEN sfp.due_date <= CURRENT_DATE " +
             "      AND sfp.status NOT IN ('WAIVED') " +
-            "      AND sfp.amount_paid < (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) " +
-            "    THEN (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) - sfp.amount_paid " +
+            "      AND sfp.amount_paid < " + NET_EXPECTED + " " +
+            "    THEN " + NET_EXPECTED + " - sfp.amount_paid " +
             "    ELSE 0 END),0) ";
 
     // Class-wise breakdown resolves each student_fee_payment row to the actual
@@ -63,20 +82,21 @@ public class CollectionDashboardRepositoryImpl implements CollectionDashboardRep
             "      || ' - ' || s.session_name," +
             "    'Unassigned'" +
             "  ), " +
-            "  COALESCE(SUM(sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)),0), " +
+            "  COALESCE(SUM(" + NET_EXPECTED + "),0), " +
             "  COALESCE(SUM(CASE WHEN sfp.due_date <= CURRENT_DATE " +
-            "    THEN (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) ELSE 0 END),0), " +
+            "    THEN " + NET_EXPECTED + " ELSE 0 END),0), " +
             "  COALESCE(SUM(sfp.amount_paid),0), " +
             "  COALESCE(SUM(CASE " +
             "    WHEN sfp.due_date <= CURRENT_DATE " +
             "      AND sfp.status NOT IN ('WAIVED') " +
-            "      AND sfp.amount_paid < (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) " +
-            "    THEN (sfp.amount_expected + (CASE WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'PENALTY' THEN COALESCE(sfp.adjustment_amount,0) WHEN sfp.adjustment_status = 'APPROVED' AND sfp.adjustment_type = 'CONCESSION' THEN -1 * COALESCE(sfp.adjustment_amount,0) ELSE 0 END)) - sfp.amount_paid " +
+            "      AND sfp.amount_paid < " + NET_EXPECTED + " " +
+            "    THEN " + NET_EXPECTED + " - sfp.amount_paid " +
             "    ELSE 0 END),0) ";
 
     private static final String CLASS_WISE_FROM_WHERE =
             "FROM student_fee_payment sfp " +
             "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
+            ADJUSTMENT_JOIN +
             "LEFT JOIN LATERAL ( " +
             "  SELECT ssigm.package_session_id " +
             "  FROM student_session_institute_group_mapping ssigm " +

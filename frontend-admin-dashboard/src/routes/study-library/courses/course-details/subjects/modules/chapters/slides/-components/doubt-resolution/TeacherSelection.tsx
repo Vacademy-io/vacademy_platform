@@ -32,23 +32,33 @@ export const TeacherSelection = ({
     filters,
     canChange,
     showCanAssign = true,
+    teachersOverride,
 }: {
     doubt: DoubtType;
     filters: FacultyFilterParams;
     canChange: boolean;
     showCanAssign?: boolean;
+    teachersOverride?: { id: string; name: string }[];
 }) => {
     const addReply = useAddReply();
     const InstituteId = getInstituteId();
-    const { data: TeachersList } = useTeacherList(InstituteId || '', 0, 100, filters, true);
+    const { data: TeachersList } = useTeacherList(
+        InstituteId || '',
+        0,
+        100,
+        filters,
+        !teachersOverride
+    );
 
     const teacherOptions = useMemo(
         () =>
-            TeachersList?.content?.map((teacher) => ({
+            teachersOverride ??
+            (TeachersList?.content?.map((teacher) => ({
                 id: teacher.id,
                 name: teacher.name,
-            })) || [],
-        [TeachersList?.content]
+            })) ||
+                []),
+        [TeachersList?.content, teachersOverride]
     );
 
     const [selectedTeachers, setSelectedTeachers] = useState<

@@ -12,6 +12,7 @@ import { Copy, Check, ArrowSquareOut, Trash, Plus } from '@phosphor-icons/react'
 import {
     initiateMetaOAuth,
     getSessionPages,
+    listPageForms,
     saveMetaConnector,
     saveGoogleConnector,
     listConnectors,
@@ -20,6 +21,35 @@ import {
     type MetaPage,
     type ConnectorListItem,
 } from '../-services/ad-platform-service';
+import { AUDIENCE_CAMPAIGNS_LIST } from '@/constants/urls';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+
+// ── Audience list hook ───────────────────────────────────────────────────────
+
+interface AudienceOption {
+    id: string;
+    name: string;
+}
+
+function useAudienceList(instituteId: string) {
+    return useQuery({
+        queryKey: ['audience-list-for-integrations', instituteId],
+        queryFn: async (): Promise<AudienceOption[]> => {
+            const res = await authenticatedAxiosInstance.post(AUDIENCE_CAMPAIGNS_LIST, {
+                institute_id: instituteId,
+                page: 0,
+                size: 200,
+            });
+            const items = res.data?.content ?? [];
+            return items.map((c: { id?: string; audience_id?: string; campaign_name: string }) => ({
+                id: c.audience_id ?? c.id ?? '',
+                name: c.campaign_name,
+            }));
+        },
+        enabled: !!instituteId,
+        staleTime: 60_000,
+    });
+}
 
 // ── Connector table ──────────────────────────────────────────────────────────
 
@@ -150,6 +180,7 @@ function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
     const [copied, setCopied] = useState(false);
     const instituteId = getCurrentInstituteId() ?? '';
     const webhookUrl = googleKey ? buildGoogleWebhookUrl(googleKey) : '';
+    const { data: audiences = [] } = useAudienceList(instituteId);
 
     const { mutate: save, isPending } = useMutation({
         mutationFn: () =>
@@ -182,12 +213,19 @@ function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
                     />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs">Audience ID</Label>
-                    <Input
-                        placeholder="Paste audience UUID"
+                    <Label className="text-xs">Audience</Label>
+                    <select
+                        className="w-full rounded-md border bg-white px-3 py-2 text-sm"
                         value={audienceId}
                         onChange={(e) => setAudienceId(e.target.value)}
-                    />
+                    >
+                        <option value="">Select audience...</option>
+                        {audiences.map((a) => (
+                            <option key={a.id} value={a.id}>
+                                {a.name}
+                            </option>
+                        ))}
+                    </select>
                 </div>
             </div>
             {webhookUrl && (
@@ -236,6 +274,7 @@ function AddMetaForm({
     const [formId, setFormId] = useState('');
     const [audienceId, setAudienceId] = useState('');
     const [sourceType, setSourceType] = useState<'FACEBOOK_ADS' | 'INSTAGRAM_ADS'>('FACEBOOK_ADS');
+    const { data: audiences = [] } = useAudienceList(instituteId);
 
     useEffect(() => {
         if (sessionKeyFromUrl) setSessionKey(sessionKeyFromUrl);
@@ -249,6 +288,14 @@ function AddMetaForm({
         queryKey: ['meta-pages', sessionKey],
         queryFn: () => getSessionPages(sessionKey),
         enabled: !!sessionKey,
+        retry: false,
+    });
+
+    // Fetch forms when a page is selected
+    const { data: forms = [], isLoading: loadingForms } = useQuery({
+        queryKey: ['meta-forms', sessionKey, selectedPageId],
+        queryFn: () => listPageForms(sessionKey, selectedPageId),
+        enabled: !!sessionKey && !!selectedPageId,
         retry: false,
     });
 
@@ -339,20 +386,51 @@ function AddMetaForm({
                             </select>
                         </div>
                         <div className="space-y-1">
-                            <Label className="text-xs">Lead Gen Form ID</Label>
-                            <Input
-                                placeholder="e.g. 123456789012345"
-                                value={formId}
-                                onChange={(e) => setFormId(e.target.value)}
-                            />
+                            <Label className="text-xs">Lead Gen Form</Label>
+                            {loadingForms ? (
+                                <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                                    <div className="size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                                    Loading forms...
+                                </div>
+                            ) : forms.length > 0 ? (
+                                <select
+                                    className="w-full rounded-md border bg-white px-3 py-2 text-sm"
+                                    value={formId}
+                                    onChange={(e) => setFormId(e.target.value)}
+                                >
+                                    <option value="">Select a form...</option>
+                                    {forms.map((f) => (
+                                        <option key={f.id} value={f.id}>
+                                            {f.name} ({f.id})
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <Input
+                                    placeholder={
+                                        selectedPageId
+                                            ? 'No forms found — enter ID manually'
+                                            : 'Select a page first'
+                                    }
+                                    value={formId}
+                                    onChange={(e) => setFormId(e.target.value)}
+                                />
+                            )}
                         </div>
                         <div className="space-y-1">
-                            <Label className="text-xs">Audience ID</Label>
-                            <Input
-                                placeholder="Paste audience UUID"
+                            <Label className="text-xs">Audience</Label>
+                            <select
+                                className="w-full rounded-md border bg-white px-3 py-2 text-sm"
                                 value={audienceId}
                                 onChange={(e) => setAudienceId(e.target.value)}
-                            />
+                            >
+                                <option value="">Select audience...</option>
+                                {audiences.map((a) => (
+                                    <option key={a.id} value={a.id}>
+                                        {a.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                         <div className="space-y-1">
                             <Label className="text-xs">Source Type</Label>

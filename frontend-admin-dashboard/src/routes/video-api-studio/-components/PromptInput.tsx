@@ -160,7 +160,7 @@ export function PromptInput({
     const [indexedVideos, setIndexedVideos] = useState<
         Array<{ id: string; name: string; mode: string; duration_seconds: number | null; status: string }>
     >([]);
-    const [selectedInputVideoId, setSelectedInputVideoId] = useState<string | null>(null);
+    const [selectedInputVideoIds, setSelectedInputVideoIds] = useState<string[]>([]);
     const [inputVideoAudio, setInputVideoAudio] = useState<'original' | 'tts'>('tts');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -314,8 +314,8 @@ export function PromptInput({
             prompt: prompt.trim(),
             ...options,
             ...(referenceFiles.length > 0 ? { reference_files: referenceFiles } : {}),
-            ...(selectedInputVideoId
-                ? { input_video_id: selectedInputVideoId, input_video_audio: inputVideoAudio }
+            ...(selectedInputVideoIds.length > 0
+                ? { input_video_ids: selectedInputVideoIds, input_video_audio: inputVideoAudio }
                 : {}),
         });
     };
@@ -567,40 +567,57 @@ export function PromptInput({
                         </div>
                     </OptionBubble>
 
-                    {/* Source Video Selector */}
+                    {/* Source Video Selector (multi-select, max 5) */}
                     {indexedVideos.length > 0 && (
                         <OptionBubble
                             icon={<Film className="size-3" />}
-                            label="Source Video"
+                            label="Source Videos"
                             value={
-                                selectedInputVideoId
-                                    ? indexedVideos.find((v) => v.id === selectedInputVideoId)?.name || 'Selected'
+                                selectedInputVideoIds.length > 0
+                                    ? `${selectedInputVideoIds.length} selected`
                                     : 'None'
                             }
                         >
-                            <Select
-                                value={selectedInputVideoId || '__none__'}
-                                onValueChange={(v) => setSelectedInputVideoId(v === '__none__' ? null : v)}
-                            >
-                                <SelectTrigger className="h-8 text-xs">
-                                    <SelectValue placeholder="No source video" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="__none__" className="text-xs">
-                                        None (text prompt only)
-                                    </SelectItem>
-                                    {indexedVideos.map((v) => (
-                                        <SelectItem key={v.id} value={v.id} className="text-xs">
-                                            {v.name} ({v.mode}, {v.duration_seconds ? `${Math.round(v.duration_seconds)}s` : '?'})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <div className="max-h-48 space-y-1 overflow-y-auto">
+                                {indexedVideos.map((v) => {
+                                    const isChecked = selectedInputVideoIds.includes(v.id);
+                                    return (
+                                        <label
+                                            key={v.id}
+                                            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={() => {
+                                                    if (isChecked) {
+                                                        const next = selectedInputVideoIds.filter((id) => id !== v.id);
+                                                        setSelectedInputVideoIds(next);
+                                                        // If went from multi to single, allow original audio again
+                                                    } else if (selectedInputVideoIds.length < 5) {
+                                                        const next = [...selectedInputVideoIds, v.id];
+                                                        setSelectedInputVideoIds(next);
+                                                        // Multi-source forces TTS
+                                                        if (next.length > 1) setInputVideoAudio('tts');
+                                                    }
+                                                }}
+                                                className="size-3 rounded"
+                                            />
+                                            <span className="flex-1 truncate">
+                                                {v.name} ({v.mode}, {v.duration_seconds ? `${Math.round(v.duration_seconds)}s` : '?'})
+                                            </span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            {selectedInputVideoIds.length >= 5 && (
+                                <p className="mt-1 text-xs text-muted-foreground">Max 5 videos</p>
+                            )}
                         </OptionBubble>
                     )}
 
-                    {/* Audio Source Toggle (visible when source video is selected) */}
-                    {selectedInputVideoId && (
+                    {/* Audio Source Toggle (visible when source video(s) selected) */}
+                    {selectedInputVideoIds.length > 0 && (
                         <OptionBubble
                             icon={<Mic className="size-3" />}
                             label="Audio"
@@ -608,12 +625,15 @@ export function PromptInput({
                         >
                             <div className="inline-flex w-full rounded-lg border bg-muted p-0.5">
                                 <button
-                                    onClick={() => setInputVideoAudio('original')}
+                                    onClick={() => {
+                                        if (selectedInputVideoIds.length <= 1) setInputVideoAudio('original');
+                                    }}
                                     className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                                         inputVideoAudio === 'original'
                                             ? 'bg-background text-foreground shadow-sm'
                                             : 'text-muted-foreground hover:text-foreground'
-                                    }`}
+                                    } ${selectedInputVideoIds.length > 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                    title={selectedInputVideoIds.length > 1 ? 'Original audio only available with single video' : ''}
                                 >
                                     Original Audio
                                 </button>
@@ -628,6 +648,11 @@ export function PromptInput({
                                     AI Narration
                                 </button>
                             </div>
+                            {selectedInputVideoIds.length > 1 && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Multiple videos require AI narration
+                                </p>
+                            )}
                         </OptionBubble>
                     )}
 

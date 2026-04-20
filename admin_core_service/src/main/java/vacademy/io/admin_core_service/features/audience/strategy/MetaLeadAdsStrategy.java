@@ -288,6 +288,34 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         return pages;
     }
 
+    /**
+     * List all lead gen forms for a Facebook Page.
+     * Returns [{id, name, status}] — no tokens exposed.
+     */
+    public List<Map<String, String>> listPageForms(String pageId, String pageAccessToken) {
+        String url = GRAPH_API_BASE + "/" + pageId + "/leadgen_forms"
+                + "?access_token=" + pageAccessToken
+                + "&fields=id,name,status";
+
+        JsonNode response = webClientBuilder.build()
+                .get().uri(url)
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .block();
+
+        List<Map<String, String>> forms = new ArrayList<>();
+        if (response == null) return forms;
+
+        for (JsonNode form : response.path("data")) {
+            Map<String, String> f = new LinkedHashMap<>();
+            f.put("id", form.path("id").asText());
+            f.put("name", form.path("name").asText("Unnamed Form"));
+            f.put("status", form.path("status").asText("ACTIVE"));
+            forms.add(f);
+        }
+        return forms;
+    }
+
     @Override
     public List<PlatformFormField> fetchFormFields(String formId, String accessToken) {
         String url = GRAPH_API_BASE + "/" + formId + "?access_token=" + accessToken

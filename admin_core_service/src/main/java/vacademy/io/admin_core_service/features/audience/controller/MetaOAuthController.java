@@ -231,7 +231,27 @@ public class MetaOAuthController {
         return ResponseEntity.ok(pages);
     }
 
-    // ── Step 4: Form fields ───────────────────────────────────────────────────
+    // ── Step 4a: List forms for a page ──────────────────────────────────────
+
+    /**
+     * List all lead gen forms for a given Facebook Page.
+     * Returns [{id, name, status}] — no tokens exposed.
+     */
+    @GetMapping("/session/{sessionKey}/pages/{pageId}/forms")
+    public ResponseEntity<List<Map<String, String>>> listPageForms(
+            @PathVariable String sessionKey,
+            @PathVariable String pageId) {
+
+        OAuthConnectState state = stateRepository
+                .findValidById(sessionKey, LocalDateTime.now())
+                .orElseThrow(() -> new VacademyException("Session not found or expired"));
+
+        String pageToken = resolvePageToken(state, pageId);
+        List<Map<String, String>> forms = metaStrategy.listPageForms(pageId, pageToken);
+        return ResponseEntity.ok(forms);
+    }
+
+    // ── Step 4b: Form fields ─────────────────────────────────────────────────
 
     /**
      * Proxy to fetch field definitions for a lead gen form.

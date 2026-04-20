@@ -72,6 +72,17 @@ export const getFormFields = async (
     return res.data;
 };
 
+/** Step 4a: List lead gen forms for a page (after page selection). */
+export const listPageForms = async (
+    sessionKey: string,
+    pageId: string
+): Promise<{ id: string; name: string; status: string }[]> => {
+    const res = await authenticatedAxiosInstance.get(
+        `${BASE}/session/${sessionKey}/pages/${pageId}/forms`
+    );
+    return Array.isArray(res.data) ? res.data : [];
+};
+
 /** Step 5: Save a Meta connector. */
 export const saveMetaConnector = async (
     request: AdConnectorSetupRequest

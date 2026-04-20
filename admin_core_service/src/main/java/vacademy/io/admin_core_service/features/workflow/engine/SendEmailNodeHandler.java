@@ -157,10 +157,36 @@ public class SendEmailNodeHandler implements NodeHandler {
             List<Map<String, Object>> allEmailRequests = new ArrayList<>();
             List<EmailExecutionDetails.FailedEmail> failedEmails = new ArrayList<>();
 
+            // Get node-level templateName and templateVars (if configured in the UI)
+            String nodeLevelTemplateName = null;
+            Map<String, Object> nodeLevelTemplateVars = null;
+            try {
+                com.fasterxml.jackson.databind.JsonNode configRoot = objectMapper.readTree(nodeConfigJson);
+                if (configRoot.has("templateName") && !configRoot.get("templateName").asText("").isBlank()) {
+                    nodeLevelTemplateName = configRoot.get("templateName").asText();
+                }
+                if (configRoot.has("templateVars") && configRoot.get("templateVars").isObject()) {
+                    nodeLevelTemplateVars = objectMapper.convertValue(configRoot.get("templateVars"), Map.class);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse node-level template config", e);
+            }
+
             for (Object item : items) {
                 Map<String, Object> itemContext = new HashMap<>(context);
-                itemContext.put("item", item); // 'item' is now the recipient email (for attachment) or user map (for
-                                               // regular)
+
+                // If node config has a templateName, inject it into the item so the handler uses the template
+                // instead of the item's pre-built subject/body
+                if (nodeLevelTemplateName != null && item instanceof Map) {
+                    Map<String, Object> enrichedItem = new HashMap<>((Map<String, Object>) item);
+                    enrichedItem.put("templateName", nodeLevelTemplateName);
+                    if (nodeLevelTemplateVars != null) {
+                        enrichedItem.put("templateVars", nodeLevelTemplateVars);
+                    }
+                    itemContext.put("item", enrichedItem);
+                } else {
+                    itemContext.put("item", item);
+                }
 
                 List<Map<String, Object>> itemRequests = processForEachOperation(sendEmailNodeDTO.getForEach(),
                         itemContext, item, failedEmails);

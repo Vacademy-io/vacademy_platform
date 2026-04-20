@@ -23,6 +23,7 @@ import vacademy.io.admin_core_service.features.fee_management.entity.AftInstallm
 import vacademy.io.admin_core_service.features.fee_management.entity.AssignedFeeValue;
 import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import vacademy.io.admin_core_service.features.fee_management.entity.FeeType;
+import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeAdjustmentHistory;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeAllocationLedger;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 import vacademy.io.admin_core_service.features.fee_management.repository.*;
@@ -75,44 +76,12 @@ public class FeeTrackingService {
         @Autowired
         private PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionInviteRepo;
 
+        @Autowired
+        private AdjustmentResolver adjustmentResolver;
+
         @PersistenceContext
         private EntityManager entityManager;
 
-        private StudentFeePaymentDTO mapToPaymentDTO(StudentFeePayment entity) {
-                return StudentFeePaymentDTO.builder()
-                                .id(entity.getId())
-                                .userPlanId(entity.getUserPlanId())
-                                .cpoId(entity.getCpoId())
-                                .amountExpected(entity.getAmountExpected())
-                                .adjustmentAmount(entity.getAdjustmentAmount())
-                                .adjustmentReason(entity.getAdjustmentReason())
-                                .adjustmentType(entity.getAdjustmentType())
-                                .adjustmentStatus(entity.getAdjustmentStatus())
-                                .amountPaid(entity.getAmountPaid())
-                                .dueDate(entity.getDueDate())
-                                .status(entity.getStatus())
-                                .build();
-        }
-
-        private BigDecimal computeAdjustmentEffect(StudentFeePayment bill) {
-                if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
-                BigDecimal amt = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
-                if ("PENALTY".equals(bill.getAdjustmentType())) return amt;
-                if ("CONCESSION".equals(bill.getAdjustmentType())) return amt.negate();
-                return BigDecimal.ZERO;
-        }
-
-        private BigDecimal computeConcession(StudentFeePayment bill) {
-                if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
-                if (!"CONCESSION".equals(bill.getAdjustmentType())) return BigDecimal.ZERO;
-                return bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
-        }
-
-        private BigDecimal computePenalty(StudentFeePayment bill) {
-                if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
-                if (!"PENALTY".equals(bill.getAdjustmentType())) return BigDecimal.ZERO;
-                return bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
-        }
 
         private StudentFeeAllocationLedgerDTO mapToLedgerDTO(StudentFeeAllocationLedger entity) {
                 return StudentFeeAllocationLedgerDTO.builder()
@@ -168,6 +137,10 @@ public class FeeTrackingService {
                 List<String> cpoIds = allPayments.stream().map(StudentFeePayment::getCpoId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
                 Map<String, String> cpoNameMap = complexPaymentOptionRepository.findAllById(cpoIds).stream().collect(Collectors.toMap(ComplexPaymentOption::getId, ComplexPaymentOption::getName, (a, b) -> a));
 
+                // Batch-load current adjustment events to avoid N+1 in the aggregation loop
+                Map<String, StudentFeeAdjustmentHistory> adjustmentMap =
+                                adjustmentResolver.loadCurrentEventsForBills(allPayments);
+
                 // Step 4: Grouping by [userId, cpoId]
                 Map<String, List<StudentFeePayment>> groupedPayments = allPayments.stream()
                         .collect(Collectors.groupingBy(p -> p.getUserId() + "_" + p.getCpoId()));
@@ -189,7 +162,8 @@ public class FeeTrackingService {
                         BigDecimal expected = p.getAmountExpected() != null ? p.getAmountExpected() : BigDecimal.ZERO;
                         BigDecimal paid = p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO;
 
-                        BigDecimal netExpected = expected.add(computeAdjustmentEffect(p));
+                        StudentFeeAdjustmentHistory pEvent = adjustmentResolver.lookup(p, adjustmentMap);
+                        BigDecimal netExpected = expected.add(adjustmentResolver.computeAdjustmentEffect(pEvent));
                         totalExpectedAmount = totalExpectedAmount.add(netExpected);
                         totalPaidAmount = totalPaidAmount.add(paid);
 
@@ -379,10 +353,15 @@ public class FeeTrackingService {
             List<String> installmentIds = payments.stream().map(StudentFeePayment::getIId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
             Map<String, Integer> installmentNumberMap = fetchInstallmentNumberMap(installmentIds);
 
+            Map<String, StudentFeeAdjustmentHistory> adjustmentMap =
+                    adjustmentResolver.loadCurrentEventsForBills(payments);
+
             return payments.stream().map(p -> {
                 BigDecimal expected = p.getAmountExpected() != null ? p.getAmountExpected() : BigDecimal.ZERO;
                 BigDecimal paid = p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO;
-                BigDecimal adjustmentEffect = computeAdjustmentEffect(p);
+                StudentFeeAdjustmentHistory event = adjustmentResolver.lookup(p, adjustmentMap);
+                StudentFeeAdjustmentHistory effective = adjustmentResolver.effectiveOrNull(event);
+                BigDecimal adjustmentEffect = adjustmentResolver.computeAdjustmentEffect(effective);
                 String name = feeTypeNameMap.getOrDefault(p.getAsvId(), "N/A");
                 Integer num = installmentNumberMap.getOrDefault(p.getIId(), null);
 
@@ -390,9 +369,9 @@ public class FeeTrackingService {
                         .feeTypeName(name)
                         .installmentNumber(num)
                         .amountExpected(expected)
-                        .adjustmentAmount(p.getAdjustmentAmount())
-                        .adjustmentType(p.getAdjustmentType())
-                        .adjustmentStatus(p.getAdjustmentStatus())
+                        .adjustmentAmount(effective != null ? effective.getAmount() : null)
+                        .adjustmentType(effective != null ? effective.getAdjustmentType() : null)
+                        .adjustmentStatus(effective != null ? effective.getResultingStatus() : null)
                         .amountPaid(paid)
                         .dueAmount(expected.add(adjustmentEffect).subtract(paid))
                         .dueDate(p.getDueDate())
@@ -470,10 +449,12 @@ public class FeeTrackingService {
         @Transactional(readOnly = true)
         public List<StudentFeePaymentDTO> getPendingAdjustments(String instituteId) {
                 List<StudentFeePayment> pending = studentFeePaymentRepository
-                        .findByInstituteIdAndAdjustmentStatus(instituteId, "PENDING_FOR_APPROVAL");
+                        .findBillsWithCurrentResultingStatus(instituteId, "PENDING_FOR_APPROVAL");
                 if (pending.isEmpty()) return Collections.emptyList();
 
                 Map<String, FeeMeta> metaMap = buildFeeMetaMap(pending);
+                Map<String, StudentFeeAdjustmentHistory> adjustmentMap =
+                                adjustmentResolver.loadCurrentEventsForBills(pending);
 
                 List<String> userIds = pending.stream()
                         .map(StudentFeePayment::getUserId)
@@ -483,7 +464,10 @@ public class FeeTrackingService {
 
                 return pending.stream()
                         .map(entity -> {
-                                StudentFeePaymentDTO dto = mapToPaymentDTO(entity, metaMap.getOrDefault(entity.getId(), null));
+                                StudentFeePaymentDTO dto = mapToPaymentDTO(
+                                                entity,
+                                                metaMap.getOrDefault(entity.getId(), null),
+                                                adjustmentResolver.lookup(entity, adjustmentMap));
                                 dto.setUserId(entity.getUserId());
                                 UserDTO user = userMap.get(entity.getUserId());
                                 dto.setStudentName(user != null ? user.getFullName() : entity.getUserId());
@@ -501,9 +485,14 @@ public class FeeTrackingService {
                 }
 
                 Map<String, FeeMeta> billIdToMeta = buildFeeMetaMap(allBills);
+                Map<String, StudentFeeAdjustmentHistory> adjustmentMap =
+                                adjustmentResolver.loadCurrentEventsForBills(allBills);
 
                 return allBills.stream()
-                                .map(bill -> mapToPaymentDTO(bill, billIdToMeta.get(bill.getId())))
+                                .map(bill -> mapToPaymentDTO(
+                                                bill,
+                                                billIdToMeta.get(bill.getId()),
+                                                adjustmentResolver.lookup(bill, adjustmentMap)))
                                 .collect(Collectors.toList());
         }
 
@@ -677,9 +666,17 @@ public class FeeTrackingService {
         }
 
         private StudentFeePaymentDTO mapToPaymentDTO(StudentFeePayment entity, FeeMeta meta) {
+                return mapToPaymentDTO(entity, meta, adjustmentResolver.getCurrentEvent(entity));
+        }
+
+        private StudentFeePaymentDTO mapToPaymentDTO(
+                        StudentFeePayment entity,
+                        FeeMeta meta,
+                        StudentFeeAdjustmentHistory event) {
+                StudentFeeAdjustmentHistory effective = adjustmentResolver.effectiveOrNull(event);
                 BigDecimal expected = entity.getAmountExpected() != null ? entity.getAmountExpected() : BigDecimal.ZERO;
                 BigDecimal paid = entity.getAmountPaid() != null ? entity.getAmountPaid() : BigDecimal.ZERO;
-                BigDecimal amountDue = expected.add(computeAdjustmentEffect(entity)).subtract(paid);
+                BigDecimal amountDue = expected.add(adjustmentResolver.computeAdjustmentEffect(effective)).subtract(paid);
 
                 Boolean isOverdue = false;
                 Long daysOverdue = null;
@@ -701,10 +698,10 @@ public class FeeTrackingService {
                                 .feeTypeCode(meta != null ? meta.feeTypeCode : null)
                                 .feeTypeDescription(meta != null ? meta.feeTypeDescription : null)
                                 .amountExpected(entity.getAmountExpected())
-                                .adjustmentAmount(entity.getAdjustmentAmount())
-                                .adjustmentReason(entity.getAdjustmentReason())
-                                .adjustmentType(entity.getAdjustmentType())
-                                .adjustmentStatus(entity.getAdjustmentStatus())
+                                .adjustmentAmount(effective != null ? effective.getAmount() : null)
+                                .adjustmentReason(effective != null ? effective.getReason() : null)
+                                .adjustmentType(effective != null ? effective.getAdjustmentType() : null)
+                                .adjustmentStatus(effective != null ? effective.getResultingStatus() : null)
                                 .amountPaid(entity.getAmountPaid())
                                 .dueDate(entity.getDueDate())
                                 .status(entity.getStatus())
@@ -763,6 +760,10 @@ public class FeeTrackingService {
                 }
             }
 
+            // Batch-load current adjustment events to avoid N+1
+            Map<String, StudentFeeAdjustmentHistory> adjustmentMap =
+                    adjustmentResolver.loadCurrentEventsForBills(bills);
+
             // Build line item DTOs with fresh post-payment amounts
             List<ReceiptDetailsDTO.ReceiptLineItemDTO> lineDTOs = new ArrayList<>();
             BigDecimal computedConcession = BigDecimal.ZERO;
@@ -773,16 +774,19 @@ public class FeeTrackingService {
                 FeeMeta meta = metaMap.get(sfp.getId());
                 BigDecimal expected = sfp.getAmountExpected() != null ? sfp.getAmountExpected() : BigDecimal.ZERO;
                 BigDecimal paid = sfp.getAmountPaid() != null ? sfp.getAmountPaid() : BigDecimal.ZERO;
-                BigDecimal adjustmentEffect = computeAdjustmentEffect(sfp);
+                StudentFeeAdjustmentHistory sfpEvent = adjustmentResolver.lookup(sfp, adjustmentMap);
+                StudentFeeAdjustmentHistory sfpEffective = adjustmentResolver.effectiveOrNull(sfpEvent);
+                BigDecimal adjustmentEffect = adjustmentResolver.computeAdjustmentEffect(sfpEffective);
                 BigDecimal balance = expected.add(adjustmentEffect).subtract(paid).max(BigDecimal.ZERO);
-                boolean approvedAdjustment = "APPROVED".equals(sfp.getAdjustmentStatus());
-                String adjustmentType = approvedAdjustment ? sfp.getAdjustmentType() : null;
-                BigDecimal adjustmentAmount = approvedAdjustment && sfp.getAdjustmentAmount() != null
-                        ? sfp.getAdjustmentAmount()
+                boolean approvedAdjustment = sfpEffective != null
+                        && "APPROVED".equals(sfpEffective.getResultingStatus());
+                String adjustmentType = approvedAdjustment ? sfpEffective.getAdjustmentType() : null;
+                BigDecimal adjustmentAmount = approvedAdjustment && sfpEffective.getAmount() != null
+                        ? sfpEffective.getAmount()
                         : BigDecimal.ZERO;
-                String adjustmentStatus = approvedAdjustment ? sfp.getAdjustmentStatus() : null;
-                computedConcession = computedConcession.add(computeConcession(sfp));
-                computedPenalty = computedPenalty.add(computePenalty(sfp));
+                String adjustmentStatus = approvedAdjustment ? sfpEffective.getResultingStatus() : null;
+                computedConcession = computedConcession.add(adjustmentResolver.computeConcession(sfpEffective));
+                computedPenalty = computedPenalty.add(adjustmentResolver.computePenalty(sfpEffective));
                 lineDTOs.add(ReceiptDetailsDTO.ReceiptLineItemDTO.builder()
                         .feeTypeName(meta != null ? meta.feeTypeName() : null)
                         .cpoName(meta != null ? meta.cpoName() : null)

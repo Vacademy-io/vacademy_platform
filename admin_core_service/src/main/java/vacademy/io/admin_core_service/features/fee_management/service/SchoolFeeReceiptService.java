@@ -63,24 +63,19 @@ import java.util.*;
 @Service
 public class SchoolFeeReceiptService {
 
+    @Autowired
+    private AdjustmentResolver adjustmentResolver;
+
     private BigDecimal computeAdjustmentEffect(StudentFeePayment bill) {
-        if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
-        BigDecimal amt = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
-        if ("PENALTY".equals(bill.getAdjustmentType())) return amt;
-        if ("CONCESSION".equals(bill.getAdjustmentType())) return amt.negate();
-        return BigDecimal.ZERO;
+        return adjustmentResolver.computeAdjustmentEffect(bill);
     }
 
     private BigDecimal computeConcession(StudentFeePayment bill) {
-        if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
-        if (!"CONCESSION".equals(bill.getAdjustmentType())) return BigDecimal.ZERO;
-        return bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+        return adjustmentResolver.computeConcession(bill);
     }
 
     private BigDecimal computePenalty(StudentFeePayment bill) {
-        if (!"APPROVED".equals(bill.getAdjustmentStatus())) return BigDecimal.ZERO;
-        if (!"PENALTY".equals(bill.getAdjustmentType())) return BigDecimal.ZERO;
-        return bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+        return adjustmentResolver.computePenalty(bill);
     }
 
     private static final String SCHOOL_FEE_RECEIPT_TEMPLATE_TYPE = "SCHOOL_FEE_RECEIPT";

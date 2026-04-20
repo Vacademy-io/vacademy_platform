@@ -39,18 +39,13 @@ public class FeeLedgerAllocationService {
     @Lazy
     private SchoolFeeReceiptService schoolFeeReceiptService;
 
+    @Autowired
+    private AdjustmentResolver adjustmentResolver;
+
     private BigDecimal computeAmountDue(StudentFeePayment bill) {
         BigDecimal expected = bill.getAmountExpected() != null ? bill.getAmountExpected() : BigDecimal.ZERO;
         BigDecimal paid = bill.getAmountPaid() != null ? bill.getAmountPaid() : BigDecimal.ZERO;
-        BigDecimal adjustment = BigDecimal.ZERO;
-        if ("APPROVED".equals(bill.getAdjustmentStatus())) {
-            BigDecimal amt = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
-            if ("PENALTY".equals(bill.getAdjustmentType())) {
-                adjustment = amt;
-            } else if ("CONCESSION".equals(bill.getAdjustmentType())) {
-                adjustment = amt.negate();
-            }
-        }
+        BigDecimal adjustment = adjustmentResolver.computeAdjustmentEffect(bill);
         return expected.add(adjustment).subtract(paid);
     }
 
@@ -60,10 +55,8 @@ public class FeeLedgerAllocationService {
      * - and remaining due <= 0
      */
     private boolean isAdjustmentSettled(StudentFeePayment bill) {
-        if (!"APPROVED".equals(bill.getAdjustmentStatus())) return false;
-        if (!"CONCESSION".equals(bill.getAdjustmentType())) return false;
-        BigDecimal amt = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
-        if (amt.compareTo(BigDecimal.ZERO) <= 0) return false;
+        BigDecimal concession = adjustmentResolver.computeConcession(bill);
+        if (concession.compareTo(BigDecimal.ZERO) <= 0) return false;
         return computeAmountDue(bill).compareTo(BigDecimal.ZERO) <= 0;
     }
 

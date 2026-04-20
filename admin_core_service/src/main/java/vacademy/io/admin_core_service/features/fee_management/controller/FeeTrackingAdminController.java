@@ -74,6 +74,9 @@ public class FeeTrackingAdminController {
     @Autowired
     private StudentFeeAdjustmentService studentFeeAdjustmentService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.service.AdjustmentHistoryQueryService adjustmentHistoryQueryService;
+
     @PostMapping("/{userId}/dues")
     public ResponseEntity<StudentDuesPageResponse> getStudentDues(
             @PathVariable("userId") String userId,
@@ -261,16 +264,17 @@ public class FeeTrackingAdminController {
     ) {
         AdjustmentType type = AdjustmentType.valueOf(request.getAdjustmentType().toUpperCase());
 
-        StudentFeePayment updated = studentFeeAdjustmentService.submitAdjustment(
+        StudentFeeAdjustmentService.AdjustmentResult result = studentFeeAdjustmentService.submitAdjustment(
                 request.getStudentFeePaymentId(),
                 request.getUserId(),
                 request.getAdjustmentAmount(),
                 type,
                 request.getAdjustmentReason(),
-                instituteId
+                instituteId,
+                adminUser
         );
 
-        return ResponseEntity.ok(buildAdjustmentResponse(updated));
+        return ResponseEntity.ok(buildAdjustmentResponse(result.bill(), result.event()));
     }
 
     /**
@@ -285,19 +289,20 @@ public class FeeTrackingAdminController {
     ) {
         AdjustmentStatus action = AdjustmentStatus.valueOf(request.getAction().toUpperCase());
 
-        StudentFeePayment updated = studentFeeAdjustmentService.reviewAdjustment(
+        StudentFeeAdjustmentService.AdjustmentResult result = studentFeeAdjustmentService.reviewAdjustment(
                 request.getStudentFeePaymentId(),
                 action,
                 instituteId,
                 adminUser
         );
 
-        return ResponseEntity.ok(buildAdjustmentResponse(updated));
+        return ResponseEntity.ok(buildAdjustmentResponse(result.bill(), result.event()));
     }
 
     /**
      * Retract an adjustment (pending, rejected, or approved).
-     * Resets all adjustment fields to null.
+     * Appends a RETRACTED event to the history; the installment's FK still
+     * points to the RETRACTED row so the audit trail remains intact.
      */
     @PatchMapping("/adjustment/retract")
     public ResponseEntity<?> retractAdjustment(
@@ -305,12 +310,30 @@ public class FeeTrackingAdminController {
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails adminUser
     ) {
-        StudentFeePayment updated = studentFeeAdjustmentService.retractAdjustment(
+        StudentFeeAdjustmentService.AdjustmentResult result = studentFeeAdjustmentService.retractAdjustment(
                 request.getStudentFeePaymentId(),
-                instituteId
+                instituteId,
+                adminUser
         );
 
-        return ResponseEntity.ok(buildAdjustmentResponse(updated));
+        return ResponseEntity.ok(buildAdjustmentResponse(result.bill(), result.event()));
+    }
+
+    /**
+     * Paginated adjustment history for a single installment. Powers the
+     * "History" section in the AdjustmentDialog on the Pay Installments page.
+     * DB-level pagination — default 20 per page.
+     */
+    @GetMapping("/installment/{installmentId}/adjustment-history")
+    public ResponseEntity<Page<vacademy.io.admin_core_service.features.fee_management.dto.AdjustmentHistoryDTO>> getAdjustmentHistory(
+            @PathVariable("installmentId") String installmentId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestAttribute("user") CustomUserDetails user) {
+        if (size <= 0 || size > 100) size = 20;
+        if (page < 0) page = 0;
+        return ResponseEntity.ok(
+                adjustmentHistoryQueryService.getHistoryForInstallment(installmentId, page, size));
     }
 
     /**
@@ -325,16 +348,27 @@ public class FeeTrackingAdminController {
         return ResponseEntity.ok(pending);
     }
 
-    private Map<String, Object> buildAdjustmentResponse(StudentFeePayment bill) {
+    private Map<String, Object> buildAdjustmentResponse(
+            StudentFeePayment bill,
+            vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeAdjustmentHistory event
+    ) {
         BigDecimal amountExpected = bill.getAmountExpected() != null ? bill.getAmountExpected() : BigDecimal.ZERO;
         BigDecimal amountPaid = bill.getAmountPaid() != null ? bill.getAmountPaid() : BigDecimal.ZERO;
-        BigDecimal adjustmentAmount = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
+
+        String eventType = event != null ? event.getEventType() : null;
+        String resultingStatus = event != null ? event.getResultingStatus() : null;
+        String adjustmentType = event != null ? event.getAdjustmentType() : null;
+        BigDecimal adjustmentAmount = (event != null && event.getAmount() != null)
+                ? event.getAmount() : BigDecimal.ZERO;
+
+        // A RETRACTED event means "no effective adjustment" — callers expect null fields.
+        boolean isRetracted = "RETRACTED".equals(eventType);
 
         BigDecimal amountDue = amountExpected.subtract(amountPaid);
-        if ("APPROVED".equals(bill.getAdjustmentStatus())) {
-            if ("PENALTY".equals(bill.getAdjustmentType())) {
+        if (!isRetracted && "APPROVED".equals(resultingStatus)) {
+            if ("PENALTY".equals(adjustmentType)) {
                 amountDue = amountDue.add(adjustmentAmount);
-            } else if ("CONCESSION".equals(bill.getAdjustmentType())) {
+            } else if ("CONCESSION".equals(adjustmentType)) {
                 amountDue = amountDue.subtract(adjustmentAmount);
             }
         }
@@ -342,10 +376,10 @@ public class FeeTrackingAdminController {
         Map<String, Object> resp = new java.util.HashMap<>();
         resp.put("student_fee_payment_id", bill.getId());
         resp.put("user_id", bill.getUserId());
-        resp.put("adjustment_amount", adjustmentAmount);
-        resp.put("adjustment_type", bill.getAdjustmentType());
-        resp.put("adjustment_status", bill.getAdjustmentStatus());
-        resp.put("adjustment_reason", bill.getAdjustmentReason());
+        resp.put("adjustment_amount", isRetracted ? BigDecimal.ZERO : adjustmentAmount);
+        resp.put("adjustment_type", isRetracted ? null : adjustmentType);
+        resp.put("adjustment_status", isRetracted ? null : resultingStatus);
+        resp.put("adjustment_reason", isRetracted || event == null ? null : event.getReason());
         resp.put("status", bill.getStatus());
         resp.put("amount_due", amountDue);
 

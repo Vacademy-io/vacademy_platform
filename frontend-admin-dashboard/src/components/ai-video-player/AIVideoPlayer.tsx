@@ -24,6 +24,10 @@ export interface Frame {
     sound_cues?: SoundCue[];
     /** Shot type from Director (e.g. "SOURCE_CLIP" for source video segments). */
     shot_type?: string;
+    /** Source video fields for SOURCE_CLIP shots */
+    source_start?: number;
+    source_end?: number;
+    source_video_index?: number;
 }
 
 /**
@@ -551,6 +555,48 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         };
     }, []);
 
+    // Source video preload: extract URL from SOURCE_CLIP frames, manage playback
+    const sourceVideoRef = useRef<HTMLVideoElement | null>(null);
+    const sourceVideoUrls = useMemo(() => {
+        const urls = new Map<number, string>();
+        for (const f of frames) {
+            if (f.shot_type !== 'SOURCE_CLIP' || !f.html) continue;
+            const m = f.html.match(/src="([^"]+)"/);
+            if (m) {
+                const idx = f.source_video_index ?? 0;
+                if (!urls.has(idx)) urls.set(idx, m[1].split('#')[0]);
+            }
+        }
+        return urls;
+    }, [frames]);
+
+    // Find the currently active SOURCE_CLIP frame (if any)
+    const activeSourceClip = useMemo(() => {
+        return frames.find(
+            (f) => f.shot_type === 'SOURCE_CLIP' && currentTime >= f.inTime && currentTime < f.exitTime
+        ) ?? null;
+    }, [frames, currentTime]);
+
+    // Seek source video when active clip changes
+    useEffect(() => {
+        const vid = sourceVideoRef.current;
+        if (!vid) return;
+        if (activeSourceClip) {
+            // Calculate source timestamp from output time
+            const srcStart = activeSourceClip.source_start ?? 0;
+            const srcEnd = activeSourceClip.source_end ?? srcStart;
+            const shotProgress = (currentTime - activeSourceClip.inTime) / Math.max(activeSourceClip.exitTime - activeSourceClip.inTime, 0.001);
+            const sourceT = srcStart + shotProgress * (srcEnd - srcStart);
+            // Only seek if diff > 0.5s (avoid constant seeking during playback)
+            if (Math.abs(vid.currentTime - sourceT) > 0.5) {
+                vid.currentTime = sourceT;
+            }
+            if (vid.paused && isPlaying) vid.play().catch(() => {});
+        } else {
+            if (!vid.paused) vid.pause();
+        }
+    }, [activeSourceClip, currentTime, isPlaying]);
+
     // Get ALL active frames at current time, sorted by z-index (lowest first for stacking)
     const activeFrames = useMemo(() => {
         if (frames.length === 0) {
@@ -714,6 +760,28 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                             }}
                             className="frame-wrapper"
                         >
+                            {/* Source video element — preloaded, shown behind iframes during SOURCE_CLIP shots */}
+                            {sourceVideoUrls.size > 0 && (
+                                <video
+                                    ref={sourceVideoRef}
+                                    src={sourceVideoUrls.values().next().value}
+                                    muted
+                                    playsInline
+                                    preload="auto"
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                        zIndex: 0,
+                                        opacity: activeSourceClip ? 1 : 0,
+                                        transition: 'opacity 0.3s ease',
+                                        pointerEvents: 'none',
+                                    }}
+                                />
+                            )}
                             {/* Render all active frames with proper z-index layering */}
                             {activeFrames.map((frame, index) => (
                                 <iframe
@@ -723,7 +791,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                                         width: '100%',
                                         height: '100%',
                                         border: 'none',
-                                        background: index === 0 ? '#ffffff' : 'transparent',
+                                        background: frame.shot_type === 'SOURCE_CLIP' ? 'transparent' : (index === 0 ? '#ffffff' : 'transparent'),
                                         position: 'absolute',
                                         top: 0,
                                         left: 0,

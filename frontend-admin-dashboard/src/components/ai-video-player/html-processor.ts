@@ -115,11 +115,9 @@ function getBaseStyles(palette?: { background?: string; text?: string; text_seco
                 justify-content: center;
             }
 
-            /* Ensure content is visible even if animations fail */
-            body * {
-                opacity: 1 !important;
-                visibility: visible !important;
-            }
+            /* Fallback: if GSAP fails to load, make content visible after 2s.
+               Don't use !important on opacity — it breaks GSAP animations
+               that use opacity:0 as their starting state. */
 
             /* Cutout asset images — transparent background, subtle depth */
             .generated-image[data-cutout="true"] {
@@ -1897,15 +1895,16 @@ function getHelperScripts(): string {
                 if(window.Prism) window.highlightCode();
             });
 
-            // Fallback: Force all elements visible after a delay (in case GSAP fails to load)
+            // Fallback: Force elements visible ONLY if GSAP failed to load
             setTimeout(function() {
-                document.querySelectorAll('[style*="opacity"]').forEach(function(el) {
+                if (window.gsap) return; // GSAP loaded — let animations handle visibility
+                document.querySelectorAll('[style*="opacity: 0"]').forEach(function(el) {
                     el.style.opacity = '1';
                 });
-                document.querySelectorAll('[style*="visibility"]').forEach(function(el) {
+                document.querySelectorAll('[style*="visibility: hidden"]').forEach(function(el) {
                     el.style.visibility = 'visible';
                 });
-            }, 500);
+            }, 3000);
         </script>
     `;
 }

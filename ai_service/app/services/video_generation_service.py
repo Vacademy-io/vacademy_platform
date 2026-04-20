@@ -689,7 +689,9 @@ class VideoGenerationService:
             "html": [
                 (None, "generated_images", "generated_images"),  # Directory - process FIRST to build image mapping
                 (None, "branding_meta", "branding_meta.json"),  # Branding metadata for audio delay
-                ("timeline_json", "timeline", "time_based_frame.json")  # Process AFTER images to update URLs
+                ("timeline_json", "timeline", "time_based_frame.json"),  # Process AFTER images to update URLs
+                ("audio_path", "audio", "narration.mp3"),  # Re-upload if audio was mixed with source clips
+                ("words_json", "words", "narration.words.json"),  # Re-upload if words were filtered
             ],
             "avatar": [("avatar_video_path", "avatar", "avatar_video.mp4")],
             "render": [("video_path", "video", "output.mp4")]

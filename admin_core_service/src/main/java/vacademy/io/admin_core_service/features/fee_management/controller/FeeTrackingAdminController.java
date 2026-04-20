@@ -337,6 +337,23 @@ public class FeeTrackingAdminController {
     }
 
     /**
+     * Institute-wide adjustment history. Powers the Adjustment Approvals page
+     * with tabs (Pending / Approved / Rejected / All) plus optional filters
+     * (actor, date range, adjustment types, student search).
+     *
+     * Filter is in the request body (POST) so multi-valued fields stay clean.
+     * Pagination is DB-level via Spring {@code Pageable} (default 20/page).
+     */
+    @PostMapping("/adjustment/history")
+    public ResponseEntity<Page<vacademy.io.admin_core_service.features.fee_management.dto.EnrichedAdjustmentHistoryDTO>> getInstituteAdjustmentHistory(
+            @RequestBody(required = false) vacademy.io.admin_core_service.features.fee_management.dto.InstituteAdjustmentHistoryFilterDTO filter,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(
+                adjustmentHistoryQueryService.getInstituteHistory(instituteId, filter));
+    }
+
+    /**
      * Get all installments with pending adjustment approvals for an institute.
      */
     @PostMapping("/adjustment/pending")

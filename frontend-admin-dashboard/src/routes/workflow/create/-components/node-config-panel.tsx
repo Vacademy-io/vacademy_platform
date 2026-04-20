@@ -67,6 +67,7 @@ function QueryRequiredParams({ params, config, onConfigChange, nodeId }: {
 export function NodeConfigPanel() {
     const selectedNodeId = useWorkflowBuilderStore((s) => s.selectedNodeId);
     const nodes = useWorkflowBuilderStore((s) => s.nodes);
+    const edges = useWorkflowBuilderStore((s) => s.edges);
     const updateNodeConfig = useWorkflowBuilderStore((s) => s.updateNodeConfig);
     const updateNodeName = useWorkflowBuilderStore((s) => s.updateNodeName);
     const removeNode = useWorkflowBuilderStore((s) => s.removeNode);
@@ -177,75 +178,151 @@ export function NodeConfigPanel() {
                     </div>
                 )}
 
-                {/* Email node config — upgraded with template dropdown + dynamic params */}
-                {data.nodeType === 'SEND_EMAIL' && (
-                    <>
-                        <div>
-                            <Label className="text-xs">Email Template</Label>
-                            <select
-                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                value={(data.config.templateName as string) ?? ''}
-                                onChange={(e) => {
-                                    const templateName = e.target.value;
-                                    handleConfigChange('templateName', templateName);
-                                    // Auto-build forEach config for the backend.
-                                    // eval = "#item" means each item in the 'on' list is passed as email data.
-                                    // The handler will look for templateName/templateVars on each item,
-                                    // or fall back to subject/body fields on the item.
-                                    handleConfigChange('forEach', {
-                                        operation: 'SEND_EMAIL',
-                                        eval: "#item",
-                                    });
-                                    const tmpl = emailTemplates?.find((t) => t.name === templateName);
-                                    if (tmpl?.dynamic_parameters) {
-                                        try {
-                                            const params = JSON.parse(tmpl.dynamic_parameters);
-                                            handleConfigChange('_templateParams', params);
-                                        } catch {
-                                            // ignore parse errors
-                                        }
-                                    }
-                                }}
-                            >
-                                <option value="">Select template...</option>
-                                {emailTemplates?.map((t) => (
-                                    <option key={t.id} value={t.name}>
-                                        {t.name} {t.subject ? `— ${t.subject}` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <Label className="text-xs">Recipients (list expression)</Label>
-                            <VariablePicker
-                                value={(data.config.on as string) ?? ''}
-                                onChange={(v) => handleConfigChange('on', v)}
-                                placeholder="Pick a list of recipients..."
-                                nodeId={selectedNode.id}
-                            />
-                        </div>
-                        {/* Dynamic template parameters */}
-                        {data.config._templateParams && typeof data.config._templateParams === 'object' && (
-                            <div className="space-y-2 border-t pt-2 mt-2">
-                                <Label className="text-[10px] uppercase text-gray-400">Template Variables</Label>
-                                {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => (
-                                    <div key={key}>
-                                        <Label className="text-xs">{label || key}</Label>
-                                        <VariablePicker
-                                            value={((data.config.templateVars as Record<string, string>)?.[key]) ?? ''}
-                                            onChange={(v) => {
-                                                const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: v };
-                                                handleConfigChange('templateVars', vars);
+                {/* Email node config — smart UI, no SpEL needed for common cases */}
+                {data.nodeType === 'SEND_EMAIL' && (() => {
+                    // Auto-detect available data sources from upstream nodes
+                    const upstreamNodes = nodes.filter((n) => {
+                        // Find nodes that have an edge pointing to this node
+                        return edges.some((e) => e.target === selectedNode.id && e.source === n.id);
+                    });
+
+                    // Build data source options based on upstream node types
+                    const dataSources: Array<{ label: string; value: string; description: string }> = [];
+
+                    for (const upstream of upstreamNodes) {
+                        const uType = upstream.data?.nodeType;
+                        const uConfig = upstream.data?.config as Record<string, unknown> | undefined;
+
+                        if (uType === 'TRIGGER') {
+                            dataSources.push(
+                                { label: 'Respondent emails (from trigger)', value: "#ctx['respondentEmailRequests']", description: 'Pre-built email with to/subject/body from the form submission' },
+                                { label: 'Admin emails (from trigger)', value: "#ctx['adminEmailRequests']", description: 'Email notifications for admins' },
+                            );
+                        }
+                        if (uType === 'QUERY') {
+                            const queryKey = uConfig?.prebuiltKey as string;
+                            if (queryKey === 'fetch_audience_responses_filtered') {
+                                dataSources.push({ label: 'Audience leads (from query)', value: "#ctx['leads']", description: 'List of leads with custom field data' });
+                            } else if (queryKey === 'fetch_batch_attendance_report') {
+                                dataSources.push({ label: 'Students (from attendance query)', value: "#ctx['students']", description: 'List of students with attendance & engagement data' });
+                            } else if (queryKey === 'fetch_ssigm_by_package' || queryKey === 'getSSIGMByStatusAndPackageSessionIds') {
+                                dataSources.push({ label: 'Enrolled students (from query)', value: "#ctx['ssigmList']", description: 'List of enrolled students' });
+                            } else if (queryKey) {
+                                dataSources.push({ label: `Query results (${queryKey})`, value: "#ctx['queryResult']", description: 'Results from the query node' });
+                            }
+                        }
+                    }
+
+                    // Always offer manual entry as fallback
+                    const currentOn = (data.config.on as string) ?? '';
+
+                    return (
+                        <>
+                            {/* Send to — smart dropdown */}
+                            <div>
+                                <Label className="text-xs">Send emails to</Label>
+                                {dataSources.length > 0 ? (
+                                    <>
+                                        <select
+                                            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                            value={currentOn}
+                                            onChange={(e) => {
+                                                handleConfigChange('on', e.target.value);
+                                                // Auto-set forEach
+                                                handleConfigChange('forEach', { operation: 'SEND_EMAIL', eval: "#ctx['item']" });
                                             }}
-                                            placeholder={`Value for ${label || key}...`}
+                                        >
+                                            <option value="">Select data source...</option>
+                                            {dataSources.map((ds) => (
+                                                <option key={ds.value} value={ds.value}>{ds.label}</option>
+                                            ))}
+                                        </select>
+                                        {/* Show description of selected source */}
+                                        {currentOn && (() => {
+                                            const selected = dataSources.find((ds) => ds.value === currentOn);
+                                            return selected ? (
+                                                <p className="mt-1 text-[10px] text-gray-400">{selected.description}</p>
+                                            ) : (
+                                                <p className="mt-1 text-[10px] text-gray-400 font-mono">{currentOn}</p>
+                                            );
+                                        })()}
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="mt-1 text-[10px] text-gray-400 mb-1.5">
+                                            Connect a Trigger or Query node upstream to auto-detect data sources.
+                                        </p>
+                                        <VariablePicker
+                                            value={currentOn}
+                                            onChange={(v) => {
+                                                handleConfigChange('on', v);
+                                                handleConfigChange('forEach', { operation: 'SEND_EMAIL', eval: "#ctx['item']" });
+                                            }}
+                                            placeholder="Pick a list of recipients..."
                                             nodeId={selectedNode.id}
                                         />
-                                    </div>
-                                ))}
+                                    </>
+                                )}
                             </div>
-                        )}
-                    </>
-                )}
+
+                            {/* Email template */}
+                            <div>
+                                <Label className="text-xs">Email Template <span className="text-gray-300 text-[10px]">(optional — skip to use pre-built email from data source)</span></Label>
+                                <select
+                                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={(data.config.templateName as string) ?? ''}
+                                    onChange={(e) => {
+                                        const templateName = e.target.value;
+                                        handleConfigChange('templateName', templateName);
+                                        const tmpl = emailTemplates?.find((t) => t.name === templateName);
+                                        if (tmpl?.dynamic_parameters) {
+                                            try {
+                                                const params = JSON.parse(tmpl.dynamic_parameters);
+                                                handleConfigChange('_templateParams', params);
+                                            } catch { /* ignore */ }
+                                        } else {
+                                            handleConfigChange('_templateParams', null);
+                                        }
+                                    }}
+                                >
+                                    <option value="">No template (use data source's subject/body)</option>
+                                    {emailTemplates?.map((t) => (
+                                        <option key={t.id} value={t.name}>
+                                            {t.name} {t.subject ? `— ${t.subject}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Template variables — only shown when a template is selected */}
+                            {data.config._templateParams && typeof data.config._templateParams === 'object' && (
+                                <div className="space-y-2 border-t pt-2 mt-2">
+                                    <Label className="text-[10px] uppercase text-gray-400">Template Variables</Label>
+                                    <p className="text-[10px] text-gray-400">
+                                        Map each template variable to a field from the data source. Each item in the list has fields you can reference.
+                                    </p>
+                                    {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => (
+                                        <div key={key}>
+                                            <Label className="text-xs">{label || key}</Label>
+                                            <Input
+                                                value={((data.config.templateVars as Record<string, string>)?.[key]) ?? ''}
+                                                onChange={(e) => {
+                                                    const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: e.target.value };
+                                                    handleConfigChange('templateVars', vars);
+                                                }}
+                                                className="mt-1"
+                                                placeholder={`e.g. fullName, email, attendancePercentage`}
+                                            />
+                                            <p className="text-[10px] text-gray-300">
+                                                Field name from each item in the data source
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    );
+                })()}
 
                 {/* WhatsApp node config — upgraded with template dropdown + dynamic params */}
                 {data.nodeType === 'SEND_WHATSAPP' && (

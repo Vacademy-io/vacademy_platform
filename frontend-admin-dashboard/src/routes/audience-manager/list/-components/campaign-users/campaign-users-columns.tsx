@@ -70,23 +70,25 @@ const isEmailField = (fieldKey?: string, fieldName?: string): boolean => {
 export const generateDynamicColumns = (
     campaignCustomFields: any[] = [],
     fieldLookup?: Map<string, CustomFieldSetupItem>,
-    onDelete?: (responseId: string) => void
+    onDelete?: (responseId: string) => void,
+    campaignFieldsMap?: Map<string, { name: string; key?: string }>,
+    fieldMetadataMap?: Map<string, { fieldName?: string; fieldKey?: string; fieldType?: string }>
 ): ColumnDef<CampaignUserTable>[] => {
     const columns: ColumnDef<CampaignUserTable>[] = [indexColumn]; // Start with S.No column
 
     try {
         const lookup = fieldLookup ?? new Map<string, CustomFieldSetupItem>();
-        
+
         // Collect all field IDs from campaign/API that we need to create columns for
         const fieldMappings: Array<{ id: string; name: string; key: string }> = [];
         const processedFieldIds = new Set<string>(); // Track processed field IDs to avoid duplicates
         const fieldIdsToProcess = new Set<string>();
-        
+
         if (campaignCustomFields && campaignCustomFields.length > 0) {
             campaignCustomFields.forEach((campaignField: any) => {
-                const fieldId = 
-                    campaignField.custom_field?.id || 
-                    campaignField.id || 
+                const fieldId =
+                    campaignField.custom_field?.id ||
+                    campaignField.id ||
                     campaignField._id ||
                     campaignField.field_id;
                 if (fieldId) {
@@ -98,15 +100,56 @@ export const generateDynamicColumns = (
         // Process all field IDs from campaign - treat all fields dynamically (including Name and Email)
         fieldIdsToProcess.forEach((fieldId) => {
             if (!processedFieldIds.has(fieldId)) {
-                const fieldInfo = 
+                let fieldInfo =
                     getFieldFromLookup(lookup, fieldId) || getFieldFromLookup(lookup, fieldId?.toLowerCase());
-                
-                // Only create column if field info is found in lookup
+
+                // Exhaustive search through all setup entries if simple lookup failed
+                if (!fieldInfo && lookup.size > 0) {
+                    const searchId = fieldId.toLowerCase();
+                    const searchIdNormalized = searchId.replace(/[^a-zA-Z0-9]/g, '');
+                    for (const [, field] of lookup.entries()) {
+                        const cfId = field.custom_field_id?.toLowerCase();
+                        const fKey = field.field_key?.toLowerCase();
+                        if (
+                            cfId === searchId ||
+                            fKey === searchId ||
+                            cfId?.replace(/[^a-zA-Z0-9]/g, '') === searchIdNormalized ||
+                            fKey?.replace(/[^a-zA-Z0-9]/g, '') === searchIdNormalized
+                        ) {
+                            fieldInfo = field;
+                            break;
+                        }
+                    }
+                }
+
                 if (fieldInfo) {
-                    const fieldName = fieldInfo.field_name 
+                    const fieldName = fieldInfo.field_name
                         ? fieldInfo.field_name.charAt(0).toUpperCase() + fieldInfo.field_name.slice(1)
                         : fieldInfo.field_key || fieldId;
                     const fieldKey = fieldInfo.field_key || generateKeyFromName(fieldInfo.field_name || fieldId);
+
+                    fieldMappings.push({
+                        id: fieldId,
+                        name: fieldName,
+                        key: fieldKey,
+                    });
+                    processedFieldIds.add(fieldId);
+                } else {
+                    // Fallback: try campaign config, then API metadata, then field ID
+                    const campaignField = campaignFieldsMap?.get(fieldId)
+                        || campaignFieldsMap?.get(fieldId.toLowerCase());
+                    const apiMeta = fieldMetadataMap?.get(fieldId);
+
+                    let fieldName = fieldId;
+                    let fieldKey = generateKeyFromName(fieldId);
+
+                    if (campaignField?.name) {
+                        fieldName = campaignField.name.charAt(0).toUpperCase() + campaignField.name.slice(1);
+                        fieldKey = campaignField.key || generateKeyFromName(fieldName);
+                    } else if (apiMeta?.fieldName) {
+                        fieldName = apiMeta.fieldName.charAt(0).toUpperCase() + apiMeta.fieldName.slice(1);
+                        fieldKey = apiMeta.fieldKey || generateKeyFromName(fieldName);
+                    }
 
                     fieldMappings.push({
                         id: fieldId,

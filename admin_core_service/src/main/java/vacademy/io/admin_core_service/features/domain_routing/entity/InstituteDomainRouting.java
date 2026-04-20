@@ -110,4 +110,7 @@ public class InstituteDomainRouting {
 
     @Column(name = "logo_height_px")
     private Integer logoHeightPx;
+
+    @Column(name = "apply_naming_setting", nullable = false)
+    private boolean applyNamingSetting;
 }

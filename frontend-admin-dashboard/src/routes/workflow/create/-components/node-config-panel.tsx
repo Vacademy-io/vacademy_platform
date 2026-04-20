@@ -186,8 +186,17 @@ export function NodeConfigPanel() {
                                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={(data.config.templateName as string) ?? ''}
                                 onChange={(e) => {
-                                    handleConfigChange('templateName', e.target.value);
-                                    const tmpl = emailTemplates?.find((t) => t.name === e.target.value);
+                                    const templateName = e.target.value;
+                                    handleConfigChange('templateName', templateName);
+                                    // Auto-build forEach config for the backend.
+                                    // eval = "#item" means each item in the 'on' list is passed as email data.
+                                    // The handler will look for templateName/templateVars on each item,
+                                    // or fall back to subject/body fields on the item.
+                                    handleConfigChange('forEach', {
+                                        operation: 'SEND_EMAIL',
+                                        eval: "#item",
+                                    });
+                                    const tmpl = emailTemplates?.find((t) => t.name === templateName);
                                     if (tmpl?.dynamic_parameters) {
                                         try {
                                             const params = JSON.parse(tmpl.dynamic_parameters);

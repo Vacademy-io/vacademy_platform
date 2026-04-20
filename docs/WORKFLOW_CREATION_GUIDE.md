@@ -43,11 +43,13 @@ Click **Continue to Builder**
 
 ### Step 4 — Build the Canvas
 
-Add 3 nodes from the left palette and connect them:
+Add 2 nodes from the left palette and connect them:
 
 ```
-[QUERY] ──> [LOOP (For Each)] ──> [SEND_EMAIL]
+[QUERY] ──> [SEND_EMAIL]
 ```
+
+> **Important:** Do NOT add a LOOP node between QUERY and SEND_EMAIL. The SEND_EMAIL node has a built-in loop via its `on` field — it iterates over the list automatically. A separate LOOP node would NOT re-execute SEND_EMAIL per item.
 
 ### Step 5 — Configure QUERY Node
 
@@ -61,29 +63,18 @@ Click the QUERY node on the canvas.
 | daysAgo | Type `5` |
 | Result Key | Type `leadData` |
 
-### Step 6 — Configure LOOP Node
-
-Click the LOOP node.
-
-| Field | What to do |
-|-------|-----------|
-| Source List | Click the `</>` code icon to switch to Advanced mode. Type: `#ctx['leadData']['leads']` |
-| Item Variable | Type `lead` |
-
-### Step 7 — Configure SEND_EMAIL Node
+### Step 6 — Configure SEND_EMAIL Node
 
 Click the SEND_EMAIL node.
 
 | Field | What to do |
 |-------|-----------|
-| Email Template | Select your follow-up template from the dropdown |
-| Recipients | Click `</>` code icon for Advanced mode. Type: `#ctx['lead']['email']` |
+| Email Template | Leave empty (the query results have their own data) |
+| Recipients | Click `</>` code icon for Advanced mode. Type: `#ctx['leads']` |
 
-If your template has dynamic parameters (e.g., `{{name}}`), they'll appear as fields below. For each:
-- Click `</>` to switch to Advanced mode
-- Type the SpEL expression, e.g., `#ctx['lead']['parentName']`
+The SEND_EMAIL node will iterate over each lead from the query result. Each lead map contains custom field values from the audience form (e.g., `Email`, `Full Name`, `Phone Number`). The handler will extract the email address from the `Email` or `to` field automatically.
 
-> **Note:** The field names like `email`, `parentName` come from the custom fields defined on your audience form. Check your audience form's custom fields to know the exact field names.
+> **Note:** The field names depend on your audience form's custom field configuration. The query returns each lead's custom fields as key-value pairs.
 
 ### Step 8 — Publish
 
@@ -133,8 +124,10 @@ Click **Continue to Builder**
 ### Step 4 — Build the Canvas
 
 ```
-[QUERY] ──> [LOOP (For Each)] ──> [SEND_EMAIL]
+[QUERY] ──> [SEND_EMAIL]
 ```
+
+> **Important:** No LOOP node needed. SEND_EMAIL iterates over the student list automatically via its built-in `on` + `forEach` mechanism.
 
 ### Step 5 — Configure QUERY Node
 
@@ -146,30 +139,16 @@ Click **Continue to Builder**
 | daysBack | Type `7` |
 | Result Key | Type `reportData` |
 
-### Step 6 — Configure LOOP Node
-
-| Field | What to do |
-|-------|-----------|
-| Source List | Advanced mode: `#ctx['reportData']['students']` |
-| Item Variable | `student` |
-
-### Step 7 — Configure SEND_EMAIL Node
+### Step 6 — Configure SEND_EMAIL Node
 
 | Field | What to do |
 |-------|-----------|
 | Email Template | Select `weekly_attendance_report` |
-| Recipients | Advanced mode: `#ctx['student']['email']` |
-| Template Variables (map each): | |
-| `studentName` | `#ctx['student']['fullName']` |
-| `attendancePercentage` | `#ctx['student']['attendancePercentage']` |
-| `totalDurationMinutes` | `#ctx['student']['totalDurationMinutes']` |
-| `totalChats` | `#ctx['student']['totalChats']` |
-| `totalHandRaises` | `#ctx['student']['totalHandRaises']` |
-| `sessionsAttended` | `#ctx['student']['sessionsAttended']` |
-| `startDate` | `#ctx['reportData']['startDate']` |
-| `endDate` | `#ctx['reportData']['endDate']` |
+| Recipients | Advanced mode: `#ctx['students']` |
 
-### Step 8 — Publish
+The SEND_EMAIL node will iterate over each student from the query. Each student map has `email`, `fullName`, `attendancePercentage`, `totalDurationMinutes`, `totalChats`, `totalHandRaises`, `sessionsAttended` — these are used as placeholders in the template automatically.
+
+### Step 7 — Publish
 
 ### Email Template Setup
 

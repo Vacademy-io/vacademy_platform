@@ -201,15 +201,9 @@ public class WorkflowBuilderService {
         // Create trigger if applicable
         if ("EVENT_DRIVEN".equalsIgnoreCase(dto.getWorkflowType()) && dto.getTrigger() != null) {
             WorkflowBuilderDTO.TriggerDTO trig = dto.getTrigger();
-            // Build default idempotency settings based on event type
-            String defaultIdempotencySettings;
-            if (trig.getEventId() != null && !trig.getEventId().isEmpty()) {
-                // Specific entity — use EVENT_BASED idempotency
-                defaultIdempotencySettings = "{\"strategy\":\"EVENT_BASED\",\"includeTriggerId\":true,\"includeEventId\":true}";
-            } else {
-                // Global trigger — use CONTEXT_BASED to distinguish different event instances
-                defaultIdempotencySettings = "{\"strategy\":\"CONTEXT_BASED\",\"contextFields\":[\"eventId\"],\"includeTriggerId\":true}";
-            }
+            // Default: UUID strategy — every trigger event creates a unique execution.
+            // Users can configure stricter dedup (EVENT_BASED, CONTEXT_BASED) via the API if needed.
+            String defaultIdempotencySettings = "{\"strategy\":\"UUID\"}";
 
             WorkflowTrigger trigger = WorkflowTrigger.builder()
                     .triggerEventName(trig.getTriggerEventName())

@@ -930,8 +930,9 @@ public class SendEmailNodeHandler implements NodeHandler {
         // If 'item' wasn't an email, check the userDetailsMap
         if (userDetailsMap != null) {
             String[] possibleFields = {
-                    "email", "emailAddress", "email_address",
-                    "userEmail", "user_email", "mail", "channelId"
+                    "to", "email", "emailAddress", "email_address",
+                    "userEmail", "user_email", "mail", "channelId",
+                    "recipientEmail", "recipient_email"
             };
 
             for (String field : possibleFields) {

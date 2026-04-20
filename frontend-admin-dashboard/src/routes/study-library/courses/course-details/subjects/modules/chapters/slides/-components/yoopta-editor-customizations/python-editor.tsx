@@ -44,6 +44,14 @@ export function MultiLangCodeBlock({
 
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propLang = element?.props?.language || 'python';
+        const propCode = element?.props?.code || DEFAULT_CODE[propLang as keyof typeof DEFAULT_CODE];
+        if (propLang !== language) setLanguage(propLang);
+        if (propCode !== code) setCode(propCode);
+    }, [element?.props?.language, element?.props?.code]);
+
     // Sync with Yoopta block state - save complete editor state
     // NOTE: Do NOT include Date.now() or other non-stable values here — it would
     // trigger Elements.updateElement → Yoopta onChange → re-render → useEffect → infinite loop.

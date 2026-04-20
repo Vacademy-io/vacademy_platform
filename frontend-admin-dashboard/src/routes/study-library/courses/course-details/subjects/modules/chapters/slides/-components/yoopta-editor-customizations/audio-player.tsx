@@ -12,6 +12,14 @@ export function AudioPlayerBlock({ element, attributes, children, blockId }: Plu
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propUrl = element?.props?.audioUrl || '';
+        const propTitle = element?.props?.title || '';
+        if (propUrl !== audioUrl) setAudioUrl(propUrl);
+        if (propTitle !== title) setTitle(propTitle);
+    }, [element?.props?.audioUrl, element?.props?.title]);
+
     // Persist state to Yoopta/Slate store
     useEffect(() => {
         if (isFirstRender.current) {

@@ -17,6 +17,8 @@ import { getPublicUrl } from '@/services/upload_file';
 import { TeacherSelection } from './TeacherSelection';
 import { formatTime } from '@/helpers/formatYoutubeVideoTime';
 import { getUserId, isUserAdmin } from '@/utils/userDetails';
+import { useInstituteTeachers } from '@/routes/dashboard/-hooks/useInstituteTeachers';
+import { getInstituteId } from '@/constants/helper';
 
 const StatusIndicator = ({ status }: { status: 'RESOLVED' | 'ACTIVE' | 'DELETED' }) => {
     let color = 'bg-neutral-400';
@@ -54,11 +56,13 @@ export const Doubt = ({ doubt, refetch }: { doubt: DoubtType; refetch: () => voi
     });
     const filters: FacultyFilterParams = {
         name: '',
-        batches: [pksId || ''],
-        subjects: [subjectId || ''],
+        batches: pksId ? [pksId] : [],
+        subjects: subjectId ? [subjectId] : [],
         status: [],
         sort_columns: { name: 'DESC' },
     };
+
+    const { teachers: instituteTeachers } = useInstituteTeachers(getInstituteId());
 
     const { data: userBasicDetails } = useGetUserBasicDetails([doubt.user_id]);
 
@@ -148,7 +152,12 @@ export const Doubt = ({ doubt, refetch }: { doubt: DoubtType; refetch: () => voi
 
             {/* Teacher Assignment - now more subtle and integrated */}
             <div className="pt-2">
-                <TeacherSelection doubt={doubt} filters={filters} canChange={isAdmin || false} />
+                <TeacherSelection
+                    doubt={doubt}
+                    filters={filters}
+                    canChange={isAdmin || false}
+                    teachersOverride={instituteTeachers}
+                />
             </div>
 
             {/* Replies Section */}

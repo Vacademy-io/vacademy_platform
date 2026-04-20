@@ -129,12 +129,18 @@ public class DoubtsManager {
     }
 
     /**
-     * Returns {@code null} for admin/root callers (no visibility restriction) or the user id for
-     * everyone else. The SQL in {@code DoubtsRepository#findDoubtsWithFilterForViewer} then limits
-     * results to doubts the viewer can see via doubt_assignee or FSPSSM (batch-level or subject-level).
+     * Returns {@code null} only when the caller is an ADMIN (unrestricted visibility) and the user
+     * id for everyone else — including TEACHER accounts flagged as root, since the product rule is
+     * "only admin sees all doubts". The SQL in
+     * {@link vacademy.io.admin_core_service.features.doubts.repository.DoubtsRepository#findDoubtsWithFilterForViewer}
+     * then limits results to doubts the viewer can see via doubt_assignee or FSPSSM
+     * (batch-level or subject-level).
      */
     private String resolveViewerUserId(CustomUserDetails user) {
-        if (user == null || user.isRootUser() || hasRole(user, "ADMIN")) {
+        if (user == null) {
+            return null;
+        }
+        if (hasRole(user, "ADMIN")) {
             return null;
         }
         return user.getUserId();

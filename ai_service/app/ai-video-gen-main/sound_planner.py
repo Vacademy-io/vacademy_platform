@@ -3,12 +3,12 @@ Sound Planner — derives per-shot sound cues from the finished Director plan,
 skill composer output, and narration emphasis signals. No LLM calls.
 
 Design:
-  1. Build a SOUND PALETTE once per video — one file per role, reused
-     everywhere. This gives the video a consistent sonic identity.
-     Optionally biased by topic keywords from the script (money → coins).
-  2. Place cues at structural moments only (transitions, first reveals,
-     skill events). Most shots stay silent — silence is intentional.
-  3. Respect global budgets so even a 30-shot video never has >12 cues.
+  1. Build a SOUND PALETTE once per video — 3-4 variations per role for
+     variety. Topic-biased selection from script keywords (money → coins).
+  2. Place cues at structural moments (transitions, reveals, emphasis)
+     with subtle timing offsets for a natural feel.
+  3. Use low volumes so sounds are background texture, not foreground.
+  4. Respect global budgets so even a 30-shot video stays controlled.
 
 The Director does NOT see sound information. Everything is derived from
 signals the Director already produced for visual reasons.
@@ -78,19 +78,19 @@ TOPIC_SYNONYMS: Dict[str, List[str]] = {
 _SIG = Tuple[str, Any, float]  # (role, placement, volume_mul)
 
 SHOT_TYPE_CUE: Dict[str, Optional[_SIG]] = {
-    "KINETIC_TITLE":   ("impact",            0.05,      1.00),
-    "KINETIC_TEXT":    ("ui_click",          "sync[0]", 0.85),
-    "VIDEO_HERO":      ("transition_whoosh", 0.00,      1.00),
-    "IMAGE_HERO":      ("transition_whoosh", 0.00,      0.85),
-    "IMAGE_SPLIT":     ("ui_chime",          0.10,      0.90),
-    "DATA_STORY":      ("data_reveal",       "sync[0]", 1.00),
-    "EQUATION_BUILD":  ("ui_chime",          "sync[0]", 0.90),
-    "PROCESS_STEPS":   ("ui_click",          "sync[0]", 0.85),
+    "KINETIC_TITLE":   ("impact",            0.05,      0.65),
+    "KINETIC_TEXT":    ("ui_click",          "sync[0]", 0.55),
+    "VIDEO_HERO":      ("transition_whoosh", 0.00,      0.70),
+    "IMAGE_HERO":      ("transition_whoosh", 0.00,      0.60),
+    "IMAGE_SPLIT":     ("ui_chime",          0.10,      0.55),
+    "DATA_STORY":      ("data_reveal",       "sync[0]", 0.65),
+    "EQUATION_BUILD":  ("ui_chime",          "sync[0]", 0.55),
+    "PROCESS_STEPS":   ("ui_click",          "sync[0]", 0.50),
     "INFOGRAPHIC_SVG": None,
-    "TEXT_DIAGRAM":    ("ui_chime",          "sync[0]", 0.85),
-    "LOWER_THIRD":     ("ui_chime",          0.10,      0.85),
-    "ANNOTATION_MAP":  ("ui_click",          "sync[0]", 0.85),
-    "PRODUCT_HERO":    ("transition_whoosh", 0.00,      0.95),
+    "TEXT_DIAGRAM":    ("ui_chime",          "sync[0]", 0.50),
+    "LOWER_THIRD":     ("ui_chime",          0.10,      0.50),
+    "ANNOTATION_MAP":  ("ui_click",          "sync[0]", 0.50),
+    "PRODUCT_HERO":    ("transition_whoosh", 0.00,      0.65),
 }
 
 _FAMILY: Dict[str, str] = {
@@ -287,30 +287,38 @@ def _build_sound_palette(
     cat: SoundCatalog,
     video_id: str,
     script_text: str,
-) -> Dict[str, Dict[str, Any]]:
-    """Pre-select ONE sound file per role for the entire video.
+) -> Dict[str, Any]:
+    """Pre-select 3-4 sound files per role for variety.
 
-    If the script mentions topic-specific words (money, sports, cooking),
-    the palette picker biases toward files whose descriptions match.
-    Otherwise falls back to a generic deterministic pick.
+    Sounds within a role are rotated via a counter so consecutive
+    transitions don't reuse the same file. Topic-biased selection
+    from script keywords (money → coins, sports → whistle).
     """
     topic_kws = _extract_topic_keywords(script_text)
-    palette: Dict[str, Dict[str, Any]] = {}
+    palette: Dict[str, Any] = {}
     for role in PALETTE_ROLES:
         if not cat.has_role(role):
             continue
-        seed = f"{video_id}:palette:{role}"
-        if topic_kws:
-            picked = cat.resolve_for_topic(role, topic_kws, seed_key=seed)
-        else:
-            picked = cat.resolve(role, seed_key=seed)
-        if picked:
-            palette[role] = picked
+        # Pick up to 4 variations per role using different seeds
+        variations = []
+        seen_urls: Set[str] = set()
+        for i in range(4):
+            seed = f"{video_id}:palette:{role}:{i}"
+            if topic_kws:
+                picked = cat.resolve_for_topic(role, topic_kws, seed_key=seed)
+            else:
+                picked = cat.resolve(role, seed_key=seed)
+            if picked and picked.get("url", "") not in seen_urls:
+                variations.append(picked)
+                seen_urls.add(picked.get("url", ""))
+        if variations:
+            palette[role] = variations  # List of dicts now, not single dict
+            palette[f"_{role}_counter"] = 0  # rotation counter
     return palette
 
 
 def _log_palette(
-    palette: Dict[str, Dict[str, Any]],
+    palette: Dict[str, Any],
     total_cues: int,
     total_shots: int,
 ) -> None:
@@ -318,8 +326,12 @@ def _log_palette(
     for role in PALETTE_ROLES:
         entry = palette.get(role)
         if entry:
-            name = entry.get("description", "")[:35]
-            parts.append(f"{role}={name}")
+            if isinstance(entry, list):
+                name = entry[0].get("description", "")[:25]
+                parts.append(f"{role}={name} (+{len(entry)-1})")
+            else:
+                name = entry.get("description", "")[:35]
+                parts.append(f"{role}={name}")
     if parts:
         print(f"   🎵 Sound palette: {', '.join(parts)}")
     print(
@@ -333,7 +345,7 @@ def _log_palette(
 # ---------------------------------------------------------------------------
 
 def _cue_from_palette(
-    palette: Dict[str, Dict[str, Any]],
+    palette: Dict[str, Any],
     role: str,
     shot_idx: int,
     slot: str,
@@ -341,14 +353,38 @@ def _cue_from_palette(
     t: float,
     volume_mul: float,
 ) -> Optional[Dict[str, Any]]:
-    """Build a cue dict using the palette's pre-picked file for this role."""
-    picked = palette.get(role)
-    if not picked:
+    """Build a cue dict using a rotated file from the palette's variations.
+
+    Each call advances the role's rotation counter so consecutive cues
+    of the same role use different sound files.
+    """
+    variations = palette.get(role)
+    if not variations:
         return None
-    volume = max(0.0, min(1.0, picked["volume_hint"] * volume_mul))
+    # Handle both old (single dict) and new (list) palette formats
+    if isinstance(variations, dict):
+        picked = variations
+    else:
+        counter_key = f"_{role}_counter"
+        idx = palette.get(counter_key, 0) % len(variations)
+        picked = variations[idx]
+        palette[counter_key] = idx + 1
+
+    # Apply volume reduction — sounds should be subtle background texture
+    base_volume = picked.get("volume_hint", 0.5)
+    # Reduce all volumes by 40% so they don't compete with narration
+    volume = max(0.0, min(1.0, base_volume * volume_mul * 0.6))
+
+    # Add slight natural offset (0.03-0.08s) so sounds don't land exactly
+    # on shot boundaries — feels more organic
+    import hashlib
+    offset_hash = int(hashlib.md5(f"{shot_idx}:{slot}".encode()).hexdigest()[:4], 16)
+    natural_offset = 0.03 + (offset_hash % 50) / 1000.0  # 0.03-0.08s
+    adjusted_t = max(0.0, round(float(t) + natural_offset, 3))
+
     return {
         "id": f"sfx_{shot_idx}_{slot}",
-        "t": round(float(t), 3),
+        "t": adjusted_t,
         "url": picked.get("url"),
         "volume": round(volume, 3),
         "role": role,
@@ -359,7 +395,7 @@ def _cue_from_palette(
 
 
 def _resolve_signature_cue(
-    palette: Dict[str, Dict[str, Any]],
+    palette: Dict[str, Any],
     role: str,
     placement: Any,
     volume_mul: float,

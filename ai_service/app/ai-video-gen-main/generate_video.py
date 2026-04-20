@@ -1020,6 +1020,16 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
               for (const e of entries) {
                 let host = window.__activeSnippets.get(e.id);
                 if (!host) {
+                  // Seek GSAP timeline to the shot's inTime BEFORE creating
+                  // the snippet. Scripts inside the HTML create GSAP tweens
+                  // with delays relative to the current globalTimeline time.
+                  // Without this, tweens get wrong start times (especially in
+                  // parallel workers that start mid-video).
+                  if (window.gsap && typeof e.inTime === 'number') {
+                    try {
+                      gsap.globalTimeline.totalTime(e.inTime);
+                    } catch(err) {}
+                  }
                   host = document.createElement('div');
                   host.id = e.id;
                   host.dataset.inTime = String(e.inTime || 0);
@@ -2395,34 +2405,10 @@ def render_video_from_json(
                 if (state.character && window.__updateCharacter) window.__updateCharacter(state.character);
                 // 4. Update caption
                 if (window.__updateCaption) window.__updateCaption(state.caption || null);
-                // 5. Sync GSAP — unpause → seek → re-pause to ensure all
-                // child tweens (including those created after init) render correctly.
+                // 5. Sync GSAP — seek global timeline to current frame time.
+                // totalTime() on a paused timeline still updates all child tweens.
                 try {
-                    gsap.globalTimeline.paused(false);
                     gsap.globalTimeline.totalTime(state.t);
-                    gsap.globalTimeline.paused(true);
-                    // Force layout recalc on shadow DOMs
-                    document.querySelectorAll('[id^="shot-"]').forEach(host => {
-                        if (host.shadowRoot) host.offsetHeight;
-                    });
-                    // Diagnostic: log tween count and a sample tween's progress
-                    // at key timestamps (helps debug animation smoothness)
-                    if (state.t > 45.0 && state.t < 48.0 && Math.round(state.t * 10) % 5 === 0) {
-                        const tweens = gsap.globalTimeline.getChildren(true, true, false);
-                        const activeTweens = tweens.filter(tw => tw.isActive && tw.isActive());
-                        console.log('[GSAP-DIAG] t=' + state.t.toFixed(3) +
-                            ' totalTweens=' + tweens.length +
-                            ' active=' + activeTweens.length +
-                            ' globalTime=' + gsap.globalTimeline.totalTime().toFixed(3));
-                        // Log first 3 active tween targets
-                        activeTweens.slice(0, 3).forEach(tw => {
-                            try {
-                                const targets = tw.targets ? tw.targets() : [];
-                                const id = targets[0] ? (targets[0].id || targets[0].className || '?') : '?';
-                                console.log('  tween: ' + id + ' progress=' + (tw.progress ? tw.progress().toFixed(3) : '?'));
-                            } catch(e) {}
-                        });
-                    }
                 } catch(e) {}
                 // 5b. Sync Anime.js registered timelines
                 try { if (window._animeSeek) window._animeSeek(state.t); } catch(e) {}

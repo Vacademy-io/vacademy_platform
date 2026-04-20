@@ -2382,6 +2382,12 @@ export function processHtmlContent(
 ): string {
     let processedHtml = html;
 
+    // Strip LLM-generated stage-drift camera animations — causes jitter
+    processedHtml = processedHtml.replace(
+        /gsap\.fromTo\(\s*['"]\.stage-drift['"].*?\);/gs,
+        ''
+    );
+
     // Fix any absolute file paths
     processedHtml = processedHtml.replace(/file:\/\/\/.*\/generated_images\//g, '');
 

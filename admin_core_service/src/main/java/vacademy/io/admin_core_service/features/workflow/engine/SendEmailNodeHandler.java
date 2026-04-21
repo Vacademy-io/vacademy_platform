@@ -873,26 +873,34 @@ public class SendEmailNodeHandler implements NodeHandler {
                 }
 
                 // Then, resolve templateVars mapping: key = placeholder name, value = field name or SpEL
-                // e.g., {"name": "fullName"} → looks up "fullName" from item data
+                // e.g., {"name": "fullName"} → looks up "fullName" from item data, then context
                 if (templateVars != null) {
                     templateVars.forEach((placeholderKey, fieldNameOrExpr) -> {
                         String fieldName = String.valueOf(fieldNameOrExpr);
-                        // Try to resolve from item data first
+                        // 1. Try item data (userDetails = the current list item)
                         if (userDetails != null && userDetails.containsKey(fieldName)) {
                             Object resolved = userDetails.get(fieldName);
                             finalVars.put(placeholderKey, resolved != null ? String.valueOf(resolved) : "");
-                        } else if (fieldName.startsWith("#ctx")) {
-                            // SpEL expression — evaluate it
-                            try {
-                                Object resolved = spelEvaluator.evaluate(fieldName, itemContext);
+                        }
+                        // 2. Try full workflow context (e.g., customFields, user, etc.)
+                        else if (itemContext.containsKey(fieldName)) {
+                            Object resolved = itemContext.get(fieldName);
+                            finalVars.put(placeholderKey, resolved != null ? String.valueOf(resolved) : "");
+                        }
+                        // 3. Try nested context lookup (e.g., "Full Name" might be in customFields map)
+                        else if (itemContext.containsKey("customFields") && itemContext.get("customFields") instanceof Map) {
+                            Map<String, Object> customFields = (Map<String, Object>) itemContext.get("customFields");
+                            if (customFields.containsKey(fieldName)) {
+                                Object resolved = customFields.get(fieldName);
                                 finalVars.put(placeholderKey, resolved != null ? String.valueOf(resolved) : "");
-                            } catch (Exception e) {
-                                log.warn("Failed to resolve template var '{}' with expression '{}'", placeholderKey, fieldName);
-                                finalVars.put(placeholderKey, fieldName);
+                            } else {
+                                // 4. SpEL expression
+                                resolveAsSpelOrLiteral(placeholderKey, fieldName, itemContext, finalVars);
                             }
-                        } else {
-                            // Use as literal value
-                            finalVars.put(placeholderKey, fieldName);
+                        }
+                        // 4. SpEL expression or literal
+                        else {
+                            resolveAsSpelOrLiteral(placeholderKey, fieldName, itemContext, finalVars);
                         }
                     });
                 }
@@ -956,6 +964,21 @@ public class SendEmailNodeHandler implements NodeHandler {
                     .failureReason("FAILED")
                     .build());
             return null;
+        }
+    }
+
+    private void resolveAsSpelOrLiteral(String placeholderKey, String fieldName,
+            Map<String, Object> context, Map<String, String> finalVars) {
+        if (fieldName.startsWith("#ctx") || fieldName.startsWith("#")) {
+            try {
+                Object resolved = spelEvaluator.evaluate(fieldName, context);
+                finalVars.put(placeholderKey, resolved != null ? String.valueOf(resolved) : "");
+            } catch (Exception e) {
+                log.warn("Failed to resolve template var '{}' with expression '{}'", placeholderKey, fieldName);
+                finalVars.put(placeholderKey, fieldName);
+            }
+        } else {
+            finalVars.put(placeholderKey, fieldName);
         }
     }
 

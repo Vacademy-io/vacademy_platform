@@ -177,6 +177,7 @@ export function ExecutionHistoryTab({ workflowId, instituteId, onViewOnDiagram }
                                         onClick={() => {
                                             setSelectedExecution(ex);
                                             setDrawerOpen(true);
+                                            if (onViewOnDiagram) onViewOnDiagram(ex.id);
                                         }}
                                     >
                                         <td className="px-4 py-2 text-xs">

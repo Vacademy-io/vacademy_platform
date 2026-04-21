@@ -717,6 +717,7 @@ public class SendEmailNodeHandler implements NodeHandler {
                 final String finalInstituteId = instituteId;
                 Template template = templateCache.computeIfAbsent(cacheKey,
                         k -> templateRepository.findByInstituteIdAndNameAndType(finalInstituteId, templateName, "EMAIL")
+                                .or(() -> templateRepository.findByInstituteIdAndNameAndType(finalInstituteId, templateName, "email"))
                                 .orElse(null));
 
                 if (template == null) {
@@ -848,6 +849,7 @@ public class SendEmailNodeHandler implements NodeHandler {
                 Template template = templateCache.computeIfAbsent(cacheKey,
                         k -> templateRepository
                                 .findByInstituteIdAndNameAndType(finalInstituteId, finalTemplateName, "EMAIL")
+                                .or(() -> templateRepository.findByInstituteIdAndNameAndType(finalInstituteId, finalTemplateName, "email"))
                                 .orElse(null));
 
                 if (template == null) {

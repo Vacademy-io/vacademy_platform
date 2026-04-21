@@ -75,9 +75,8 @@ export const createMessageTemplate = async (
             throw new Error('Institute ID not found. Please login again.');
         }
         
-        // INVOICE and INVOICE_EMAIL types are stored as-is; others are lowercased
-        const resolvedType = (template.type === 'INVOICE' || template.type === 'INVOICE_EMAIL')
-            ? template.type : (template.type?.toLowerCase() || 'email');
+        // Keep type as-is — backend and workflow engine expect uppercase (EMAIL, WHATSAPP, INVOICE, INVOICE_EMAIL)
+        const resolvedType = template.type?.toUpperCase() || 'EMAIL';
 
         const payload = {
             type: resolvedType,

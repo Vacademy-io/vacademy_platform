@@ -16,6 +16,7 @@ import { TokenKey } from '@/constants/auth/tokens';
 import { getUserRoles } from '@/lib/auth/sessionUtility';
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 const TanStackRouterDevtools =
     process.env.NODE_ENV === 'production'
@@ -155,6 +156,10 @@ export const Route = createRootRouteWithContext<{
     component: () => {
         // Ensure the global title is maintained across all pages
         usePageTitle();
+        // Boot the FCM lifecycle (service worker + token registration + foreground listener).
+        // No-ops silently when notification permission hasn't been granted yet — UI should expose
+        // a button that calls the returned `ensurePermission` from this hook to prompt.
+        usePushNotifications();
 
         return (
             <>

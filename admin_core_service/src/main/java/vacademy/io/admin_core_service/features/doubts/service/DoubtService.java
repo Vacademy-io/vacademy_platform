@@ -97,15 +97,26 @@ public class DoubtService {
         List<String> filteredUserIds = Optional.ofNullable(userIds).orElse(Collections.emptyList());
         List<String> filteredStatus = Optional.ofNullable(status).orElse(Collections.emptyList());
         List<String> filteredBatchIds = (batchIds == null ? Collections.emptyList() : batchIds);
-        if (batchIds == null || batchIds.isEmpty()) {
-            return Page.empty(pageable); // return empty page
-        }
+        boolean hasBatchIds = !filteredBatchIds.isEmpty();
+
+        // Admin callers (no viewer scope) MUST pass at least one batch — otherwise the admin UI
+        // would return every doubt in the entire institute via a single broad query.
         if (viewerUserId == null) {
+            if (!hasBatchIds) {
+                return Page.empty(pageable);
+            }
             return doubtsRepository.findDoubtsWithFilter(filteredContentPositions, filteredContentTypes, filteredSources,
                     filteredSourceIds, filteredUserIds, filteredStatus, filteredBatchIds, startDate, endDate, pageable);
         }
+
+        // Scoped (teacher/student) callers: the visibility predicates in the query already restrict
+        // results to doubts the user can see. An empty batch list here means "no explicit batch
+        // filter" rather than "no visible doubts" — critical for teachers who are directly assigned
+        // to a doubt on a batch they don't have FSPSSM access to.
+        List<String> batchIdsForQuery = hasBatchIds ? filteredBatchIds : List.of("");
         return doubtsRepository.findDoubtsWithFilterForViewer(filteredContentPositions, filteredContentTypes, filteredSources,
-                filteredSourceIds, filteredUserIds, filteredStatus, filteredBatchIds, startDate, endDate, viewerUserId, pageable);
+                filteredSourceIds, filteredUserIds, filteredStatus, batchIdsForQuery, hasBatchIds, startDate, endDate,
+                viewerUserId, pageable);
     }
 
     public List<DoubtsDto> createDtoFromDoubts(List<Doubts> allDoubts) {

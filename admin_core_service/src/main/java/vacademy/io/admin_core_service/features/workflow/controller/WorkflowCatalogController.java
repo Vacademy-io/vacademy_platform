@@ -21,10 +21,11 @@ public class WorkflowCatalogController {
         List<CatalogItemDTO> keys = List.of(
             CatalogItemDTO.builder()
                 .key("fetch_ssigm_by_package")
-                .label("Fetch Learners by Package")
-                .description("Get student enrollment records by package session IDs and status")
+                .label("Fetch Learners by Batch")
+                .description("Get enrolled students with name, email, mobile from a batch. Leave batchId empty for all batches (limited to 10).")
                 .category("Enrollment")
-                .requiredParams(List.of("packageSessionIds", "statuses"))
+                .requiredParams(List.of("instituteId"))
+                .optionalParams(List.of("batchId", "statuses"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("getSSIGMByStatusAndPackageSessionIds")
@@ -158,6 +159,14 @@ public class WorkflowCatalogController {
                 .category("Live Session")
                 .requiredParams(List.of("instituteId"))
                 .optionalParams(List.of("batchId", "daysBack"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_students_by_batch")
+                .label("Get Students from Batch (Lightweight)")
+                .description("Fast query — gets student names, emails, and phone numbers from a batch. No attendance data. Best for sending notifications.")
+                .category("Notification")
+                .requiredParams(List.of("instituteId"))
+                .optionalParams(List.of("batchId"))
                 .build()
         );
         return ResponseEntity.ok(keys);

@@ -106,6 +106,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return fetchLiveSessions(params);
             case "fetch_live_session_participants":
                 return fetchLiveSessionParticipants(params);
+            case "fetch_students_by_batch":
+                return fetchStudentsByBatch(params);
             case "fetch_enroll_invites":
                 return fetchEnrollInvites(params);
             case "fetch_expiring_memberships":
@@ -124,11 +126,51 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
     private Map<String, Object> fetchSSIGMByPackage(Map<String, Object> params) {
         try {
-            List<String> packageSessionIds = (List<String>) params.get("package_session_ids");
-            List<String> statusList = (List<String>) params.get("status_list");
+            // Support multiple param name formats
+            List<String> packageSessionIds = null;
+            Object psIds = params.get("package_session_ids");
+            if (psIds == null) psIds = params.get("packageSessionIds");
+            if (psIds == null) psIds = params.get("batchId");
 
-            if (packageSessionIds == null || statusList == null) {
-                return Map.of("error", "Missing required parameters");
+            if (psIds instanceof List) {
+                packageSessionIds = (List<String>) psIds;
+            } else if (psIds instanceof String && !((String) psIds).isEmpty()) {
+                // Support comma-separated IDs or single ID
+                packageSessionIds = java.util.Arrays.stream(((String) psIds).split(","))
+                    .map(String::trim).filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+            }
+
+            // If no packageSessionIds provided, fetch all active ones for the institute
+            if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+                String instituteId = (String) params.get("instituteId");
+                if (instituteId != null) {
+                    packageSessionIds = ssigmRepo.findAll().stream()
+                        .filter(m -> m.getInstitute() != null
+                            && instituteId.equals(m.getInstitute().getId())
+                            && "ACTIVE".equalsIgnoreCase(m.getStatus())
+                            && m.getPackageSession() != null)
+                        .map(m -> m.getPackageSession().getId())
+                        .distinct()
+                        .limit(10)
+                        .collect(Collectors.toList());
+                    log.info("No packageSessionIds provided. Found {} active batches for institute {}", packageSessionIds.size(), instituteId);
+                } else {
+                    return Map.of("error", "Either packageSessionIds/batchId or instituteId is required");
+                }
+            }
+
+            // Default statuses if not provided
+            List<String> statusList = null;
+            Object statuses = params.get("status_list");
+            if (statuses == null) statuses = params.get("statuses");
+            if (statuses instanceof List) {
+                statusList = (List<String>) statuses;
+            } else if (statuses instanceof String && !((String) statuses).isEmpty()) {
+                statusList = java.util.Arrays.stream(((String) statuses).split(","))
+                    .map(String::trim).collect(Collectors.toList());
+            } else {
+                statusList = List.of("ACTIVE");
             }
 
             List<Object[]> rows = ssigmRepo.findMappingsWithStudentContacts(packageSessionIds, statusList);
@@ -1112,6 +1154,78 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         return null;
     }
 
+    /**
+     * Lightweight query: fetch students (name, email, mobile) from a batch.
+     * Much faster than fetch_batch_attendance_report — no attendance/engagement.
+     * Use for notifications where you just need student contact info.
+     */
+    private Map<String, Object> fetchStudentsByBatch(Map<String, Object> params) {
+        try {
+            String batchId = (String) params.get("batchId");
+            String instituteId = (String) params.get("instituteId");
+
+            List<String> batchIds = new ArrayList<>();
+            if (batchId != null && !batchId.isEmpty()) {
+                // Support comma-separated batch IDs
+                batchIds = java.util.Arrays.stream(batchId.split(","))
+                    .map(String::trim).filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+            } else if (instituteId != null) {
+                batchIds = ssigmRepo.findAll().stream()
+                    .filter(m -> m.getInstitute() != null
+                        && instituteId.equals(m.getInstitute().getId())
+                        && "ACTIVE".equalsIgnoreCase(m.getStatus())
+                        && m.getPackageSession() != null)
+                    .map(m -> m.getPackageSession().getId())
+                    .distinct()
+                    .limit(5)
+                    .collect(Collectors.toList());
+            } else {
+                return Map.of("error", "Either batchId or instituteId is required");
+            }
+
+            List<Map<String, Object>> students = new ArrayList<>();
+            java.util.Set<String> seenUserIds = new java.util.HashSet<>();
+
+            for (String bid : batchIds) {
+                ssigmRepo.findAll().stream()
+                    .filter(m -> m.getPackageSession() != null
+                        && bid.equals(m.getPackageSession().getId())
+                        && "ACTIVE".equalsIgnoreCase(m.getStatus())
+                        && m.getUserId() != null
+                        && !seenUserIds.contains(m.getUserId()))
+                    .forEach(mapping -> {
+                        seenUserIds.add(mapping.getUserId());
+                        Map<String, Object> student = new LinkedHashMap<>();
+                        student.put("userId", mapping.getUserId());
+                        student.put("batchId", bid);
+                        try {
+                            var entities = instituteStudentRepository.findByUserId(mapping.getUserId());
+                            if (!entities.isEmpty()) {
+                                var s = entities.get(0);
+                                student.put("fullName", s.getFullName() != null ? s.getFullName() : "");
+                                student.put("email", s.getEmail() != null ? s.getEmail() : "");
+                                student.put("mobileNumber", s.getMobileNumber() != null ? s.getMobileNumber() : "");
+                                student.put("parentsEmail", s.getParentsEmail() != null ? s.getParentsEmail() : "");
+                                student.put("guardianEmail", s.getGuardianEmail() != null ? s.getGuardianEmail() : "");
+                            }
+                        } catch (Exception e) {
+                            student.put("fullName", "");
+                            student.put("email", "");
+                        }
+                        if (student.get("email") != null && !((String) student.get("email")).isEmpty()) {
+                            students.add(student);
+                        }
+                    });
+            }
+
+            return Map.of("students", students, "totalStudents", students.size());
+        } catch (Exception e) {
+            log.error("Error in fetchStudentsByBatch", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
     // ======================== NEW FILTERABLE QUERIES ========================
 
     private Map<String, Object> fetchLiveSessions(Map<String, Object> params) {
@@ -1430,6 +1544,11 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     .distinct()
                     .collect(Collectors.toList());
                 log.info("No batchId provided. Found {} active batches for institute {}", batchIds.size(), instituteId);
+                // Safety limit — prevent processing too many batches (would timeout)
+                if (batchIds.size() > 10) {
+                    log.warn("Too many batches ({}). Limiting to first 10 to prevent timeout.", batchIds.size());
+                    batchIds = batchIds.subList(0, 10);
+                }
             } else {
                 return Map.of("error", "Either batchId or instituteId is required");
             }

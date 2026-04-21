@@ -67,7 +67,14 @@ public class QueryNodeHandler implements NodeHandler {
 
                         Object value;
                         if (valueExpr instanceof String) {
-                            value = spelEvaluator.evaluate((String) valueExpr, context);
+                            String strVal = (String) valueExpr;
+                            // Only evaluate as SpEL if it starts with # (e.g., #ctx['instituteId'])
+                            // Plain values like UUIDs, numbers, status strings are used as-is
+                            if (strVal.startsWith("#")) {
+                                value = spelEvaluator.evaluate(strVal, context);
+                            } else {
+                                value = strVal;
+                            }
                         } else {
                             value = valueExpr;
                         }

@@ -70,11 +70,6 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
         );
     }, [setNavHeading, navigate]);
 
-    if (false) {
-        return (<DashboardLoader />
-        );
-    }
-
     if (!workflow) {
         return (
             <div className="flex h-[60vh] flex-col items-center justify-center gap-4">

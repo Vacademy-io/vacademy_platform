@@ -21,6 +21,7 @@ import java.util.Map;
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
+import vacademy.io.admin_core_service.features.ai_models.service.AIModelRegistryService;
 
 @Slf4j
 @Service
@@ -30,13 +31,16 @@ public class InstructorCopilotLLMService {
   private final WebClient webClient;
   private final ObjectMapper objectMapper;
   private final AiTokenUsageService aiTokenUsageService;
+  private final AIModelRegistryService aiModelRegistryService;
 
   public InstructorCopilotLLMService(
       @Value("${openrouter.api.key}") String apiKey,
       ObjectMapper objectMapper,
-      AiTokenUsageService aiTokenUsageService) {
+      AiTokenUsageService aiTokenUsageService,
+      AIModelRegistryService aiModelRegistryService) {
     this.objectMapper = objectMapper;
     this.aiTokenUsageService = aiTokenUsageService;
+    this.aiModelRegistryService = aiModelRegistryService;
     this.webClient = WebClient.builder()
         .baseUrl(API_URL)
         .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
@@ -47,32 +51,41 @@ public class InstructorCopilotLLMService {
   public Mono<JsonNode> generateContentFromTranscript(String transcript) {
     String prompt = createPrompt(transcript);
 
-    return callModel("xiaomi/mimo-v2-flash:free", prompt, 2)
+    List<String> modelPriority = aiModelRegistryService.getModelPriority("copilot");
+    if (modelPriority == null || modelPriority.isEmpty()) {
+      log.error("No AI models available for the copilot use case.");
+      return Mono.error(new RuntimeException("No AI models available for generating instructor copilot content."));
+    }
+
+    return tryModelsWithFallback(prompt, modelPriority, 0);
+  }
+
+  private Mono<JsonNode> tryModelsWithFallback(String prompt, List<String> modelPriority, int modelIndex) {
+    if (modelIndex >= modelPriority.size()) {
+      log.error("All LLM models failed after retries.");
+      return Mono.error(new RuntimeException("All LLM models failed. Tried: " + modelPriority));
+    }
+
+    String currentModel = modelPriority.get(modelIndex);
+
+    return callModel(currentModel, prompt, 2)
         .onErrorResume(e -> {
-          log.warn("Model xiaomi/mimo-v2-flash:free failed, retrying with mistralai/devstral-2512:free", e);
-          SentryEvent event = new SentryEvent();
-          event.setLevel(SentryLevel.WARNING);
-          Message message = new Message();
-          message.setMessage("LLM model failed, attempting fallback: " + e.getMessage());
-          event.setMessage(message);
-          event.setTag("llm.model", "xiaomi/mimo-v2-flash:free");
-          event.setTag("fallback.model", "mistralai/devstral-2512:free");
-          event.setTag("operation", "generateContentFromTranscript");
-          Sentry.captureEvent(event);
-          return callModel("mistralai/devstral-2512:free", prompt, 2);
-        })
-        .onErrorResume(e -> {
-          log.warn("Model mistralai/devstral-2512:free failed, retrying with nvidia/nemotron-3-nano-30b-a3b:free", e);
-          SentryEvent event = new SentryEvent();
-          event.setLevel(SentryLevel.WARNING);
-          Message message = new Message();
-          message.setMessage("LLM model failed, attempting final fallback: " + e.getMessage());
-          event.setMessage(message);
-          event.setTag("llm.model", "mistralai/devstral-2512:free");
-          event.setTag("fallback.model", "nvidia/nemotron-3-nano-30b-a3b:free");
-          event.setTag("operation", "generateContentFromTranscript");
-          Sentry.captureEvent(event);
-          return callModel("nvidia/nemotron-3-nano-30b-a3b:free", prompt, 0);
+          log.warn("Model {} failed, retrying with next model.", currentModel, e);
+          
+          if (modelIndex + 1 < modelPriority.size()) {
+            String nextModel = modelPriority.get(modelIndex + 1);
+            SentryEvent event = new SentryEvent();
+            event.setLevel(SentryLevel.WARNING);
+            Message message = new Message();
+            message.setMessage("LLM model failed, attempting fallback: " + e.getMessage());
+            event.setMessage(message);
+            event.setTag("llm.model", currentModel);
+            event.setTag("fallback.model", nextModel);
+            event.setTag("operation", "generateContentFromTranscript");
+            Sentry.captureEvent(event);
+          }
+          
+          return tryModelsWithFallback(prompt, modelPriority, modelIndex + 1);
         });
   }
 

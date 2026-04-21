@@ -545,13 +545,6 @@ def _extract_json_blob(raw: str) -> Any:
 
 
 class OpenRouterClient:
-    # Free tier models to try in order (fallback chain)
-    FREE_MODELS = [
-        "xiaomi/mimo-v2-flash:free",
-        "mistralai/devstral-2512:free",
-        "nvidia/nemotron-3-nano-30b-a3b:free"
-    ]
-    
     def __init__(
         self,
         api_key: str,
@@ -560,12 +553,9 @@ class OpenRouterClient:
         title: str = "StillLift Automation",
     ) -> None:
         self.api_key = api_key
-        # If default_model is one of the free models, use fallback chain
-        if default_model in self.FREE_MODELS:
-            self.model_chain = self.FREE_MODELS
-        else:
-            self.model_chain = [default_model]
         self.default_model = default_model
+        
+        self.model_chain = self._fetch_models()
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -574,7 +564,23 @@ class OpenRouterClient:
             "X-Title": title,
         }
 
-
+    def _fetch_models(self) -> list[str]:
+        models = []
+        try:
+            api_base = os.environ.get("AI_SERVICE_BASE_URL", "http://localhost:8077/ai-service")
+            url = f"{api_base}/models/v2/use-case/video"
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=5) as res:
+                if res.status == 200:
+                    data = json.loads(res.read().decode("utf-8"))
+                    for m in data.get("recommended_models", []):
+                        if m.get("model_id"):
+                            models.append(m["model_id"])
+                    if not models and data.get("free_tier_model", {}).get("model_id"):
+                        models.append(data["free_tier_model"]["model_id"])
+        except Exception as e:
+            print(f"Warning: Failed to fetch dynamic models from registry: {e}")
+        return models
 
     @retry_with_backoff(max_retries=4, initial_delay=2.0, exceptions=(urllib.error.URLError, RuntimeError))
     def chat(
@@ -585,8 +591,13 @@ class OpenRouterClient:
         max_tokens: int = 2000,
         response_format: Optional[Dict[str, Any]] = None,
     ) -> Tuple[str, Dict[str, Any]]:
-        # If using free models, try them in order with fallback
-        models_to_try = self.model_chain if model is None and self.default_model in self.FREE_MODELS else [model or self.default_model]
+        # Use provided model or fall back to chain/default
+        if model:
+            models_to_try = [model]
+        elif self.model_chain:
+            models_to_try = self.model_chain
+        else:
+            models_to_try = [self.default_model]
 
         last_error = None
         for model_to_use in models_to_try:
@@ -1266,7 +1277,7 @@ class VideoGenerationPipeline:
         # Two modes based on audio_preference:
         #   "original" → skip SCRIPT+TTS, use source video audio + transcript
         #   "tts"      → run SCRIPT+TTS normally, inject video context into prompts
-        _iv_audio_pref = (self._input_video_context or {}).get("audio_preference", "original")
+        _iv_audio_pref = (self._input_video_contexts[0] if self._input_video_contexts else (self._input_video_context or {})).get("audio_preference", "original")
         if self._input_video_context and _iv_audio_pref == "original":
             print("🎬 INPUT VIDEO MODE — skipping Script/TTS/Words stages")
             _iv_ctx = self._input_video_context.get("context", {})
@@ -1383,11 +1394,34 @@ class VideoGenerationPipeline:
             # video context so the script LLM knows what's on screen.
             print("🎬 INPUT VIDEO MODE (TTS) — enriching prompt with video context")
             _iv_ctx = self._input_video_context.get("context", {})
-            _iv_demo = _iv_ctx.get("demo_only", {})
+            _iv_v_mode = self._input_video_context.get("mode", "demo")
+            _iv_demo = _iv_ctx.get("demo_only", {}) if _iv_v_mode == "demo" else {}
             _iv_transcript = _iv_ctx.get("transcript", [])
 
             # Build a context block describing what's in the video
+            _iv_meta = _iv_ctx.get("meta", {})
+            _iv_dur = _iv_meta.get("duration_s", 0)
             _context_parts = []
+
+            # Source video duration + mode-specific guidance
+            if _iv_dur > 0:
+                if _iv_v_mode == "demo":
+                    _context_parts.append(
+                        f"Source video duration: {_iv_dur:.0f}s. "
+                        "Write narration as a GUIDED WALKTHROUGH of this demo — "
+                        "describe what the viewer sees at each step, explain the UI actions, "
+                        "and highlight key features. Don't add generic marketing filler. "
+                        "Every sentence should relate to something visible in the demo."
+                    )
+                else:  # podcast
+                    _context_parts.append(
+                        f"Source video duration: {_iv_dur:.0f}s. "
+                        "Write narration that introduces and contextualizes the speaker's key points. "
+                        "The viewer will see clips of the speaker — your narration bridges between clips, "
+                        "provides background, and highlights the most impactful quotes. "
+                        "Don't repeat what the speaker says verbatim — add context and insight."
+                    )
+
             if _iv_demo:
                 ui_elements = _iv_demo.get("ui_elements_seen", [])
                 if ui_elements:
@@ -1403,14 +1437,27 @@ class VideoGenerationPipeline:
                     _context_parts.append(f"Narration heard: {transcript_text[:500]}")
 
             if _context_parts:
+                if _iv_v_mode == "demo":
+                    _closing = (
+                        "\n\nIMPORTANT: Write narration that walks through the demo "
+                        "step by step. Describe what the viewer sees on screen at each moment. "
+                        "Do NOT add generic filler like 'In today's digital age' or 'Let's explore'. "
+                        "Every sentence should describe a specific screen, button, or action visible in the demo.\n"
+                    )
+                else:
+                    _closing = (
+                        "\n\nIMPORTANT: Write narration that contextualizes the speaker's message. "
+                        "Bridge between key quotes, provide background on the speaker/topic, "
+                        "and highlight the most powerful moments. Don't narrate over the speaker — "
+                        "your narration fills the gaps between source video clips.\n"
+                    )
                 _video_context_block = (
                     "\n\n--- SOURCE VIDEO CONTEXT ---\n"
-                    "The user has provided a screen recording / demo video. "
-                    "Write the narration script based on what happens in this video:\n\n"
+                    f"The user has provided a {'screen recording / demo' if _iv_v_mode == 'demo' else 'podcast / interview'} video. "
+                    f"Write the narration {'as a guided walkthrough' if _iv_v_mode == 'demo' else 'to complement the speaker'}:\n\n"
                     + "\n".join(f"- {p}" for p in _context_parts)
-                    + "\n\nUse this context to write an accurate, engaging narration "
-                    "that describes what the viewer sees on screen.\n"
-                    "--- END SOURCE VIDEO CONTEXT ---\n"
+                    + _closing
+                    + "--- END SOURCE VIDEO CONTEXT ---\n"
                 )
                 if base_prompt:
                     base_prompt = base_prompt + _video_context_block
@@ -3848,8 +3895,14 @@ class VideoGenerationPipeline:
                 ]
                 _scene_times = [f"{s.get('t', 0):.1f}s" for s in _iv_scenes[:10]]
 
+                _resolution = _iv_meta.get("resolution", [0, 0])
+                _src_w = _resolution[0] if len(_resolution) >= 2 else 0
+                _src_h = _resolution[1] if len(_resolution) >= 2 else 0
+                _is_portrait = _src_w > 0 and _src_h > 0 and _src_w < _src_h
+                _orient = "PORTRAIT 9:16" if _is_portrait else "LANDSCAPE 16:9"
+
                 _section = (
-                    f"\n### Video {_label}: \"{_v_name}\" ({_v_mode}, {_v_dur:.0f}s)\n"
+                    f"\n### Video {_label}: \"{_v_name}\" ({_v_mode}, {_v_dur:.0f}s, {_orient}, {_src_w}x{_src_h})\n"
                     f"source_video_index: {_vidx}\n"
                     f"Highlight window: {_iv_highlight.get('t_start', 0):.1f}-"
                     f"{_iv_highlight.get('t_end', 0):.1f}s "
@@ -3882,13 +3935,18 @@ class VideoGenerationPipeline:
                 f"You have {_num_sources} source video(s) available.\n"
                 + "".join(_video_sections) + "\n"
                 "**SOURCE_CLIP RULES**:\n"
-                "- Use SOURCE_CLIP shots to show original video footage during key moments.\n"
+                "- SOURCE_CLIP should be the PRIMARY shot type — use it for 60-70% of shots.\n"
+                "  The source video IS the content. Use other types (KINETIC_TITLE, TEXT_DIAGRAM)\n"
+                "  only for intro/outro titles and brief concept summaries between clips.\n"
+                "- Structure as a GUIDED WALKTHROUGH: SOURCE_CLIP shows the demo footage,\n"
+                "  interleaved with brief AI graphics that explain what was just shown.\n"
                 "- Each SOURCE_CLIP shot MUST include:\n"
                 "  - `source_video_index`: integer (0 = Video A, 1 = Video B, ...)\n"
                 "  - `source_start`: timestamp (seconds) in THAT video\n"
                 "  - `source_end`: timestamp (seconds) in THAT video\n"
+                "- Cover the source video chronologically — walk through the demo from start\n"
+                "  to finish, don't skip large sections or jump around randomly.\n"
                 "- Match source_start/source_end to the transcript timestamps of the CORRECT video.\n"
-                "- Mix SOURCE_CLIP with other shot types for visual variety.\n"
             )
             user_prompt = user_prompt + _source_video_block
 
@@ -4422,47 +4480,76 @@ class VideoGenerationPipeline:
                     _iv_mode = self._input_video_context.get("mode", "")
 
                 if _iv_mode == "demo":
-                    # Demo mode: card layout — video in a styled frame, caption outside
+                    # Detect source video orientation for layout
+                    _clip_ctx = None
+                    if self._input_video_contexts and _sv_idx < len(self._input_video_contexts):
+                        _clip_ctx = self._input_video_contexts[_sv_idx]
+                    elif self._input_video_context:
+                        _clip_ctx = self._input_video_context
+                    _src_res = (_clip_ctx or {}).get("context", {}).get("meta", {}).get("resolution", [0, 0])
+                    _src_is_portrait = len(_src_res) >= 2 and _src_res[0] < _src_res[1]
+                    _out_is_landscape = getattr(self, 'video_width', 1920) >= getattr(self, 'video_height', 1080)
+
+                    if _src_is_portrait and _out_is_landscape:
+                        # Portrait source in landscape output → SIDE-BY-SIDE layout
+                        user_prompt = user_prompt + (
+                            "\n\n**🎬 SOURCE_CLIP SHOT — PORTRAIT VIDEO SIDE-BY-SIDE LAYOUT**:\n"
+                            "The source video is PORTRAIT (9:16) but the output is LANDSCAPE.\n"
+                            "Use a SIDE-BY-SIDE layout: video on the left, annotations on the right.\n\n"
+                            "**EXACT STRUCTURE REQUIRED:**\n"
+                            "```html\n"
+                            "<div style='width:100%;height:100%;background:#111827;display:flex;"
+                            "align-items:center;padding:3%;gap:3%;'>\n"
+                            "  <!-- Video container (portrait) — MUST be pure #000000 -->\n"
+                            "  <div style='width:32%;aspect-ratio:9/16;max-height:90%;"
+                            "background:#000000;border-radius:12px;overflow:hidden;flex-shrink:0;"
+                            "box-shadow:0 8px 32px rgba(0,0,0,0.6);'></div>\n"
+                            "  <!-- Annotation panel -->\n"
+                            "  <div style='flex:1;display:flex;flex-direction:column;"
+                            "justify-content:center;gap:1rem;'>\n"
+                            "    <h2 style='font-size:1.8rem;font-weight:700;color:#fff;'>"
+                            "STEP TITLE</h2>\n"
+                            "    <p style='font-size:1.1rem;color:rgba(255,255,255,0.7);"
+                            "line-height:1.5;'>Description of what's happening in the demo</p>\n"
+                            "  </div>\n"
+                            "</div>\n"
+                            "```\n\n"
+                        )
+                    else:
+                        # Landscape source or portrait output → video above, caption below
+                        _aspect = "9/16" if _src_is_portrait else "16/9"
+                        _max_h = "80%" if _src_is_portrait else "60%"
+                        user_prompt = user_prompt + (
+                            "\n\n**🎬 SOURCE_CLIP SHOT — DEMO VIDEO CARD LAYOUT**:\n"
+                            "The source video will be composited into the black (#000000) region.\n\n"
+                            "**EXACT STRUCTURE REQUIRED:**\n"
+                            "```html\n"
+                            "<div style='width:100%;height:100%;background:#111827;display:flex;"
+                            "flex-direction:column;align-items:center;justify-content:center;padding:3%;'>\n"
+                            "  <div style='text-align:center;margin-bottom:2%;'>\n"
+                            "    <h2 style='font-size:1.6rem;font-weight:700;color:#fff;'>"
+                            "STEP TITLE</h2>\n"
+                            "  </div>\n"
+                            f"  <div style='width:88%;aspect-ratio:{_aspect};max-height:{_max_h};"
+                            "background:#000000;border-radius:12px;overflow:hidden;"
+                            "box-shadow:0 8px 32px rgba(0,0,0,0.6);'></div>\n"
+                            "  <div style='margin-top:2%;text-align:center;"
+                            "color:rgba(255,255,255,0.65);font-size:1rem;max-width:80%;'>"
+                            "Description here</div>\n"
+                            "</div>\n"
+                            "```\n\n"
+                        )
+
+                    # Common rules for all demo layouts
                     user_prompt = user_prompt + (
-                        "\n\n**🎬 SOURCE_CLIP SHOT — DEMO VIDEO CARD LAYOUT**:\n"
-                        "The source video (a screen recording / demo) will be composited into the "
-                        "black (#000000) region of your HTML. Design a CARD LAYOUT where the video "
-                        "sits inside a styled container and a brief caption sits outside.\n\n"
-                        "**EXACT STRUCTURE REQUIRED** (follow this template closely):\n"
-                        "```html\n"
-                        "<div style='width:100%;height:100%;background:#111827;display:flex;"
-                        "flex-direction:column;align-items:center;justify-content:center;padding:3%;'>\n"
-                        "  <!-- Title above video -->\n"
-                        "  <div style='text-align:center;margin-bottom:2%;'>\n"
-                        "    <h2 style='font-size:1.6rem;font-weight:700;color:#fff;'>"
-                        "YOUR TITLE HERE</h2>\n"
-                        "  </div>\n"
-                        "  <!-- Video container — MUST be pure #000000 background -->\n"
-                        "  <div style='width:88%;aspect-ratio:16/9;max-height:60%;"
-                        "background:#000000;border-radius:12px;overflow:hidden;"
-                        "box-shadow:0 8px 32px rgba(0,0,0,0.6);'></div>\n"
-                        "  <!-- Caption below video -->\n"
-                        "  <div style='margin-top:2%;text-align:center;"
-                        "color:rgba(255,255,255,0.65);font-size:1rem;max-width:80%;'>"
-                        "Brief description here</div>\n"
-                        "</div>\n"
-                        "```\n\n"
                         "**STRICT RULES:**\n"
-                        "- The outer background MUST be #111827 (dark blue-gray, NOT black).\n"
-                        "- The video container MUST be pure #000000 — this is where the source "
-                        "video will appear via compositing.\n"
-                        "- Video container aspect-ratio should be 16/9 (for screen recordings).\n"
-                        "- Title: 1 line, concise. Must describe what the demo is ACTUALLY "
-                        "SHOWING at this timestamp (e.g., 'Browsing the Course Library', "
-                        "'Setting Up Module Structure'). Use the visual_description and "
-                        "text_elements from the Director's shot plan. Do NOT use generic "
-                        "marketing copy like 'No More Tool Jumping'.\n"
-                        "- Caption: 1-2 lines, specific to the UI action being demonstrated.\n"
-                        "- DO NOT create SVGs, diagrams, icons, step lists, UI mockups, or any "
-                        "visual elements. The video IS the visual.\n"
+                        "- Outer background MUST be #111827 (dark blue-gray, NOT black).\n"
+                        "- Video container MUST be pure #000000 — source video composited here.\n"
+                        "- Title: describe what the demo ACTUALLY SHOWS at this timestamp.\n"
+                        "- DO NOT create SVGs, diagrams, icons, step lists, or UI mockups.\n"
                         "- DO NOT use <img> or data-img-prompt.\n"
                         "- Simple gsap fadeIn animation only (0.3s).\n"
-                        "- The ENTIRE HTML must be under 25 lines.\n"
+                        "- ENTIRE HTML under 25 lines.\n"
                     )
                 else:
                     # Podcast/other mode: full-screen video with minimal caption overlay
@@ -4746,13 +4833,18 @@ class VideoGenerationPipeline:
                             )
                     else:
                         # Podcast/other: full-screen video behind overlay
+                        # Use 'contain' if source is portrait in landscape output (avoid cropping)
+                        _src_res_p = (_clip_ctx or {}).get("context", {}).get("meta", {}).get("resolution", [0, 0])
+                        _src_portrait_p = len(_src_res_p) >= 2 and _src_res_p[0] < _src_res_p[1]
+                        _out_landscape_p = getattr(self, 'video_width', 1920) >= getattr(self, 'video_height', 1080)
+                        _obj_fit = "contain" if (_src_portrait_p and _out_landscape_p) else "cover"
                         _video_bg = (
                             f'<video data-source-clip="true" '
                             f'data-source-start="{_src_start}" '
                             f'src="{_source_url}#t={_src_start},{_src_end}" '
                             f'autoplay muted playsinline '
                             f'style="position:absolute;top:0;left:0;width:100%;height:100%;'
-                            f'object-fit:cover;z-index:0;pointer-events:none;"></video>'
+                            f'object-fit:{_obj_fit};z-index:0;pointer-events:none;"></video>'
                         )
                         html = (
                             f'<div style="position:relative;width:100%;height:100%;overflow:hidden;background:#000;">'

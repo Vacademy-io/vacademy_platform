@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import vacademy.io.admin_core_service.features.ai_models.service.AIModelRegistryService;
 
 /**
  * Service to generate student analysis reports using LLM
@@ -35,26 +36,24 @@ public class StudentReportLLMService {
         private static final String API_URL = "https://openrouter.ai";
         private static final int RESPONSE_TIMEOUT_SECONDS = 60;
 
-        // Model priority list - fallback order
-        private static final List<String> MODEL_PRIORITY = List.of(
-                        "xiaomi/mimo-v2-flash:free",
-                        "mistralai/devstral-2512:free",
-                        "nvidia/nemotron-3-nano-30b-a3b:free");
         private static final int MAX_RETRIES_PER_MODEL = 2;
 
         private final WebClient webClient;
         private final ObjectMapper objectMapper;
         private final UserLinkedDataRepository userLinkedDataRepository;
         private final AiTokenUsageService aiTokenUsageService;
+        private final AIModelRegistryService aiModelRegistryService;
 
         public StudentReportLLMService(
                         @Value("${openrouter.api.key}") String apiKey,
                         ObjectMapper objectMapper,
                         UserLinkedDataRepository userLinkedDataRepository,
-                        AiTokenUsageService aiTokenUsageService) {
+                        AiTokenUsageService aiTokenUsageService,
+                        AIModelRegistryService aiModelRegistryService) {
                 this.objectMapper = objectMapper;
                 this.userLinkedDataRepository = userLinkedDataRepository;
                 this.aiTokenUsageService = aiTokenUsageService;
+                this.aiModelRegistryService = aiModelRegistryService;
 
                 this.webClient = WebClient.builder()
                                 .baseUrl(API_URL)
@@ -76,25 +75,32 @@ public class StudentReportLLMService {
 
                 String prompt = createStudentReportPrompt(data, existingData);
 
+                List<String> modelPriority = aiModelRegistryService.getModelPriority("analytics");
+                if (modelPriority == null || modelPriority.isEmpty()) {
+                        log.error("[Student-Report-LLM] No AI models available for the analytics use case.");
+                        return Mono.error(new RuntimeException("No AI models available for generating student reports."));
+                }
+
                 // Try each model in priority order with retries
-                return tryModelsWithFallback(prompt, 0, data.getUserId());
+                return tryModelsWithFallback(prompt, modelPriority, 0, data.getUserId());
         }
 
         /**
          * Recursively try models with fallback logic
          * 
          * @param prompt     The prompt to send to LLM
+         * @param modelPriority List of prioritized model ids
          * @param modelIndex Current model index in priority list
          * @param userId     The user ID for the report
          * @return Mono containing the report or error
          */
-        private Mono<StudentReportData> tryModelsWithFallback(String prompt, int modelIndex, String userId) {
-                if (modelIndex >= MODEL_PRIORITY.size()) {
+        private Mono<StudentReportData> tryModelsWithFallback(String prompt, List<String> modelPriority, int modelIndex, String userId) {
+                if (modelIndex >= modelPriority.size()) {
                         log.error("[Student-Report-LLM] All models failed after retries");
-                        return Mono.error(new RuntimeException("All LLM models failed. Tried: " + MODEL_PRIORITY));
+                        return Mono.error(new RuntimeException("All LLM models failed. Tried: " + modelPriority));
                 }
 
-                String currentModel = MODEL_PRIORITY.get(modelIndex);
+                String currentModel = modelPriority.get(modelIndex);
 
                 return generateWithModel(prompt, currentModel, userId)
                                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
@@ -110,7 +116,7 @@ public class StudentReportLLMService {
                                 .onErrorResume(error -> {
                                         log.error("[Student-Report-LLM] Model {} failed: {}. Trying next model...",
                                                         currentModel, error.getMessage());
-                                        return tryModelsWithFallback(prompt, modelIndex + 1, userId);
+                                        return tryModelsWithFallback(prompt, modelPriority, modelIndex + 1, userId);
                                 });
         }
 

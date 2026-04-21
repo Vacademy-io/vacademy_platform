@@ -166,6 +166,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const introStartTimeRef = useRef(0);
     const isPlayingRef = useRef(false); // Ref to avoid stale closure issues
     const contentIframeRef = useRef<HTMLIFrameElement>(null); // Ref to the primary content iframe (for print)
+    const lastAutoplayedIndexRef = useRef<number>(-1); // Track which page was last auto-played to avoid re-triggering
 
     // Effective dimensions: prefer meta.dimensions from the loaded timeline, fall back to props
     const effectiveWidth = meta.dimensions?.width || width;
@@ -195,11 +196,12 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         updateSettings: updateCaptionSettings,
         toggleCaptions,
     } = useCaptions({
-        // Fetch words for time-driven VIDEO or user-driven STORYBOOK
+        // Fetch words for time-driven VIDEO or user-driven STORYBOOK/FLASHCARDS/TIMELINE
         wordsUrl:
             navigationMode === 'time_driven' ||
             contentType === 'STORYBOOK' ||
-            contentType === 'FLASHCARDS'
+            contentType === 'FLASHCARDS' ||
+            contentType === 'TIMELINE'
                 ? wordsUrl
                 : undefined,
         currentTime,
@@ -321,6 +323,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         // Stop audio if playing
         if (isPlaying) {
             setIsPlaying(false);
+            isPlayingRef.current = false;
             if (audioRef.current) audioRef.current.pause();
         }
 
@@ -394,8 +397,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     setDuration(loadedMeta.total_duration);
                 }
 
-                // Autoplay default for STORYBOOK
-                if (loadedMeta.content_type === 'STORYBOOK') {
+                // Autoplay default for STORYBOOK and TIMELINE
+                if (loadedMeta.content_type === 'STORYBOOK' || loadedMeta.content_type === 'TIMELINE') {
                     setIsAutoplay(true);
                 }
 
@@ -447,30 +450,41 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         };
     }, [scaleCalculator, entries.length, isFullscreen]);
 
-    // Autoplay effect for Storybook/Flashcards
+    // Reset autoplay tracker when page index changes
+    useEffect(() => {
+        lastAutoplayedIndexRef.current = -1;
+    }, [currentIndex]);
+
+    // Autoplay effect for Storybook/Flashcards/Timeline — triggers on page change or when ranges load
     useEffect(() => {
         let timer: ReturnType<typeof setTimeout> | undefined;
 
         if (
             isAutoplay &&
-            (contentType === 'STORYBOOK' || contentType === 'FLASHCARDS') &&
+            (contentType === 'STORYBOOK' || contentType === 'FLASHCARDS' || contentType === 'TIMELINE') &&
             navigationMode === 'user_driven'
         ) {
-            // Only play if audio exists and we are NOT currently playing.
-            if (!isPlaying && pageAudioRanges.has(currentIndex)) {
+            // Only play if we haven't already auto-played this page
+            if (
+                lastAutoplayedIndexRef.current !== currentIndex &&
+                !isPlayingRef.current &&
+                pageAudioRanges.has(currentIndex)
+            ) {
                 const range = pageAudioRanges.get(currentIndex);
                 if (range && audioRef.current) {
-                    // Small delay to ensure state settles
+                    lastAutoplayedIndexRef.current = currentIndex;
+                    // Small delay to ensure state settles after handleNext pauses audio
                     timer = setTimeout(() => {
                         // Double check we are still not playing
                         if (!isPlayingRef.current) {
                             const seekTime = Math.max(0, range.start);
                             audioRef.current!.currentTime = seekTime;
                             audioRef.current!.play().catch(swallowAbort);
+                            isPlayingRef.current = true;
                             setIsPlaying(true);
                             audioStartedRef.current = true;
                         }
-                    }, 50);
+                    }, 150);
                 }
             }
         }
@@ -478,7 +492,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         return () => {
             if (timer) clearTimeout(timer);
         };
-    }, [currentIndex, isAutoplay, contentType, navigationMode, pageAudioRanges, isPlaying]);
+    }, [currentIndex, isAutoplay, contentType, navigationMode, pageAudioRanges]);
 
     // =====================================================
     // TIME-DRIVEN NAVIGATION (VIDEO)
@@ -569,7 +583,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
             // For Storybook/Flashcards: Check if we reached the end of the current page's audio
             if (
                 navigationMode === 'user_driven' &&
-                (contentType === 'STORYBOOK' || contentType === 'FLASHCARDS') &&
+                (contentType === 'STORYBOOK' || contentType === 'FLASHCARDS' || contentType === 'TIMELINE') &&
                 isPlaying
             ) {
                 const range = pageAudioRanges.get(currentIndex);
@@ -1739,7 +1753,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                 {/* Captions / Subtitles Display */}
                 {(navigationMode === 'time_driven' ||
                     contentType === 'STORYBOOK' ||
-                    contentType === 'FLASHCARDS') &&
+                    contentType === 'FLASHCARDS' ||
+                    contentType === 'TIMELINE') &&
                     wordsUrl && (
                         <CaptionDisplay
                             words={currentWords}
@@ -2239,8 +2254,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                     )}
                                 </span>
 
-                                {/* STORYBOOK: Read Page Button — always visible, disabled when audio not available */}
-                                {contentType === 'STORYBOOK' && (
+                                {/* STORYBOOK/TIMELINE: Read Page Button — always visible, disabled when audio not available */}
+                                {(contentType === 'STORYBOOK' || contentType === 'TIMELINE') && (
                                     <button
                                         onClick={
                                             pageAudioRanges.has(currentIndex)
@@ -2471,8 +2486,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                         {/* Spacer */}
                         <div style={{ flex: 1 }} />
 
-                        {/* Storybook: Autoplay Toggle (with Text) */}
-                        {contentType === 'STORYBOOK' && (
+                        {/* Storybook/Timeline: Autoplay Toggle (with Text) */}
+                        {(contentType === 'STORYBOOK' || contentType === 'TIMELINE') && (
                             <button
                                 onClick={() => setIsAutoplay(!isAutoplay)}
                                 style={{

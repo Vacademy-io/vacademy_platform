@@ -378,17 +378,20 @@ public class DoubtsManager {
      * Returns {@code null} when the caller should see all doubts (admin / unrestricted), and the
      * user id when the caller's view should be scoped by doubt_assignee / FSPSSM / self-raised.
      *
-     * Check order is deliberate — teacher accounts can be incorrectly provisioned with
-     * {@code is_root_user=true}, and we do NOT want that flag to leak every doubt to them; but a
-     * legitimate admin who also teaches a subject (hybrid account) should still see everything:
+     * Check order:
      *   1. Null caller → no filter (defensive).
-     *   2. TEACHER or STUDENT role → scope, ignoring {@code isRootUser}.
-     *   3. Explicit ADMIN role → no filter. Checked BEFORE the FSPSSM probe so hybrid
-     *      admin-who-also-teaches accounts keep their admin visibility.
-     *   4. Has ANY active FSPSSM mapping → scope, even if {@code isRootUser} is true. Catches
-     *      custom role names like "FACULTY" / "INSTRUCTOR" that don't literally say TEACHER.
-     *   5. {@code isRootUser} with no FSPSSM → no filter (legacy root admin).
-     *   6. Otherwise → scope by user id.
+     *   2. Explicit TEACHER or STUDENT role → scope, ignoring {@code isRootUser}. Handles teacher
+     *      accounts that were wrongly flagged root — the TEACHER role wins and they don't leak.
+     *   3. ANY admin signal — ADMIN role OR {@code isRootUser} — → no filter. Checked BEFORE the
+     *      FSPSSM probe so hybrid admins who happen to have teaching mappings (or stale FSPSSM
+     *      rows from older provisioning) keep their unrestricted view.
+     *   4. Has ACTIVE FSPSSM mapping → scope (custom role teachers like FACULTY/INSTRUCTOR).
+     *   5. Otherwise → scope by user id.
+     *
+     * Tradeoff: teachers provisioned with {@code isRootUser=true} and NO formal TEACHER role will
+     * pass through step 3 and see everything. That's a data-provisioning bug, not a code bug —
+     * fix on the account by either clearing the root flag or adding the TEACHER role. Giving
+     * real admins back their visibility is the higher priority.
      */
     private String resolveViewerUserId(CustomUserDetails user) {
         if (user == null) {
@@ -397,14 +400,11 @@ public class DoubtsManager {
         if (hasRole(user, "TEACHER") || hasRole(user, "STUDENT")) {
             return user.getUserId();
         }
-        if (hasRole(user, "ADMIN")) {
+        if (hasRole(user, "ADMIN") || user.isRootUser()) {
             return null;
         }
         if (hasAnyFacultyMapping(user.getUserId())) {
             return user.getUserId();
-        }
-        if (user.isRootUser()) {
-            return null;
         }
         return user.getUserId();
     }

@@ -53,6 +53,15 @@ public class DoubtNotificationService {
     /** Matches the default in DynamicNotificationService's theme resolver. */
     private static final String FALLBACK_THEME_COLOR = "#FF9800";
 
+    /**
+     * Sentinel {@code institute_id} for the single global default template row. V215 inserts
+     * one row per doubt event under this id; every institute without a custom override resolves
+     * to it at send time. Never appears in an admin's Templates UI (which lists by real
+     * institute_id). Matches the existing convention in this codebase (e.g.
+     * {@code default-otp-template-001}).
+     */
+    private static final String DEFAULT_INSTITUTE_ID = "DEFAULT";
+
     @Autowired
     private InstituteSettingService instituteSettingService;
 
@@ -133,31 +142,38 @@ public class DoubtNotificationService {
     }
 
     /**
-     * Two-layer resolution, matching how defaults work elsewhere in this codebase (per-institute
-     * editable rows, no code-level HTML fallback):
-     *   1. Admin-configured template id from DOUBT_MANAGEMENT_SETTING.
-     *   2. Default template looked up by {@code (institute_id, name='<defaultName>', type='EMAIL')}.
-     *      Seeded by {@code V214__Seed_Doubt_Notification_Email_Templates.sql} for existing
-     *      institutes, and by {@code DoubtTemplateSeeder} for new ones. The row id is a random
-     *      UUID — we cannot derive it from the institute id because templates.id is VARCHAR(36).
+     * Three-layer resolution. The second and third layers share the same name lookup pattern and
+     * differ only in the {@code institute_id} they query:
+     *   1. Admin-configured template id from DOUBT_MANAGEMENT_SETTING → use it.
+     *   2. Institute-specific custom row
+     *      {@code (institute_id = <real>, name = defaultName, type = 'EMAIL')}.
+     *      Only exists when an admin has explicitly customized the default by creating a same-
+     *      named row in their institute.
+     *   3. Global default row
+     *      {@code (institute_id = 'DEFAULT', name = defaultName, type = 'EMAIL')}.
+     *      Seeded by V215. Every institute shares this one row.
      *
-     * Returns null when neither the configured nor the default row exists — caller skips email
-     * dispatch. Push is unaffected. A missing default row means the admin deliberately deleted
-     * it, so we respect that intent.
+     * Returns null only when all three layers miss — caller skips email dispatch. Push is
+     * unaffected. A missing global default means someone deleted the V215 row on purpose, so we
+     * respect the opt-out instead of forcing a send.
      */
     private String resolveTemplateId(String configuredId, String instituteId, String defaultName) {
         if (configuredId != null && !configuredId.isBlank()) {
             if (templateRepository.existsById(configuredId)) return configuredId;
-            log.warn("Configured doubt email template {} missing from DB; falling through to seeded default", configuredId);
+            log.warn("Configured doubt email template {} missing from DB; trying institute override next",
+                    configuredId);
         }
-        return templateRepository
-                .findByInstituteIdAndNameAndType(instituteId, defaultName, "EMAIL")
-                .map(Template::getId)
-                .orElseGet(() -> {
-                    log.warn("Default doubt email template '{}' not found for institute {}; skipping email dispatch.",
-                            defaultName, instituteId);
-                    return null;
-                });
+        Optional<Template> instituteOverride =
+                templateRepository.findByInstituteIdAndNameAndType(instituteId, defaultName, "EMAIL");
+        if (instituteOverride.isPresent()) return instituteOverride.get().getId();
+
+        Optional<Template> globalDefault =
+                templateRepository.findByInstituteIdAndNameAndType(DEFAULT_INSTITUTE_ID, defaultName, "EMAIL");
+        if (globalDefault.isPresent()) return globalDefault.get().getId();
+
+        log.warn("No doubt email template '{}' found (institute={} nor {}); skipping email dispatch.",
+                defaultName, instituteId, DEFAULT_INSTITUTE_ID);
+        return null;
     }
 
     private DoubtNotificationChannelPrefs resolvePrefs(String instituteId, boolean raised) {

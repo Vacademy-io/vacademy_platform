@@ -19,12 +19,16 @@ import {
     getTemplatesByTypeQuery,
 } from '@/services/workflow-service';
 
-/** Handles auto-fill of system params like instituteId using useEffect (not in render) */
-function QueryRequiredParams({ params, config, onConfigChange, nodeId }: {
+/** Handles auto-fill of system params and smart input for required query params */
+function QueryRequiredParams({ params, config, onConfigChange, nodeId, instituteId, edges, nodes, selectedNodeId }: {
     params: string[];
     config: Record<string, unknown>;
     onConfigChange: (key: string, value: unknown) => void;
     nodeId: string;
+    instituteId: string;
+    edges: Array<{ source: string; target: string }>;
+    nodes: Array<{ id: string; data: Record<string, unknown> }>;
+    selectedNodeId: string;
 }) {
     // Auto-fill instituteId on mount
     useEffect(() => {
@@ -35,11 +39,24 @@ function QueryRequiredParams({ params, config, onConfigChange, nodeId }: {
 
     if (params.length === 0) return null;
 
+    // Check if this node has upstream connections
+    const hasUpstream = edges.some((e) => e.target === selectedNodeId);
+
+    // Entity type map for ID params
+    const entityTypeMap: Record<string, string> = {
+        audienceId: 'AUDIENCE',
+        batchId: 'PACKAGE_SESSION',
+        liveSessionId: 'LIVE_SESSION',
+        inviteId: 'ENROLL_INVITE',
+    };
+
     return (
         <div className="space-y-2 border-t pt-2 mt-2">
             <Label className="text-[10px] uppercase text-gray-400">Required Parameters</Label>
             {params.map((param) => {
                 const isSystemParam = param === 'instituteId';
+                const entityType = entityTypeMap[param];
+
                 return (
                     <div key={param}>
                         <Label className="text-xs">{param}</Label>
@@ -49,12 +66,28 @@ function QueryRequiredParams({ params, config, onConfigChange, nodeId }: {
                                     Auto-filled from workflow context
                                 </div>
                             </div>
-                        ) : (
+                        ) : entityType ? (
+                            <div className="mt-1">
+                                <EventEntityPicker
+                                    eventAppliedType={entityType}
+                                    value={(config[param] as string) || undefined}
+                                    onChange={(id) => onConfigChange(param, id ?? '')}
+                                    instituteId={instituteId}
+                                />
+                            </div>
+                        ) : hasUpstream ? (
                             <VariablePicker
                                 value={(config[param] as string) ?? ''}
                                 onChange={(v) => onConfigChange(param, v)}
                                 placeholder={`Pick or type value for ${param}...`}
                                 nodeId={nodeId}
+                            />
+                        ) : (
+                            <Input
+                                value={(config[param] as string) ?? ''}
+                                onChange={(e) => onConfigChange(param, e.target.value)}
+                                className="mt-1"
+                                placeholder={`Enter ${param}...`}
                             />
                         )}
                     </div>
@@ -80,8 +113,12 @@ export function NodeConfigPanel() {
     // Fetch catalog data
     const { data: queryKeys } = useQuery(getQueryKeysQuery());
     const { data: triggerEvents } = useQuery(getTriggerEventsCatalogQuery());
-    const { data: emailTemplates } = useQuery(getTemplatesByTypeQuery(instituteId, 'EMAIL'));
-    const { data: whatsappTemplates } = useQuery(getTemplatesByTypeQuery(instituteId, 'WHATSAPP'));
+    const { data: emailTemplatesUpper } = useQuery(getTemplatesByTypeQuery(instituteId, 'EMAIL'));
+    const { data: emailTemplatesLower } = useQuery(getTemplatesByTypeQuery(instituteId, 'email'));
+    const emailTemplates = [...(emailTemplatesUpper ?? []), ...(emailTemplatesLower ?? [])];
+    const { data: whatsappTemplatesUpper } = useQuery(getTemplatesByTypeQuery(instituteId, 'WHATSAPP'));
+    const { data: whatsappTemplatesLower } = useQuery(getTemplatesByTypeQuery(instituteId, 'whatsapp'));
+    const whatsappTemplates = [...(whatsappTemplatesUpper ?? []), ...(whatsappTemplatesLower ?? [])];
 
     const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
@@ -206,7 +243,7 @@ export function NodeConfigPanel() {
                             } else if (queryKey === 'fetch_batch_attendance_report') {
                                 dataSources.push({ label: 'Students (from attendance query)', value: "#ctx['students']", description: 'List of students with attendance & engagement data' });
                             } else if (queryKey === 'fetch_ssigm_by_package' || queryKey === 'getSSIGMByStatusAndPackageSessionIds') {
-                                dataSources.push({ label: 'Enrolled students (from query)', value: "#ctx['ssigmList']", description: 'List of enrolled students' });
+                                dataSources.push({ label: 'Enrolled students (from query)', value: "#ctx['ssigm']", description: 'List of enrolled students' });
                             } else if (queryKey) {
                                 dataSources.push({ label: `Query results (${queryKey})`, value: "#ctx['queryResult']", description: 'Results from the query node' });
                             }
@@ -227,9 +264,12 @@ export function NodeConfigPanel() {
                                             className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                             value={currentOn}
                                             onChange={(e) => {
-                                                handleConfigChange('on', e.target.value);
-                                                // Auto-set forEach
-                                                handleConfigChange('forEach', { operation: 'SEND_EMAIL', eval: "#ctx['item']" });
+                                                // Set both on AND forEach in a single update to avoid race condition
+                                                updateNodeConfig(selectedNode.id, {
+                                                    ...data.config,
+                                                    on: e.target.value,
+                                                    forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+                                                });
                                             }}
                                         >
                                             <option value="">Select data source...</option>
@@ -255,8 +295,11 @@ export function NodeConfigPanel() {
                                         <VariablePicker
                                             value={currentOn}
                                             onChange={(v) => {
-                                                handleConfigChange('on', v);
-                                                handleConfigChange('forEach', { operation: 'SEND_EMAIL', eval: "#ctx['item']" });
+                                                updateNodeConfig(selectedNode.id, {
+                                                    ...data.config,
+                                                    on: v,
+                                                    forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+                                                });
                                             }}
                                             placeholder="Pick a list of recipients..."
                                             nodeId={selectedNode.id}
@@ -273,16 +316,16 @@ export function NodeConfigPanel() {
                                     value={(data.config.templateName as string) ?? ''}
                                     onChange={(e) => {
                                         const templateName = e.target.value;
-                                        handleConfigChange('templateName', templateName);
                                         const tmpl = emailTemplates?.find((t) => t.name === templateName);
+                                        let templateParams = null;
                                         if (tmpl?.dynamic_parameters) {
-                                            try {
-                                                const params = JSON.parse(tmpl.dynamic_parameters);
-                                                handleConfigChange('_templateParams', params);
-                                            } catch { /* ignore */ }
-                                        } else {
-                                            handleConfigChange('_templateParams', null);
+                                            try { templateParams = JSON.parse(tmpl.dynamic_parameters); } catch { /* ignore */ }
                                         }
+                                        updateNodeConfig(selectedNode.id, {
+                                            ...data.config,
+                                            templateName,
+                                            _templateParams: templateParams,
+                                        });
                                     }}
                                 >
                                     <option value="">No template (use data source's subject/body)</option>
@@ -291,6 +334,23 @@ export function NodeConfigPanel() {
                                             {t.name} {t.subject ? `— ${t.subject}` : ''}
                                         </option>
                                     ))}
+                                </select>
+                            </div>
+
+                            {/* Recipient email field — for choosing which email to send to */}
+                            <div>
+                                <Label className="text-xs">Send to field <span className="text-gray-300 text-[10px]">(which email field from each item)</span></Label>
+                                <select
+                                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={(data.config.recipientField as string) ?? ''}
+                                    onChange={(e) => handleConfigChange('recipientField', e.target.value)}
+                                >
+                                    <option value="">Auto-detect (to, email)</option>
+                                    <option value="email">Student Email</option>
+                                    <option value="parentsEmail">Father/Parent Email</option>
+                                    <option value="guardianEmail">Guardian Email</option>
+                                    <option value="motherEmail">Mother Email</option>
+                                    <option value="to">To (pre-built recipient)</option>
                                 </select>
                             </div>
 
@@ -333,16 +393,18 @@ export function NodeConfigPanel() {
                                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={(data.config.templateName as string) ?? ''}
                                 onChange={(e) => {
-                                    handleConfigChange('templateName', e.target.value);
-                                    const tmpl = whatsappTemplates?.find((t) => t.name === e.target.value);
+                                    const templateName = e.target.value;
+                                    const tmpl = whatsappTemplates?.find((t) => t.name === templateName);
+                                    let templateParams = null;
                                     if (tmpl?.dynamic_parameters) {
-                                        try {
-                                            const params = JSON.parse(tmpl.dynamic_parameters);
-                                            handleConfigChange('_templateParams', params);
-                                        } catch {
-                                            // ignore parse errors
-                                        }
+                                        try { templateParams = JSON.parse(tmpl.dynamic_parameters); } catch { /* ignore */ }
                                     }
+                                    updateNodeConfig(selectedNode.id, {
+                                        ...data.config,
+                                        templateName,
+                                        forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
+                                        _templateParams: templateParams,
+                                    });
                                 }}
                             >
                                 <option value="">Select template...</option>
@@ -357,7 +419,13 @@ export function NodeConfigPanel() {
                             <Label className="text-xs">Recipients (list expression)</Label>
                             <VariablePicker
                                 value={(data.config.on as string) ?? ''}
-                                onChange={(v) => handleConfigChange('on', v)}
+                                onChange={(v) => {
+                                    updateNodeConfig(selectedNode.id, {
+                                        ...data.config,
+                                        on: v,
+                                        forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
+                                    });
+                                }}
                                 placeholder="Pick a list of recipients..."
                                 nodeId={selectedNode.id}
                             />
@@ -464,6 +532,10 @@ export function NodeConfigPanel() {
                             config={data.config}
                             onConfigChange={handleConfigChange}
                             nodeId={selectedNode.id}
+                            instituteId={instituteId}
+                            edges={edges}
+                            nodes={nodes}
+                            selectedNodeId={selectedNode.id}
                         />
                         {/* Optional params from catalog */}
                         {selectedQueryKey?.optional_params && selectedQueryKey.optional_params.length > 0 && (

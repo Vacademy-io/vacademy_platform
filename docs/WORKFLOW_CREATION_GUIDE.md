@@ -59,9 +59,10 @@ Click the QUERY node on the canvas.
 |-------|-----------|
 | Query | Select **"Fetch Audience Responses (Filtered)"** |
 | instituteId | Shows green "Auto-filled from workflow context" — no action needed |
-| audienceId | Type your audience/campaign ID (find it in Audience Manager). Leave empty for ALL audiences |
+| audienceId | Select your audience from the dropdown, or leave empty for ALL audiences |
 | daysAgo | Type `5` |
-| Result Key | Type `leadData` |
+
+> **Note:** The "Result Key" field has no effect — query results go directly into the context using their natural keys. You can leave it as default.
 
 ### Step 6 — Configure SEND_EMAIL Node
 
@@ -69,14 +70,15 @@ Click the SEND_EMAIL node.
 
 | Field | What to do |
 |-------|-----------|
-| Email Template | Leave empty (the query results have their own data) |
-| Recipients | Click `</>` code icon for Advanced mode. Type: `#ctx['leads']` |
+| Send emails to | Select **"Audience leads (from query)"** from the dropdown |
+| Email Template | Select your follow-up template, or leave empty to skip |
+| Send to field | Leave as "Auto-detect" (uses the `email` field from each lead) |
 
-The SEND_EMAIL node will iterate over each lead from the query result. Each lead map contains custom field values from the audience form (e.g., `Email`, `Full Name`, `Phone Number`). The handler will extract the email address from the `Email` or `to` field automatically.
+The query returns each lead with `email` (from parentEmail), `parentName`, and all custom field values from the audience form. The SEND_EMAIL node iterates over the leads and sends one email per lead.
 
-> **Note:** The field names depend on your audience form's custom field configuration. The query returns each lead's custom fields as key-value pairs.
+> **Note:** Available fields on each lead: `email`, `parentEmail`, `parentName`, `mobileNumber`, `userId`, `id`, `createdAt`, plus any custom fields from your form (e.g., `Full Name`, `Phone Number`).
 
-### Step 8 — Publish
+### Step 7 — Publish
 
 Click **Publish** in the top toolbar.
 
@@ -84,8 +86,7 @@ Click **Publish** in the top toolbar.
 
 Every day at 9:00 AM IST:
 1. The QUERY finds all audience form submissions from exactly 5 days ago
-2. The LOOP iterates through each lead
-3. SEND_EMAIL sends the follow-up email to each lead
+2. SEND_EMAIL iterates through each lead and sends the email
 
 Each lead gets exactly one email because `daysAgo=5` only matches submissions from the 24-hour window of exactly 5 days back.
 
@@ -135,18 +136,25 @@ Click **Continue to Builder**
 |-------|-----------|
 | Query | Select **"Batch Attendance Report (All Students)"** |
 | instituteId | Auto-filled |
-| batchId | Leave empty for ALL batches, or type a specific batch ID |
+| batchId | Select a batch from the dropdown, or leave empty for ALL batches |
 | daysBack | Type `7` |
-| Result Key | Type `reportData` |
+
+> **Note:** The "Result Key" field has no effect. Query results go into context using their natural keys (`students`, `totalStudents`, `startDate`, `endDate`).
 
 ### Step 6 — Configure SEND_EMAIL Node
 
 | Field | What to do |
 |-------|-----------|
+| Send emails to | Select **"Students (from attendance query)"** from the dropdown |
 | Email Template | Select `weekly_attendance_report` |
-| Recipients | Advanced mode: `#ctx['students']` |
+| Send to field | Select **"Student Email"** to send to students, or **"Father/Parent Email"** to send to parents |
 
-The SEND_EMAIL node will iterate over each student from the query. Each student map has `email`, `fullName`, `attendancePercentage`, `totalDurationMinutes`, `totalChats`, `totalHandRaises`, `sessionsAttended` — these are used as placeholders in the template automatically.
+Each student item has these fields available as template placeholders:
+- `fullName`, `email`, `mobileNumber`, `enrollmentNumber`
+- `attendancePercentage`, `sessionsAttended`
+- `totalDurationMinutes`, `totalChats`, `totalHandRaises`
+- `startDate`, `endDate`
+- `parentsEmail`, `guardianEmail`, `motherEmail`
 
 ### Step 7 — Publish
 
@@ -156,15 +164,15 @@ Before publishing, create the email template in **Settings > Templates**:
 
 | Field | Value |
 |-------|-------|
-| Type | `EMAIL` |
+| Type | `EMAIL` or `email` |
 | Name | `weekly_attendance_report` |
-| Subject | `Weekly Report for {{studentName}} — {{attendancePercentage}}% Attendance` |
-| Dynamic Parameters | `{"studentName":"string","attendancePercentage":"string","totalDurationMinutes":"string","totalChats":"string","totalHandRaises":"string","sessionsAttended":"string","startDate":"string","endDate":"string"}` |
+| Subject | `Weekly Report for {{fullName}} — {{attendancePercentage}}% Attendance` |
+| Dynamic Parameters | `{"fullName":"string","attendancePercentage":"string","totalDurationMinutes":"string","totalChats":"string","totalHandRaises":"string","sessionsAttended":"string","startDate":"string","endDate":"string"}` |
 
 HTML Content:
 ```html
 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-    <h2>Weekly Report for {{studentName}}</h2>
+    <h2>Weekly Report for {{fullName}}</h2>
     <p>Period: {{startDate}} to {{endDate}}</p>
 
     <table style="width:100%; border-collapse:collapse; margin:16px 0;">
@@ -396,6 +404,122 @@ Create this template in **Settings > Templates** before publishing the workflow:
     <p style="color: #999; font-size: 11px; margin-top: 24px;">This is an automated message.</p>
 </div>
 ```
+
+---
+
+---
+
+## Use Case 6: HTTP Request to Fetch User Email, Then Send Email
+
+**Goal:** Call an external/internal API to get user details (including email), then send an email using that data.
+
+### How Data Flows Between Nodes
+
+Before building this workflow, understand how each node stores its output:
+
+| Node Type | How output goes into context | How to access it |
+|-----------|------------------------------|-----------------|
+| **QUERY** | Flattens all keys: `ctx.putAll(queryResult)` | `#ctx['leads']`, `#ctx['students']` — direct top-level keys |
+| **HTTP_REQUEST** | Wraps under `resultKey`: `ctx.put(resultKey, response)` | `#ctx['httpResult']` (default) or `#ctx['myKey']` if you set resultKey |
+| **TRIGGER** | Context provided by the event | `#ctx['user']`, `#ctx['customFields']`, etc. |
+
+**Key difference:** QUERY flattens its output. HTTP_REQUEST wraps it under a key you choose.
+
+### Step 1 — Setup
+
+| Field | Value |
+|-------|-------|
+| Workflow Name | `Fetch User & Send Email` |
+| Type | **On a schedule** or **When something happens** (your choice) |
+
+### Step 2 — Build Canvas
+
+```
+[HTTP_REQUEST] ──> [SEND_EMAIL]
+```
+
+### Step 3 — Configure HTTP_REQUEST Node
+
+Click the HTTP_REQUEST node.
+
+| Field | Value |
+|-------|-------|
+| Request Type | `INTERNAL` (for calling your own backend) or `EXTERNAL` (for third-party APIs) |
+| URL | e.g., `/admin-core-service/v1/some-endpoint?userId=123` |
+| Method | `GET` |
+
+The HTTP_REQUEST node stores its response under `ctx['httpResult']` by default. The response structure is:
+
+```json
+{
+  "httpResult": {
+    "statusCode": 200,
+    "body": {
+      "email": "user@example.com",
+      "fullName": "John Doe",
+      "mobileNumber": "9876543210"
+    },
+    "headers": { ... }
+  }
+}
+```
+
+### Step 4 — Configure SEND_EMAIL Node
+
+The HTTP response is at `ctx['httpResult']`. The response body (with user data) is at `ctx['httpResult']['body']`.
+
+Since the HTTP response is a single object (not a list), wrap it in a list for SEND_EMAIL:
+
+| Field | Value |
+|-------|-------|
+| Send emails to | Switch to Advanced mode (`</>`). Type: `{#ctx['httpResult']['body']}` |
+| Email Template | Select your template |
+| Send to field | Auto-detect (finds `email` from the response body) |
+
+If the API returns a **list** of users directly:
+
+| Field | Value |
+|-------|-------|
+| Send emails to | Advanced mode: `#ctx['httpResult']['body']` |
+
+### Template Variables
+
+The response body fields are available as placeholders. If the API returns:
+```json
+{ "email": "user@example.com", "fullName": "John Doe" }
+```
+
+Your template can use `{{email}}`, `{{fullName}}` directly — the handler auto-adds all item fields as placeholders.
+
+If you need to map different names, use template variables:
+- `name` → `fullName` (looks up `fullName` from the item)
+
+---
+
+## How to Access Data From Any Upstream Node
+
+### Quick Reference
+
+| Upstream Node | Its output goes to | Access in downstream node |
+|---------------|-------------------|--------------------------|
+| **QUERY** (`fetch_audience_responses_filtered`) | `ctx['leads']` (top-level) | `#ctx['leads']` |
+| **QUERY** (`fetch_batch_attendance_report`) | `ctx['students']` (top-level) | `#ctx['students']` |
+| **QUERY** (`fetch_ssigm_by_package`) | `ctx['ssigm']` (top-level) | `#ctx['ssigm']` |
+| **HTTP_REQUEST** (default resultKey) | `ctx['httpResult']` (wrapped) | `#ctx['httpResult']['body']` for response data |
+| **HTTP_REQUEST** (custom resultKey=`userData`) | `ctx['userData']` (wrapped) | `#ctx['userData']['body']` |
+| **TRIGGER** (AUDIENCE_LEAD_SUBMISSION) | Various context keys | `#ctx['respondentEmailRequests']`, `#ctx['user']`, `#ctx['customFields']` |
+| **TRIGGER** (LEARNER_BATCH_ENROLLMENT) | Various context keys | `#ctx['user']`, `#ctx['packageSessionIds']` |
+| **FILTER** (outputKey=`filteredList`) | `ctx['filteredList']` (wrapped) | `#ctx['filteredList']` |
+| **LOOP** (outputKey=`loopResults`) | `ctx['loopResults']` + `ctx['item']` | `#ctx['loopResults']` (all), `#ctx['item']` (last only) |
+| **CONDITION** | `ctx['conditionResult']` | Used by routing, not directly |
+
+### Important Rules
+
+1. **QUERY results are flat** — keys go directly into context. If a query returns `{"leads": [...], "totalCount": 5}`, you access `#ctx['leads']` and `#ctx['totalCount']` separately.
+2. **HTTP_REQUEST results are wrapped** — response goes under `resultKey`. Access the body with `#ctx['httpResult']['body']`.
+3. **SEND_EMAIL's `on` field must resolve to a List** — if you have a single object, wrap it: `{#ctx['singleObject']}` creates a list with one item.
+4. **LOOP does NOT re-execute downstream nodes** — it only sets context. Use SEND_EMAIL's built-in `on` + `forEach` for iterating over lists.
+5. **ResultKey in QUERY node has NO effect** — it's ignored. QUERY always uses `putAll()`.
 
 ---
 

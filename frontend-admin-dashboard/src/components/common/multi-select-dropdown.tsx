@@ -5,6 +5,8 @@ import { MagnifyingGlass, X } from '@phosphor-icons/react';
 export interface MultiSelectOption {
     id: string | number;
     name: string;
+    /** Optional muted second line rendered only in the dropdown list (not on chips). */
+    subtitle?: string;
 }
 
 interface MultiSelectDropdownProps {
@@ -201,7 +203,14 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                                             >
                                                 {getInitials(option.name)}
                                             </span>
-                                            <span className="truncate">{option.name}</span>
+                                            <span className="flex min-w-0 flex-col leading-tight">
+                                                <span className="truncate">{option.name}</span>
+                                                {option.subtitle && (
+                                                    <span className="truncate text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                                                        {option.subtitle}
+                                                    </span>
+                                                )}
+                                            </span>
                                         </button>
                                     ))
                                 )}

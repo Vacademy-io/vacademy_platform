@@ -31,31 +31,29 @@ export const DoubtTable = () => {
     };
     const isEmpty = !isLoading && doubts?.content.length === 0;
     return (
-        <div className="no-scrollbar flex w-full flex-col gap-4 overflow-y-scroll sm:gap-10">
-            <div className="flex w-full flex-col gap-4 sm:gap-6">
-                {isEmpty ? (
-                    <EmptyState />
-                ) : (
-                    <>
-                        <MyTable<Doubt>
+        <div className="flex w-full flex-col gap-4 sm:gap-6">
+            {isEmpty ? (
+                <EmptyState />
+            ) : (
+                <>
+                    <MyTable<Doubt>
+                        currentPage={currentPage}
+                        data={doubts}
+                        columns={columns}
+                        isLoading={isLoading}
+                        error={error}
+                        scrollable
+                        columnWidths={DOUBTS_TABLE_COLUMN_WIDTHS}
+                    />
+                    {doubts && doubts.total_pages > 1 && (
+                        <MyPagination
                             currentPage={currentPage}
-                            data={doubts}
-                            columns={columns}
-                            isLoading={isLoading}
-                            error={error}
-                            scrollable
-                            columnWidths={DOUBTS_TABLE_COLUMN_WIDTHS}
+                            totalPages={doubts.total_pages}
+                            onPageChange={handlePageChange}
                         />
-                        {doubts && doubts.total_pages > 1 && (
-                            <MyPagination
-                                currentPage={currentPage}
-                                totalPages={doubts.total_pages}
-                                onPageChange={handlePageChange}
-                            />
-                        )}
-                    </>
-                )}
-            </div>
+                    )}
+                </>
+            )}
         </div>
     );
 };

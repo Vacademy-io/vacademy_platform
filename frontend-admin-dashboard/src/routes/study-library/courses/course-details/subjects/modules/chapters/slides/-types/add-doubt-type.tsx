@@ -22,6 +22,7 @@ export interface DoubtType {
     doubt_assignee_request_user_ids: string[];
     all_doubt_assignee: DoubtAssignee[];
     delete_assignee_request: string[];
+    excluded_assignee_user_ids?: string[];
 }
 
 export interface StudentDetailsType {

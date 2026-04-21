@@ -1,7 +1,6 @@
 import { ColumnDef } from '@tanstack/react-table';
 import { Doubt } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-types/get-doubts-type';
 import { useDoubtTable } from './useDoubtTable';
-import { formatISODateTimeReadable } from '@/helpers/formatISOTime';
 import { DoubtCell } from '../-components/doubt-table/doubt-cell';
 import { MarkAsResolvedCell } from '../-components/doubt-table/mark-as-resolved-cell';
 import { BatchCell } from '../-components/doubt-table/batch-cell';
@@ -11,41 +10,86 @@ import { ActionsCell } from '../-components/doubt-table/actions-cell';
 import { NavigateCell } from '../-components/doubt-table/navigate-cell';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+
+const getInitials = (name?: string) => {
+    const cleaned = (name ?? '').trim();
+    if (!cleaned) return '?';
+    const parts = cleaned.split(/\s+/);
+    const first = parts[0]?.[0] ?? '';
+    const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
+    return (first + last).toUpperCase();
+};
+
+const formatDateAndTime = (iso?: string | null): { date: string; time: string } | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return {
+        date: d.toLocaleDateString(undefined, {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+        }),
+        time: d.toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+        }),
+    };
+};
+
+const DateStack = ({ iso }: { iso?: string | null }) => {
+    const parts = formatDateAndTime(iso);
+    if (!parts) {
+        return <span className="text-xs text-neutral-400">—</span>;
+    }
+    return (
+        <div className="flex flex-col leading-tight">
+            <span className="text-sm font-medium text-neutral-800">{parts.date}</span>
+            <span className="text-[11px] text-neutral-500">{parts.time}</span>
+        </div>
+    );
+};
 
 export const useDoubtTableColumns = () => {
-    const { refetch } = useDoubtTable();
-    const { userDetailsRecord } = useDoubtTable();
+    const { refetch, userDetailsRecord } = useDoubtTable();
 
     const columns: ColumnDef<Doubt>[] = [
         {
             accessorKey: 'navigate',
             header: '',
-            cell: ({ row }) => {
-                const doubt = row.original;
-                return <NavigateCell doubt={doubt} />;
-            },
+            cell: ({ row }) => <NavigateCell doubt={row.original} />,
             size: 50,
         },
         {
             accessorKey: 'doubt',
             header: 'Doubt',
-            cell: ({ row }) => {
-                const doubt = row.original;
-                return <DoubtCell doubt={doubt} />;
-            },
+            cell: ({ row }) => <DoubtCell doubt={row.original} />,
         },
         {
             accessorKey: 'status',
             header: 'Status',
-            cell: ({ row }) => {
-                const doubt = row.original;
-                return <MarkAsResolvedCell doubt={doubt} refetch={refetch} />;
-            },
+            cell: ({ row }) => <MarkAsResolvedCell doubt={row.original} refetch={refetch} />,
         },
         {
             accessorKey: 'learner',
             header: getTerminology(RoleTerms.Learner, SystemTerms.Learner),
-            cell: ({ row }) => <p>{userDetailsRecord[row.original.user_id]?.name}</p>,
+            cell: ({ row }) => {
+                const name = userDetailsRecord[row.original.user_id]?.name ?? 'Unknown';
+                return (
+                    <div className="flex items-center gap-2">
+                        <Avatar className="size-8">
+                            <AvatarFallback className="bg-primary-100 text-[11px] font-semibold text-primary-700">
+                                {getInitials(name)}
+                            </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate text-sm font-medium text-neutral-800">
+                            {name}
+                        </span>
+                    </div>
+                );
+            },
         },
         {
             accessorKey: 'batch',
@@ -60,32 +104,22 @@ export const useDoubtTableColumns = () => {
         {
             accessorKey: 'assignedTo',
             header: 'Assigned To',
-            cell: ({ row }) => {
-                return <AssigneeCell doubt={row.original} />;
-            },
+            cell: ({ row }) => <AssigneeCell doubt={row.original} />,
         },
         {
             accessorKey: 'raised',
             header: 'Raised',
-            cell: ({ row }) => <div>{formatISODateTimeReadable(row.original.raised_time)}</div>,
+            cell: ({ row }) => <DateStack iso={row.original.raised_time} />,
         },
         {
             accessorKey: 'resolved',
             header: 'Resolved',
-            cell: ({ row }) => (
-                <div>
-                    {row.original.resolved_time
-                        ? formatISODateTimeReadable(row.original.resolved_time)
-                        : '-'}
-                </div>
-            ),
+            cell: ({ row }) => <DateStack iso={row.original.resolved_time} />,
         },
         {
             accessorKey: 'actions',
             header: 'Actions',
-            cell: ({ row }) => {
-                return <ActionsCell doubt={row.original} refetch={refetch} />;
-            },
+            cell: ({ row }) => <ActionsCell doubt={row.original} refetch={refetch} />,
         },
     ];
 

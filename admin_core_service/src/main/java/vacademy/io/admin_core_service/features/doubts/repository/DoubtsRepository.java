@@ -52,6 +52,8 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
     /**
      * Same filter set as {@link #findDoubtsWithFilter}, additionally restricted to doubts
      * that are visible to the given viewer user. A doubt is visible if any of:
+     *   - the viewer raised the doubt themselves (d.user_id = :viewerUserId), so students still
+     *     see their own questions and can follow replies
      *   - the viewer is directly assigned via doubt_assignee (source='USER', status='ACTIVE')
      *   - the viewer has an ACTIVE batch-level FSPSSM (subject_id IS NULL) for the doubt's
      *     package_session (covering both legacy package_session_id and access_type='PACKAGE_SESSION')
@@ -70,7 +72,8 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND d.parent_id IS NULL
           AND (:batchIds IS NULL OR d.package_session_id IN :batchIds)
           AND (
-            EXISTS (
+            d.user_id = :viewerUserId
+            OR EXISTS (
                 SELECT 1 FROM doubt_assignee da
                 WHERE da.doubt_id = d.id
                   AND da.source = 'USER'
@@ -116,7 +119,8 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND d.parent_id IS NULL
           AND (d.package_session_id IN :batchIds)
           AND (
-            EXISTS (
+            d.user_id = :viewerUserId
+            OR EXISTS (
                 SELECT 1 FROM doubt_assignee da
                 WHERE da.doubt_id = d.id
                   AND da.source = 'USER'

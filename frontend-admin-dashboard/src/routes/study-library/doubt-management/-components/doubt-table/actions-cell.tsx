@@ -1,7 +1,7 @@
 import { DeleteDoubt } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/doubt-resolution/DeleteDoubt';
 import { Doubt } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-types/get-doubts-type';
 import { isUserAdmin } from '@/utils/userDetails';
-import { BookOpen, Clock, Eye, GraduationCap, User } from '@phosphor-icons/react';
+import { BookOpen, ChatsCircle, Clock, Eye, GraduationCap, User } from '@phosphor-icons/react';
 import { useState } from 'react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Separator } from '@/components/ui/separator';
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { TimestampCell } from './doubt-cell';
 import { MarkAsResolved } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/doubt-resolution/MarkAsResolved';
+import { ShowReplies } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/doubt-resolution/ShowReplies';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useDoubtTable } from '../../-hooks/useDoubtTable';
 import { convertCapitalToTitleCase } from '@/lib/utils';
@@ -165,6 +166,20 @@ export const DoubtDetailsDialog = ({ doubt, refetch }: { doubt: Doubt; refetch: 
                                 </div>
                             </section>
                         )}
+
+                        <section className="flex flex-col gap-2">
+                            <SectionHeading
+                                icon={<ChatsCircle size={16} weight="duotone" />}
+                                title={`Conversation${
+                                    doubt.replies && doubt.replies.length > 0
+                                        ? ` (${doubt.replies.length})`
+                                        : ''
+                                }`}
+                            />
+                            <div className="rounded-lg border border-neutral-200 bg-white p-3">
+                                <ShowReplies parent={doubt} refetch={refetch} />
+                            </div>
+                        </section>
 
                         <div>
                             <MarkAsResolved doubt={doubt} refetch={refetch} />

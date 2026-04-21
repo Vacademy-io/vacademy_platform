@@ -271,12 +271,23 @@ export const SlideMaterial = ({
     const lastHandledPrevSlideIdRef = useRef<string | null>(null);
 
     const searchParams = router.state.location.search;
-    const { courseId, levelId, chapterId, slideId, moduleId, subjectId, sessionId } = searchParams;
+    const { courseId, levelId, chapterId, slideId, moduleId, subjectId, sessionId, openDoubt } =
+        searchParams;
 
     const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
     const [isUnpublishDialogOpen, setIsUnpublishDialogOpen] = useState(false);
     const { getPackageSessionId } = useInstituteDetailsStore();
     const { setOpen: setSidebarOpen } = useSidebar();
+
+    // When the caller navigates here with ?openDoubt=true (e.g. from Doubt Management), open the
+    // Doubt Resolution sidebar automatically so the user doesn't have to click the icon.
+    const openDoubtHandledRef = useRef(false);
+    useEffect(() => {
+        if (openDoubt && !openDoubtHandledRef.current) {
+            openDoubtHandledRef.current = true;
+            setSidebarOpen(true);
+        }
+    }, [openDoubt, setSidebarOpen]);
     const { addUpdateDocumentSlide, addUpdateQuizSlide, addUpdateAudioSlide, addUpdateScormSlide } = useSlidesMutations(
         chapterId || '',
         moduleId || '',

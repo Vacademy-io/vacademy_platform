@@ -39,6 +39,7 @@ export const TimestampCell = ({ doubt }: { doubt: Doubt }) => {
                 chapterId: doubt.chapter_id,
                 slideId: doubt.source_id,
                 sessionId: sessionId || '',
+                openDoubt: true,
                 ...(doubt.content_type === 'VIDEO'
                     ? { timestamp: Number(doubt.content_position) / 1000 }
                     : {}),
@@ -50,10 +51,14 @@ export const TimestampCell = ({ doubt }: { doubt: Doubt }) => {
         });
     };
     return (
-        <div className="flex items-center gap-1 text-neutral-400" onClick={handleTimeStampClick}>
-            {getIcon()}
-            <p className="text-blue-600">{getContent()}</p>
-        </div>
+        <button
+            type="button"
+            onClick={handleTimeStampClick}
+            className="inline-flex w-fit items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100"
+        >
+            <span className="text-blue-500">{getIcon()}</span>
+            <span>{getContent()}</span>
+        </button>
     );
 };
 
@@ -61,11 +66,17 @@ export const DoubtCell = ({ doubt }: { doubt: Doubt }) => {
     const cleanHtml = removeMediaTags(doubt.html_text);
 
     return (
-        <div className="flex flex-col gap-1">
-            <div className="line-clamp-2">
-                <div dangerouslySetInnerHTML={{ __html: cleanHtml }} className="text-neutral-800" />
-            </div>
-            <div className="line-clamp-2 text-neutral-500">Slide: {doubt.source_name}</div>
+        <div className="flex flex-col gap-1.5">
+            <div
+                className="line-clamp-2 text-sm font-medium text-neutral-800"
+                dangerouslySetInnerHTML={{ __html: cleanHtml }}
+            />
+            {doubt.source_name && (
+                <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+                    <FileText size={12} weight="duotone" className="shrink-0" />
+                    <span className="truncate">{doubt.source_name}</span>
+                </div>
+            )}
             <TimestampCell doubt={doubt} />
         </div>
     );

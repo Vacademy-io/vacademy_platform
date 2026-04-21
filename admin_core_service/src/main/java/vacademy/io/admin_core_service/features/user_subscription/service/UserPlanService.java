@@ -437,6 +437,20 @@ public class UserPlanService {
                 return;
             }
 
+            // Send the "Course Enrollment" email after payment confirmation
+            // This was deferred from initial enrollment to ensure credentials are only sent
+            // after payment is confirmed for PAID enrollments (ONE_TIME/SUBSCRIPTION)
+            // Calling createUserFromAuthServiceForLearnerEnrollment with sendCred=true
+            // on an existing user triggers sendLearnerEnrollmentExistingUserEmail()
+            // which sends the same "Course Enrollment - {instituteName}" email
+            try {
+                authService.createUserFromAuthServiceForLearnerEnrollment(userDTO, instituteId, true);
+                logger.info("Course enrollment email sent successfully after payment for user: {}", userPlan.getUserId());
+            } catch (Exception e) {
+                logger.error("Failed to send course enrollment email after payment for user: {}. Continuing with other notifications.",
+                        userPlan.getUserId(), e);
+            }
+
             // Send dynamic enrollment notification
             dynamicNotificationService.sendDynamicNotification(
                     NotificationEventType.LEARNER_ENROLL,

@@ -93,12 +93,14 @@ function RouteComponent() {
     invites: null,
   });
 
-  // All roles from the API for filters and dropdowns
+  // All roles from the API for filters and dropdowns (exclude STUDENT)
   const allRoles = useMemo(() => {
-    return customRoles.map((cr) => ({
-      id: cr.id,
-      name: cr.name,
-    }));
+    return customRoles
+      .filter((cr) => cr.name !== 'STUDENT')
+      .map((cr) => ({
+        id: cr.id,
+        name: cr.name,
+      }));
   }, [customRoles]);
 
   // Default filter with all roles (used in API calls when no filter selected)

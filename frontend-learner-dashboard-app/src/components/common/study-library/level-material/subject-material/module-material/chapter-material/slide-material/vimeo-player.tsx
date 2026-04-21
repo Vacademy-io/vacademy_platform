@@ -668,13 +668,18 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
           0
         );
 
-      currentTimestamps.current.push({
-        id: uuidv4(),
-        start_time: currentStartTimeRef.current,
-        end_time: endTime,
-        start: startSeconds * 1000,
-        end: currentTime * 1000,
-      });
+      // Drop zero-duration (or negative) timestamps — can happen when play() is
+      // aborted before the video advances (PlayInterrupted race). The backend
+      // rejects these as "Invalid activity duration".
+      if (currentTime > startSeconds) {
+        currentTimestamps.current.push({
+          id: uuidv4(),
+          start_time: currentStartTimeRef.current,
+          end_time: endTime,
+          start: startSeconds * 1000,
+          end: currentTime * 1000,
+        });
+      }
 
       currentStartTimeRef.current = "";
     }

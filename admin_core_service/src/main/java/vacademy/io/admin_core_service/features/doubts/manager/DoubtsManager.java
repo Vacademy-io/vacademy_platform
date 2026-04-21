@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeSourceE
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtStatusEnum;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtsSourceEnum;
+import vacademy.io.admin_core_service.features.doubts.repository.DoubtsAssigneeRepository;
 import vacademy.io.admin_core_service.features.doubts.service.DoubtService;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
@@ -55,6 +56,12 @@ public class DoubtsManager {
     @Autowired
     SlideMetaDataService slideMetaDataService;
 
+    @Autowired
+    DoubtNotificationService doubtNotificationService;
+
+    @Autowired
+    DoubtsAssigneeRepository doubtsAssigneeRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ResponseEntity<String> updateOrCreateDoubt(CustomUserDetails userDetails, String doubtId, DoubtsDto request) {
@@ -81,6 +88,7 @@ public class DoubtsManager {
                 .build();
 
         Doubts savedDoubt = doubtService.updateOrCreateDoubt(doubts);
+        List<String> finalAssigneeIds = new ArrayList<>();
         try {
             if (savedDoubt.getParentId() == null) {
                 // Seed the assignee list with faculty who are FSPSSM-linked to this batch — these
@@ -100,9 +108,22 @@ public class DoubtsManager {
                 if (!assigneeIds.isEmpty()) {
                     createDoubtsAssignee(savedDoubt, new ArrayList<>(assigneeIds));
                 }
+                finalAssigneeIds.addAll(assigneeIds);
             }
         } catch (Exception e) {
             log.error("Failed To Save Doubt Assignee: {}", e.getMessage());
+        }
+
+        // Fire "doubt raised" notifications after the assignees are persisted. Only for top-level
+        // doubts (not replies) and only when we have at least one assignee to notify. Notification
+        // failures are swallowed inside the service and must not affect the doubt creation response.
+        if (savedDoubt.getParentId() == null && !finalAssigneeIds.isEmpty()) {
+            String instituteId = facultyMappingRepository
+                    .findInstituteIdByPackageSessionId(savedDoubt.getPackageSessionId())
+                    .orElse(null);
+            if (instituteId != null) {
+                doubtNotificationService.notifyDoubtRaised(savedDoubt, finalAssigneeIds, instituteId);
+            }
         }
         return savedDoubt.getId();
     }
@@ -200,9 +221,32 @@ public class DoubtsManager {
     }
 
     private String updateDoubt(String doubtId, DoubtsDto request) {
+        Doubts resolvedDoubtForNotification = null;
+        Doubts assignedDoubtForNotification = null;
+        List<String> newlyAssignedUserIds = List.of();
         try{
             Optional<Doubts> doubtsOpt = doubtService.getDoubtById(doubtId);
             if(doubtsOpt.isEmpty()) throw new VacademyException("Doubt Not Found");
+
+            // Detect status transition to RESOLVED before we mutate the entity, so we only notify
+            // on the actual flip (not every subsequent update while status already == RESOLVED).
+            String previousStatus = doubtsOpt.get().getStatus();
+            boolean transitioningToResolved = request.getStatus() != null
+                    && DoubtStatusEnum.RESOLVED.name().equals(request.getStatus())
+                    && !DoubtStatusEnum.RESOLVED.name().equals(previousStatus);
+
+            // Snapshot the set of currently-active assignee user ids BEFORE createDoubtsAssignee
+            // writes any new rows. The delta (request − snapshot) is who we'll notify as newly
+            // assigned. Without this, we'd re-notify existing assignees every time any field on
+            // the doubt changes.
+            List<DoubtAssignee> existingAssignees = doubtsAssigneeRepository
+                    .findByDoubtIdAndStatusNotIn(doubtId, List.of(DoubtAssigneeStatusEnum.DELETED.name()));
+            Set<String> existingAssigneeUserIds = existingAssignees.stream()
+                    .filter(a -> DoubtAssigneeSourceEnum.USER.name().equalsIgnoreCase(a.getSource()))
+                    .filter(a -> DoubtAssigneeStatusEnum.ACTIVE.name().equalsIgnoreCase(a.getStatus()))
+                    .map(DoubtAssignee::getSourceId)
+                    .filter(id -> id != null && !id.isEmpty())
+                    .collect(java.util.stream.Collectors.toSet());
 
             updateIfNotNull(request.getHtmlText(), doubtsOpt.get()::setHtmlText);
             updateIfNotNull(request.getStatus(), doubtsOpt.get()::setStatus);
@@ -213,6 +257,11 @@ public class DoubtsManager {
 
             if(request.getDoubtAssigneeRequestUserIds()!=null){
                 createDoubtsAssignee(doubtsOpt.get(), request.getDoubtAssigneeRequestUserIds());
+                newlyAssignedUserIds = request.getDoubtAssigneeRequestUserIds().stream()
+                        .filter(id -> id != null && !id.isEmpty())
+                        .filter(id -> !existingAssigneeUserIds.contains(id))
+                        .distinct()
+                        .toList();
             }
             doubtService.updateOrCreateDoubt(doubtsOpt.get());
 
@@ -223,8 +272,48 @@ public class DoubtsManager {
             if(request.getExcludedAssigneeUserIds()!=null && !request.getExcludedAssigneeUserIds().isEmpty()){
                 persistExcludedAssignees(doubtsOpt.get(), request.getExcludedAssigneeUserIds());
             }
+
+            if (transitioningToResolved) {
+                resolvedDoubtForNotification = doubtsOpt.get();
+            }
+            if (!newlyAssignedUserIds.isEmpty() && doubtsOpt.get().getParentId() == null
+                    && !DoubtStatusEnum.RESOLVED.name().equalsIgnoreCase(doubtsOpt.get().getStatus())) {
+                assignedDoubtForNotification = doubtsOpt.get();
+            }
         } catch (Exception e) {
             throw new VacademyException("Failed To Update Doubt: " +e.getMessage());
+        }
+
+        // Fire notifications outside the try/catch — notification-service errors must never surface
+        // as a doubt-update failure. The service itself also swallows its own errors; this is
+        // defence-in-depth.
+        if (resolvedDoubtForNotification != null) {
+            try {
+                String instituteId = facultyMappingRepository
+                        .findInstituteIdByPackageSessionId(resolvedDoubtForNotification.getPackageSessionId())
+                        .orElse(null);
+                if (instituteId != null) {
+                    doubtNotificationService.notifyDoubtResolved(resolvedDoubtForNotification, instituteId);
+                }
+            } catch (Exception e) {
+                log.warn("Doubt resolved notification dispatch failed: {}", e.getMessage());
+            }
+        }
+        if (assignedDoubtForNotification != null) {
+            // Admin just added new assignee(s). Reuse the "doubt raised" event — from the teacher's
+            // perspective this is the same "please look at this doubt" signal. The channel prefs
+            // (push_enabled / email_enabled / email_template_id) under on_doubt_raised apply.
+            try {
+                String instituteId = facultyMappingRepository
+                        .findInstituteIdByPackageSessionId(assignedDoubtForNotification.getPackageSessionId())
+                        .orElse(null);
+                if (instituteId != null) {
+                    doubtNotificationService.notifyDoubtRaised(
+                            assignedDoubtForNotification, newlyAssignedUserIds, instituteId);
+                }
+            } catch (Exception e) {
+                log.warn("Doubt newly-assigned notification dispatch failed: {}", e.getMessage());
+            }
         }
 
         return doubtId;
@@ -289,14 +378,17 @@ public class DoubtsManager {
      * Returns {@code null} when the caller should see all doubts (admin / unrestricted), and the
      * user id when the caller's view should be scoped by doubt_assignee / FSPSSM / self-raised.
      *
-     * Rule (aligned with product ask "only admin can see all doubts"):
+     * Check order is deliberate — teacher accounts can be incorrectly provisioned with
+     * {@code is_root_user=true}, and we do NOT want that flag to leak every doubt to them; but a
+     * legitimate admin who also teaches a subject (hybrid account) should still see everything:
      *   1. Null caller → no filter (defensive).
-     *   2. Caller is a TEACHER or STUDENT → always scope, even if {@code is_root_user} is true on
-     *      the account. Some teacher/student accounts are incorrectly provisioned with the root
-     *      flag and we do NOT want that to leak every doubt to them.
-     *   3. Otherwise, if caller is explicitly an ADMIN role or the account is root → no filter.
-     *   4. Otherwise (non-teacher, non-student, non-admin, non-root) → scope by user id. They
-     *      will only see doubts they're directly assigned to via doubt_assignee.
+     *   2. TEACHER or STUDENT role → scope, ignoring {@code isRootUser}.
+     *   3. Explicit ADMIN role → no filter. Checked BEFORE the FSPSSM probe so hybrid
+     *      admin-who-also-teaches accounts keep their admin visibility.
+     *   4. Has ANY active FSPSSM mapping → scope, even if {@code isRootUser} is true. Catches
+     *      custom role names like "FACULTY" / "INSTRUCTOR" that don't literally say TEACHER.
+     *   5. {@code isRootUser} with no FSPSSM → no filter (legacy root admin).
+     *   6. Otherwise → scope by user id.
      */
     private String resolveViewerUserId(CustomUserDetails user) {
         if (user == null) {
@@ -305,10 +397,26 @@ public class DoubtsManager {
         if (hasRole(user, "TEACHER") || hasRole(user, "STUDENT")) {
             return user.getUserId();
         }
-        if (hasRole(user, "ADMIN") || user.isRootUser()) {
+        if (hasRole(user, "ADMIN")) {
+            return null;
+        }
+        if (hasAnyFacultyMapping(user.getUserId())) {
+            return user.getUserId();
+        }
+        if (user.isRootUser()) {
             return null;
         }
         return user.getUserId();
+    }
+
+    private boolean hasAnyFacultyMapping(String userId) {
+        if (userId == null || userId.isEmpty()) return false;
+        try {
+            return !facultyMappingRepository.findByUserId(userId).isEmpty();
+        } catch (Exception e) {
+            log.warn("FSPSSM lookup failed for viewer scope detection, userId={}: {}", userId, e.getMessage());
+            return false;
+        }
     }
 
     private boolean hasRole(CustomUserDetails user, String... roles) {

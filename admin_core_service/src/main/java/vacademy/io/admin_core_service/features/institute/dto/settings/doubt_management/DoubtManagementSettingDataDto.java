@@ -36,4 +36,39 @@ public class DoubtManagementSettingDataDto {
      * faculty, fall back to batch-level faculty instead of leaving the doubt unassigned.
      */
     private Boolean fallbackToBatchWhenNoSubjectTeacher;
+
+    /**
+     * Per-event notification preferences. {@code null} means "no explicit preference configured" →
+     * defaults apply (push ON, email OFF) at dispatch time.
+     */
+    private DoubtNotificationPrefs notifications;
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class DoubtNotificationPrefs {
+        /** Fired to assigned teacher(s) + optional admin CC when a learner raises a new doubt. */
+        private DoubtNotificationChannelPrefs onDoubtRaised;
+        /** Fired to the learner who raised the doubt when its status flips to RESOLVED. */
+        private DoubtNotificationChannelPrefs onDoubtResolved;
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class DoubtNotificationChannelPrefs {
+        /** Default true — FCM push via notification-service. */
+        private Boolean pushEnabled;
+        /** Default false — requires {@link #emailTemplateId} to be set before dispatch. */
+        private Boolean emailEnabled;
+        /**
+         * Id of a {@code Template} row (type=EMAIL) owned by this institute. Admin picks from the
+         * existing Templates settings tab. Null is valid while email is disabled.
+         */
+        private String emailTemplateId;
+    }
 }

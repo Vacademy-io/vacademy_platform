@@ -42,6 +42,7 @@ export const usePDFSync = () => {
                 z.infer<typeof ActivitySchema>
             >;
             const updatedActivities = [];
+            let didSync = false;
 
             for (let activity of activities) {
                 if (activity.sync_status === "SYNCED") {
@@ -55,7 +56,7 @@ export const usePDFSync = () => {
                     id: activity.activity_id,
                     source_id: activity.source_id,
                     source_type: activity.source,
-                    user_id: chapterId || "",
+                    user_id: userId,
                     slide_id: activeItem?.id || "",
                     start_time_in_millis: activity.start_time_in_millis,
                     end_time_in_millis: activity.end_time_in_millis,
@@ -87,9 +88,7 @@ export const usePDFSync = () => {
                         activity.sync_status = "SYNCED";
                         activity.new_activity = false; // Move this here, after successful API call
                         updatedActivities.push(activity);
-
-                        // Refresh slides data to get updated progress
-                        await refreshSlides();
+                        didSync = true;
                     }
                 } catch (error) {
                     console.error("API call failed:", error);
@@ -97,10 +96,18 @@ export const usePDFSync = () => {
                 }
             }
 
+            // Persist SYNCED status BEFORE triggering the slides refresh.
+            // refreshSlides() invalidates queries which can re-mount this
+            // viewer; the new mount must read the SYNCED state from storage
+            // or it will re-fire the same activity in a tight loop.
             await Preferences.set({
                 key: STORAGE_KEY,
                 value: JSON.stringify({ data: updatedActivities }),
             });
+
+            if (didSync) {
+                await refreshSlides();
+            }
         } catch (error) {
             console.error("Failed to sync PDF tracking data:", error);
             throw error;

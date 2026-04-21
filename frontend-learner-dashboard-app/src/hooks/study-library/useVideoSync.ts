@@ -74,13 +74,36 @@ export const useVideoSync = () => {
             !isNaN(timestamp.end) &&
             timestamp.start >= 0 &&
             timestamp.end >= 0 &&
-            timestamp.end >= timestamp.start
+            timestamp.end > timestamp.start
           );
         };
 
         // Filter out invalid timestamps before creating payload
         const validTimestamps = activity.timestamps.filter(isValidVideoTimestamp);
         const invalidTimestamps = activity.timestamps.filter(t => !isValidVideoTimestamp(t));
+
+        // Guard against invalid activity duration — backend rejects end_time <= start_time
+        // with "Invalid activity duration" (ConcentrationScoreService). Skip the sync and
+        // mark SYNCED so we don't keep retrying the same broken record.
+        const hasValidActivityWindow =
+          typeof activity.start_time === 'number' &&
+          typeof activity.end_time === 'number' &&
+          !isNaN(activity.start_time) &&
+          !isNaN(activity.end_time) &&
+          activity.start_time > 0 &&
+          activity.end_time > activity.start_time;
+
+        if (!hasValidActivityWindow) {
+          console.warn('🚨 [useVideoSync] Skipping activity with invalid duration window:', {
+            activityId: activity.activity_id,
+            slideId: activity.id,
+            start_time: activity.start_time,
+            end_time: activity.end_time,
+          });
+          activity.sync_status = 'SYNCED';
+          updatedActivities.push(activity);
+          continue;
+        }
 
         // Log invalid entries for debugging
         if (invalidTimestamps.length > 0) {

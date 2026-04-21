@@ -51,7 +51,9 @@ export const BatchFilter = () => {
 
     return (
         <div className="flex items-center gap-2">
-            <p>{getTerminology(ContentTerms.Batch, SystemTerms.Batch)}</p>
+            <span className="text-xs font-semibold text-neutral-600">
+                {getTerminology(ContentTerms.Batch, SystemTerms.Batch)}
+            </span>
             <SelectChips
                 options={batchList}
                 selected={selectedBatch}

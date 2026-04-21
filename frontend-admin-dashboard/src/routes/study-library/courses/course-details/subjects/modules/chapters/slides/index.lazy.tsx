@@ -18,6 +18,7 @@ interface ChapterSearchParams {
     timestamp?: number;
     currentPage?: number;
     quickAdd?: boolean;
+    openDoubt?: boolean;
 }
 
 export const Route = createLazyFileRoute(

@@ -71,6 +71,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final UserPlanRepository userPlanRepository;
     private final vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService attendanceReportService;
     private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository liveSessionLogsRepository;
+    private final vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository instituteStudentRepository;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -1482,11 +1483,28 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         Map<String, Object> s = new LinkedHashMap<>();
                         s.put("studentId", student.getStudentId());
                         s.put("fullName", student.getFullName());
-                        s.put("email", student.getEmail());
-                        s.put("mobileNumber", student.getMobileNumber());
+                        s.put("email", student.getEmail() != null ? student.getEmail() : "");
+                        s.put("mobileNumber", student.getMobileNumber() != null ? student.getMobileNumber() : "");
+
+                        // Lookup parent email from Student entity (by userId)
+                        try {
+                            List<vacademy.io.admin_core_service.features.institute_learner.entity.Student> studentEntities =
+                                instituteStudentRepository.findByUserId(student.getStudentId());
+                            if (!studentEntities.isEmpty()) {
+                                var studentEntity = studentEntities.get(0);
+                                s.put("parentsEmail", studentEntity.getParentsEmail() != null ? studentEntity.getParentsEmail() : "");
+                                s.put("guardianEmail", studentEntity.getGuardianEmail() != null ? studentEntity.getGuardianEmail() : "");
+                                s.put("motherEmail", studentEntity.getParentsToMotherEmail() != null ? studentEntity.getParentsToMotherEmail() : "");
+                            }
+                        } catch (Exception e) {
+                            log.warn("Could not fetch parent contact for student {}: {}", student.getStudentId(), e.getMessage());
+                        }
                         s.put("enrollmentNumber", student.getInstituteEnrollmentNumber());
                         s.put("attendancePercentage", student.getAttendancePercentage());
                         s.put("batchId", bid);
+                        // Include date range on each student so email templates can use {{startDate}}/{{endDate}}
+                        s.put("startDate", start.toString());
+                        s.put("endDate", end.toString());
 
                         // Per-session attendance details
                         List<Map<String, Object>> sessionDetails = new ArrayList<>();

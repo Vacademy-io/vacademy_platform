@@ -8,6 +8,7 @@ import { useAddReply } from '../../-services/AddReply';
 import { handleAddReply } from '../../-helper/handleAddReply';
 import { Tag } from '@phosphor-icons/react';
 import React from 'react';
+import { useGetUserBasicDetails } from '@/services/get_user_basic_details';
 
 // Custom debounce hook
 const useDebounce = <T extends (...args: any[]) => void>(callback: T, delay: number) => {
@@ -61,21 +62,52 @@ export const TeacherSelection = ({
         [TeachersList?.content, teachersOverride]
     );
 
-    const [selectedTeachers, setSelectedTeachers] = useState<
-        { id: string | number; name: string }[]
-    >(
-        teacherOptions?.filter((teacher) =>
-            doubt?.all_doubt_assignee?.some((assignee) => assignee.source_id === teacher.id)
-        )
+    // Resolve currently-assigned user names directly from the doubt's assignee rows, so non-admin
+    // viewers still see who the doubt is assigned to even when they can't fetch the full teacher
+    // list. We fall back to names that are already in teacherOptions before hitting the API.
+    const assignedUserIds = useMemo(
+        () =>
+            (doubt?.all_doubt_assignee ?? [])
+                .filter((a) => a.source === 'USER' && !!a.source_id)
+                .map((a) => a.source_id as string),
+        [doubt?.all_doubt_assignee]
     );
 
+    const optionsById = useMemo(() => {
+        const map = new Map<string, string>();
+        teacherOptions.forEach((opt) => map.set(String(opt.id), opt.name));
+        return map;
+    }, [teacherOptions]);
+
+    const unresolvedIds = useMemo(
+        () => assignedUserIds.filter((id) => !optionsById.has(id)),
+        [assignedUserIds, optionsById]
+    );
+
+    const { data: resolvedAssigneeDetails } = useGetUserBasicDetails(unresolvedIds);
+
+    const resolvedNameById = useMemo(() => {
+        const map = new Map<string, string>();
+        (resolvedAssigneeDetails ?? []).forEach((u) => map.set(u.id, u.name));
+        return map;
+    }, [resolvedAssigneeDetails]);
+
+    const assignedFromDoubt = useMemo(
+        () =>
+            assignedUserIds.map((id) => ({
+                id,
+                name: optionsById.get(id) ?? resolvedNameById.get(id) ?? 'Teacher',
+            })),
+        [assignedUserIds, optionsById, resolvedNameById]
+    );
+
+    const [selectedTeachers, setSelectedTeachers] = useState<
+        { id: string | number; name: string }[]
+    >(assignedFromDoubt);
+
     useEffect(() => {
-        setSelectedTeachers(
-            teacherOptions?.filter((teacher) =>
-                doubt?.all_doubt_assignee?.some((assignee) => assignee.source_id === teacher.id)
-            )
-        );
-    }, [teacherOptions, doubt?.all_doubt_assignee]);
+        setSelectedTeachers(assignedFromDoubt);
+    }, [assignedFromDoubt]);
 
     const handleTeacherSelection = (
         newlySelectedTeachers: { id: string | number; name: string }[]

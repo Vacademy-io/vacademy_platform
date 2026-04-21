@@ -93,7 +93,7 @@ export const DateFilter = () => {
 
     return (
         <div className="flex flex-wrap items-center gap-2">
-            <p>Date</p>
+            <span className="text-xs font-semibold text-neutral-600">Date</span>
             <SelectChips
                 options={dateFilterList}
                 selected={selectedDate}

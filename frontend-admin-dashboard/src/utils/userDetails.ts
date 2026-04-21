@@ -11,6 +11,14 @@ export function isUserAdmin(): boolean {
     return isAdmin || false;
 }
 
+export function isUserTeacher(): boolean {
+    const accessToken = getTokenFromCookie(TokenKey.accessToken);
+    const tokenData = getTokenDecodedData(accessToken);
+    const InstituteId = getInstituteId();
+    const isTeacher = tokenData?.authorities[InstituteId || '']?.roles.includes('TEACHER');
+    return isTeacher || false;
+}
+
 export function getUserId(): string {
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const tokenData = getTokenDecodedData(accessToken);

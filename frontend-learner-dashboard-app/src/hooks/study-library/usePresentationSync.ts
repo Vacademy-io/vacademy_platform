@@ -54,6 +54,7 @@ export const usePresentationSync = () => {
                 z.infer<typeof ActivitySchema>
             >;
             const updatedActivities = [];
+            let didSync = false;
 
             console.log(
                 `📋 [usePresentationSync] Processing ${activities.length} activities`
@@ -140,15 +141,7 @@ export const usePresentationSync = () => {
                         activity.sync_status = "SYNCED";
                         activity.new_activity = false;
                         updatedActivities.push(activity);
-
-                        // Refresh slides data to get updated progress
-                        console.log(
-                            "🔄 [usePresentationSync] Triggering slides refresh..."
-                        );
-                        await refreshSlides();
-                        console.log(
-                            "✅ [usePresentationSync] Slides refresh completed"
-                        );
+                        didSync = true;
                     } else {
                         console.log(
                             `⏭️ [usePresentationSync] Skipping activity ${activity.activity_id}: view_sessions=${activity.view_sessions.length}, new_activity=${activity.new_activity}, sync_status=${activity.sync_status}`
@@ -164,10 +157,24 @@ export const usePresentationSync = () => {
                 }
             }
 
+            // Persist SYNCED status BEFORE triggering the slides refresh.
+            // refreshSlides() invalidates queries which can re-mount the
+            // viewer; the new mount must read the SYNCED state from storage
+            // or it will re-fire the same activity in a tight loop.
             await Preferences.set({
                 key: STORAGE_KEY,
                 value: JSON.stringify({ data: updatedActivities }),
             });
+
+            if (didSync) {
+                console.log(
+                    "🔄 [usePresentationSync] Triggering slides refresh..."
+                );
+                await refreshSlides();
+                console.log(
+                    "✅ [usePresentationSync] Slides refresh completed"
+                );
+            }
         } catch (error) {
             console.error("Failed to sync presentation tracking data:", error);
             throw error;

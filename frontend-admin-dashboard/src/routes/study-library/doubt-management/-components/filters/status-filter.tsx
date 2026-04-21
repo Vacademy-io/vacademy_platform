@@ -35,7 +35,7 @@ export const StatusFilter = () => {
 
     return (
         <div className="flex items-center gap-2">
-            <p>Status</p>
+            <span className="text-xs font-semibold text-neutral-600">Status</span>
             <SelectChips
                 options={statusFilterList}
                 selected={selectedStatus}

@@ -22,6 +22,7 @@ export const NavigateCell = ({ doubt }: { doubt: Doubt }) => {
                 chapterId: doubt.chapter_id,
                 slideId: doubt.source_id,
                 sessionId: sessionId || '',
+                openDoubt: true,
                 ...(doubt.content_type === 'VIDEO'
                     ? { timestamp: Number(doubt.content_position) / 1000 }
                     : {}),

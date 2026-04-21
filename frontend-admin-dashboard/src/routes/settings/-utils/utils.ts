@@ -19,6 +19,7 @@ import LeadSettings from '../-components/LeadSettings';
 import GtmSettings from '../-components/GtmSettings';
 import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
+import DoubtManagementSettings from '../-components/DoubtManagementSettings';
 
 export const getAvailableSettingsTabs = () => {
     return [
@@ -121,6 +122,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Integrations,
             value: 'Ad Integrations',
             component: IntegrationSettings,
+        },
+        {
+            tab: SettingsTabs.DoubtManagement,
+            value: 'Doubt Management',
+            component: DoubtManagementSettings,
         },
     ];
 };

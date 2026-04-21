@@ -119,11 +119,13 @@ public class DoubtService {
             );
 
             List<DoubtAssigneeDto> allAssigneeDto = new ArrayList<>();
+            List<String> excludedAssigneeUserIds = new ArrayList<>();
             String moduleId = null;
             String chapterId = null;
 
             if(doubt.getParentId() == null){
                 allAssigneeDto = getAssigneeDtoFromDoubt(doubt);
+                excludedAssigneeUserIds = getExcludedAssigneeUserIds(doubt);
                 Optional<Module> module = moduleService.getModuleBySlideIdAndPackageSessionIdWithStatusFilters(doubt.getSourceId(), doubt.getPackageSessionId());
                 if(module.isPresent()){
                     moduleId = module.get().getId();
@@ -165,6 +167,7 @@ public class DoubtService {
                     .resolvedTime(doubt.getResolvedTime())
                     .raisedTime(doubt.getRaisedTime())
                     .allDoubtAssignee(allAssigneeDto)
+                    .excludedAssigneeUserIds(excludedAssigneeUserIds)
                     .moduleId(moduleId)
                     .chapterId(chapterId)
                     .replies(createDtoFromDoubts(childDoubts)) // recursive call here
@@ -181,6 +184,23 @@ public class DoubtService {
         });
 
         return response;
+    }
+
+    /**
+     * Returns the USER-scoped user ids that the admin has explicitly excluded from this doubt's
+     * default (FSPSSM-implicit) assignee list. Persisted as DoubtAssignee rows with status
+     * {@code DELETED} and {@code source=USER}.
+     */
+    private List<String> getExcludedAssigneeUserIds(Doubts doubt) {
+        List<DoubtAssignee> deleted = doubtsAssigneeRepository.findByDoubtIdAndStatusNotIn(
+                doubt.getId(), List.of(DoubtAssigneeStatusEnum.ACTIVE.name()));
+        return deleted.stream()
+                .filter(a -> DoubtAssigneeStatusEnum.DELETED.name().equalsIgnoreCase(a.getStatus()))
+                .filter(a -> "USER".equalsIgnoreCase(a.getSource()))
+                .map(DoubtAssignee::getSourceId)
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .toList();
     }
 
     public void deleteAssigneeForDoubt(List<String> deleteAssigneeRequest) {

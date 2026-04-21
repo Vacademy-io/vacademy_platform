@@ -175,6 +175,18 @@ public class LearnerEnrollRequestService {
             boolean sendCredentials = getSendCredentialsFlag(
                     learnerEnrollRequestDTO.getInstituteId(),
                     enrollDTO.getPackageSessionIds());
+
+            // Suppress credential/enrollment email for PAID enrollments (ONE_TIME/SUBSCRIPTION)
+            // The enrollment notification will be sent after payment is confirmed
+            // via UserPlanService.applyOperationsOnFirstPayment()
+            PaymentOption earlyPaymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
+            if (earlyPaymentOption.getType().equals(PaymentOptionType.SUBSCRIPTION.name())
+                    || earlyPaymentOption.getType().equals(PaymentOptionType.ONE_TIME.name())) {
+                log.info("PAID enrollment detected (type={}). Suppressing credential email until payment is confirmed.",
+                        earlyPaymentOption.getType());
+                sendCredentials = false;
+            }
+
             String learndashBaseUrl = getLearndashBaseUrlFromPackage(enrollDTO.getPackageSessionIds());
             UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(learnerEnrollRequestDTO.getUser(),
                     learnerEnrollRequestDTO.getInstituteId(), sendCredentials, learndashBaseUrl);

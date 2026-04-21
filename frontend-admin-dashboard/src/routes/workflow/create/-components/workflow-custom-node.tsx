@@ -28,8 +28,7 @@ export function getNodeIssues(nodeType: string, config: Record<string, unknown>)
             if (!has('prebuiltKey')) issues.push('Select a query');
             break;
         case 'SEND_EMAIL':
-            if (!has('templateName')) issues.push('Select an email template');
-            if (!has('on')) issues.push('Set recipients expression');
+            if (!has('on')) issues.push('Select a data source for recipients');
             break;
         case 'SEND_WHATSAPP':
             if (!has('templateName')) issues.push('Select a WhatsApp template');

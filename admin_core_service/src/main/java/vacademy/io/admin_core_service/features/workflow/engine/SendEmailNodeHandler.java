@@ -157,13 +157,17 @@ public class SendEmailNodeHandler implements NodeHandler {
             List<Map<String, Object>> allEmailRequests = new ArrayList<>();
             List<EmailExecutionDetails.FailedEmail> failedEmails = new ArrayList<>();
 
-            // Get node-level templateName and templateVars (if configured in the UI)
+            // Get node-level config: templateName, templateVars, recipientField
             String nodeLevelTemplateName = null;
             Map<String, Object> nodeLevelTemplateVars = null;
+            String nodeLevelRecipientField = null; // e.g., "parentsEmail" to send to parents instead of students
             try {
                 com.fasterxml.jackson.databind.JsonNode configRoot = objectMapper.readTree(nodeConfigJson);
                 if (configRoot.has("templateName") && !configRoot.get("templateName").asText("").isBlank()) {
                     nodeLevelTemplateName = configRoot.get("templateName").asText();
+                }
+                if (configRoot.has("recipientField") && !configRoot.get("recipientField").asText("").isBlank()) {
+                    nodeLevelRecipientField = configRoot.get("recipientField").asText();
                 }
                 if (configRoot.has("templateVars") && configRoot.get("templateVars").isObject()) {
                     nodeLevelTemplateVars = objectMapper.convertValue(configRoot.get("templateVars"), Map.class);
@@ -174,6 +178,11 @@ public class SendEmailNodeHandler implements NodeHandler {
 
             for (Object item : items) {
                 Map<String, Object> itemContext = new HashMap<>(context);
+
+                // If node config has a recipientField, store it in context for extractEmailAddress
+                if (nodeLevelRecipientField != null) {
+                    itemContext.put("_recipientField", nodeLevelRecipientField);
+                }
 
                 // If node config has a templateName, inject it into the item so the handler uses the template
                 // instead of the item's pre-built subject/body
@@ -776,7 +785,8 @@ public class SendEmailNodeHandler implements NodeHandler {
             // We can no longer assume 'item' is a map, it could be a string.
             // extractEmailAddress will handle this.
 
-            String emailAddress = extractEmailAddress(userDetails, itemContext.get("item"));
+            String recipientField = (String) itemContext.get("_recipientField");
+            String emailAddress = extractEmailAddress(userDetails, itemContext.get("item"), recipientField);
             if (emailAddress == null || emailAddress.isBlank()) {
                 log.warn("No email address found for user: {}", userDetailsObj);
                 failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
@@ -852,13 +862,37 @@ public class SendEmailNodeHandler implements NodeHandler {
                 }
 
                 Map<String, String> finalVars = new HashMap<>();
-                if (templateVars != null) {
-                    templateVars.forEach((key, value) -> finalVars.put(key, String.valueOf(value)));
-                }
-                if (userDetails != null) { // Add item properties if it's a map
+
+                // First, add all item fields as available placeholders
+                if (userDetails != null) {
                     userDetails.forEach((key, value) -> {
                         if (value != null) {
-                            finalVars.putIfAbsent(key, String.valueOf(value));
+                            finalVars.put(key, String.valueOf(value));
+                        }
+                    });
+                }
+
+                // Then, resolve templateVars mapping: key = placeholder name, value = field name or SpEL
+                // e.g., {"name": "fullName"} → looks up "fullName" from item data
+                if (templateVars != null) {
+                    templateVars.forEach((placeholderKey, fieldNameOrExpr) -> {
+                        String fieldName = String.valueOf(fieldNameOrExpr);
+                        // Try to resolve from item data first
+                        if (userDetails != null && userDetails.containsKey(fieldName)) {
+                            Object resolved = userDetails.get(fieldName);
+                            finalVars.put(placeholderKey, resolved != null ? String.valueOf(resolved) : "");
+                        } else if (fieldName.startsWith("#ctx")) {
+                            // SpEL expression — evaluate it
+                            try {
+                                Object resolved = spelEvaluator.evaluate(fieldName, itemContext);
+                                finalVars.put(placeholderKey, resolved != null ? String.valueOf(resolved) : "");
+                            } catch (Exception e) {
+                                log.warn("Failed to resolve template var '{}' with expression '{}'", placeholderKey, fieldName);
+                                finalVars.put(placeholderKey, fieldName);
+                            }
+                        } else {
+                            // Use as literal value
+                            finalVars.put(placeholderKey, fieldName);
                         }
                     });
                 }
@@ -944,8 +978,22 @@ public class SendEmailNodeHandler implements NodeHandler {
 
     // --- MODIFIED: To handle 'item' being a simple string ---
     private String extractEmailAddress(Map<String, Object> userDetailsMap, Object item) {
-        // First, check if 'item' itself is a valid email string.
-        // This handles the admin list case where on="#ctx['adminEmailList']"
+        return extractEmailAddress(userDetailsMap, item, null);
+    }
+
+    private String extractEmailAddress(Map<String, Object> userDetailsMap, Object item, String recipientField) {
+        // If a specific recipientField is configured, use it directly
+        if (recipientField != null && userDetailsMap != null) {
+            Object value = userDetailsMap.get(recipientField);
+            if (value != null) {
+                String email = String.valueOf(value).trim();
+                if (!email.isBlank() && email.contains("@")) {
+                    return email;
+                }
+            }
+        }
+
+        // Check if 'item' itself is a valid email string
         if (item instanceof String) {
             String email = ((String) item).trim();
             if (!email.isBlank() && email.contains("@")) {
@@ -953,12 +1001,13 @@ public class SendEmailNodeHandler implements NodeHandler {
             }
         }
 
-        // If 'item' wasn't an email, check the userDetailsMap
+        // Check the userDetailsMap for common email field names
         if (userDetailsMap != null) {
             String[] possibleFields = {
                     "to", "email", "emailAddress", "email_address",
                     "userEmail", "user_email", "mail", "channelId",
-                    "recipientEmail", "recipient_email"
+                    "recipientEmail", "recipient_email",
+                    "parentsEmail", "guardianEmail", "motherEmail"
             };
 
             for (String field : possibleFields) {

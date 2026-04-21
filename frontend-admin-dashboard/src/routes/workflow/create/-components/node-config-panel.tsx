@@ -240,10 +240,10 @@ export function NodeConfigPanel() {
                             const queryKey = uConfig?.prebuiltKey as string;
                             if (queryKey === 'fetch_audience_responses_filtered') {
                                 dataSources.push({ label: 'Audience leads (from query)', value: "#ctx['leads']", description: 'List of leads with custom field data' });
-                            } else if (queryKey === 'fetch_batch_attendance_report') {
-                                dataSources.push({ label: 'Students (from attendance query)', value: "#ctx['students']", description: 'List of students with attendance & engagement data' });
+                            } else if (queryKey === 'fetch_batch_attendance_report' || queryKey === 'fetch_students_by_batch') {
+                                dataSources.push({ label: 'Students (from query)', value: "#ctx['students']", description: 'List of students with name, email, phone' });
                             } else if (queryKey === 'fetch_ssigm_by_package' || queryKey === 'getSSIGMByStatusAndPackageSessionIds') {
-                                dataSources.push({ label: 'Enrolled students (from query)', value: "#ctx['ssigm']", description: 'List of enrolled students' });
+                                dataSources.push({ label: 'Enrolled students (from query)', value: "#ctx['ssigm_list']", description: 'List of enrolled students with name, email, mobile' });
                             } else if (queryKey) {
                                 dataSources.push({ label: `Query results (${queryKey})`, value: "#ctx['queryResult']", description: 'Results from the query node' });
                             }
@@ -355,31 +355,130 @@ export function NodeConfigPanel() {
                             </div>
 
                             {/* Template variables — only shown when a template is selected */}
-                            {data.config._templateParams && typeof data.config._templateParams === 'object' && (
-                                <div className="space-y-2 border-t pt-2 mt-2">
-                                    <Label className="text-[10px] uppercase text-gray-400">Template Variables</Label>
-                                    <p className="text-[10px] text-gray-400">
-                                        Map each template variable to a field from the data source. Each item in the list has fields you can reference.
-                                    </p>
-                                    {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => (
-                                        <div key={key}>
-                                            <Label className="text-xs">{label || key}</Label>
-                                            <Input
-                                                value={((data.config.templateVars as Record<string, string>)?.[key]) ?? ''}
-                                                onChange={(e) => {
-                                                    const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: e.target.value };
-                                                    handleConfigChange('templateVars', vars);
-                                                }}
-                                                className="mt-1"
-                                                placeholder={`e.g. fullName, email, attendancePercentage`}
-                                            />
-                                            <p className="text-[10px] text-gray-300">
-                                                Field name from each item in the data source
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                            {data.config._templateParams && typeof data.config._templateParams === 'object' && (() => {
+                                // Determine available fields based on data source
+                                const onExpr = (data.config.on as string) ?? '';
+                                const FIELD_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+                                    "#ctx['respondentEmailRequests']": [
+                                        { value: 'to', label: 'Recipient Email' },
+                                        { value: 'subject', label: 'Email Subject' },
+                                        // customFields are checked separately
+                                    ],
+                                    "#ctx['leads']": [
+                                        { value: 'email', label: 'Email' },
+                                        { value: 'parentEmail', label: 'Parent Email' },
+                                        { value: 'parentName', label: 'Parent Name' },
+                                        { value: 'mobileNumber', label: 'Mobile Number' },
+                                        { value: 'userId', label: 'User ID' },
+                                    ],
+                                    "#ctx['students']": [
+                                        { value: 'fullName', label: 'Student Name' },
+                                        { value: 'email', label: 'Student Email' },
+                                        { value: 'mobileNumber', label: 'Mobile Number' },
+                                        { value: 'enrollmentNumber', label: 'Enrollment Number' },
+                                        { value: 'attendancePercentage', label: 'Attendance %' },
+                                        { value: 'totalDurationMinutes', label: 'Total Duration (min)' },
+                                        { value: 'totalChats', label: 'Chat Count' },
+                                        { value: 'totalHandRaises', label: 'Hand Raise Count' },
+                                        { value: 'sessionsAttended', label: 'Sessions Attended' },
+                                        { value: 'parentsEmail', label: 'Parent Email' },
+                                        { value: 'guardianEmail', label: 'Guardian Email' },
+                                        { value: 'startDate', label: 'Report Start Date' },
+                                        { value: 'endDate', label: 'Report End Date' },
+                                    ],
+                                    "#ctx['ssigm_list']": [
+                                        { value: 'full_name', label: 'Full Name' },
+                                        { value: 'email', label: 'Email' },
+                                        { value: 'mobile_number', label: 'Mobile Number' },
+                                        { value: 'user_id', label: 'User ID' },
+                                        { value: 'username', label: 'Username' },
+                                        { value: 'package_session_id', label: 'Batch ID' },
+                                    ],
+                                };
+                                // SpEL context fields (available for all trigger types)
+                                const CONTEXT_FIELDS = [
+                                    { value: "#ctx['liveSession'].title", label: 'Live Session Title (from trigger)' },
+                                    { value: "#ctx['liveSession'].startTime", label: 'Session Start Time (from trigger)' },
+                                    { value: "#ctx['liveSession'].defaultMeetLink", label: 'Session Meet Link (from trigger)' },
+                                    { value: "#ctx['campaignName']", label: 'Campaign Name (from trigger)' },
+                                    { value: "#ctx['submissionTime']", label: 'Submission Time (from trigger)' },
+                                ];
+
+                                const availableFields = FIELD_OPTIONS[onExpr] ?? [];
+                                // Also check if any custom field names might apply (from audience triggers)
+                                const hasCustomFieldsContext = onExpr.includes('respondentEmailRequests') || onExpr.includes('leads');
+
+                                return (
+                                    <div className="space-y-2 border-t pt-2 mt-2">
+                                        <Label className="text-[10px] uppercase text-gray-400">Template Variables</Label>
+                                        <p className="text-[10px] text-gray-400">
+                                            Map each template placeholder to a data field. Select from dropdown or type a custom field name.
+                                        </p>
+                                        {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => {
+                                            const currentValue = ((data.config.templateVars as Record<string, string>)?.[key]) ?? '';
+                                            return (
+                                                <div key={key}>
+                                                    <Label className="text-xs">{`{{${key}}}`} <span className="text-gray-400 text-[10px]">({label || key})</span></Label>
+                                                    {availableFields.length > 0 ? (
+                                                        <select
+                                                            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                                            value={currentValue}
+                                                            onChange={(e) => {
+                                                                const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: e.target.value };
+                                                                handleConfigChange('templateVars', vars);
+                                                            }}
+                                                        >
+                                                            <option value="">Select a field...</option>
+                                                            <optgroup label="Item Fields">
+                                                                {availableFields.map((f) => (
+                                                                    <option key={f.value} value={f.value}>{f.label} ({f.value})</option>
+                                                                ))}
+                                                            </optgroup>
+                                                            <optgroup label="Context / Trigger Fields">
+                                                                {CONTEXT_FIELDS.map((f) => (
+                                                                    <option key={f.value} value={f.value}>{f.label}</option>
+                                                                ))}
+                                                            </optgroup>
+                                                            {hasCustomFieldsContext && (
+                                                                <optgroup label="Custom Fields (type name manually)">
+                                                                    <option value="" disabled>Type the custom field name below</option>
+                                                                </optgroup>
+                                                            )}
+                                                        </select>
+                                                    ) : (
+                                                        <Input
+                                                            value={currentValue}
+                                                            onChange={(e) => {
+                                                                const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: e.target.value };
+                                                                handleConfigChange('templateVars', vars);
+                                                            }}
+                                                            className="mt-1"
+                                                            placeholder="Type field name or SpEL expression"
+                                                        />
+                                                    )}
+                                                    {/* Allow manual override if dropdown value doesn't fit */}
+                                                    {availableFields.length > 0 && !availableFields.some((f) => f.value === currentValue) && currentValue && (
+                                                        <p className="mt-0.5 text-[10px] text-primary-500">Custom: {currentValue}</p>
+                                                    )}
+                                                    {hasCustomFieldsContext && (
+                                                        <Input
+                                                            value={currentValue.startsWith('#') || availableFields.some((f) => f.value === currentValue) ? '' : currentValue}
+                                                            onChange={(e) => {
+                                                                if (e.target.value) {
+                                                                    const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: e.target.value };
+                                                                    handleConfigChange('templateVars', vars);
+                                                                }
+                                                            }}
+                                                            className="mt-1"
+                                                            placeholder="Or type custom field name (e.g. Full Name, Phone Number)"
+                                                        />
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
                         </>
                     );
                 })()}
@@ -453,60 +552,157 @@ export function NodeConfigPanel() {
                     </>
                 )}
 
-                {/* HTTP Request config — upgraded with type toggle */}
-                {data.nodeType === 'HTTP_REQUEST' && (
-                    <>
-                        <div>
-                            <Label className="text-xs">Request Type</Label>
-                            <select
-                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                value={(data.config.requestType as string) ?? 'EXTERNAL'}
-                                onChange={(e) => handleConfigChange('requestType', e.target.value)}
-                            >
-                                <option value="EXTERNAL">External API</option>
-                                <option value="INTERNAL">Internal Service</option>
-                            </select>
-                        </div>
-                        <div>
-                            <Label className="text-xs">URL</Label>
-                            <Input
-                                value={(data.config.url as string) ?? ''}
-                                onChange={(e) =>
-                                    handleConfigChange('url', e.target.value)
-                                }
-                                className="mt-1"
-                                placeholder={
-                                    (data.config.requestType as string) === 'INTERNAL'
-                                        ? '/admin-core-service/v1/...'
-                                        : 'https://api.example.com/endpoint'
-                                }
-                            />
-                        </div>
-                        <div>
-                            <Label className="text-xs">Method</Label>
-                            <select
-                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                value={
-                                    (data.config.method as string) ?? 'GET'
-                                }
-                                onChange={(e) =>
-                                    handleConfigChange(
-                                        'method',
-                                        e.target.value
-                                    )
-                                }
-                            >
-                                <option value="GET">GET</option>
-                                <option value="POST">POST</option>
-                                <option value="PUT">PUT</option>
-                                <option value="DELETE">DELETE</option>
-                            </select>
-                        </div>
-                    </>
-                )}
+                {/* HTTP Request config */}
+                {data.nodeType === 'HTTP_REQUEST' && (() => {
+                    // HTTP config is nested under 'config' key for the backend DTO
+                    const httpConfig = (data.config.config as Record<string, unknown>) ?? {};
+                    const updateHttpConfig = (key: string, value: unknown) => {
+                        updateNodeConfig(selectedNode.id, {
+                            ...data.config,
+                            config: { ...httpConfig, [key]: value },
+                        });
+                    };
 
-                {/* Query node config — upgraded with catalog dropdown + dynamic params */}
-                {data.nodeType === 'QUERY' && (
+                    return (
+                        <>
+                            <div>
+                                <Label className="text-xs">Request Type</Label>
+                                <select
+                                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={(httpConfig.requestType as string) ?? 'EXTERNAL'}
+                                    onChange={(e) => updateHttpConfig('requestType', e.target.value)}
+                                >
+                                    <option value="EXTERNAL">External API</option>
+                                    <option value="INTERNAL">Internal Service</option>
+                                </select>
+                            </div>
+                            <div>
+                                <Label className="text-xs">URL</Label>
+                                <Input
+                                    value={(httpConfig.url as string) ?? ''}
+                                    onChange={(e) => updateHttpConfig('url', e.target.value)}
+                                    className="mt-1"
+                                    placeholder={
+                                        (httpConfig.requestType as string) === 'INTERNAL'
+                                            ? '/admin-core-service/v1/...'
+                                            : 'https://api.example.com/endpoint'
+                                    }
+                                />
+                            </div>
+                            <div>
+                                <Label className="text-xs">Method</Label>
+                                <select
+                                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={(httpConfig.method as string) ?? 'GET'}
+                                    onChange={(e) => updateHttpConfig('method', e.target.value)}
+                                >
+                                    <option value="GET">GET</option>
+                                    <option value="POST">POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="DELETE">DELETE</option>
+                                </select>
+                            </div>
+
+                            {/* Headers */}
+                            <div>
+                                <Label className="text-xs">Headers <span className="text-gray-300 text-[10px]">(optional)</span></Label>
+                                <textarea
+                                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                                    rows={3}
+                                    value={
+                                        typeof httpConfig.headers === 'string'
+                                            ? httpConfig.headers as string
+                                            : JSON.stringify(httpConfig.headers ?? {}, null, 2)
+                                    }
+                                    onChange={(e) => {
+                                        try { updateHttpConfig('headers', JSON.parse(e.target.value)); }
+                                        catch { updateHttpConfig('headers', e.target.value); }
+                                    }}
+                                    placeholder='{"Content-Type": "application/json"}'
+                                />
+                            </div>
+
+                            {/* Query Params — for GET requests */}
+                            {((httpConfig.method as string) ?? 'GET') === 'GET' && (
+                                <div>
+                                    <Label className="text-xs">Query Parameters <span className="text-gray-300 text-[10px]">(optional)</span></Label>
+                                    <textarea
+                                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                                        rows={3}
+                                        value={
+                                            typeof httpConfig.queryParams === 'string'
+                                                ? httpConfig.queryParams as string
+                                                : JSON.stringify(httpConfig.queryParams ?? {}, null, 2)
+                                        }
+                                        onChange={(e) => {
+                                            try { updateHttpConfig('queryParams', JSON.parse(e.target.value)); }
+                                            catch { updateHttpConfig('queryParams', e.target.value); }
+                                        }}
+                                        placeholder='{"userId": "123", "status": "active"}'
+                                    />
+                                </div>
+                            )}
+
+                            {/* Request Body — for POST/PUT */}
+                            {['POST', 'PUT'].includes((httpConfig.method as string) ?? 'GET') && (
+                                <div>
+                                    <Label className="text-xs">Request Body <span className="text-gray-300 text-[10px]">(JSON)</span></Label>
+                                    <textarea
+                                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                                        rows={5}
+                                        value={
+                                            typeof httpConfig.body === 'string'
+                                                ? httpConfig.body as string
+                                                : JSON.stringify(httpConfig.body ?? {}, null, 2)
+                                        }
+                                        onChange={(e) => {
+                                            try { updateHttpConfig('body', JSON.parse(e.target.value)); }
+                                            catch { updateHttpConfig('body', e.target.value); }
+                                        }}
+                                        placeholder='{"email": "user@example.com"}'
+                                    />
+                                </div>
+                            )}
+
+                            {/* Result Key */}
+                            <div>
+                                <Label className="text-xs">Result Key</Label>
+                                <Input
+                                    value={(data.config.resultKey as string) ?? 'httpResult'}
+                                    onChange={(e) => handleConfigChange('resultKey', e.target.value)}
+                                    className="mt-1"
+                                    placeholder="httpResult"
+                                />
+                                <p className="mt-1 text-[10px] text-gray-400">
+                                    Response will be available as #ctx['{(data.config.resultKey as string) || 'httpResult'}']['body']
+                                </p>
+                            </div>
+
+                            {/* Condition — optional */}
+                            <div>
+                                <Label className="text-xs">Condition <span className="text-gray-300 text-[10px]">(optional — skip request if false)</span></Label>
+                                <Input
+                                    value={(httpConfig.condition as string) ?? ''}
+                                    onChange={(e) => updateHttpConfig('condition', e.target.value)}
+                                    className="mt-1"
+                                    placeholder="Leave empty to always execute"
+                                />
+                            </div>
+                        </>
+                    );
+                })()}
+
+                {/* Query node config — params nested under 'params' key for backend DTO */}
+                {data.nodeType === 'QUERY' && (() => {
+                    const queryParams = (data.config.params as Record<string, unknown>) ?? {};
+                    const handleQueryParamChange = (key: string, value: unknown) => {
+                        updateNodeConfig(selectedNode.id, {
+                            ...data.config,
+                            params: { ...queryParams, [key]: value },
+                        });
+                    };
+
+                    return (
                     <>
                         <div>
                             <Label className="text-xs">Query</Label>
@@ -526,23 +722,22 @@ export function NodeConfigPanel() {
                                 <p className="mt-1 text-[10px] text-gray-400">{selectedQueryKey.description}</p>
                             )}
                         </div>
-                        {/* Dynamic required params */}
+                        {/* Dynamic required params — stored under params.{key} */}
                         <QueryRequiredParams
                             params={selectedQueryKey?.required_params ?? []}
-                            config={data.config}
-                            onConfigChange={handleConfigChange}
+                            config={queryParams}
+                            onConfigChange={handleQueryParamChange}
                             nodeId={selectedNode.id}
                             instituteId={instituteId}
                             edges={edges}
                             nodes={nodes}
                             selectedNodeId={selectedNode.id}
                         />
-                        {/* Optional params from catalog */}
+                        {/* Optional params from catalog — also stored under params.{key} */}
                         {selectedQueryKey?.optional_params && selectedQueryKey.optional_params.length > 0 && (
                             <div className="space-y-2 border-t pt-2 mt-2">
                                 <Label className="text-[10px] uppercase text-gray-400">Optional Filters</Label>
                                 {selectedQueryKey.optional_params.map((param) => {
-                                    // Map param names to EventEntityPicker types
                                     const entityTypeMap: Record<string, string> = {
                                         audienceId: 'AUDIENCE',
                                         batchId: 'PACKAGE_SESSION',
@@ -558,15 +753,15 @@ export function NodeConfigPanel() {
                                                 <div className="mt-1">
                                                     <EventEntityPicker
                                                         eventAppliedType={entityType}
-                                                        value={(data.config[param] as string) || undefined}
-                                                        onChange={(id) => handleConfigChange(param, id ?? '')}
+                                                        value={(queryParams[param] as string) || undefined}
+                                                        onChange={(id) => handleQueryParamChange(param, id ?? '')}
                                                         instituteId={instituteId}
                                                     />
                                                 </div>
                                             ) : (
                                                 <Input
-                                                    value={(data.config[param] as string) ?? ''}
-                                                    onChange={(e) => handleConfigChange(param, e.target.value)}
+                                                    value={(queryParams[param] as string) ?? ''}
+                                                    onChange={(e) => handleQueryParamChange(param, e.target.value)}
                                                     className="mt-1"
                                                     placeholder={
                                                         param === 'daysAgo' || param === 'daysBack' ? 'e.g. 5'
@@ -592,7 +787,8 @@ export function NodeConfigPanel() {
                             />
                         </div>
                     </>
-                )}
+                    );
+                })()}
 
                 {/* Delay node config — saves as config.delay.value / config.delay.unit to match backend */}
                 {data.nodeType === 'DELAY' && (() => {

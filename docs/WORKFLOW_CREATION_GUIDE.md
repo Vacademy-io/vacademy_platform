@@ -523,6 +523,111 @@ If you need to map different names, use template variables:
 
 ---
 
+---
+
+## Use Case 7: Notify Students When a Live Session is Created
+
+**Goal:** When an admin creates a live session, automatically fetch all students from specific batches and send them a notification email about the new session.
+
+### Why This Needs 3 Nodes (Not 2)
+
+The `LIVE_SESSION_CREATE` trigger only provides the `liveSession` object (title, time, link, etc.) and `createdBy` (admin who created it). It does NOT have student emails. You need a QUERY node to fetch students from batches.
+
+### Step 1 — Setup
+
+| Field | Value |
+|-------|-------|
+| Workflow Name | `Notify Students on New Live Session` |
+| Type | **When something happens** |
+| Event | **Live Session Created** |
+| Scope | Leave as "All" (fires for any new session) |
+
+### Step 2 — Build Canvas (3 Nodes)
+
+```
+[TRIGGER: Live Session Created] → [QUERY: Batch Attendance Report] → [SEND_EMAIL]
+```
+
+### Step 3 — Configure QUERY Node
+
+| Field | What to do |
+|-------|-----------|
+| Query | Select **"Get Students from Batch (Lightweight)"** |
+| instituteId | Auto-filled |
+| batchId | Select the specific batch from dropdown |
+
+> **Why "Lightweight"?** This query only fetches student names, emails, and phone numbers — no attendance or engagement data. It's fast and designed for sending notifications. Use "Batch Attendance Report" only when you need attendance % and engagement metrics in the email.
+
+### Step 4 — Configure SEND_EMAIL Node
+
+| Field | What to do |
+|-------|-----------|
+| Send emails to | Select **"Students (from attendance query)"** |
+| Email Template | Select your session notification template |
+| Send to field | **Student Email** |
+
+### Template Variables
+
+Your email template can use these fields from each student item:
+
+| Template placeholder | Field name to map | Example value |
+|---------------------|------------------|---------------|
+| `{{fullName}}` | `fullName` | John Doe |
+| `{{email}}` | `email` | john@example.com |
+
+For live session details, the template vars need SpEL expressions since session data is in the context, not on each student:
+
+| Template placeholder | Value to type |
+|---------------------|---------------|
+| `{{sessionTitle}}` | `#ctx['liveSession'].title` |
+| `{{sessionTime}}` | `#ctx['liveSession'].startTime` |
+| `{{meetLink}}` | `#ctx['liveSession'].defaultMeetLink` |
+
+### Email Template
+
+Create in Settings > Templates:
+
+| Field | Value |
+|-------|-------|
+| Type | `EMAIL` |
+| Name | `live_session_notification` |
+| Subject | `New Live Session: {{sessionTitle}}` |
+| Dynamic Parameters | `{"fullName":"string","sessionTitle":"string","sessionTime":"string","meetLink":"string"}` |
+
+```html
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    <h2>New Live Session Scheduled</h2>
+    <p>Hi {{fullName}},</p>
+    <p>A new live session has been scheduled:</p>
+    <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+        <tr>
+            <td style="padding:10px; border:1px solid #eee; font-weight:bold;">Session</td>
+            <td style="padding:10px; border:1px solid #eee;">{{sessionTitle}}</td>
+        </tr>
+        <tr>
+            <td style="padding:10px; border:1px solid #eee; font-weight:bold;">Time</td>
+            <td style="padding:10px; border:1px solid #eee;">{{sessionTime}}</td>
+        </tr>
+        <tr>
+            <td style="padding:10px; border:1px solid #eee; font-weight:bold;">Link</td>
+            <td style="padding:10px; border:1px solid #eee;"><a href="{{meetLink}}">Join Session</a></td>
+        </tr>
+    </table>
+</div>
+```
+
+### Context Data Available from LIVE_SESSION_CREATE Trigger
+
+| Context key | Type | What it contains |
+|-------------|------|-----------------|
+| `#ctx['liveSession']` | LiveSession object | title, subject, startTime, lastEntryTime, defaultMeetLink, status, accessLevel, timezone |
+| `#ctx['createdBy']` | String | User ID of admin who created the session |
+| `#ctx['instituteId']` | String | Institute ID |
+
+**Important:** The trigger does NOT provide `respondentEmailRequests`, `user`, `customFields`, or any student data. Those are only available for `AUDIENCE_LEAD_SUBMISSION` triggers. Each trigger type has its own context.
+
+---
+
 ## Tips
 
 1. **Always test with "Test Run"** before publishing — it does a dry run without sending real emails

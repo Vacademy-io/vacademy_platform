@@ -19,7 +19,6 @@ import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
-import vacademy.io.admin_core_service.features.doubts.manager.DoubtTemplateSeeder;
 import vacademy.io.admin_core_service.features.institute.constants.ConstantsSettingDefaultValue;
 import vacademy.io.admin_core_service.features.institute.dto.CertificationGenerationRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
@@ -58,19 +57,16 @@ public class InstituteSettingService {
     private final MediaService mediaService;
     private final AuthService authService;
     private final InstituteCustomFiledService instituteCustomFiledService;
-    private final DoubtTemplateSeeder doubtTemplateSeeder;
 
     public InstituteSettingService(InstituteRepository instituteRepository, ObjectMapper objectMapper,
             FileService fileService, MediaService mediaService, AuthService authService,
-            InstituteCustomFiledService instituteCustomFiledService, SettingStrategyFactory settingStrategyFactory,
-            DoubtTemplateSeeder doubtTemplateSeeder) {
+            InstituteCustomFiledService instituteCustomFiledService, SettingStrategyFactory settingStrategyFactory) {
         this.instituteRepository = instituteRepository;
         this.objectMapper = objectMapper;
         this.mediaService = mediaService;
         this.authService = authService;
         this.instituteCustomFiledService = instituteCustomFiledService;
         this.settingStrategyFactory = settingStrategyFactory;
-        this.doubtTemplateSeeder = doubtTemplateSeeder;
     }
 
     public void createNewNamingSetting(Institute institute, NameSettingRequest request) {
@@ -144,15 +140,9 @@ public class InstituteSettingService {
         } catch (Exception e) {
             log.error("Error creating default invoice setting: " + e.getMessage());
         }
-
-        try {
-            // Seeds the per-institute doubt-notification email templates. Mirror of
-            // V214__Seed_Doubt_Notification_Email_Templates.sql, which covers institutes that
-            // existed when the migration ran. Idempotent — skips rows already present.
-            doubtTemplateSeeder.seedDefaults(institute);
-        } catch (Exception e) {
-            log.error("Error seeding default doubt notification templates: " + e.getMessage());
-        }
+        // Doubt notification templates: a single global default row lives at institute_id =
+        // 'DEFAULT' (see V215). New institutes fall back to it automatically via
+        // DoubtNotificationService.resolveTemplateId — no per-institute seeding needed.
     }
 
     /**

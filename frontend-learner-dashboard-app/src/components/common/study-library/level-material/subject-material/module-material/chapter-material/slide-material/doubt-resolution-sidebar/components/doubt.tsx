@@ -114,12 +114,17 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                            <StatusChip 
-                                text={doubt.status === "RESOLVED" ? "Resolved" : "Pending"} 
-                                textSize="text-xs" 
-                                status={doubt.status === "RESOLVED" ? "SUCCESS" : "INFO"} 
+                        <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                            <StatusChip
+                                text={doubt.status === "RESOLVED" ? "Resolved" : "Pending"}
+                                textSize="text-xs"
+                                status={doubt.status === "RESOLVED" ? "SUCCESS" : "INFO"}
                             />
+                            {doubt.status !== "RESOLVED" && doubt.replies.length > 0 && (
+                                <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
+                                    Teacher answered
+                                </span>
+                            )}
                         </div>
                     </div>
                     {/* Content Section */}
@@ -187,7 +192,7 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                             <div className="space-y-4 pl-4 border-l-2 border-gray-200 ml-2 animate-in slide-in-from-top-2 duration-200">
                                 {doubt.replies.map((reply, key) => (
                                     <div key={key} className="animate-in fade-in slide-in-from-left-4 duration-300" style={{ animationDelay: `${key * 100}ms` }}>
-                                        <Reply reply={reply} />
+                                        <Reply reply={reply} raiserUserId={doubt.user_id} />
                                     </div>
                                 ))}
                             </div>

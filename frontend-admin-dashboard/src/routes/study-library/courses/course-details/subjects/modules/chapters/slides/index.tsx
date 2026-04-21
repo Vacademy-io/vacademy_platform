@@ -11,6 +11,7 @@ interface ChapterSearchParams {
     timestamp?: number;
     currentPage?: number;
     quickAdd?: boolean;
+    openDoubt?: boolean;
 }
 
 // Route definition only - component is lazy loaded from index.lazy.tsx
@@ -29,6 +30,7 @@ export const Route = createFileRoute(
             ...(typeof search.timestamp === 'number' && { timestamp: search.timestamp }),
             ...(typeof search.currentPage === 'number' && { currentPage: search.currentPage }),
             ...(typeof search.quickAdd === 'boolean' && { quickAdd: search.quickAdd }),
+            ...(typeof search.openDoubt === 'boolean' && { openDoubt: search.openDoubt }),
         };
     },
 });

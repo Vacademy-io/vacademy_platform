@@ -129,18 +129,26 @@ public class DoubtsManager {
     }
 
     /**
-     * Returns {@code null} only when the caller is an ADMIN (unrestricted visibility) and the user
-     * id for everyone else — including TEACHER accounts flagged as root, since the product rule is
-     * "only admin sees all doubts". The SQL in
-     * {@link vacademy.io.admin_core_service.features.doubts.repository.DoubtsRepository#findDoubtsWithFilterForViewer}
-     * then limits results to doubts the viewer can see via doubt_assignee or FSPSSM
-     * (batch-level or subject-level).
+     * Returns {@code null} when the caller should see all doubts (admin / unrestricted), and the
+     * user id when the caller's view should be scoped by doubt_assignee / FSPSSM / self-raised.
+     *
+     * Rule (aligned with product ask "only admin can see all doubts"):
+     *   1. Null caller → no filter (defensive).
+     *   2. Caller is a TEACHER or STUDENT → always scope, even if {@code is_root_user} is true on
+     *      the account. Some teacher/student accounts are incorrectly provisioned with the root
+     *      flag and we do NOT want that to leak every doubt to them.
+     *   3. Otherwise, if caller is explicitly an ADMIN role or the account is root → no filter.
+     *   4. Otherwise (non-teacher, non-student, non-admin, non-root) → scope by user id. They
+     *      will only see doubts they're directly assigned to via doubt_assignee.
      */
     private String resolveViewerUserId(CustomUserDetails user) {
         if (user == null) {
             return null;
         }
-        if (hasRole(user, "ADMIN")) {
+        if (hasRole(user, "TEACHER") || hasRole(user, "STUDENT")) {
+            return user.getUserId();
+        }
+        if (hasRole(user, "ADMIN") || user.isRootUser()) {
             return null;
         }
         return user.getUserId();

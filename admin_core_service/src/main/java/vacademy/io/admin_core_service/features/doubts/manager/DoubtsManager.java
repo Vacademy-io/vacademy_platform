@@ -119,11 +119,42 @@ public class DoubtsManager {
         Sort sortColumns = ListService.createSortObject(filter.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo,pageSize,sortColumns);
 
-        Page<Doubts> paginatedDoubts = doubtService.getAllDoubtsWithFilter(filter.getContentTypes(), filter.getContentPositions(),filter.getSources(),
-                filter.getSourceIds(),filter.getStartDate(),filter.getEndDate(), filter.getUserIds(), filter.getStatus(), filter.getBatchIds(), pageable);
+        String viewerUserId = resolveViewerUserId(userDetails);
 
+        Page<Doubts> paginatedDoubts = doubtService.getAllDoubtsWithFilter(filter.getContentTypes(), filter.getContentPositions(), filter.getSources(),
+                filter.getSourceIds(), filter.getStartDate(), filter.getEndDate(), filter.getUserIds(), filter.getStatus(), filter.getBatchIds(),
+                viewerUserId, pageable);
 
         return ResponseEntity.ok(createDoubtAllResponse(paginatedDoubts));
+    }
+
+    /**
+     * Returns {@code null} only when the caller is an ADMIN (unrestricted visibility) and the user
+     * id for everyone else — including TEACHER accounts flagged as root, since the product rule is
+     * "only admin sees all doubts". The SQL in
+     * {@link vacademy.io.admin_core_service.features.doubts.repository.DoubtsRepository#findDoubtsWithFilterForViewer}
+     * then limits results to doubts the viewer can see via doubt_assignee or FSPSSM
+     * (batch-level or subject-level).
+     */
+    private String resolveViewerUserId(CustomUserDetails user) {
+        if (user == null) {
+            return null;
+        }
+        if (hasRole(user, "ADMIN")) {
+            return null;
+        }
+        return user.getUserId();
+    }
+
+    private boolean hasRole(CustomUserDetails user, String... roles) {
+        return user.getAuthorities().stream()
+                .map(auth -> auth.getAuthority())
+                .anyMatch(authority -> {
+                    for (String role : roles) {
+                        if (role.equalsIgnoreCase(authority)) return true;
+                    }
+                    return false;
+                });
     }
 
     private AllDoubtsResponse createDoubtAllResponse(Page<Doubts> paginatedDoubts) {

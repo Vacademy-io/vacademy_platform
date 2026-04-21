@@ -70,6 +70,26 @@ public class DoubtService {
                                                List<String> status,
                                                List<String> batchIds,
                                                Pageable pageable) {
+        return getAllDoubtsWithFilter(contentTypes, contentPositions, sources, sourceIds, startDate, endDate,
+                userIds, status, batchIds, null, pageable);
+    }
+
+    /**
+     * @param viewerUserId when non-null, restricts results to doubts visible to that viewer via
+     *                     direct doubt_assignee rows or FSPSSM (batch-level or subject-level).
+     *                     Pass {@code null} for admin/root callers — no visibility filter is applied.
+     */
+    public Page<Doubts> getAllDoubtsWithFilter(List<String> contentTypes,
+                                               List<String> contentPositions,
+                                               List<String> sources,
+                                               List<String> sourceIds,
+                                               Date startDate,
+                                               Date endDate,
+                                               List<String> userIds,
+                                               List<String> status,
+                                               List<String> batchIds,
+                                               String viewerUserId,
+                                               Pageable pageable) {
         List<String> filteredContentTypes = Optional.ofNullable(contentTypes).orElse(Collections.emptyList());
         List<String> filteredContentPositions = Optional.ofNullable(contentPositions).orElse(Collections.emptyList());
         List<String> filteredSources = Optional.ofNullable(sources).orElse(Collections.emptyList());
@@ -80,7 +100,12 @@ public class DoubtService {
         if (batchIds == null || batchIds.isEmpty()) {
             return Page.empty(pageable); // return empty page
         }
-        return doubtsRepository.findDoubtsWithFilter(filteredContentPositions,filteredContentTypes,filteredSources,filteredSourceIds,filteredUserIds,filteredStatus,filteredBatchIds,startDate,endDate,pageable);
+        if (viewerUserId == null) {
+            return doubtsRepository.findDoubtsWithFilter(filteredContentPositions, filteredContentTypes, filteredSources,
+                    filteredSourceIds, filteredUserIds, filteredStatus, filteredBatchIds, startDate, endDate, pageable);
+        }
+        return doubtsRepository.findDoubtsWithFilterForViewer(filteredContentPositions, filteredContentTypes, filteredSources,
+                filteredSourceIds, filteredUserIds, filteredStatus, filteredBatchIds, startDate, endDate, viewerUserId, pageable);
     }
 
     public List<DoubtsDto> createDtoFromDoubts(List<Doubts> allDoubts) {

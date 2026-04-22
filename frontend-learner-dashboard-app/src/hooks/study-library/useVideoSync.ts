@@ -50,6 +50,7 @@ export const useVideoSync = () => {
         z.infer<typeof ActivitySchema>
       >;
       const updatedActivities = [];
+      let didSync = false;
 
       for (let i = 0; i < activities.length; i++) {
         let activity = activities[i];
@@ -172,11 +173,7 @@ export const useVideoSync = () => {
               activity.sync_status = "SYNCED";
               activity.new_activity = false; // Move this here, after successful API call
               updatedActivities.push(activity);
-              
-              // Refresh slides data to get updated progress
-              console.log("🔄 [useVideoSync] Triggering slides refresh after NEW activity...");
-              await refreshSlides();
-              console.log("✅ [useVideoSync] Slides refresh completed after NEW activity");
+              didSync = true;
             } catch (err) {
               console.log("add api call failed: ", err);
             }
@@ -195,11 +192,7 @@ export const useVideoSync = () => {
                 console.log(`✅ [useVideoSync] UPDATE activity API call successful: ${activity.activity_id}`);
                 activity.sync_status = "SYNCED";
                 updatedActivities.push(activity);
-                
-                // Refresh slides data to get updated progress
-                console.log("🔄 [useVideoSync] Triggering slides refresh after UPDATE activity...");
-                await refreshSlides();
-                console.log("✅ [useVideoSync] Slides refresh completed after UPDATE activity");
+                didSync = true;
               } catch (err) {
                 console.log("update api call failed: ", err);
               }
@@ -211,10 +204,22 @@ export const useVideoSync = () => {
         }
       }
 
+      // Persist SYNCED status BEFORE triggering the slides refresh.
+      // refreshSlides() invalidates queries which can re-mount the viewer;
+      // the new mount must read the SYNCED state from storage or it will
+      // re-fire the same activity, generating duplicate concurrent inserts
+      // that race the backend's video_tracked delete+insert path and
+      // surface as 511 (duplicate-key constraint violation).
       await Preferences.set({
         key: STORAGE_KEY,
         value: JSON.stringify({ data: updatedActivities }),
       });
+
+      if (didSync) {
+        console.log("🔄 [useVideoSync] Triggering slides refresh after sync...");
+        await refreshSlides();
+        console.log("✅ [useVideoSync] Slides refresh completed");
+      }
     } catch (error) {
       console.error("Failed to sync video tracking data:", error);
       throw error;

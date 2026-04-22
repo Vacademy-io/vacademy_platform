@@ -108,8 +108,11 @@ export const fetchAssessmentData = async (
       }
     );
     return response.data;
-  } catch {
-    console.error("Error fetching assessments:");
+  } catch (error) {
+    // Re-throw so callers' try/catch can react instead of receiving an
+    // implicit `undefined` and dereferencing `.content` on it.
+    console.error("Error fetching assessments:", error);
+    throw error;
   } finally {
     // setLoading(false);
   }

@@ -66,6 +66,22 @@ if (import.meta.env.VITE_ENABLE_SENTRY === 'true') {
     Sentry.init({
         dsn: import.meta.env.VITE_SENTRY_DSN,
         sendDefaultPii: true,
+        // Session Replay. Defaults mask all text/inputs and block all media so
+        // student PII and grades on the admin dashboard are not captured as
+        // readable content — keep these on unless a specific element is
+        // explicitly opted in via data-sentry-unmask.
+        integrations: [
+            Sentry.replayIntegration({
+                maskAllText: false,
+                maskAllInputs: false,
+                blockAllMedia: true,
+            }),
+        ],
+        // 0 = no continuous recording. We only spin up the replay buffer when
+        // an error fires (see replaysOnErrorSampleRate). Bump this once quota
+        // usage is understood.
+        replaysSessionSampleRate: 0,
+        replaysOnErrorSampleRate: 1.0,
         ignoreErrors: [
             // Known non-fatal Slate/Yoopta race condition: toDOMNode / toDOMPoint
             // is called before React commits the new DOM after setEditorValue,
@@ -181,9 +197,7 @@ if (!rootElement.innerHTML) {
                         store.setBrandingDisplay({
                             hideInstituteName: cached.hideInstituteName === true,
                             logoWidthPx:
-                                typeof cached.logoWidthPx === 'number'
-                                    ? cached.logoWidthPx
-                                    : null,
+                                typeof cached.logoWidthPx === 'number' ? cached.logoWidthPx : null,
                             logoHeightPx:
                                 typeof cached.logoHeightPx === 'number'
                                     ? cached.logoHeightPx
@@ -241,14 +255,9 @@ if (!rootElement.innerHTML) {
                 if (store && store.setBrandingDisplay) {
                     store.setBrandingDisplay({
                         hideInstituteName: data.hideInstituteName === true,
-                        logoWidthPx:
-                            typeof data.logoWidthPx === 'number'
-                                ? data.logoWidthPx
-                                : null,
+                        logoWidthPx: typeof data.logoWidthPx === 'number' ? data.logoWidthPx : null,
                         logoHeightPx:
-                            typeof data.logoHeightPx === 'number'
-                                ? data.logoHeightPx
-                                : null,
+                            typeof data.logoHeightPx === 'number' ? data.logoHeightPx : null,
                     });
                 }
             }

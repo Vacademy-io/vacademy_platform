@@ -200,34 +200,41 @@ function FeedbackPage() {
   /* ── Loading state ── */
   if (loading) {
     return (
-      <div className="feedback-page">
-        <div className="feedback-loader">
-          <div className="feedback-spinner" />
-          <p>Loading feedback form…</p>
+      <>
+        <div className="feedback-page">
+          <div className="feedback-loader">
+            <div className="feedback-spinner" />
+            <p>Loading feedback form…</p>
+          </div>
         </div>
-      </div>
+        <FeedbackStyles />
+      </>
     );
   }
 
   /* ── Already-submitted / success state ── */
   if (submitted) {
     return (
-      <div className="feedback-page">
-        <div className="feedback-card feedback-success-card">
-          <div className="feedback-success-icon">✓</div>
-          <h2 className="feedback-success-title">Thank you for your feedback!</h2>
-          <p className="feedback-success-subtitle">
-            Your responses have been recorded. Redirecting you back…
-          </p>
-          <div className="feedback-redirect-bar" />
+      <>
+        <div className="feedback-page">
+          <div className="feedback-card feedback-success-card">
+            <div className="feedback-success-icon">✓</div>
+            <h2 className="feedback-success-title">Thank you for your feedback!</h2>
+            <p className="feedback-success-subtitle">
+              Your responses have been recorded. Redirecting you back…
+            </p>
+            <div className="feedback-redirect-bar" />
+          </div>
         </div>
-      </div>
+        <FeedbackStyles />
+      </>
     );
   }
 
   /* ── Main feedback form ── */
   return (
-    <div className="feedback-page">
+    <>
+      <div className="feedback-page">
       <div className="feedback-card">
         {/* Header / Branding */}
         <div className="feedback-header">
@@ -316,9 +323,17 @@ function FeedbackPage() {
         </button>
       </div>
 
-      {/* ── Embedded Styles ── */}
-      <style>{`
+      <FeedbackStyles />
+    </>
+  );
+}
+
+/* ─────────────────────── Global Styles Component ─────────────────────── */
+function FeedbackStyles() {
+  return (
+    <style>{`
         .feedback-page {
+          width: 100vw;
           min-height: 100dvh;
           display: flex;
           align-items: center;
@@ -614,6 +629,5 @@ function FeedbackPage() {
           }
         }
       `}</style>
-    </div>
   );
 }

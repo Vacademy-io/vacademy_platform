@@ -206,6 +206,7 @@ export interface LiveSessionReport {
     statusType: string | null;
     engagementData: string | null;
     providerTotalDurationMinutes: number | null;
+    feedbackDetails: string | null;
 }
 
 export interface SessionBySessionIdResponse {

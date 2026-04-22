@@ -48,6 +48,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 lsl.status_type AS statusType,
                 lsl.engagement_data AS engagementData,
                 lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+                fbl.details AS feedbackDetails,
                 1 AS priority
             FROM live_session_participants lsp
             JOIN student_session_institute_group_mapping m
@@ -60,6 +61,12 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 AND lsl.session_id = :sessionId
                 AND lsl.schedule_id = :scheduleId
                 AND lsl.log_type = 'ATTENDANCE_RECORDED'
+            LEFT JOIN live_session_logs fbl
+                ON fbl.user_source_id = s.user_id
+                AND fbl.user_source_type = 'USER'
+                AND fbl.session_id = :sessionId
+                AND fbl.schedule_id = :scheduleId
+                AND fbl.log_type = 'FEEDBACK_SUBMITTED'
             WHERE lsp.session_id = :sessionId
             AND lsp.source_type = 'BATCH'
 
@@ -82,6 +89,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 lsl.status_type AS statusType,
                 lsl.engagement_data AS engagementData,
                 lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+                fbl.details AS feedbackDetails,
                 2 AS priority
             FROM live_session_participants lsp
             JOIN student s
@@ -92,6 +100,12 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 AND lsl.session_id = :sessionId
                 AND lsl.schedule_id = :scheduleId
                 AND lsl.log_type = 'ATTENDANCE_RECORDED'
+            LEFT JOIN live_session_logs fbl
+                ON fbl.user_source_id = s.user_id
+                AND fbl.user_source_type = 'USER'
+                AND fbl.session_id = :sessionId
+                AND fbl.schedule_id = :scheduleId
+                AND fbl.log_type = 'FEEDBACK_SUBMITTED'
             WHERE lsp.session_id = :sessionId
             AND lsp.source_type = 'USER'
         )
@@ -110,7 +124,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             source_type AS sourceType,
             statusType,
             engagementData,
-            providerTotalDurationMinutes
+            providerTotalDurationMinutes,
+            feedbackDetails
         FROM all_participants
         ORDER BY studentId, priority ASC
     """, nativeQuery = true)
@@ -140,7 +155,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ss.meeting_date AS meetingDate,
         ss.start_time AS startTime,
         ss.last_entry_time AS lastEntryTime,
-        ss.daily_attendance AS dailyAttendance
+        ss.daily_attendance AS dailyAttendance,
+        fbl.details AS feedbackDetails
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m
         ON m.package_session_id = lsp.source_id
@@ -158,6 +174,12 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         AND lsl.session_id = lsp.session_id
         AND lsl.schedule_id = ss.id
         AND lsl.log_type = 'ATTENDANCE_RECORDED'
+    LEFT JOIN live_session_logs fbl
+        ON fbl.user_source_id = s.user_id
+        AND fbl.user_source_type = 'USER'
+        AND fbl.session_id = lsp.session_id
+        AND fbl.schedule_id = ss.id
+        AND fbl.log_type = 'FEEDBACK_SUBMITTED'
     WHERE lsp.source_id = :batchSessionId
       AND ss.meeting_date BETWEEN :startDate AND :endDate
       AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
@@ -232,7 +254,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ss.meeting_date AS meetingDate,
         ss.start_time AS startTime,
         ss.last_entry_time AS lastEntryTime,
-        ss.daily_attendance AS dailyAttendance
+        ss.daily_attendance AS dailyAttendance,
+        fbl.details AS feedbackDetails
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m
         ON m.package_session_id = lsp.source_id
@@ -250,6 +273,12 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         AND lsl.session_id = lsp.session_id
         AND lsl.schedule_id = ss.id
         AND lsl.log_type = 'ATTENDANCE_RECORDED'
+    LEFT JOIN live_session_logs fbl
+        ON fbl.user_source_id = s.user_id
+        AND fbl.user_source_type = 'USER'
+        AND fbl.session_id = lsp.session_id
+        AND fbl.schedule_id = ss.id
+        AND fbl.log_type = 'FEEDBACK_SUBMITTED'
     WHERE s.user_id IN (:studentIds)
     AND ss.meeting_date BETWEEN :startDate AND :endDate
     AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)

@@ -143,6 +143,35 @@ export function AttendanceMarkingTable({
         return cols;
     }, [cfData]);
 
+    // Extract unique feedback keys
+    const feedbackColumns = useMemo(() => {
+        const columns = new Set<string>();
+        data.forEach((student) => {
+            if (student.feedbackDetails) {
+                try {
+                    const parsed = JSON.parse(student.feedbackDetails);
+                    Object.keys(parsed).forEach((k) => columns.add(k));
+                } catch (e) {
+                    // ignore JSON parse errors
+                }
+            }
+        });
+        return Array.from(columns);
+    }, [data]);
+
+    const getFeedbackValue = useCallback(
+        (student: LiveSessionReport, key: string) => {
+            if (!student.feedbackDetails) return '-';
+            try {
+                const parsed = JSON.parse(student.feedbackDetails);
+                return parsed[key] !== undefined ? parsed[key] : '-';
+            } catch {
+                return '-';
+            }
+        },
+        []
+    );
+
     // Helper: get custom field value for a participant by email (guests) or studentId
     const getCfValue = useCallback(
         (student: LiveSessionReport, fieldKey: string): string => {
@@ -330,6 +359,10 @@ export function AttendanceMarkingTable({
             customFieldColumns.forEach((cf) => {
                 row[cf.name] = getCfValue(item, cf.key);
             });
+            feedbackColumns.forEach((fbCol) => {
+                const colName = fbCol.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+                row[`Feedback: ${colName}`] = getFeedbackValue(item, fbCol);
+            });
             return row;
         });
         const csv = Papa.unparse(csvData);
@@ -413,6 +446,11 @@ export function AttendanceMarkingTable({
                             {customFieldColumns.map((cf) => (
                                 <th key={cf.key} className="px-3 py-2">{cf.name}</th>
                             ))}
+                            {feedbackColumns.map((fbCol) => (
+                                <th key={`fb-${fbCol}`} className="px-3 py-2 text-purple-600 bg-purple-50/50">
+                                    {fbCol.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                                </th>
+                            ))}
                             <th className="px-3 py-2 w-[100px]">
                                 <button
                                     type="button"
@@ -488,6 +526,11 @@ export function AttendanceMarkingTable({
                                         {customFieldColumns.map((cf) => (
                                             <td key={cf.key} className="px-3 py-2 text-gray-500">
                                                 {getCfValue(student, cf.key)}
+                                            </td>
+                                        ))}
+                                        {feedbackColumns.map((fbCol) => (
+                                            <td key={`fb-${fbCol}`} className="px-3 py-2 text-gray-500 bg-purple-50/20">
+                                                {getFeedbackValue(student, fbCol)}
                                             </td>
                                         ))}
                                         <td className="px-3 py-2 text-gray-600">

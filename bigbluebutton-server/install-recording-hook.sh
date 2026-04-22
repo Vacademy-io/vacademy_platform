@@ -19,8 +19,10 @@
 
 set -euo pipefail
 
-BACKEND_URL="${1:?Usage: bash install-recording-hook.sh <BACKEND_URL> <BBB_SECRET>}"
-BBB_SECRET="${2:?Usage: bash install-recording-hook.sh <BACKEND_URL> <BBB_SECRET>}"
+BACKEND_URL="${1:?Usage: bash install-recording-hook.sh <BACKEND_URL> <BBB_SECRET> [BBB_DOMAIN] [HEALTH_TOKEN]}"
+BBB_SECRET="${2:?Usage: bash install-recording-hook.sh <BACKEND_URL> <BBB_SECRET> [BBB_DOMAIN] [HEALTH_TOKEN]}"
+BBB_DOMAIN_ARG="${3:-}"        # Optional: e.g. meet.vacademy.io
+HEALTH_TOKEN_ARG="${4:-}"      # Optional: fixed dashboard token from .env
 
 HOOK_DIR="/usr/local/bigbluebutton/core/scripts/post_publish"
 HOOK_SCRIPT="$HOOK_DIR/post-publish-s3-upload.sh"
@@ -36,10 +38,10 @@ echo ""
 
 # ── 1. Install ffmpeg if not present ─────────────────────────
 if ! command -v ffmpeg &>/dev/null; then
-    echo "[1/9] Installing ffmpeg..."
+    echo "[1/10] Installing ffmpeg..."
     apt-get update -qq && apt-get install -y -qq ffmpeg
 else
-    echo "[1/9] ffmpeg already installed ✓"
+    echo "[1/10] ffmpeg already installed ✓"
 fi
 
 # ── 2. Configure BBB to retain raw recordings ────────────────
@@ -47,7 +49,7 @@ fi
 # need to extract the presenter-only video. By default BBB deletes
 # raw files after publishing — this keeps them.
 BBB_YML="/usr/local/bigbluebutton/core/scripts/bigbluebutton.yml"
-echo "[2/9] Configuring BBB to retain raw recordings..."
+echo "[2/10] Configuring BBB to retain raw recordings..."
 if [ -f "$BBB_YML" ]; then
     if grep -q "^delete_raw_after_publish:" "$BBB_YML"; then
         # Update existing setting
@@ -71,7 +73,16 @@ else
 fi
 
 # ── 3. Create configuration file ─────────────────────────────
-echo "[3/9] Writing config to $CONF_FILE..."
+echo "[3/10] Writing config to $CONF_FILE..."
+
+# Preserve existing extra vars (dashboard token, domain) across rewrites
+PREV_HEALTH_TOKEN=""
+PREV_BBB_DOMAIN=""
+if [ -f "$CONF_FILE" ]; then
+    PREV_HEALTH_TOKEN=$(grep '^HEALTH_DASHBOARD_TOKEN=' "$CONF_FILE" 2>/dev/null | cut -d= -f2 || true)
+    PREV_BBB_DOMAIN=$(grep '^BBB_DOMAIN=' "$CONF_FILE" 2>/dev/null | cut -d= -f2 || true)
+fi
+
 cat > "$CONF_FILE" <<EOF
 # Vacademy BBB Recording Upload Configuration
 # Generated on $(date)
@@ -83,11 +94,15 @@ VACADEMY_BACKEND_URL=$BACKEND_URL
 VACADEMY_BBB_SECRET=$BBB_SECRET
 EOF
 
+# Re-append preserved vars
+[ -n "$PREV_HEALTH_TOKEN" ] && echo "HEALTH_DASHBOARD_TOKEN=$PREV_HEALTH_TOKEN" >> "$CONF_FILE"
+[ -n "$PREV_BBB_DOMAIN" ] && echo "BBB_DOMAIN=$PREV_BBB_DOMAIN" >> "$CONF_FILE"
+
 chmod 644 "$CONF_FILE"
 echo "  Config written (permissions: 644 — readable by bigbluebutton rap worker)"
 
 # ── 4. Install the post-publish script ────────────────────────
-echo "[4/9] Installing post-publish hook..."
+echo "[4/10] Installing post-publish hook..."
 
 # Ensure hook directory exists
 mkdir -p "$HOOK_DIR"
@@ -128,18 +143,22 @@ chmod +x "$RUBY_WRAPPER"
 echo "  Ruby wrapper: $RUBY_WRAPPER"
 
 # ── 5. Create log file ───────────────────────────────────────
-echo "[5/9] Setting up logging..."
+echo "[5/10] Setting up logging..."
 LOG_FILE="/var/log/bigbluebutton/vacademy-recording-upload.log"
 touch "$LOG_FILE"
 chown bigbluebutton:bigbluebutton "$LOG_FILE" 2>/dev/null || true
 HEAL_LOG="/var/log/bigbluebutton/vacademy-heal-service.log"
 touch "$HEAL_LOG"
 chown bigbluebutton:bigbluebutton "$HEAL_LOG" 2>/dev/null || true
-echo "  Upload log:  $LOG_FILE"
-echo "  Heal log:    $HEAL_LOG"
+DASHBOARD_LOG="/var/log/bigbluebutton/vacademy-health-dashboard.log"
+touch "$DASHBOARD_LOG"
+chown bigbluebutton:bigbluebutton "$DASHBOARD_LOG" 2>/dev/null || true
+echo "  Upload log:     $LOG_FILE"
+echo "  Heal log:       $HEAL_LOG"
+echo "  Dashboard log:  $DASHBOARD_LOG"
 
 # ── 6. Install BBB heal service ──────────────────────────────
-echo "[6/9] Installing BBB heal service (on-demand pipeline recovery)..."
+echo "[6/10] Installing BBB heal service (on-demand pipeline recovery)..."
 HEAL_PY_SOURCE="$SCRIPT_DIR/bbb-heal-service.py"
 HEAL_PY_DEST="/usr/local/bin/bbb-heal-service.py"
 HEAL_UNIT_SOURCE="$SCRIPT_DIR/bbb-heal-service.service"
@@ -155,7 +174,8 @@ chmod +x "$HEAL_PY_DEST"
 cp "$HEAL_UNIT_SOURCE" "$HEAL_UNIT_DEST"
 
 systemctl daemon-reload
-systemctl enable --now bbb-heal-service.service
+systemctl enable bbb-heal-service.service
+systemctl restart bbb-heal-service.service
 sleep 1
 if systemctl is-active --quiet bbb-heal-service.service; then
     echo "  Heal service running on 127.0.0.1:9091"
@@ -163,31 +183,105 @@ else
     echo "  WARN: Heal service failed to start — check: journalctl -u bbb-heal-service -n 50"
 fi
 
-# ── 7. Install nginx snippet for heal service ────────────────
-echo "[7/9] Installing nginx snippet for heal service..."
-NGINX_SNIPPET_SOURCE="$SCRIPT_DIR/vacademy-heal.nginx"
-NGINX_SNIPPET_DEST="/etc/bigbluebutton/nginx/vacademy-heal.nginx"
+# ── 7. Install BBB health dashboard service ─────────────────
+echo "[7/10] Installing BBB health dashboard (server monitoring & quick actions)..."
+DASH_PY_SOURCE="$SCRIPT_DIR/bbb-health-dashboard.py"
+DASH_PY_DEST="/usr/local/bin/bbb-health-dashboard.py"
+DASH_UNIT_SOURCE="$SCRIPT_DIR/bbb-health-dashboard.service"
+DASH_UNIT_DEST="/etc/systemd/system/bbb-health-dashboard.service"
+
+if [ ! -f "$DASH_PY_SOURCE" ] || [ ! -f "$DASH_UNIT_SOURCE" ]; then
+    echo "  SKIP: Health dashboard files not found at $DASH_PY_SOURCE / $DASH_UNIT_SOURCE"
+else
+    # Set HEALTH_DASHBOARD_TOKEN in conf — prefer argument, then existing, then generate
+    CONF_FILE="/etc/bigbluebutton/vacademy-recording.conf"
+    if [ -n "$HEALTH_TOKEN_ARG" ]; then
+        sed -i '/^HEALTH_DASHBOARD_TOKEN=/d' "$CONF_FILE" 2>/dev/null || true
+        echo "HEALTH_DASHBOARD_TOKEN=$HEALTH_TOKEN_ARG" >> "$CONF_FILE"
+        echo "  Dashboard token: $HEALTH_TOKEN_ARG (from argument)"
+    elif grep -q '^HEALTH_DASHBOARD_TOKEN=' "$CONF_FILE" 2>/dev/null; then
+        EXISTING_TOKEN=$(grep '^HEALTH_DASHBOARD_TOKEN=' "$CONF_FILE" | cut -d= -f2)
+        echo "  Dashboard token: $EXISTING_TOKEN (existing)"
+    else
+        GENERATED_TOKEN=$(openssl rand -hex 16)
+        echo "HEALTH_DASHBOARD_TOKEN=$GENERATED_TOKEN" >> "$CONF_FILE"
+        echo "  Dashboard token: $GENERATED_TOKEN (generated)"
+    fi
+
+    # Add or update BBB_DOMAIN in conf
+    if [ -n "$BBB_DOMAIN_ARG" ]; then
+        # Explicit domain passed as argument — always use it
+        sed -i '/^BBB_DOMAIN=/d' "$CONF_FILE" 2>/dev/null || true
+        echo "BBB_DOMAIN=$BBB_DOMAIN_ARG" >> "$CONF_FILE"
+        echo "  Set BBB_DOMAIN=$BBB_DOMAIN_ARG in conf (from argument)"
+    elif ! grep -q '^BBB_DOMAIN=' "$CONF_FILE" 2>/dev/null; then
+        # No argument and not in conf — derive from nginx
+        BBB_DOMAIN_VAL=$(grep -r 'server_name' /etc/nginx/sites-enabled/ 2>/dev/null | grep -oP 'server_name\s+\K[^;]+' | head -1 | xargs)
+        [ -z "$BBB_DOMAIN_VAL" ] && BBB_DOMAIN_VAL=$(bbb-conf --secret 2>/dev/null | grep -oP 'URL:\s+https://\K[^/]+' || echo "meet.vacademy.io")
+        echo "BBB_DOMAIN=$BBB_DOMAIN_VAL" >> "$CONF_FILE"
+        echo "  Set BBB_DOMAIN=$BBB_DOMAIN_VAL in conf (auto-detected)"
+    else
+        echo "  BBB_DOMAIN already set: $(grep '^BBB_DOMAIN=' "$CONF_FILE" | cut -d= -f2)"
+    fi
+
+    cp "$DASH_PY_SOURCE" "$DASH_PY_DEST"
+    chmod +x "$DASH_PY_DEST"
+    cp "$DASH_UNIT_SOURCE" "$DASH_UNIT_DEST"
+
+    systemctl daemon-reload
+    systemctl enable bbb-health-dashboard.service
+    systemctl restart bbb-health-dashboard.service
+    sleep 1
+    if systemctl is-active --quiet bbb-health-dashboard.service; then
+        echo "  Health dashboard running on 127.0.0.1:9092"
+    else
+        echo "  WARN: Health dashboard failed to start — check: journalctl -u bbb-health-dashboard -n 50"
+    fi
+fi
+
+# ── 8. Install nginx snippets for services ──────────────────
+echo "[8/10] Installing nginx snippets..."
 
 if [ -d "/etc/bigbluebutton/nginx" ]; then
-    cp "$NGINX_SNIPPET_SOURCE" "$NGINX_SNIPPET_DEST"
+    # Heal service nginx
+    NGINX_HEAL_SOURCE="$SCRIPT_DIR/vacademy-heal.nginx"
+    NGINX_HEAL_DEST="/etc/bigbluebutton/nginx/vacademy-heal.nginx"
+    if [ -f "$NGINX_HEAL_SOURCE" ]; then
+        cp "$NGINX_HEAL_SOURCE" "$NGINX_HEAL_DEST"
+        echo "  ✓ vacademy-heal.nginx"
+    fi
+
+    # Health dashboard nginx
+    NGINX_DASH_SOURCE="$SCRIPT_DIR/vacademy-health.nginx"
+    NGINX_DASH_DEST="/etc/bigbluebutton/nginx/vacademy-health.nginx"
+    if [ -f "$NGINX_DASH_SOURCE" ]; then
+        cp "$NGINX_DASH_SOURCE" "$NGINX_DASH_DEST"
+        echo "  ✓ vacademy-health.nginx"
+    fi
+
     if nginx -t 2>/dev/null; then
         systemctl reload nginx
-        echo "  Nginx reloaded — heal service exposed at https://$(hostname -f 2>/dev/null || echo '<host>')/vacademy-heal/"
+        echo "  Nginx reloaded"
+        DASH_TOKEN=$(grep '^HEALTH_DASHBOARD_TOKEN=' /etc/bigbluebutton/vacademy-recording.conf 2>/dev/null | cut -d= -f2)
+        HOST=$(grep '^BBB_DOMAIN=' /etc/bigbluebutton/vacademy-recording.conf 2>/dev/null | cut -d= -f2)
+        [ -z "$HOST" ] && HOST=$(hostname -f 2>/dev/null || echo '<host>')
+        echo "  Heal service:     https://$HOST/vacademy-heal/"
+        echo "  Health dashboard: https://$HOST/internal/health?token=$DASH_TOKEN"
     else
-        echo "  WARN: nginx -t failed, snippet installed but nginx NOT reloaded"
+        echo "  WARN: nginx -t failed, snippets installed but nginx NOT reloaded"
         echo "  Run 'nginx -t' to debug, then 'systemctl reload nginx'"
     fi
 else
-    echo "  WARN: /etc/bigbluebutton/nginx not found — BBB nginx layout unusual, manual install required"
+    echo "  WARN: /etc/bigbluebutton/nginx not found — manual install required"
 fi
 
-# ── 8. Clean up any prior rap-resque-worker COUNT override ────
+# ── 9. Clean up any prior rap-resque-worker COUNT override ────
 # We tried COUNT=2 parallelism to unblock slow ffmpeg jobs, but forked
 # children lose the Bundler environment and fail with:
 #   "cannot load such file -- optimist (LoadError)"
 # Until we find a systemd-level fix that propagates BUNDLE_GEMFILE/GEM_HOME
 # into the forked resque children, stay on the default COUNT=1.
-echo "[8/9] Ensuring rap-resque-worker uses default COUNT=1..."
+echo "[9/10] Ensuring rap-resque-worker uses default COUNT=1..."
 WORKER_OVERRIDE_DIR="/etc/systemd/system/bbb-rap-resque-worker.service.d"
 if [ -f "$WORKER_OVERRIDE_DIR/override.conf" ]; then
     rm -f "$WORKER_OVERRIDE_DIR/override.conf"
@@ -201,18 +295,18 @@ else
     echo "  No override present — using BBB default"
 fi
 
-# ── 9. Install daily cleanup cron (recordings older than 14 days) ───
+# ── 10. Install daily cleanup cron (recordings older than 4 days) ──
 # Ensure any previous stalled-recording hourly cron is removed — we no longer
 # auto-rebuild stalled recordings; healing is on-demand via the heal service.
 rm -f /etc/cron.hourly/bbb-unstall-recordings 2>/dev/null || true
 
-echo "[9/9] Installing cleanup cron job (recordings older than 14 days)..."
-CRON_JOB="0 3 * * * find /var/bigbluebutton/published/presentation/ -maxdepth 1 -mindepth 1 -type d -mtime +14 -exec rm -rf {} + ; find /var/bigbluebutton/recording/raw/ -maxdepth 1 -mindepth 1 -type d -mtime +14 -exec rm -rf {} + ; find /var/bigbluebutton/recording/status/sanity/ -name '*.done' -mtime +14 -delete ; find /var/bigbluebutton/recording/status/archived/ -name '*.done' -mtime +14 -delete ; find /var/bigbluebutton/recording/status/recorded/ -name '*.done' -mtime +14 -delete ; find /var/bigbluebutton/recording/status/processed/ -name '*.done' -mtime +14 -delete ; find /var/bigbluebutton/recording/status/published/ -name '*.done' -mtime +14 -delete"
+echo "[10/10] Installing cleanup cron job (recordings older than 4 days)..."
+CRON_JOB="0 3 * * * find /var/bigbluebutton/published/presentation/ -maxdepth 1 -mindepth 1 -type d -mtime +4 -exec rm -rf {} + ; find /var/bigbluebutton/recording/raw/ -maxdepth 1 -mindepth 1 -type d -mtime +4 -exec rm -rf {} + ; find /var/bigbluebutton/recording/status/sanity/ -name '*.done' -mtime +4 -delete ; find /var/bigbluebutton/recording/status/archived/ -name '*.done' -mtime +4 -delete ; find /var/bigbluebutton/recording/status/recorded/ -name '*.done' -mtime +4 -delete ; find /var/bigbluebutton/recording/status/processed/ -name '*.done' -mtime +4 -delete ; find /var/bigbluebutton/recording/status/published/ -name '*.done' -mtime +4 -delete"
 CRON_MARKER="# vacademy-bbb-cleanup"
 
 # Remove any previous version of this cron entry, then add fresh
 ( crontab -l 2>/dev/null | grep -v "$CRON_MARKER" ; echo "$CRON_MARKER" ; echo "$CRON_JOB" ) | crontab -
-echo "  Daily cleanup cron installed — runs 03:00, deletes recordings older than 14 days"
+echo "  Daily cleanup cron installed — runs 03:00, deletes recordings older than 4 days"
 
 # ── Done ──────────────────────────────────────────────────────
 echo ""
@@ -224,11 +318,11 @@ echo "The recording upload hook will run automatically"
 echo "after each BBB recording is processed."
 echo ""
 echo "Deployed components:"
-echo "  - Post-publish hook  → $HOOK_SCRIPT"
-echo "  - Heal service       → $HEAL_PY_DEST (systemd: bbb-heal-service)"
-echo "  - Nginx proxy        → /vacademy-heal/ → 127.0.0.1:9091"
-echo "  - Worker parallelism → COUNT=2 (systemd override)"
-echo "  - Daily 14d cleanup  → crontab (03:00)"
+echo "  - Post-publish hook    → $HOOK_SCRIPT"
+echo "  - Heal service         → $HEAL_PY_DEST (systemd: bbb-heal-service)"
+echo "  - Health dashboard     → /usr/local/bin/bbb-health-dashboard.py (systemd: bbb-health-dashboard)"
+echo "  - Nginx proxies        → /vacademy-heal/ (9091), /internal/health (9092)"
+echo "  - Daily 4d cleanup     → crontab (03:00)"
 echo ""
 echo "To test:"
 echo "  1. Start a BBB meeting with recording enabled"
@@ -242,7 +336,8 @@ echo "    'https://$(hostname -f 2>/dev/null || echo '<host>')/vacademy-heal/hea
 echo ""
 echo "To uninstall:"
 echo "  systemctl disable --now bbb-heal-service"
-echo "  rm $HOOK_SCRIPT $RUBY_WRAPPER $HEAL_PY_DEST $HEAL_UNIT_DEST $NGINX_SNIPPET_DEST $CONF_FILE"
+echo "  rm $HOOK_SCRIPT $RUBY_WRAPPER $HEAL_PY_DEST $HEAL_UNIT_DEST $DASH_PY_DEST $DASH_UNIT_DEST $CONF_FILE"
+echo "  rm /etc/bigbluebutton/nginx/vacademy-heal.nginx /etc/bigbluebutton/nginx/vacademy-health.nginx"
 echo "  crontab -l | grep -v 'vacademy-bbb-cleanup' | crontab -"
 echo "  systemctl daemon-reload && systemctl reload nginx"
 echo ""

@@ -171,7 +171,7 @@ export function PromptInput({
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
     const attachmentInputRef = useRef<HTMLInputElement>(null);
-    const { data: modelsList } = useAIModelsList();
+    const { data: modelsList } = useAIModelsList({ category: 'general' });
     const { uploadFile, getPublicUrl: getFilePublicUrl } = useFileUpload();
     const { data: credits } = useAiCreditsQuery();
     const { data: costEstimate } = useCreditEstimateQuery(

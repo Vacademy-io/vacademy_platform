@@ -11,12 +11,13 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, Field
 
 from worker import RenderWorker
+from transcribe_worker import TranscribeWorker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("render-worker")
@@ -37,6 +38,7 @@ app = FastAPI(title="Vacademy Render Worker", version="1.0.0")
 # In-memory job tracker (single-process worker, no need for DB)
 jobs: Dict[str, dict] = {}
 worker = RenderWorker()
+transcribe_worker = TranscribeWorker()
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +367,157 @@ async def get_index_job_status(job_id: str, x_render_key: str = Header("")):
 
     j = index_jobs[job_id]
     return IndexJobStatus(**j)
+
+
+# ---------------------------------------------------------------------------
+# Transcribe Jobs — Speech-to-text for long recordings
+# ---------------------------------------------------------------------------
+
+transcribe_jobs: Dict[str, dict] = {}
+
+
+class TranscribeJobRequest(BaseModel):
+    source_url: str = Field(..., description="S3 or public URL to audio/video file")
+    language: Optional[str] = Field(None, description="'auto', 'en', 'hi', 'hinglish', or ISO 639-1 code. None = auto-detect")
+    model_size: str = Field(default="base", description="Whisper model: 'base', 'small', or 'medium'")
+    word_timestamps: bool = Field(default=True, description="Include word-level timestamps")
+    output_formats: Optional[list] = Field(default=None, description="List of: 'json', 'srt', 'vtt', 'txt'. Default: all")
+    callback_url: Optional[str] = Field(None, description="URL to POST on completion")
+
+
+class TranscribeJobResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str = ""
+
+
+class TranscribeJobStatus(BaseModel):
+    job_id: str
+    status: str  # queued, running, completed, failed
+    progress: Optional[float] = None
+    output_urls: Optional[dict] = None
+    duration_seconds: Optional[float] = None
+    detected_language: Optional[str] = None
+    language_probability: Optional[float] = None
+    segment_count: Optional[int] = None
+    word_count: Optional[int] = None
+    error: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+async def _run_transcribe_job(job_id: str, request: TranscribeJobRequest):
+    """Run transcription in background, update job status."""
+    transcribe_jobs[job_id]["status"] = "running"
+    transcribe_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    try:
+        result = await transcribe_worker.transcribe(
+            job_id=job_id,
+            source_url=request.source_url,
+            language=request.language,
+            model_size=request.model_size,
+            word_timestamps=request.word_timestamps,
+            output_formats=request.output_formats,
+            on_progress=lambda p: _update_transcribe_progress(job_id, p),
+        )
+
+        transcribe_jobs[job_id]["status"] = "completed"
+        transcribe_jobs[job_id]["progress"] = 100
+        transcribe_jobs[job_id]["output_urls"] = {
+            k: v for k, v in result.items()
+            if k.endswith("_url")
+        }
+        transcribe_jobs[job_id]["duration_seconds"] = result.get("duration_seconds")
+        transcribe_jobs[job_id]["detected_language"] = result.get("detected_language")
+        transcribe_jobs[job_id]["language_probability"] = result.get("language_probability")
+        transcribe_jobs[job_id]["segment_count"] = result.get("segment_count")
+        transcribe_jobs[job_id]["word_count"] = result.get("word_count")
+        transcribe_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        logger.info(f"Transcribe job {job_id} completed: {result.get('segment_count')} segments, {result.get('duration_seconds')}s")
+
+        if request.callback_url:
+            await _send_callback(request.callback_url, {
+                "job_id": job_id,
+                "status": "completed",
+                **result,
+            })
+
+    except Exception as e:
+        error_msg = str(e)
+        transcribe_jobs[job_id]["status"] = "failed"
+        transcribe_jobs[job_id]["error"] = error_msg
+        transcribe_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        logger.error(f"Transcribe job {job_id} failed: {error_msg}", exc_info=True)
+
+        if request.callback_url:
+            await _send_callback(request.callback_url, {
+                "job_id": job_id,
+                "status": "failed",
+                "error": error_msg,
+            })
+
+
+def _update_transcribe_progress(job_id: str, progress: float):
+    if job_id in transcribe_jobs:
+        transcribe_jobs[job_id]["progress"] = round(progress, 1)
+        transcribe_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+
+@app.post("/transcribe-jobs", response_model=TranscribeJobResponse)
+async def submit_transcribe_job(
+    request: TranscribeJobRequest,
+    x_render_key: str = Header(""),
+):
+    _verify_key(x_render_key)
+
+    # Validate model_size
+    if request.model_size not in ("base", "small", "medium"):
+        raise HTTPException(status_code=400, detail="model_size must be 'base', 'small', or 'medium'")
+
+    # Shared capacity check: all job types compete for CPU/RAM
+    active_render = sum(1 for j in jobs.values() if j["status"] in ("queued", "running"))
+    active_index = sum(1 for j in index_jobs.values() if j["status"] in ("queued", "running"))
+    active_transcribe = sum(1 for j in transcribe_jobs.values() if j["status"] in ("queued", "running"))
+    active_total = active_render + active_index + active_transcribe
+    if active_total >= MAX_CONCURRENT_JOBS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Server busy ({active_total}/{MAX_CONCURRENT_JOBS} jobs running)",
+        )
+
+    job_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    transcribe_jobs[job_id] = {
+        "job_id": job_id,
+        "status": "queued",
+        "progress": 0,
+        "output_urls": None,
+        "duration_seconds": None,
+        "detected_language": None,
+        "language_probability": None,
+        "segment_count": None,
+        "word_count": None,
+        "error": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    asyncio.create_task(_run_transcribe_job(job_id, request))
+
+    return TranscribeJobResponse(job_id=job_id, status="queued", message="Transcription job submitted")
+
+
+@app.get("/transcribe-jobs/{job_id}", response_model=TranscribeJobStatus)
+async def get_transcribe_job_status(job_id: str, x_render_key: str = Header("")):
+    _verify_key(x_render_key)
+
+    if job_id not in transcribe_jobs:
+        raise HTTPException(status_code=404, detail="Transcribe job not found")
+
+    j = transcribe_jobs[job_id]
+    return TranscribeJobStatus(**j)
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ export const useAIModelsList = (filters?: {
     provider?: string;
     is_free?: boolean;
     use_case?: string;
+    category?: string;
 }) => {
     return useQuery<AIModelsListResponse>({
         queryKey: ['ai-models-list', filters],

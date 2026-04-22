@@ -37,7 +37,7 @@ export function AgentChat({ instituteId, authToken }: AgentChatProps) {
     const { sessionId, status, messages, error, sendMessage, respond, reset, setAuthToken } =
         useAgent(instituteId);
 
-    const { data: modelsList } = useAIModelsList();
+    const { data: modelsList } = useAIModelsList({ category: 'general' });
     const [input, setInput] = useState('');
     const [selectedModel, setSelectedModel] = useState<string>('');
     const messagesEndRef = useRef<HTMLDivElement>(null);

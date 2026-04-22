@@ -302,4 +302,32 @@ public class CreditClient {
             return Map.of("success", false, "message", e.getMessage());
         }
     }
+    /**
+     * Check if an institute has active credits (> 0).
+     * 
+     * @param instituteId The institute ID
+     * @return true if balance > 0, false otherwise
+     */
+    public boolean hasActiveCredits(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return false;
+        }
+        
+        Map<String, Object> balance = getBalance(instituteId);
+        if (balance != null && balance.get("current_balance") != null) {
+            Object currentBalanceObj = balance.get("current_balance");
+            double currentBalance = 0;
+            if (currentBalanceObj instanceof Number) {
+                currentBalance = ((Number) currentBalanceObj).doubleValue();
+            } else if (currentBalanceObj instanceof String) {
+                try {
+                    currentBalance = Double.parseDouble((String) currentBalanceObj);
+                } catch (NumberFormatException e) {
+                    log.error("Failed to parse current_balance string: {}", currentBalanceObj);
+                }
+            }
+            return currentBalance > 0.0;
+        }
+        return false;
+    }
 }

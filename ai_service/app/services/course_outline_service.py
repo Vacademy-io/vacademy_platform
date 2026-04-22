@@ -97,6 +97,9 @@ class CourseOutlineGenerationService:
                     user_id=request.user_id,
                     request_model=request.model
                 )
+                if not model:
+                    from ..services.ai_models_service import AIModelsService
+                    model = request.model or AIModelsService(self._db_session).get_models_for_use_case("outline").default_model_id
             except Exception as e:
                 logger.warning(f"Failed to resolve API keys: {str(e)}, using environment defaults")
                 # Fallback to environment defaults
@@ -236,6 +239,9 @@ class CourseOutlineGenerationService:
                     user_id=request.user_id,
                     request_model=request.model
                 )
+                if not model:
+                    from ..services.ai_models_service import AIModelsService
+                    model = request.model or AIModelsService(self._db_session).get_models_for_use_case("outline").default_model_id
             except Exception as e:
                 logger.warning(f"Failed to resolve API keys: {str(e)}, using environment defaults")
                 # Fallback to environment defaults

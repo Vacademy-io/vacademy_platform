@@ -1090,6 +1090,23 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   // in shadow DOM (no document root). `:host` is the shadow DOM equivalent.
                   processedHtml = processedHtml.split(':root').join(':host');
 
+                  // 1.6. Rewrite body/html selectors for shadow DOM compatibility.
+                  // LLM generates full HTML documents with `body { width:100vw; ... }`
+                  // which works in iframe (FE) but not in shadow DOM (render).
+                  processedHtml = processedHtml.replace(/(?:^|[\\s,;{}])body\\s*\\{/gm, ' #content-wrapper {');
+                  processedHtml = processedHtml.replace(/(?:^|[\\s,;{}])html\\s*\\{/gm, ' :host {');
+
+                  // 1.7. Strip full document structure (<!DOCTYPE>, <html>, <head>, <body>)
+                  if (processedHtml.includes('<!DOCTYPE') || processedHtml.includes('<html')) {
+                    const headMatch = processedHtml.match(/<head[^>]*>([\\s\\S]*?)<\\/head>/i);
+                    const headContent = headMatch ? headMatch[1] : '';
+                    const bodyMatch = processedHtml.match(/<body[^>]*>([\\s\\S]*?)<\\/body>/i);
+                    const bodyContent = bodyMatch ? bodyMatch[1] : processedHtml;
+                    const styles = (headContent.match(/<style[\\s\\S]*?<\\/style>/gi) || []).join('');
+                    const links = (headContent.match(/<link[^>]*>/gi) || []).join('');
+                    processedHtml = styles + links + bodyContent;
+                  }
+
                   // 2. placeholder.png: replace with transparent 1x1 GIF
                   if (processedHtml.includes('placeholder.png')) {
                     const TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';

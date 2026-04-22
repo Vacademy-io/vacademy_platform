@@ -365,25 +365,16 @@ class VideoGenerationService:
             "quality_tier": quality_tier,
         }
 
-        # Resolve model: use explicit model, or pick from DB based on quality_tier
+        # Resolve model: use explicit model, or pick from DB based on defaults
         resolved_model = model
         if not resolved_model:
             try:
-                from ..constants.models import get_models_by_tier, get_default_model
-                tier_models = get_models_by_tier(quality_tier)
-                if tier_models:
-                    # Prefer the default model for this tier
-                    default_for_tier = next((m for m in tier_models if m.is_default), tier_models[0])
-                    resolved_model = default_for_tier.id
-                    logger.info(f"[VideoGenService] Auto-selected model '{resolved_model}' for tier '{quality_tier}'")
-                else:
-                    # Fallback to global default
-                    default_model = get_default_model()
-                    if default_model:
-                        resolved_model = default_model.id
-                        logger.info(f"[VideoGenService] No models for tier '{quality_tier}', using global default '{resolved_model}'")
+                from ..services.ai_models_service import AIModelsService
+                if db_session:
+                    resolved_model = AIModelsService(db_session).get_models_for_use_case("video").default_model_id
+                    logger.info(f"[VideoGenService] Auto-selected default model '{resolved_model}' for video generation")
             except Exception as e:
-                logger.warning(f"[VideoGenService] Failed to auto-select model for tier '{quality_tier}': {e}")
+                logger.warning(f"[VideoGenService] Failed to auto-select model from defaults: {e}")
 
         if resolved_model:
             pipeline_args["script_model"] = resolved_model

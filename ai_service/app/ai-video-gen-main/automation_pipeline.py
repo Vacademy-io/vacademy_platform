@@ -1166,6 +1166,7 @@ class VideoGenerationPipeline:
         sound_effects_enabled: bool = True,
         input_video_context: Optional[Dict[str, Any]] = None,
         input_video_contexts: Optional[list] = None,
+        mute_tts_on_source_clips: bool = False,
     ) -> Dict[str, Any]:
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
         self.video_width = video_width
@@ -1191,6 +1192,12 @@ class VideoGenerationPipeline:
         self._input_video_context = (
             self._input_video_contexts[0] if self._input_video_contexts else None
         )
+        # If True, audio mixing replaces TTS with source audio during SOURCE_CLIP
+        # shots. Default False: TTS plays continuously (marketing/explainer mode).
+        self._mute_tts_on_source_clips = bool(mute_tts_on_source_clips)
+        # True when user's input prompt contained a complete script (NARRATOR lines,
+        # scene markers, timing). Used to switch Director to narrative-first mode.
+        self._user_had_script: bool = False
         # Dedup set for LLM-ranked stock video selection (super_ultra only).
         # Tracks Pexels video IDs already used in this run so shots don't reuse clips.
         self._used_pexels_video_ids: set = set()
@@ -1398,6 +1405,22 @@ class VideoGenerationPipeline:
             _iv_demo = _iv_ctx.get("demo_only", {}) if _iv_v_mode == "demo" else {}
             _iv_transcript = _iv_ctx.get("transcript", [])
 
+            # Detect user-authored script BEFORE building context block so we can
+            # use a different closing instruction (preserve vs rewrite).
+            import re as _re_tts_detect
+            _tts_script_markers = [
+                r"NARRATOR\s*\(?V?\.?O?\.?\)?\s*:",
+                r"\[\s*OPENING", r"\[\s*CLOSING", r"\[\s*SCENE",
+                r"\bV\.O\.", r"\bVOICEOVER\b", r"SCRIPT\s*\n", r"SHOT\s*LIST",
+                r"\d{1,2}:\d{2}\s*[-–—]",
+            ]
+            _user_has_script = any(
+                _re_tts_detect.search(p, base_prompt, flags=_re_tts_detect.IGNORECASE)
+                for p in _tts_script_markers
+            ) or (len(base_prompt) > 800 and "\n\n" in base_prompt)
+            # Store on self so the Director prompt can use it
+            self._user_had_script = _user_has_script
+
             # Build a context block describing what's in the video
             _iv_meta = _iv_ctx.get("meta", {})
             _iv_dur = _iv_meta.get("duration_s", 0)
@@ -1405,7 +1428,16 @@ class VideoGenerationPipeline:
 
             # Source video duration + mode-specific guidance
             if _iv_dur > 0:
-                if _iv_v_mode == "demo":
+                if _user_has_script:
+                    _context_parts.append(
+                        f"Source video duration: {_iv_dur:.0f}s. "
+                        "The user has already written their narration script. "
+                        "DO NOT rewrite or replace their wording. "
+                        "Your job is to PRESERVE their script and use the video context "
+                        "below ONLY to understand which UI elements and timestamps correspond "
+                        "to each narrative beat."
+                    )
+                elif _iv_v_mode == "demo":
                     _context_parts.append(
                         f"Source video duration: {_iv_dur:.0f}s. "
                         "Write narration as a GUIDED WALKTHROUGH of this demo — "
@@ -1422,22 +1454,33 @@ class VideoGenerationPipeline:
                         "Don't repeat what the speaker says verbatim — add context and insight."
                     )
 
-            if _iv_demo:
-                ui_elements = _iv_demo.get("ui_elements_seen", [])
-                if ui_elements:
-                    _context_parts.append(f"UI elements visible: {', '.join(ui_elements[:15])}")
-                key_events = _iv_demo.get("key_onscreen_events", [])
-                if key_events:
-                    event_descs = [f"{e.get('kind', '?')} near '{e.get('near_text', '?')}' at {e.get('t', 0):.1f}s"
-                                  for e in key_events[:10]]
-                    _context_parts.append(f"Key events: {'; '.join(event_descs)}")
-            if _iv_transcript:
-                transcript_text = " ".join(s.get("text", "") for s in _iv_transcript[:20])
-                if transcript_text.strip():
-                    _context_parts.append(f"Narration heard: {transcript_text[:500]}")
+            # In user-script mode skip demo narration/UI from context — the video's
+            # own narration ("Front Desk Test", "Interaction Model") pollutes the LLM
+            # and overrides the user's script. Only include timing-relevant data.
+            if not _user_has_script:
+                if _iv_demo:
+                    ui_elements = _iv_demo.get("ui_elements_seen", [])
+                    if ui_elements:
+                        _context_parts.append(f"UI elements visible: {', '.join(ui_elements[:15])}")
+                    key_events = _iv_demo.get("key_onscreen_events", [])
+                    if key_events:
+                        event_descs = [f"{e.get('kind', '?')} near '{e.get('near_text', '?')}' at {e.get('t', 0):.1f}s"
+                                      for e in key_events[:10]]
+                        _context_parts.append(f"Key events: {'; '.join(event_descs)}")
+                if _iv_transcript:
+                    transcript_text = " ".join(s.get("text", "") for s in _iv_transcript[:20])
+                    if transcript_text.strip():
+                        _context_parts.append(f"Narration heard: {transcript_text[:500]}")
 
             if _context_parts:
-                if _iv_v_mode == "demo":
+                if _user_has_script:
+                    _closing = (
+                        "\n\n🚨 USER SCRIPT DETECTED: The user has already written their narration. "
+                        "OUTPUT THEIR SCRIPT VERBATIM. Do NOT rewrite, paraphrase, or replace any "
+                        "sentence. Use the video context above only to confirm timing/structure. "
+                        "Your entire output should be the user's own words, preserved exactly.\n"
+                    )
+                elif _iv_v_mode == "demo":
                     _closing = (
                         "\n\nIMPORTANT: Write narration that walks through the demo "
                         "step by step. Describe what the viewer sees on screen at each moment. "
@@ -1865,20 +1908,30 @@ class VideoGenerationPipeline:
                 style_guide=style_guide,
             )
 
-            # ── Per-shot audio mixing ──
-            # When TTS mode + SOURCE_CLIP shots exist, mix source video audio
-            # into the narration (TTS during graphics, source audio during clips).
+            # ── Per-shot audio mixing (opt-in) ──
+            # Only runs when user explicitly requested `mute_tts_on_source_clips`.
+            # Default behavior: TTS plays continuously (marketing/explainer mode).
+            # When True: source video audio replaces TTS during SOURCE_CLIP shots
+            # (podcast mode where hearing the speaker matters).
             _iv_audio_pref = (self._input_video_contexts[0] if self._input_video_contexts else {}).get("audio_preference", "")
             _tts_audio = tts_outputs.get("audio_path")
-            if _iv_audio_pref == "tts" and _tts_audio and self._input_video_contexts:
+            if (
+                self._mute_tts_on_source_clips
+                and _iv_audio_pref == "tts"
+                and _tts_audio
+                and self._input_video_contexts
+            ):
                 _words_path = word_outputs.get("words_json")
                 if _words_path:
+                    print("🎵 Audio mixing enabled: TTS will be muted during SOURCE_CLIP shots")
                     self._mix_audio_with_source_clips(
                         audio_path=Path(_tts_audio),
                         words_json_path=Path(_words_path),
                         timeline_path=timeline_path,
                         run_dir=run_dir,
                     )
+            elif _iv_audio_pref == "tts" and self._input_video_contexts:
+                print("🎵 TTS plays continuously during SOURCE_CLIP shots (mute_tts_on_source_clips=False)")
 
         avatar_video_path = None
         if do_avatar:
@@ -1964,6 +2017,46 @@ class VideoGenerationPipeline:
                 target_duration=target_duration,
                 aspect_label=_aspect,
             ).strip()
+
+            # Detect if user's prompt already contains a script (NARRATOR lines,
+            # scene markers, V.O., timing). If so, prepend a strong instruction
+            # to use it AS-IS rather than invent new content.
+            import re as _re_script
+            _script_markers = [
+                r"NARRATOR\s*\(?V?\.?O?\.?\)?\s*:",
+                r"\[\s*OPENING",
+                r"\[\s*CLOSING",
+                r"\[\s*SCENE",
+                r"\bV\.O\.",
+                r"\bVOICEOVER\b",
+                r"SCRIPT\s*\n",
+                r"SHOT\s*LIST",
+                r"\d{1,2}:\d{2}\s*[-–—]",  # timing like "0:08-0:20"
+            ]
+            _has_script = any(
+                _re_script.search(p, base_prompt, flags=_re_script.IGNORECASE)
+                for p in _script_markers
+            )
+            # Also treat very long prompts (>800 chars) with structure as user-authored
+            _is_long_structured = len(base_prompt) > 800 and "\n\n" in base_prompt
+
+            if _has_script or _is_long_structured:
+                print("📝 Detected user-authored script in prompt — prioritizing verbatim usage")
+                _priority_block = (
+                    "\n\n🚨 CRITICAL INSTRUCTION: The user has provided a COMPLETE SCRIPT "
+                    "or highly-structured content above. Your job is to EXTRACT and USE "
+                    "the narration content from their input — NOT to invent new narration.\n\n"
+                    "RULES:\n"
+                    "1. If the input has NARRATOR / V.O. / voiceover lines, use THOSE as the script.\n"
+                    "2. Strip scene markers like [OPENING], [CLOSING], timing (0:00–0:08), "
+                    "SHOT LIST, and stage directions — these are for the Director, not the narrator.\n"
+                    "3. Keep the user's WORDING and TONE — don't rewrite sentences to be more "
+                    "'marketing-friendly' or 'concise'. The user chose those words deliberately.\n"
+                    "4. Maintain the sequence/structure of their script. Don't reorder sections.\n"
+                    "5. The user's content takes priority over your own creative instincts.\n"
+                    "6. Only generate new content if a section has no narration specified.\n"
+                )
+                user_prompt = user_prompt + _priority_block
         else:
             # Use content-type-specific prompts
             system_prompt = ct_prompts["system"]
@@ -3916,13 +4009,20 @@ class VideoGenerationPipeline:
                 _is_portrait = _src_w > 0 and _src_h > 0 and _src_w < _src_h
                 _orient = "PORTRAIT 9:16" if _is_portrait else "LANDSCAPE 16:9"
 
+                _user_script_dir = getattr(self, '_user_had_script', False)
+                # In user-script mode, label transcript as TIMING ONLY so Director
+                # doesn't generate shot content based on the video's own narration.
+                _transcript_label = (
+                    "Transcript (TIMING REFERENCE ONLY — DO NOT use this as shot content):\n"
+                    if _user_script_dir else "Transcript:\n"
+                )
                 _section = (
                     f"\n### Video {_label}: \"{_v_name}\" ({_v_mode}, {_v_dur:.0f}s, {_orient}, {_src_w}x{_src_h})\n"
                     f"source_video_index: {_vidx}\n"
                     f"Highlight window: {_iv_highlight.get('t_start', 0):.1f}-"
                     f"{_iv_highlight.get('t_end', 0):.1f}s "
                     f"({_iv_highlight.get('reason', '')})\n\n"
-                    "Transcript:\n" + "\n".join(_transcript_lines) + "\n\n"
+                    + _transcript_label + "\n".join(_transcript_lines) + "\n\n"
                     "Emphasis marks:\n" + "\n".join(_emphasis_lines) + "\n\n"
                     f"Scene cuts: {', '.join(_scene_times)}\n"
                 )
@@ -3932,36 +4032,84 @@ class VideoGenerationPipeline:
                     _iv_demo = _iv_ctx.get("demo_only", {})
                     _ui_elements = _iv_demo.get("ui_elements_seen", [])
                     _key_events = _iv_demo.get("key_onscreen_events", [])
-                    if _ui_elements:
+                    # In user-script mode, suppress UI elements — they cause the Director
+                    # to generate shot titles like "Header Navigation" instead of script beats.
+                    if _ui_elements and not _user_script_dir:
                         _section += f"\nUI elements: {', '.join(_ui_elements[:15])}\n"
                     if _key_events:
                         _ev = [f"  {e.get('t', 0):.1f}s: {e.get('kind', '?')} near \"{e.get('near_text', '')}\""
                                for e in _key_events[:10]]
-                        _section += "\nKey events:\n" + "\n".join(_ev) + "\n"
-                    _section += (
-                        "\nCaption guidance: title MUST describe what's on screen at that timestamp. "
-                        "BAD: 'No More Tool Jumping'. GOOD: 'Exploring Course Library'.\n"
-                    )
+                        _ev_label = (
+                            "\nKey interaction timestamps (use for SOURCE_CLIP start/end — NOT for shot naming):\n"
+                            if _user_script_dir else "\nKey events:\n"
+                        )
+                        _section += _ev_label + "\n".join(_ev) + "\n"
+                    if _user_script_dir:
+                        _section += (
+                            "\n⚠️ USER SCRIPT MODE: Shot titles and content MUST come from the "
+                            "user's script (sections like OPENING, PROBLEM, BRAND REVEAL, etc.). "
+                            "The transcript/events above are for timestamp alignment ONLY. "
+                            "NEVER name a shot after a UI element or the video's own narration.\n"
+                        )
+                    else:
+                        _section += (
+                            "\nCaption guidance: title MUST describe what's on screen at that timestamp. "
+                            "BAD: 'No More Tool Jumping'. GOOD: 'Exploring Course Library'.\n"
+                        )
 
                 _video_sections.append(_section)
 
+            _user_script_mode = getattr(self, '_user_had_script', False)
+            if _user_script_mode:
+                # Extract section labels from the user's script (e.g. [OPENING], [PROBLEM])
+                import re as _re_dir_secs
+                _raw_prompt = getattr(self, '_base_prompt', '') or ''
+                _sec_matches = _re_dir_secs.findall(
+                    r'\[([A-Z][A-Z\s/&\-]+?)(?:\s*[—–-]\s*[\d:]+[^]]*?)?\]',
+                    _raw_prompt
+                )
+                _sec_labels = list(dict.fromkeys(s.strip() for s in _sec_matches if len(s.strip()) >= 3))
+                _sec_label_str = (
+                    " → ".join(_sec_labels) if _sec_labels
+                    else "OPENING → PROBLEM → BRAND REVEAL → HOW IT WORKS → CTA"
+                )
+                _source_clip_rules = (
+                    "**SOURCE_CLIP RULES (USER SCRIPT MODE)**:\n"
+                    "- SOURCE_CLIP should be used for 50-65% of shots.\n"
+                    f"- NARRATIVE-FIRST: the user's script has these sections: {_sec_label_str}.\n"
+                    "  Organize SOURCE_CLIP shots to ILLUSTRATE these narrative beats in order.\n"
+                    "  Do NOT walk chronologically through the demo footage.\n"
+                    "- Shot titles MUST echo the script section labels above,\n"
+                    "  NEVER describe UI elements like 'Header Navigation' or 'Selection Step'.\n"
+                    "- Pick source_start/source_end timestamps that best ILLUSTRATE the current\n"
+                    "  narrative beat — not necessarily the next sequential moment in the video.\n"
+                    "- Each SOURCE_CLIP shot MUST include:\n"
+                    "  - `source_video_index`: integer (0 = Video A, 1 = Video B, ...)\n"
+                    "  - `source_start`: timestamp (seconds) in THAT video\n"
+                    "  - `source_end`: timestamp (seconds) in THAT video\n"
+                    "- Match source_start/source_end to the transcript timestamps of the CORRECT video.\n"
+                )
+            else:
+                _source_clip_rules = (
+                    "**SOURCE_CLIP RULES**:\n"
+                    "- SOURCE_CLIP should be the PRIMARY shot type — use it for 60-70% of shots.\n"
+                    "  The source video IS the content. Use other types (KINETIC_TITLE, TEXT_DIAGRAM)\n"
+                    "  only for intro/outro titles and brief concept summaries between clips.\n"
+                    "- Structure as a GUIDED WALKTHROUGH: SOURCE_CLIP shows the demo footage,\n"
+                    "  interleaved with brief AI graphics that explain what was just shown.\n"
+                    "- Each SOURCE_CLIP shot MUST include:\n"
+                    "  - `source_video_index`: integer (0 = Video A, 1 = Video B, ...)\n"
+                    "  - `source_start`: timestamp (seconds) in THAT video\n"
+                    "  - `source_end`: timestamp (seconds) in THAT video\n"
+                    "- Cover the source video chronologically — walk through the demo from start\n"
+                    "  to finish, don't skip large sections or jump around randomly.\n"
+                    "- Match source_start/source_end to the transcript timestamps of the CORRECT video.\n"
+                )
             _source_video_block = (
                 "\n\n## SOURCE VIDEO CONTEXTS\n"
                 f"You have {_num_sources} source video(s) available.\n"
                 + "".join(_video_sections) + "\n"
-                "**SOURCE_CLIP RULES**:\n"
-                "- SOURCE_CLIP should be the PRIMARY shot type — use it for 60-70% of shots.\n"
-                "  The source video IS the content. Use other types (KINETIC_TITLE, TEXT_DIAGRAM)\n"
-                "  only for intro/outro titles and brief concept summaries between clips.\n"
-                "- Structure as a GUIDED WALKTHROUGH: SOURCE_CLIP shows the demo footage,\n"
-                "  interleaved with brief AI graphics that explain what was just shown.\n"
-                "- Each SOURCE_CLIP shot MUST include:\n"
-                "  - `source_video_index`: integer (0 = Video A, 1 = Video B, ...)\n"
-                "  - `source_start`: timestamp (seconds) in THAT video\n"
-                "  - `source_end`: timestamp (seconds) in THAT video\n"
-                "- Cover the source video chronologically — walk through the demo from start\n"
-                "  to finish, don't skip large sections or jump around randomly.\n"
-                "- Match source_start/source_end to the transcript timestamps of the CORRECT video.\n"
+                + _source_clip_rules
             )
             user_prompt = user_prompt + _source_video_block
 
@@ -4626,6 +4774,91 @@ class VideoGenerationPipeline:
                         pass
                 return [entry], {}
             # ── end KINETIC_TEXT bypass ──
+
+            # ── Portrait demo SOURCE_CLIP bypass — deterministic side-by-side HTML ──
+            # When a portrait (9:16) source video is used in a landscape (16:9) output,
+            # the LLM fights the SOURCE_CLIP system-prompt ("background MUST be #000000")
+            # and produces pillarbox instead of side-by-side. Build it deterministically.
+            if shot_type == "SOURCE_CLIP" and _iv_mode == "demo":
+                _res_chk = (_clip_ctx or {}).get("context", {}).get("meta", {}).get("resolution", [0, 0])
+                _is_src_portrait = len(_res_chk) >= 2 and _res_chk[0] < _res_chk[1]
+                _is_out_landscape = getattr(self, 'video_width', 1920) >= getattr(self, 'video_height', 1080)
+                if _is_src_portrait and _is_out_landscape:
+                    # Compute source video timing (normally done post-LLM)
+                    _sbs_src_start = float(shot.get("source_start", 0))
+                    _sbs_src_end = float(shot.get("source_end", end_time - start_time))
+                    _sbs_sv_idx = int(shot.get("source_video_index", 0))
+                    _sbs_src_url = ""
+                    if _clip_ctx:
+                        _iv_assets_sbs = _clip_ctx.get("assets_urls", {})
+                        _sbs_src_url = (
+                            _iv_assets_sbs.get("source_video", "")
+                            or _clip_ctx.get("source_public_url", "")
+                            or _clip_ctx.get("source_url", "")
+                        )
+
+                    _sbs_title = (shot.get("title", "") or shot.get("visual_description", "Demo Step"))[:80]
+                    _sbs_desc = (shot.get("narration_excerpt", "") or "")[:220]
+                    _accent = (palette or {}).get("accent", "#6366f1")
+                    _sbs_html = (
+                        "<!DOCTYPE html><html><head>"
+                        "<style>*{margin:0;padding:0;box-sizing:border-box}</style>"
+                        "</head><body style='width:100%;height:100%;background:transparent;overflow:hidden;'>"
+                        "<div style='width:100%;height:100%;background:#111827;display:flex;"
+                        "align-items:center;padding:3% 4%;gap:5%;'>"
+                        "<div id='vid-panel' style='width:30%;aspect-ratio:9/16;max-height:88%;"
+                        "background:#000000;border-radius:14px;overflow:hidden;"
+                        "flex-shrink:0;box-shadow:0 12px 40px rgba(0,0,0,0.65);'></div>"
+                        "<div style='flex:1;display:flex;flex-direction:column;"
+                        "justify-content:center;gap:1.4rem;opacity:0;transform:translateX(20px);' id='anno'>"
+                        f"<div style='width:3rem;height:4px;background:{_accent};border-radius:2px;'></div>"
+                        f"<h2 style='font-family:Inter,sans-serif;font-size:2rem;font-weight:700;"
+                        f"color:#fff;line-height:1.25;'>{_sbs_title}</h2>"
+                        f"<p style='font-family:Inter,sans-serif;font-size:1.15rem;"
+                        f"color:rgba(255,255,255,0.72);line-height:1.6;'>{_sbs_desc}</p>"
+                        "</div></div>"
+                        "<script>window.addEventListener('load',function(){"
+                        "if(typeof gsap!=='undefined'){"
+                        "gsap.to('#anno',{opacity:1,x:0,duration:0.55,ease:'power2.out',delay:0.15});"
+                        "gsap.from('#vid-panel',{opacity:0,scale:0.96,duration:0.45,ease:'power2.out'});"
+                        "}})</script></body></html>"
+                    )
+                    _sbs_html = self._ensure_fonts(_sbs_html)
+                    if _sbs_src_url:
+                        _sbs_vid = (
+                            f'<video data-source-clip="true" data-source-start="{_sbs_src_start}" '
+                            f'src="{_sbs_src_url}#t={_sbs_src_start},{_sbs_src_end}" '
+                            f'autoplay muted playsinline '
+                            f'style="width:100%;height:100%;object-fit:cover;pointer-events:none;"></video>'
+                        )
+                        _sbs_html = _sbs_html.replace(
+                            "background:#000000;border-radius:14px;overflow:hidden;"
+                            "flex-shrink:0;box-shadow:0 12px 40px rgba(0,0,0,0.65);'></div>",
+                            "background:#000000;border-radius:14px;overflow:hidden;"
+                            f"flex-shrink:0;box-shadow:0 12px 40px rgba(0,0,0,0.65);'>{_sbs_vid}</div>",
+                        )
+                    _sbs_entry = {
+                        "start": start_time, "end": end_time,
+                        "htmlStartX": 0, "htmlStartY": 0, "htmlEndX": _w, "htmlEndY": _h,
+                        "html": _sbs_html,
+                        "id": f"shot-{shot_idx}", "index": shot_idx,
+                        "z": shot.get("z", 10),
+                        "_shot_type": shot_type,
+                        "_narration_excerpt": shot.get("narration_excerpt", ""),
+                        "_visual_description": shot.get("visual_description", ""),
+                        "_skill_audio_events": [],
+                        "source_start": _sbs_src_start,
+                        "source_end": _sbs_src_end,
+                        "source_video_index": _sbs_sv_idx,
+                    }
+                    print(f"   ✅ Shot {shot_idx + 1} SOURCE_CLIP portrait side-by-side (no LLM)")
+                    if on_segment_done:
+                        try:
+                            on_segment_done([_sbs_entry])
+                        except Exception:
+                            pass
+                    return [_sbs_entry], {}
+            # ── end portrait SOURCE_CLIP bypass ──
 
             # LLM call with retry
             max_attempts = 3

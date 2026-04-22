@@ -102,6 +102,7 @@ class VideoGenerationService:
         input_video_id: Optional[str] = None,
         input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
+        mute_tts_on_source_clips: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -169,6 +170,9 @@ class VideoGenerationService:
             if input_video_ids:
                 gen_metadata["input_video_ids"] = input_video_ids
                 gen_metadata["input_video_id"] = input_video_ids[0]  # compat
+            if input_video_audio:
+                gen_metadata["input_video_audio"] = input_video_audio
+            gen_metadata["mute_tts_on_source_clips"] = bool(mute_tts_on_source_clips)
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -240,6 +244,7 @@ class VideoGenerationService:
                     sound_effects_enabled=sound_effects_enabled,
                     input_video_ids=input_video_ids,
                     input_video_audio=input_video_audio,
+                    mute_tts_on_source_clips=mute_tts_on_source_clips,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -322,6 +327,7 @@ class VideoGenerationService:
         sound_effects_enabled: bool = True,
         input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
+        mute_tts_on_source_clips: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -767,6 +773,7 @@ class VideoGenerationService:
                     visual_style=visual_style,
                     sound_effects_enabled=sound_effects_enabled,
                     input_video_contexts=input_video_contexts,
+                    mute_tts_on_source_clips=mute_tts_on_source_clips,
                 )
 
                 with ThreadPoolExecutor() as executor:

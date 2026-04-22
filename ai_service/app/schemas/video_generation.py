@@ -145,6 +145,17 @@ class VideoGenerationRequest(BaseModel):
             "Forced to 'tts' when multiple input videos are provided."
         )
     )
+    mute_tts_on_source_clips: bool = Field(
+        default=False,
+        description=(
+            "When True and audio is 'tts', source video audio is mixed INTO the "
+            "TTS narration during SOURCE_CLIP shots (muting TTS during those clips). "
+            "Default False: TTS narration plays continuously throughout the video; "
+            "source video clips are visual-only. Use True for podcast-style videos "
+            "where you want to hear the speaker. Use False for marketing/explainer "
+            "videos where the TTS script is the main content."
+        )
+    )
 
     @model_validator(mode="after")
     def _normalize_input_videos(self):

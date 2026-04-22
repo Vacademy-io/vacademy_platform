@@ -172,6 +172,8 @@ export interface GenerateVideoRequest {
     input_video_ids?: string[];
     /** Audio source: 'original' (single video only) or 'tts' (AI narration). Forced to 'tts' for multi-source. */
     input_video_audio?: 'original' | 'tts';
+    /** When true and audio=tts: TTS mutes during SOURCE_CLIP shots so source audio plays instead. */
+    mute_tts_on_source_clips?: boolean;
 }
 
 export const QUALITY_TIERS: Array<{

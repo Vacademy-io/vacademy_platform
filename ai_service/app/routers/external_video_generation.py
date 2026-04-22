@@ -228,6 +228,7 @@ async def generate_video_external(
                         sound_effects_enabled=p.sound_effects_enabled,
                         input_video_ids=p.input_video_ids,
                         input_video_audio=p.input_video_audio,
+                        mute_tts_on_source_clips=p.mute_tts_on_source_clips,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -389,6 +390,7 @@ async def resume_video_external(
                         sound_effects_enabled=p.sound_effects_enabled,
                         input_video_ids=_meta.get("input_video_ids"),
                         input_video_audio=_meta.get("input_video_audio"),
+                        mute_tts_on_source_clips=_meta.get("mute_tts_on_source_clips", False),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:

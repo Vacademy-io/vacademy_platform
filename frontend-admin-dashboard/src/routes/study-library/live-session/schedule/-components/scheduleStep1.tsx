@@ -2046,80 +2046,81 @@ export default function ScheduleStep1() {
                     </div>
                 </div>
             )}
+        </div>
+    );
 
-            {/* Learner Feedback Settings */}
-            <div className="mt-4 rounded-lg border border-primary-200 bg-primary-50/30 p-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h4 className="text-sm font-semibold">📋 Learner Feedback Settings</h4>
-                        <p className="mt-0.5 text-xs text-neutral-500">
-                            When enabled, learners see a feedback form after the session ends.
-                        </p>
-                    </div>
-                    <FormField
-                        control={control}
-                        name="feedbackEnabled"
-                        render={({ field }) => (
-                            <FormItem className="flex items-center gap-2 space-y-0">
-                                <FormControl>
-                                    <Switch
-                                        checked={field.value ?? false}
-                                        onCheckedChange={field.onChange}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
+    const renderFeedbackSettings = () => (
+        <div className="rounded-lg border border-primary-200 bg-primary-50/30 p-4">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h4 className="text-sm font-semibold">📋 Learner Feedback Settings</h4>
+                    <p className="mt-0.5 text-xs text-neutral-500">
+                        When enabled, learners see a feedback form after the session ends.
+                    </p>
                 </div>
+                <FormField
+                    control={control}
+                    name="feedbackEnabled"
+                    render={({ field }) => (
+                        <FormItem className="flex items-center gap-2 space-y-0">
+                            <FormControl>
+                                <Switch
+                                    checked={field.value ?? false}
+                                    onCheckedChange={field.onChange}
+                                />
+                            </FormControl>
+                        </FormItem>
+                    )}
+                />
+            </div>
 
-                {form.watch('feedbackEnabled') && (
-                    <div className="mt-3 space-y-2">
-                        <div className="text-xs font-medium text-neutral-600">Questions</div>
-                        {(form.watch('feedbackQuestions') ?? DEFAULT_FEEDBACK_QUESTIONS).map((q, idx) => (
-                            <div
-                                key={q.id}
-                                className="flex items-center justify-between rounded-md border border-neutral-200 bg-white px-3 py-2"
-                            >
-                                <div className="flex items-center gap-2">
-                                    <Controller
-                                        control={control}
-                                        name={`feedbackQuestions.${idx}.enabled`}
-                                        render={({ field }) => (
-                                            <Checkbox
-                                                checked={field.value ?? true}
-                                                onCheckedChange={field.onChange}
-                                            />
-                                        )}
-                                    />
-                                    <span className="text-sm">
-                                        {q.label}
-                                        <span className="ml-1 text-xs text-neutral-400">
-                                            ({q.type === 'star_rating' ? '⭐ rating' : 'text'})
-                                        </span>
-                                    </span>
-                                </div>
+            {form.watch('feedbackEnabled') && (
+                <div className="mt-3 space-y-2">
+                    <div className="text-xs font-medium text-neutral-600">Questions</div>
+                    {(form.watch('feedbackQuestions') ?? DEFAULT_FEEDBACK_QUESTIONS).map((q, idx) => (
+                        <div
+                            key={q.id}
+                            className="flex flex-col gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                            <div className="flex items-center gap-2">
                                 <Controller
                                     control={control}
-                                    name={`feedbackQuestions.${idx}.mandatory`}
+                                    name={`feedbackQuestions.${idx}.enabled`}
                                     render={({ field }) => (
-                                        <button
-                                            type="button"
-                                            onClick={() => field.onChange(!field.value)}
-                                            className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
-                                                field.value
-                                                    ? 'bg-primary-100 text-primary-700'
-                                                    : 'bg-neutral-100 text-neutral-500'
-                                            }`}
-                                        >
-                                            {field.value ? 'Required' : 'Optional'}
-                                        </button>
+                                        <Checkbox
+                                            checked={field.value ?? true}
+                                            onCheckedChange={field.onChange}
+                                        />
                                     )}
                                 />
+                                <span className="text-sm">
+                                    {q.label}
+                                    <span className="ml-1 text-xs text-neutral-400">
+                                        ({q.type === 'star_rating' ? '⭐ rating' : 'text'})
+                                    </span>
+                                </span>
                             </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+                            <Controller
+                                control={control}
+                                name={`feedbackQuestions.${idx}.mandatory`}
+                                render={({ field }) => (
+                                    <button
+                                        type="button"
+                                        onClick={() => field.onChange(!field.value)}
+                                        className={`w-fit rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                                            field.value
+                                                ? 'bg-primary-100 text-primary-700'
+                                                : 'bg-neutral-100 text-neutral-500'
+                                        }`}
+                                    >
+                                        {field.value ? 'Required' : 'Optional'}
+                                    </button>
+                                )}
+                            />
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 
@@ -2911,6 +2912,7 @@ export default function ScheduleStep1() {
                             {renderTimezoneSelection()}
                             {renderSessionTiming()}
                             {renderLiveClassLink()}
+                            {renderFeedbackSettings()}
                             {renderStreamingChoices()}
                             {renderCustomButtonConfig()}
                             {renderWaitingRoomAndUpload()}

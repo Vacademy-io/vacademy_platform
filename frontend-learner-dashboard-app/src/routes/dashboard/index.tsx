@@ -83,6 +83,7 @@ import { XpDisplayWidget } from "./-components/play/XpDisplayWidget";
 import { XpHeaderPill } from "./-components/play/XpHeaderPill";
 import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWidget";
 import { TncModal } from "@/components/Dashboards/LearnerDashboard/TncModal";
+import type { BatchForSessionType } from "@/stores/study-library/institute-schema";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -156,7 +157,7 @@ export function DashboardComponent() {
     }
   }, [studyLibraryData, setStudyLibraryData]);
 
-  const handleResumeClick = (slide: DashboardSlide) => {
+  const handleResumeClick = async (slide: DashboardSlide) => {
     // Track lesson resumed
     trackLessonStarted(slide.slide_id, slide.slide_title, slide.subject_id);
 
@@ -183,8 +184,41 @@ export function DashboardComponent() {
       percentage_completed: 0,
       progress_marker: slide.progress_marker,
     });
+
+    // The slides route needs both courseId (= package_id) and sessionId
+    // (= package_session_id) to load the surrounding Subject/Module/Chapter
+    // tree. The dashboard API returns package_id + level_id per slide; we
+    // resolve the matching package_session_id from the institute's batch
+    // list stored in Preferences. Without this, the slide viewer opens but
+    // the sidebar tree can't hydrate.
+    let sessionId = "";
+    try {
+      const instituteDetailsStr = await Preferences.get({ key: "InstituteDetails" });
+      const institute = instituteDetailsStr.value ? JSON.parse(instituteDetailsStr.value) : null;
+      const batches: BatchForSessionType[] | null = institute?.batches_for_sessions ?? null;
+      const match = batches?.find(
+        (b) => b.package_dto?.id === slide.package_id && b.level?.id === slide.level_id
+      );
+      sessionId = match?.id || "";
+      if (!sessionId) {
+        // Fall back to the currently selected batch — usually the right one
+        // for single-batch learners.
+        sessionId = (await getPackageSessionId()) || "";
+      }
+    } catch {
+      sessionId = (await getPackageSessionId()) || "";
+    }
+
     navigate({
-      to: `/study-library/courses/course-details/subjects/modules/chapters/slides?subjectId=${slide.subject_id}&moduleId=${slide.module_id}&chapterId=${slide.chapter_id}&slideId=${slide.slide_id}`,
+      to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+      search: {
+        courseId: slide.package_id,
+        subjectId: slide.subject_id,
+        moduleId: slide.module_id,
+        chapterId: slide.chapter_id,
+        slideId: slide.slide_id,
+        sessionId,
+      },
     });
   };
 

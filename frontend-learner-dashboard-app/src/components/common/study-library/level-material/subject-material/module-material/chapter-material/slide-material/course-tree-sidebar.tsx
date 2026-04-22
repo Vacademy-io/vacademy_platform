@@ -201,18 +201,16 @@ const ExpanderRow = ({
 
   // Sticky stacking — each level pins below the one above it while its
   // subtree is scrolled through, so the learner always sees the path they're
-  // in (Subject / Module / Chapter) without scrolling back up.
+  // in without scrolling back up.
   //
-  // The `top-*` offsets approximate the rendered height of each level so the
-  // headers stack without overlap. Each row is ~40px tall (py-2 + ~24px of
-  // text block), so the module sits at 40px and the chapter at 80px.
-  // Z-index descends so a pinned subject stays above a pinned module which
-  // stays above a pinned chapter. Background must be opaque so scrolling
-  // slides don't bleed through the pinned headers.
+  // Offset is driven by `depth` (the actual rendered depth) rather than
+  // `kind`, because "Default" placeholder levels are skipped and their
+  // children render one level up. Pinning by kind left a gap at the top
+  // whenever the subject (or module) was a hidden Default.
   const stickyClasses =
-    kind === "subject"
+    depth === 0
       ? "sticky top-0 z-30"
-      : kind === "module"
+      : depth === 1
       ? "sticky top-10 z-20"
       : "sticky top-20 z-10";
   const bgClass = isOnCurrentPath

@@ -6,4 +6,5 @@ public enum SessionLog {
     BEFORE_REMAINDER,
     ON_LIVE_REMAINDER,
     ATTENDANCE_NOTIFIED,
+    FEEDBACK_SUBMITTED,
 }

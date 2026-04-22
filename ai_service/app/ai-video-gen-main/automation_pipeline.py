@@ -1474,6 +1474,7 @@ class VideoGenerationPipeline:
             "total_tokens": 0,
             "image_count": 0,
             "tts_character_count": 0,
+            "stock_count": 0,
         }
 
         def accumulate_usage(u: Dict[str, Any]):
@@ -1483,6 +1484,7 @@ class VideoGenerationPipeline:
             total_usage["total_tokens"] += u.get("total_tokens", 0)
             total_usage["image_count"] += u.get("image_count", 0)
             total_usage["tts_character_count"] += u.get("tts_character_count", 0)
+            total_usage["stock_count"] += u.get("stock_count", 0)
 
         # Initialize outputs to safe defaults in case stages are skipped
         tts_outputs = {"response_json": None, "audio_path": None}
@@ -1597,7 +1599,8 @@ class VideoGenerationPipeline:
                 print("🖼️  Checking for visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
-                html_segments = self._process_stock_videos(html_segments)
+                html_segments, stock_usage = self._process_stock_videos(html_segments)
+                accumulate_usage(stock_usage)
             else:
                 # STANDARD VIDEO FLOW
                 # Extract subject domain from AI-classified script plan
@@ -1757,11 +1760,12 @@ class VideoGenerationPipeline:
                 _director_plan = None
                 if self._tier_config.get("use_director") and content_type == "VIDEO":
                     if _seg_audio_dur > 0:
-                        _director_plan = self._run_director(
+                        _director_plan, director_usage = self._run_director(
                             script_plan, words, style_guide, run_dir,
                             language=language,
                             audio_duration=_seg_audio_dur,
                         )
+                        accumulate_usage(director_usage)
                     else:
                         print("⚠️ Audio duration unknown — skipping Director stage")
 
@@ -1847,7 +1851,8 @@ class VideoGenerationPipeline:
                 print("🖼️  Checking for any remaining visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
-                html_segments = self._process_stock_videos(html_segments)
+                html_segments, stock_usage = self._process_stock_videos(html_segments)
+                accumulate_usage(stock_usage)
 
             print("🧾 Writing timeline JSON ...")
             timeline_path = self._write_timeline(
@@ -2364,10 +2369,10 @@ class VideoGenerationPipeline:
         html_str: str,
         issues: List[str],
         original_user_prompt: str,
-    ) -> str:
+    ) -> Tuple[str, Dict[str, Any]]:
         """Attempt a single LLM repair pass on invalid HTML.
 
-        Returns repaired HTML string, or original if repair fails.
+        Returns repaired HTML string and token usage.
         """
         print(f"    🔧 Attempting HTML repair for issues: {issues}")
         repair_prompt = (
@@ -2376,6 +2381,7 @@ class VideoGenerationPipeline:
             f"**Current HTML:**\n```html\n{html_str[:6000]}\n```\n\n"
             "Fix ONLY the listed issues. Return the corrected HTML only — no JSON wrapper, no explanation."
         )
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         try:
             raw, _usage = self.html_client.chat(
                 messages=[
@@ -2385,6 +2391,10 @@ class VideoGenerationPipeline:
                 temperature=0.3,
                 max_tokens=8000,
             )
+            if _usage:
+                total_usage["prompt_tokens"] += _usage.get("prompt_tokens", 0)
+                total_usage["completion_tokens"] += _usage.get("completion_tokens", 0)
+                total_usage["total_tokens"] += _usage.get("total_tokens", 0)
             repaired = raw.strip()
             # Strip markdown code fences if present
             if repaired.startswith("```"):
@@ -2392,10 +2402,10 @@ class VideoGenerationPipeline:
                 repaired = re.sub(r"\n?```$", "", repaired)
             if len(repaired) > 50:
                 print("    ✅ HTML repair successful.")
-                return repaired
+                return repaired, total_usage
         except Exception as e:
             print(f"    ⚠️ HTML repair failed: {e}")
-        return html_str
+        return html_str, total_usage
 
     # --- Google TTS bridge -------------------------------------------------
     # --- Edge TTS bridge (Free, Timed) -------------------------------------------------
@@ -3729,7 +3739,7 @@ class VideoGenerationPipeline:
         run_dir: Path,
         system_prompt: str,
         user_prompt: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
         """Pass 1 of two-pass Director (super_ultra only).
 
         Produces a high-level 'act plan' that the downstream shot planner
@@ -3762,17 +3772,17 @@ class VideoGenerationPipeline:
             )
         except Exception as exc:
             print(f"   ⚠️ Act Planner failed: {exc} — shot planner will run without an act plan")
-            return None
+            return None, {}
 
         try:
             parsed = _extract_json_blob(raw)
         except Exception as exc:
             print(f"   ⚠️ Act Planner JSON parse failed: {exc}")
-            return None
+            return None, _usage or {}
 
         if not isinstance(parsed, dict) or not isinstance(parsed.get("acts"), list) or not parsed["acts"]:
             print("   ⚠️ Act Planner returned no acts — shot planner will run without an act plan")
-            return None
+            return None, _usage or {}
 
         # Save for debugging
         try:
@@ -3780,7 +3790,7 @@ class VideoGenerationPipeline:
         except Exception:
             pass
         print(f"   ✅ Act Planner produced {len(parsed['acts'])} acts")
-        return parsed
+        return parsed, _usage or {}
 
     def _run_director(
         self,
@@ -3790,7 +3800,7 @@ class VideoGenerationPipeline:
         run_dir: Path,
         language: str = "English",
         audio_duration: float = 0.0,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
         """Run the Director LLM call to produce a shot-by-shot plan.
 
         Returns the parsed director plan dict, or None if the call fails
@@ -3820,12 +3830,13 @@ class VideoGenerationPipeline:
 
         if not script_text or not beat_outline:
             print("⚠️ Director: missing script or beat outline — skipping")
-            return None
+            return None, {}
 
         # ── Optional Pass 1: Act Planner (super_ultra only) ────────────────
         act_plan: Optional[Dict[str, Any]] = None
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         if self._tier_config.get("director_two_pass"):
-            act_plan = self._run_act_planner(
+            act_plan, act_usage = self._run_act_planner(
                 script_text=script_text,
                 beat_outline=beat_outline,
                 subject_domain=subject_domain,
@@ -3843,6 +3854,10 @@ class VideoGenerationPipeline:
                     audio_duration=audio_duration,
                 ),
             )
+            if act_usage:
+                total_usage["prompt_tokens"] += act_usage.get("prompt_tokens", 0)
+                total_usage["completion_tokens"] += act_usage.get("completion_tokens", 0)
+                total_usage["total_tokens"] += act_usage.get("total_tokens", 0)
 
         # ── Emphasis map (ultra / super_ultra) ─────────────────────────────
         emphasis_map = ""
@@ -4017,12 +4032,16 @@ class VideoGenerationPipeline:
                     messages.append({"role": "assistant", "content": raw[:2000]})
                     messages.append({"role": "user", "content": correction_message})
 
-                raw, usage = self.html_client.chat(
+                raw, attempt_usage = self.html_client.chat(
                     messages=messages,
                     temperature=0.5 if attempt == 0 else 0.3,  # lower temp on retries
                     max_tokens=self._tier_config.get("director_max_tokens", 20000),
                     response_format={"type": "json_object"},
                 )
+                if attempt_usage:
+                    total_usage["prompt_tokens"] += attempt_usage.get("prompt_tokens", 0)
+                    total_usage["completion_tokens"] += attempt_usage.get("completion_tokens", 0)
+                    total_usage["total_tokens"] += attempt_usage.get("total_tokens", 0)
                 print(f"   ℹ️  Director raw response length: {len(raw)} chars")
                 parsed = _extract_json_blob(raw)
                 print(f"   ℹ️  Director parsed type: {type(parsed).__name__}; keys: {list(parsed.keys()) if isinstance(parsed, dict) else 'N/A'}")
@@ -4076,7 +4095,7 @@ class VideoGenerationPipeline:
                 )
             except Exception:
                 pass
-            return None
+            return None, total_usage
 
         # Validate the director plan (post-normalization guarantees `shots` key exists)
         shots = director_plan.get("shots", [])
@@ -4089,7 +4108,7 @@ class VideoGenerationPipeline:
                 print(f"   ℹ️  Debug saved to {run_dir / 'director_debug.json'}")
             except Exception:
                 pass
-            return None
+            return None, total_usage
 
         # Sanity check: one shot covering a long video almost always means
         # the LLM produced a broken/truncated plan. Falling back to the
@@ -4106,7 +4125,7 @@ class VideoGenerationPipeline:
                 )
             except Exception:
                 pass
-            return None
+            return None, total_usage
 
         # Validate shot types
         valid_types = {
@@ -4162,7 +4181,7 @@ class VideoGenerationPipeline:
             if rationale:
                 print(f"   📝 Rationale: {rationale}")
 
-        return director_plan
+        return director_plan, total_usage
 
     # ------------------------------------------------------------------
     # Per-Shot HTML generation — uses Director plan + focused prompts
@@ -5317,8 +5336,12 @@ class VideoGenerationPipeline:
                             shot_type = seg.get("visual_type", "")
                             is_valid, html_issues = self._validate_html_segment(shot_html, shot_type)
                             if not is_valid and html_issues:
-                                repaired = self._repair_html_segment(shot_html, html_issues, user_prompt)
+                                repaired, repair_usage = self._repair_html_segment(shot_html, html_issues, user_prompt)
                                 shot["html"] = repaired
+                                if repair_usage:
+                                    usage["prompt_tokens"] += repair_usage.get("prompt_tokens", 0)
+                                    usage["completion_tokens"] += repair_usage.get("completion_tokens", 0)
+                                    usage["total_tokens"] += repair_usage.get("total_tokens", 0)
 
                     shot_entries = self._expand_shots(seg, data)
                     if not shot_entries:
@@ -6730,14 +6753,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             print(f"    ⚠️  Background removal failed (using original): {e}")
             return image_bytes
 
-    def _enhance_image_prompt(self, raw_prompt: str) -> str:
+    def _enhance_image_prompt(self, raw_prompt: str) -> Tuple[str, Dict[str, Any]]:
         """Enhance an image generation prompt with cinematic details (Premium+ tiers).
 
         Uses a quick LLM call to add lighting, camera angle, color palette, mood,
         and composition details while keeping the prompt under 200 words.
         """
         if not self._tier_config.get("image_prompt_enhancement"):
-            return raw_prompt
+            return raw_prompt, {}
 
         # Use LLM-picked IMAGE STYLE, not pipeline visual mode
         image_style = getattr(self, '_current_image_style', 'realistic cinematic photograph')
@@ -6763,10 +6786,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             )
             enhanced = enhanced.strip().strip('"').strip("'")
             if len(enhanced) > 30:
-                return enhanced
+                return enhanced, _usage or {}
         except Exception as e:
             print(f"    ⚠️ Image prompt enhancement failed: {e}")
-        return raw_prompt
+        return raw_prompt, {}
 
     def _rank_pexels_candidates_with_llm(
         self,
@@ -6774,17 +6797,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         query: str,
         narration_excerpt: str,
         visual_description: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
         """Score Pexels candidates against the shot's narration via a small LLM call.
 
         Returns the top-ranked candidate, or None if the ranker fails. Each
         candidate's `alt`, `duration`, and `id` are surfaced to the LLM so it
         can judge semantic fit.
         """
+        usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         if not candidates:
-            return None
+            return None, usage
         if len(candidates) == 1:
-            return candidates[0]
+            return candidates[0], usage
 
         # Build a compact candidate list for the LLM
         lines = []
@@ -6818,16 +6842,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 max_tokens=400,
                 response_format={"type": "json_object"},
             )
+            if _usage:
+                usage["prompt_tokens"] += _usage.get("prompt_tokens", 0)
+                usage["completion_tokens"] += _usage.get("completion_tokens", 0)
+                usage["total_tokens"] += _usage.get("total_tokens", 0)
+
             parsed = _extract_json_blob(raw)
             if isinstance(parsed, dict):
                 idx = parsed.get("best_index")
                 if isinstance(idx, int) and 0 <= idx < len(candidates):
-                    return candidates[idx]
+                    return candidates[idx], usage
         except Exception as e:
             print(f"    ⚠️ Candidate ranker failed ({e}) — falling back to first candidate")
-        return candidates[0]
+        return candidates[0], usage
 
-    def _process_stock_videos(self, html_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _process_stock_videos(self, html_segments: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Scan HTML for <video data-video-query='...'> tags, search Pexels, inject URLs.
 
         When `stock_video_ranking` is enabled (super_ultra), fetches 5-6 candidates,
@@ -6837,6 +6866,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         Always strips internal shot-context fields before returning, even on the
         Pexels-unavailable early-return path, so the timeline JSON stays clean.
         """
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         def _strip_internal_fields() -> None:
             for entry in html_segments:
@@ -6846,7 +6876,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
         if not self._pexels_service or not self._pexels_service.is_available:
             _strip_internal_fields()
-            return html_segments
+            return html_segments, total_usage
 
         orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
         VIDEO_TAG_RE = re.compile(r'(<video[^>]+data-video-query=(["\'])(.*?)\2[^>]*>)', re.DOTALL)
@@ -6875,12 +6905,16 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     fresh = [c for c in candidates if c.get("id") not in used_ids]
                     pool = fresh if fresh else candidates
                     if pool:
-                        picked = self._rank_pexels_candidates_with_llm(
+                        picked, stock_usage = self._rank_pexels_candidates_with_llm(
                             candidates=pool,
                             query=query,
                             narration_excerpt=shot_narration,
                             visual_description=shot_visual,
                         )
+                        total_usage["prompt_tokens"] += stock_usage.get("prompt_tokens", 0)
+                        total_usage["completion_tokens"] += stock_usage.get("completion_tokens", 0)
+                        total_usage["total_tokens"] += stock_usage.get("total_tokens", 0)
+                        
                         if picked and picked.get("id") is not None:
                             used_ids.add(picked["id"])
                 else:
@@ -6925,7 +6959,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
         if replacements_count > 0:
             print(f"    📝 Applied {replacements_count} stock video replacement(s)")
-        return html_segments
+        return html_segments, total_usage
 
     def _process_generated_images(self, html_segments: List[Dict[str, Any]], run_dir: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
@@ -7030,10 +7064,11 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             if is_cutout:
                 # Cutout assets need clean isolated objects — skip cinematic style
                 # prefix and LLM enhancement which would add backgrounds/scenes
+                enhance_usage = {}
                 pass
             else:
                 # Enhance image prompt with cinematic details (Premium+ tiers)
-                prompt = self._enhance_image_prompt(prompt)
+                prompt, enhance_usage = self._enhance_image_prompt(prompt)
 
                 # Use LLM-picked IMAGE STYLE, not pipeline visual mode
                 image_style = getattr(self, '_current_image_style', 'realistic cinematic photograph')
@@ -7044,6 +7079,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             print(f"    🎨 Generating image {label}: {prompt[:60]}...")
             # May raise _GeminiRateLimitError — propagates to as_completed caller
             image_bytes, usage_meta = self._call_image_generation_llm(prompt)
+            if not usage_meta: usage_meta = {}
+            for k, v in enhance_usage.items():
+                if k in ["prompt_tokens", "completion_tokens", "total_tokens"]:
+                    usage_meta[k] = usage_meta.get(k, 0) + v
             if not image_bytes:
                 print(f"    ❌ No image bytes for: {prompt[:50]}...")
                 return None
@@ -7073,7 +7112,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         successful_generations = 0
         failed_generations     = 0
         total_image_usage = {"prompt_tokens": 0, "completion_tokens": 0,
-                              "total_tokens": 0, "image_count": 0}
+                              "total_tokens": 0, "image_count": 0, "stock_count": 0}
 
         # requeue_counts tracks how many times a task has been re-submitted after 429
         requeue_counts: Dict[int, int] = {i: 0 for i in range(len(tasks))}
@@ -7115,7 +7154,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
                     if res:
                         successful_generations += 1
-                        total_image_usage["image_count"] += 1
+                        if res.get("stock_url"):
+                            total_image_usage["stock_count"] += 1
+                        else:
+                            total_image_usage["image_count"] += 1
                         u = res.get("usage") or {}
                         total_image_usage["prompt_tokens"]      += u.get("promptTokenCount", 0)
                         total_image_usage["completion_tokens"]  += u.get("candidatesTokenCount", 0)

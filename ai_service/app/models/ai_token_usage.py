@@ -112,6 +112,7 @@ class RequestType(str, enum.Enum):
     AGENT = "agent"                  # AI Agent interactions
     ANALYTICS = "analytics"          # Student analytics
     COPILOT = "copilot"              # Instructor copilot
+    STOCK = "stock"                  # Stock photos and videos
 
 
 class AiTokenUsage(Base):

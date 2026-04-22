@@ -482,6 +482,16 @@ public class Step1Service {
             }
         }
 
+        // Save feedback config as JSON
+        if (request.getFeedbackConfig() != null) {
+            try {
+                session.setFeedbackConfigJson(new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(request.getFeedbackConfig()));
+            } catch (Exception e) {
+                System.out.println("Failed to serialize feedback config: " + e.getMessage());
+            }
+        }
+
         session.setCreatedByUserId(user.getUserId());
 
         Object learnerButtonConfig = request.getLearnerButtonConfig();

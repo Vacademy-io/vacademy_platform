@@ -17,7 +17,7 @@ import { getPublicUrl } from '@/services/upload_file';
 import { TeacherSelection } from './TeacherSelection';
 import { formatTime } from '@/helpers/formatYoutubeVideoTime';
 import { getUserId, isUserAdmin, isUserTeacher } from '@/utils/userDetails';
-import { useInstituteTeachers } from '@/routes/dashboard/-hooks/useInstituteTeachers';
+import { useInstituteAssignees } from '@/routes/dashboard/-hooks/useInstituteAssignees';
 import { getInstituteId } from '@/constants/helper';
 
 const StatusIndicator = ({ status }: { status: 'RESOLVED' | 'ACTIVE' | 'DELETED' }) => {
@@ -63,7 +63,7 @@ export const Doubt = ({ doubt, refetch }: { doubt: DoubtType; refetch: () => voi
         sort_columns: { name: 'DESC' },
     };
 
-    const { teachers: instituteTeachers } = useInstituteTeachers(getInstituteId());
+    const { assignees: instituteAssignees } = useInstituteAssignees(getInstituteId());
 
     const { data: userBasicDetails } = useGetUserBasicDetails([doubt.user_id]);
 
@@ -162,7 +162,7 @@ export const Doubt = ({ doubt, refetch }: { doubt: DoubtType; refetch: () => voi
                     doubt={doubt}
                     filters={filters}
                     canChange={isAdmin || false}
-                    teachersOverride={instituteTeachers}
+                    teachersOverride={instituteAssignees}
                 />
             </div>
 

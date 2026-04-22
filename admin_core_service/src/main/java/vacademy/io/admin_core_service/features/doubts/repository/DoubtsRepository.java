@@ -70,7 +70,7 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND (:status IS NULL OR d.status IN :status)
           AND (d.raised_time BETWEEN :startDate AND :endDate)
           AND d.parent_id IS NULL
-          AND (:batchIds IS NULL OR d.package_session_id IN :batchIds)
+          AND (CAST(:hasBatchIds AS boolean) = false OR d.package_session_id IN :batchIds)
           AND (
             d.user_id = :viewerUserId
             OR EXISTS (
@@ -117,7 +117,7 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND (:status IS NULL OR d.status IN :status)
           AND (d.raised_time BETWEEN :startDate AND :endDate)
           AND d.parent_id IS NULL
-          AND (d.package_session_id IN :batchIds)
+          AND (CAST(:hasBatchIds AS boolean) = false OR d.package_session_id IN :batchIds)
           AND (
             d.user_id = :viewerUserId
             OR EXISTS (
@@ -161,6 +161,7 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
                                                @Param("userIds") List<String> userIds,
                                                @Param("status") List<String> status,
                                                @Param("batchIds") List<String> batchIds,
+                                               @Param("hasBatchIds") boolean hasBatchIds,
                                                @Param("startDate") Date startDate,
                                                @Param("endDate") Date endDate,
                                                @Param("viewerUserId") String viewerUserId,

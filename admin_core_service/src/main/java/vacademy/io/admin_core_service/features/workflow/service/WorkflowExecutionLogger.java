@@ -43,6 +43,7 @@ public class WorkflowExecutionLogger {
      * @param inputContext        Input context/data for the node
      * @return The created log ID
      */
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public String startNodeExecution(
             String workflowExecutionId,
             String nodeTemplateId,
@@ -250,7 +251,8 @@ public class WorkflowExecutionLogger {
      * Internal method to complete node execution with specific status.
      */
     @CacheEvict(value = { "executionLogs", "nodeLogs" }, allEntries = true)
-    private void completeNodeExecutionWithStatus(
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void completeNodeExecutionWithStatus(
             String logId,
             ExecutionLogStatus status,
             Map<String, Object> outputContext,

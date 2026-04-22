@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Star, ChatText, WarningCircle, UserList } from '@phosphor-icons/react';
-import type { LiveSessionReport } from '../-services/utils';
+import type { LiveSessionReport } from '../../-services/utils';
 
 interface FeedbackStatsProps {
     data: LiveSessionReport[];

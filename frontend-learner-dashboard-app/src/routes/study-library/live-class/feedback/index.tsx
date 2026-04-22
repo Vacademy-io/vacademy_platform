@@ -322,6 +322,7 @@ function FeedbackPage() {
           Skip
         </button>
       </div>
+      </div>
 
       <FeedbackStyles />
     </>

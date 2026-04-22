@@ -109,6 +109,7 @@ export const AddChapterForm = ({
     // State for complete chapter visibility data
     const [completeChapterData, setCompleteChapterData] = useState<ChapterWithSlides | null>(null);
     const [isLoadingCompleteData, setIsLoadingCompleteData] = useState(false);
+    const hasFetchedCompleteData = useRef(false);
 
     // State for display settings
     const [requirePackageSelection, setRequirePackageSelection] = useState(true);
@@ -246,64 +247,80 @@ export const AddChapterForm = ({
         loadDisplaySettings();
     }, [isPerBatchMode]);
 
-    // Fetch complete chapter data when in edit mode
+    // Fetch complete chapter data when in edit mode (runs once).
+    // Skip entirely when initialValues already carries chapter_in_package_sessions
+    // (i.e., the caller already had the data).
     useEffect(() => {
+        if (mode !== 'edit' || !initialValues || hasFetchedCompleteData.current) {
+            return;
+        }
+
+        // If the caller already provided chapter_in_package_sessions, no fetch needed
+        if (initialValues.chapter_in_package_sessions && initialValues.chapter_in_package_sessions.length > 0) {
+            hasFetchedCompleteData.current = true;
+            return;
+        }
+
+        hasFetchedCompleteData.current = true;
+
+        let cancelled = false;
+
         const fetchCompleteChapterData = async () => {
-            if (
-                mode === 'edit' &&
-                initialValues &&
-                !completeChapterData &&
-                !isLoadingCompleteData
-            ) {
-                setIsLoadingCompleteData(true);
+            setIsLoadingCompleteData(true);
 
-                try {
-                    // Get all available package sessions to search through
-                    const { instituteDetails } = useInstituteDetailsStore.getState();
-                    const allPackageSessions = instituteDetails?.batches_for_sessions || [];
+            try {
+                // Get all available package sessions to search through
+                const { instituteDetails } = useInstituteDetailsStore.getState();
+                const allPackageSessions = instituteDetails?.batches_for_sessions || [];
 
-                    // Try to find the chapter in different package sessions
-                    let foundCompleteData: ChapterWithSlides | null = null;
+                // Try to find the chapter in different package sessions
+                let foundCompleteData: ChapterWithSlides | null = null;
 
-                    for (const batch of allPackageSessions) {
-                        try {
-                            const modulesData = await fetchModulesWithChapters(subjectId, batch.id);
+                for (const batch of allPackageSessions) {
+                    if (cancelled) break;
+                    try {
+                        const modulesData = await fetchModulesWithChapters(subjectId, batch.id);
 
-                            // Look for our chapter in this data
-                            for (const moduleData of modulesData) {
-                                const foundChapter = moduleData.chapters.find(
-                                    (chapter: ChapterWithSlides) =>
-                                        chapter.chapter.id === initialValues.chapter.id
-                                );
+                        // Look for our chapter in this data
+                        for (const moduleData of modulesData) {
+                            const foundChapter = moduleData.chapters.find(
+                                (chapter: ChapterWithSlides) =>
+                                    chapter.chapter.id === initialValues.chapter.id
+                            );
 
-                                if (
-                                    foundChapter &&
-                                    foundChapter.chapter_in_package_sessions.length > 0
-                                ) {
-                                    foundCompleteData = foundChapter;
-                                    break;
-                                }
+                            if (
+                                foundChapter &&
+                                foundChapter.chapter_in_package_sessions.length > 0
+                            ) {
+                                foundCompleteData = foundChapter;
+                                break;
                             }
-
-                            if (foundCompleteData) break;
-                        } catch (error) {
-                            // Continue with next package session
                         }
-                    }
 
-                    if (foundCompleteData) {
-                        setCompleteChapterData(foundCompleteData);
+                        if (foundCompleteData) break;
+                    } catch (error) {
+                        // Continue with next package session
                     }
-                } catch (error) {
-                    console.error('❌ Error fetching complete chapter data:', error);
-                } finally {
+                }
+
+                if (!cancelled && foundCompleteData) {
+                    setCompleteChapterData(foundCompleteData);
+                }
+            } catch (error) {
+                console.error('❌ Error fetching complete chapter data:', error);
+            } finally {
+                if (!cancelled) {
                     setIsLoadingCompleteData(false);
                 }
             }
         };
 
         fetchCompleteChapterData();
-    }, [mode, initialValues, subjectId, completeChapterData, isLoadingCompleteData]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [mode, initialValues, subjectId]);
 
     // Update form when complete chapter data is loaded (runs once when data arrives)
     const hasAppliedCompleteData = useRef(false);

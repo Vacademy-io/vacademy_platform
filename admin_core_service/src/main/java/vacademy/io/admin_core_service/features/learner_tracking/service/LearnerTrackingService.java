@@ -4,11 +4,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.learner_operation.service.LearnerOperationService;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.DocumentActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.VideoActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
-import vacademy.io.admin_core_service.features.learner_tracking.entity.DocumentTracked;
-import vacademy.io.admin_core_service.features.learner_tracking.entity.VideoTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.AudioTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.DocumentTrackedRepository;
@@ -50,6 +51,7 @@ public class LearnerTrackingService {
         this.concentrationScoreService = concentrationScoreService;
     }
 
+    @Transactional
     public ActivityLogDTO addOrUpdateDocumentActivityLog(ActivityLogDTO activityLogDTO, String slideId,
             String chapterId, String packageSessionId, String moduleId, String subjectId, CustomUserDetails user) {
         activityLogDTO.setUserId(user.getUserId());
@@ -64,8 +66,7 @@ public class LearnerTrackingService {
         return activityLog.toActivityLogDTO();
     }
 
-    //
-    // @Transactional
+    @Transactional
     public ActivityLogDTO addOrUpdateVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId, String chapterId,
             String moduleId, String subjectId, String packageSessionId, CustomUserDetails user) {
         validateActivityLogDTO(activityLogDTO, false); // Validate for videos
@@ -80,6 +81,7 @@ public class LearnerTrackingService {
         return activityLog.toActivityLogDTO();
     }
 
+    @Transactional
     public ActivityLogDTO addOrUpdateHtmlVideoActivityLog(ActivityLogDTO activityLogDTO, String slideId,
             String chapterId, String moduleId, String subjectId, String packageSessionId, CustomUserDetails user) {
         validateActivityLogDTO(activityLogDTO, false); // Reuse validation for videos
@@ -106,19 +108,32 @@ public class LearnerTrackingService {
     }
 
     private void saveDocumentTracking(ActivityLogDTO activityLogDTO, ActivityLog activityLog) {
-        documentTrackedRepository.deleteByActivityId(activityLog.getId()); // Clear existing tracked documents
-        List<DocumentTracked> documentTrackedList = activityLogDTO.getDocuments().stream()
-                .map(documentActivityLogDTO -> new DocumentTracked(documentActivityLogDTO, activityLog))
-                .toList();
-        documentTrackedRepository.saveAll(documentTrackedList);
+        if (activityLogDTO.getDocuments() == null)
+            return;
+        for (DocumentActivityLogDTO dto : activityLogDTO.getDocuments()) {
+            if (dto == null || dto.getId() == null)
+                continue;
+            documentTrackedRepository.upsert(
+                    dto.getId(),
+                    activityLog.getId(),
+                    dto.getStartTimeInMillis() != null ? new Timestamp(dto.getStartTimeInMillis()) : null,
+                    dto.getEndTimeInMillis() != null ? new Timestamp(dto.getEndTimeInMillis()) : null,
+                    dto.getPageNumber());
+        }
     }
 
     private void saveVideoTracking(ActivityLogDTO activityLogDTO, ActivityLog activityLog) {
-        videoTrackedRepository.deleteByActivityId(activityLog.getId()); // Clear existing tracked videos
-        List<VideoTracked> videoTrackedList = activityLogDTO.getVideos().stream()
-                .map(videoActivityLogDTO -> new VideoTracked(videoActivityLogDTO, activityLog))
-                .toList();
-        videoTrackedRepository.saveAll(videoTrackedList);
+        if (activityLogDTO.getVideos() == null)
+            return;
+        for (VideoActivityLogDTO dto : activityLogDTO.getVideos()) {
+            if (dto == null || dto.getId() == null)
+                continue;
+            videoTrackedRepository.upsert(
+                    dto.getId(),
+                    activityLog.getId(),
+                    dto.getStartTimeInMillis() != null ? new Timestamp(dto.getStartTimeInMillis()) : null,
+                    dto.getEndTimeInMillis() != null ? new Timestamp(dto.getEndTimeInMillis()) : null);
+        }
     }
 
     private void updateActivityFields(ActivityLog activityLog, ActivityLogDTO activityLogDTO) {

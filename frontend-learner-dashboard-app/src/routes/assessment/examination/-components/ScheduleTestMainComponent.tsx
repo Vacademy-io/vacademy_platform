@@ -86,6 +86,13 @@ export const ScheduleTestMainComponent = ({
           assessment_types
         );
 
+        // Defense-in-depth: even with the upstream catch fixed, a missing
+        // or malformed payload would crash inside React's setState updater
+        // (a hard render error, not a recoverable toast). Bail instead.
+        if (!data || !Array.isArray(data.content)) {
+          return;
+        }
+
         setAssessmentData((prevData) => ({
           ...prevData,
           [tab]: isInitialLoad

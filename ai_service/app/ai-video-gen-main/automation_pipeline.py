@@ -5171,6 +5171,8 @@ class VideoGenerationPipeline:
                             "shot_type": shot_type,
                             "error": str(e)[:200],
                             "retrying": False,
+                            "attempt": max_attempts,
+                            "max_attempts": max_attempts,
                             "message": f"Shot {shot_idx + 1} failed: {str(e)[:120]}",
                         })
                         return [], {}

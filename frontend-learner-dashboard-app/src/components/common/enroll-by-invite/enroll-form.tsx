@@ -340,24 +340,16 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             >,
             field
           ) => {
-            if (field.field_type === "dropdown") {
-              defaults[field.field_key] = {
-                id: field.id,
-                name: field.field_name,
-                value: "",
-                is_mandatory: field.is_mandatory || false,
-                type: field.field_type,
-                config: field.config || "{}",
-              };
-            } else {
-              defaults[field.field_key] = {
-                id: field.id,
-                name: field.field_name,
-                value: "",
-                is_mandatory: field.is_mandatory || false,
-                type: field.field_type,
-              };
-            }
+            // Always pass config so non-dropdown types (radio, multi_select,
+            // date, file, checkbox, etc.) can read their metadata.
+            defaults[field.field_key] = {
+              id: field.id,
+              name: field.field_name,
+              value: "",
+              is_mandatory: field.is_mandatory || false,
+              type: field.field_type,
+              config: field.config || "{}",
+            };
             return defaults;
           },
           {} as Record<

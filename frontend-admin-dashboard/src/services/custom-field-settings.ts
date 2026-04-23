@@ -22,6 +22,7 @@ export const CUSTOM_FIELD_TYPES = [
     { value: 'checkbox', label: 'Checkbox (Yes/No)' },
     { value: 'radio', label: 'Radio Buttons' },
     { value: 'file', label: 'File Upload' },
+    { value: 'multi_select', label: 'Multi-Select Checkboxes' },
 ] as const;
 
 export type CustomFieldType =
@@ -35,7 +36,8 @@ export type CustomFieldType =
     | 'textarea'
     | 'checkbox'
     | 'radio'
-    | 'file';
+    | 'file'
+    | 'multi_select';
 
 // Config JSON structure for dropdown options
 export interface DropdownOptionConfig {
@@ -1800,7 +1802,7 @@ export const createNewCustomField = (
     return {
         name,
         type,
-        options: type === 'dropdown' || type === 'radio' ? options || [] : undefined,
+        options: type === 'dropdown' || type === 'radio' || type === 'multi_select' ? options || [] : undefined,
         visibility: {
             learnersList: false,
             learnerEnrollment: false,
@@ -1837,7 +1839,7 @@ export const createTempCustomField = (
         id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Temporary ID
         name,
         type,
-        options: type === 'dropdown' || type === 'radio' ? options || [] : undefined,
+        options: type === 'dropdown' || type === 'radio' || type === 'multi_select' ? options || [] : undefined,
         defaultValue,
         fieldConfig,
         visibility: {

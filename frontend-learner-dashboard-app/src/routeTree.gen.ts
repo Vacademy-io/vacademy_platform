@@ -523,82 +523,82 @@ export interface FileRoutesByFullPath {
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
   '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
-  '/$tagName/': typeof TagNameIndexRoute
-  '/ai-settings/': typeof AiSettingsIndexRoute
-  '/assessment/': typeof AssessmentIndexRoute
-  '/audience-response/': typeof AudienceResponseIndexRoute
-  '/auth-transfer/': typeof AuthTransferIndexRoute
-  '/change-password/': typeof ChangePasswordIndexRoute
-  '/courses/': typeof CoursesIndexRoute
-  '/dashboard/': typeof DashboardIndexRoute
-  '/delete-user/': typeof DeleteUserIndexRoute
-  '/enquiry-response/': typeof EnquiryResponseIndexRoute
-  '/institute-selection/': typeof InstituteSelectionIndexRoute
-  '/learner-invitation-response/': typeof LearnerInvitationResponseIndexRoute
-  '/live-class-guest/': typeof LiveClassGuestIndexRoute
-  '/login/': typeof LoginIndexRoute
-  '/logout/': typeof LogoutIndexRoute
-  '/my-files/': typeof MyFilesIndexRoute
-  '/my-reports/': typeof MyReportsIndexRoute
-  '/parent/': typeof ParentIndexRoute
-  '/payment-result/': typeof PaymentResultIndexRoute
-  '/planning/': typeof PlanningIndexRoute
-  '/privacy-policy/': typeof PrivacyPolicyIndexRoute
-  '/referral/': typeof ReferralIndexRoute
-  '/register/': typeof RegisterIndexRoute
-  '/session-terminated/': typeof SessionTerminatedIndexRoute
-  '/signup/': typeof SignupIndexRoute
-  '/study-library/': typeof StudyLibraryIndexRoute
-  '/sub-org-learners/': typeof SubOrgLearnersIndexRoute
-  '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
-  '/user-profile/': typeof UserProfileIndexRoute
+  '/$tagName': typeof TagNameIndexRoute
+  '/ai-settings': typeof AiSettingsIndexRoute
+  '/assessment': typeof AssessmentIndexRoute
+  '/audience-response': typeof AudienceResponseIndexRoute
+  '/auth-transfer': typeof AuthTransferIndexRoute
+  '/change-password': typeof ChangePasswordIndexRoute
+  '/courses': typeof CoursesIndexRoute
+  '/dashboard': typeof DashboardIndexRoute
+  '/delete-user': typeof DeleteUserIndexRoute
+  '/enquiry-response': typeof EnquiryResponseIndexRoute
+  '/institute-selection': typeof InstituteSelectionIndexRoute
+  '/learner-invitation-response': typeof LearnerInvitationResponseIndexRoute
+  '/live-class-guest': typeof LiveClassGuestIndexRoute
+  '/login': typeof LoginIndexRoute
+  '/logout': typeof LogoutIndexRoute
+  '/my-files': typeof MyFilesIndexRoute
+  '/my-reports': typeof MyReportsIndexRoute
+  '/parent': typeof ParentIndexRoute
+  '/payment-result': typeof PaymentResultIndexRoute
+  '/planning': typeof PlanningIndexRoute
+  '/privacy-policy': typeof PrivacyPolicyIndexRoute
+  '/referral': typeof ReferralIndexRoute
+  '/register': typeof RegisterIndexRoute
+  '/session-terminated': typeof SessionTerminatedIndexRoute
+  '/signup': typeof SignupIndexRoute
+  '/study-library': typeof StudyLibraryIndexRoute
+  '/sub-org-learners': typeof SubOrgLearnersIndexRoute
+  '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
+  '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
-  '/$tagName/$courseId/': typeof TagNameCourseIdIndexRoute
-  '/assessment/examination/': typeof AssessmentExaminationIndexRoute
-  '/assessment/list/': typeof AssessmentListIndexRoute
-  '/assessment/reports/': typeof AssessmentReportsIndexRoute
-  '/courses/course-details/': typeof CoursesCourseDetailsIndexRoute
-  '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
-  '/homework/list/': typeof HomeworkListIndexRoute
-  '/homework/reports/': typeof HomeworkReportsIndexRoute
-  '/learning-centre/attendance/': typeof LearningCentreAttendanceIndexRoute
-  '/live-class-guest/embed/': typeof LiveClassGuestEmbedIndexRoute
-  '/live-class-guest/waiting-room/': typeof LiveClassGuestWaitingRoomIndexRoute
-  '/login/forgot-password/': typeof LoginForgotPasswordIndexRoute
-  '/my-files/$folderName/': typeof MyFilesFolderNameIndexRoute
-  '/my-reports/$processId/': typeof MyReportsProcessIdIndexRoute
-  '/parent/admission/': typeof ParentAdmissionIndexRoute
-  '/parent/application/': typeof ParentApplicationIndexRoute
-  '/parent/dashboard/': typeof ParentDashboardIndexRoute
+  '/$tagName/$courseId': typeof TagNameCourseIdIndexRoute
+  '/assessment/examination': typeof AssessmentExaminationIndexRoute
+  '/assessment/list': typeof AssessmentListIndexRoute
+  '/assessment/reports': typeof AssessmentReportsIndexRoute
+  '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
+  '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
+  '/homework/list': typeof HomeworkListIndexRoute
+  '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/learning-centre/attendance': typeof LearningCentreAttendanceIndexRoute
+  '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
+  '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
+  '/login/forgot-password': typeof LoginForgotPasswordIndexRoute
+  '/my-files/$folderName': typeof MyFilesFolderNameIndexRoute
+  '/my-reports/$processId': typeof MyReportsProcessIdIndexRoute
+  '/parent/admission': typeof ParentAdmissionIndexRoute
+  '/parent/application': typeof ParentApplicationIndexRoute
+  '/parent/dashboard': typeof ParentDashboardIndexRoute
   '/parent/documents/': typeof ParentDocumentsIndexRoute
-  '/parent/payment/': typeof ParentPaymentIndexRoute
-  '/parent/schedule/': typeof ParentScheduleIndexRoute
-  '/parent/tracker/': typeof ParentTrackerIndexRoute
-  '/planning/activity-logs/': typeof PlanningActivityLogsIndexRoute
-  '/planning/planning-logs/': typeof PlanningPlanningLogsIndexRoute
-  '/register/live-class/': typeof RegisterLiveClassIndexRoute
-  '/study-library/courses/': typeof StudyLibraryCoursesIndexRoute
-  '/study-library/live-class/': typeof StudyLibraryLiveClassIndexRoute
-  '/user-profile/edit/': typeof UserProfileEditIndexRoute
+  '/parent/payment': typeof ParentPaymentIndexRoute
+  '/parent/schedule': typeof ParentScheduleIndexRoute
+  '/parent/tracker': typeof ParentTrackerIndexRoute
+  '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
+  '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
+  '/register/live-class': typeof RegisterLiveClassIndexRoute
+  '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
+  '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
+  '/user-profile/edit': typeof UserProfileEditIndexRoute
   '/assessment/examination/$assessmentId/LearnerLiveTest': typeof AssessmentExaminationAssessmentIdLearnerLiveTestRoute
   '/assessment/examination/$assessmentId/assessmentPreview': typeof AssessmentExaminationAssessmentIdAssessmentPreviewRoute
-  '/assessment/examination/$assessmentId/': typeof AssessmentExaminationAssessmentIdIndexRoute
-  '/assessment/reports/ai-report/': typeof AssessmentReportsAiReportIndexRoute
-  '/assessment/reports/comparison/': typeof AssessmentReportsComparisonIndexRoute
-  '/assessment/reports/student-report/': typeof AssessmentReportsStudentReportIndexRoute
-  '/m/$mediaId/$phoneNumber/': typeof MMediaIdPhoneNumberIndexRoute
-  '/study-library/courses/course-details/': typeof StudyLibraryCoursesCourseDetailsIndexRoute
-  '/study-library/live-class/$username/': typeof StudyLibraryLiveClassUsernameIndexRoute
-  '/study-library/live-class/embed/': typeof StudyLibraryLiveClassEmbedIndexRoute
-  '/study-library/live-class/feedback/': typeof StudyLibraryLiveClassFeedbackIndexRoute
-  '/study-library/live-class/waiting-room/': typeof StudyLibraryLiveClassWaitingRoomIndexRoute
-  '/study-library/courses/course-details/subjects/': typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
-  '/un/$channel/$username/$category/': typeof UnChannelUsernameCategoryIndexRoute
-  '/admission/payment/$instituteId/$applicantId/$paymentOptionId/': typeof AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute
-  '/study-library/courses/course-details/subjects/modules/': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRoute
-  '/study-library/courses/course-details/subjects/modules/chapters/': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRoute
-  '/study-library/courses/course-details/subjects/modules/chapters/slides/': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
+  '/assessment/examination/$assessmentId': typeof AssessmentExaminationAssessmentIdIndexRoute
+  '/assessment/reports/ai-report': typeof AssessmentReportsAiReportIndexRoute
+  '/assessment/reports/comparison': typeof AssessmentReportsComparisonIndexRoute
+  '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
+  '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
+  '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
+  '/study-library/live-class/$username': typeof StudyLibraryLiveClassUsernameIndexRoute
+  '/study-library/live-class/embed': typeof StudyLibraryLiveClassEmbedIndexRoute
+  '/study-library/live-class/feedback': typeof StudyLibraryLiveClassFeedbackIndexRoute
+  '/study-library/live-class/waiting-room': typeof StudyLibraryLiveClassWaitingRoomIndexRoute
+  '/study-library/courses/course-details/subjects': typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
+  '/un/$channel/$username/$category': typeof UnChannelUsernameCategoryIndexRoute
+  '/admission/payment/$instituteId/$applicantId/$paymentOptionId': typeof AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute
+  '/study-library/courses/course-details/subjects/modules': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRoute
+  '/study-library/courses/course-details/subjects/modules/chapters': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRoute
+  '/study-library/courses/course-details/subjects/modules/chapters/slides': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
 }
 export interface FileRoutesByTo {
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
@@ -768,82 +768,82 @@ export interface FileRouteTypes {
     | '/$tagName/$pageSlug'
     | '/assignment/$slideId'
     | '/parent/documents'
-    | '/$tagName/'
-    | '/ai-settings/'
-    | '/assessment/'
-    | '/audience-response/'
-    | '/auth-transfer/'
-    | '/change-password/'
-    | '/courses/'
-    | '/dashboard/'
-    | '/delete-user/'
-    | '/enquiry-response/'
-    | '/institute-selection/'
-    | '/learner-invitation-response/'
-    | '/live-class-guest/'
-    | '/login/'
-    | '/logout/'
-    | '/my-files/'
-    | '/my-reports/'
-    | '/parent/'
-    | '/payment-result/'
-    | '/planning/'
-    | '/privacy-policy/'
-    | '/referral/'
-    | '/register/'
-    | '/session-terminated/'
-    | '/signup/'
-    | '/study-library/'
-    | '/sub-org-learners/'
-    | '/terms-and-conditions/'
-    | '/user-profile/'
+    | '/$tagName'
+    | '/ai-settings'
+    | '/assessment'
+    | '/audience-response'
+    | '/auth-transfer'
+    | '/change-password'
+    | '/courses'
+    | '/dashboard'
+    | '/delete-user'
+    | '/enquiry-response'
+    | '/institute-selection'
+    | '/learner-invitation-response'
+    | '/live-class-guest'
+    | '/login'
+    | '/logout'
+    | '/my-files'
+    | '/my-reports'
+    | '/parent'
+    | '/payment-result'
+    | '/planning'
+    | '/privacy-policy'
+    | '/referral'
+    | '/register'
+    | '/session-terminated'
+    | '/signup'
+    | '/study-library'
+    | '/sub-org-learners'
+    | '/terms-and-conditions'
+    | '/user-profile'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
-    | '/$tagName/$courseId/'
-    | '/assessment/examination/'
-    | '/assessment/list/'
-    | '/assessment/reports/'
-    | '/courses/course-details/'
-    | '/dashboard/notifications/'
-    | '/homework/list/'
-    | '/homework/reports/'
-    | '/learning-centre/attendance/'
-    | '/live-class-guest/embed/'
-    | '/live-class-guest/waiting-room/'
-    | '/login/forgot-password/'
-    | '/my-files/$folderName/'
-    | '/my-reports/$processId/'
-    | '/parent/admission/'
-    | '/parent/application/'
-    | '/parent/dashboard/'
+    | '/$tagName/$courseId'
+    | '/assessment/examination'
+    | '/assessment/list'
+    | '/assessment/reports'
+    | '/courses/course-details'
+    | '/dashboard/notifications'
+    | '/homework/list'
+    | '/homework/reports'
+    | '/learning-centre/attendance'
+    | '/live-class-guest/embed'
+    | '/live-class-guest/waiting-room'
+    | '/login/forgot-password'
+    | '/my-files/$folderName'
+    | '/my-reports/$processId'
+    | '/parent/admission'
+    | '/parent/application'
+    | '/parent/dashboard'
     | '/parent/documents/'
-    | '/parent/payment/'
-    | '/parent/schedule/'
-    | '/parent/tracker/'
-    | '/planning/activity-logs/'
-    | '/planning/planning-logs/'
-    | '/register/live-class/'
-    | '/study-library/courses/'
-    | '/study-library/live-class/'
-    | '/user-profile/edit/'
+    | '/parent/payment'
+    | '/parent/schedule'
+    | '/parent/tracker'
+    | '/planning/activity-logs'
+    | '/planning/planning-logs'
+    | '/register/live-class'
+    | '/study-library/courses'
+    | '/study-library/live-class'
+    | '/user-profile/edit'
     | '/assessment/examination/$assessmentId/LearnerLiveTest'
     | '/assessment/examination/$assessmentId/assessmentPreview'
-    | '/assessment/examination/$assessmentId/'
-    | '/assessment/reports/ai-report/'
-    | '/assessment/reports/comparison/'
-    | '/assessment/reports/student-report/'
-    | '/m/$mediaId/$phoneNumber/'
-    | '/study-library/courses/course-details/'
-    | '/study-library/live-class/$username/'
-    | '/study-library/live-class/embed/'
-    | '/study-library/live-class/feedback/'
-    | '/study-library/live-class/waiting-room/'
-    | '/study-library/courses/course-details/subjects/'
-    | '/un/$channel/$username/$category/'
-    | '/admission/payment/$instituteId/$applicantId/$paymentOptionId/'
-    | '/study-library/courses/course-details/subjects/modules/'
-    | '/study-library/courses/course-details/subjects/modules/chapters/'
-    | '/study-library/courses/course-details/subjects/modules/chapters/slides/'
+    | '/assessment/examination/$assessmentId'
+    | '/assessment/reports/ai-report'
+    | '/assessment/reports/comparison'
+    | '/assessment/reports/student-report'
+    | '/m/$mediaId/$phoneNumber'
+    | '/study-library/courses/course-details'
+    | '/study-library/live-class/$username'
+    | '/study-library/live-class/embed'
+    | '/study-library/live-class/feedback'
+    | '/study-library/live-class/waiting-room'
+    | '/study-library/courses/course-details/subjects'
+    | '/un/$channel/$username/$category'
+    | '/admission/payment/$instituteId/$applicantId/$paymentOptionId'
+    | '/study-library/courses/course-details/subjects/modules'
+    | '/study-library/courses/course-details/subjects/modules/chapters'
+    | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$tagName/$pageSlug'
@@ -1093,203 +1093,203 @@ declare module '@tanstack/react-router' {
     '/user-profile/': {
       id: '/user-profile/'
       path: '/user-profile'
-      fullPath: '/user-profile/'
+      fullPath: '/user-profile'
       preLoaderRoute: typeof UserProfileIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms-and-conditions/': {
       id: '/terms-and-conditions/'
       path: '/terms-and-conditions'
-      fullPath: '/terms-and-conditions/'
+      fullPath: '/terms-and-conditions'
       preLoaderRoute: typeof TermsAndConditionsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sub-org-learners/': {
       id: '/sub-org-learners/'
       path: '/sub-org-learners'
-      fullPath: '/sub-org-learners/'
+      fullPath: '/sub-org-learners'
       preLoaderRoute: typeof SubOrgLearnersIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/': {
       id: '/study-library/'
       path: '/study-library'
-      fullPath: '/study-library/'
+      fullPath: '/study-library'
       preLoaderRoute: typeof StudyLibraryIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup/': {
       id: '/signup/'
       path: '/signup'
-      fullPath: '/signup/'
+      fullPath: '/signup'
       preLoaderRoute: typeof SignupIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/session-terminated/': {
       id: '/session-terminated/'
       path: '/session-terminated'
-      fullPath: '/session-terminated/'
+      fullPath: '/session-terminated'
       preLoaderRoute: typeof SessionTerminatedIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register/': {
       id: '/register/'
       path: '/register'
-      fullPath: '/register/'
+      fullPath: '/register'
       preLoaderRoute: typeof RegisterIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/referral/': {
       id: '/referral/'
       path: '/referral'
-      fullPath: '/referral/'
+      fullPath: '/referral'
       preLoaderRoute: typeof ReferralIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy-policy/': {
       id: '/privacy-policy/'
       path: '/privacy-policy'
-      fullPath: '/privacy-policy/'
+      fullPath: '/privacy-policy'
       preLoaderRoute: typeof PrivacyPolicyIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/planning/': {
       id: '/planning/'
       path: '/planning'
-      fullPath: '/planning/'
+      fullPath: '/planning'
       preLoaderRoute: typeof PlanningIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/payment-result/': {
       id: '/payment-result/'
       path: '/payment-result'
-      fullPath: '/payment-result/'
+      fullPath: '/payment-result'
       preLoaderRoute: typeof PaymentResultIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parent/': {
       id: '/parent/'
       path: '/parent'
-      fullPath: '/parent/'
+      fullPath: '/parent'
       preLoaderRoute: typeof ParentIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/my-reports/': {
       id: '/my-reports/'
       path: '/my-reports'
-      fullPath: '/my-reports/'
+      fullPath: '/my-reports'
       preLoaderRoute: typeof MyReportsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/my-files/': {
       id: '/my-files/'
       path: '/my-files'
-      fullPath: '/my-files/'
+      fullPath: '/my-files'
       preLoaderRoute: typeof MyFilesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logout/': {
       id: '/logout/'
       path: '/logout'
-      fullPath: '/logout/'
+      fullPath: '/logout'
       preLoaderRoute: typeof LogoutIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login/': {
       id: '/login/'
       path: '/login'
-      fullPath: '/login/'
+      fullPath: '/login'
       preLoaderRoute: typeof LoginIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/live-class-guest/': {
       id: '/live-class-guest/'
       path: '/live-class-guest'
-      fullPath: '/live-class-guest/'
+      fullPath: '/live-class-guest'
       preLoaderRoute: typeof LiveClassGuestIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/learner-invitation-response/': {
       id: '/learner-invitation-response/'
       path: '/learner-invitation-response'
-      fullPath: '/learner-invitation-response/'
+      fullPath: '/learner-invitation-response'
       preLoaderRoute: typeof LearnerInvitationResponseIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/institute-selection/': {
       id: '/institute-selection/'
       path: '/institute-selection'
-      fullPath: '/institute-selection/'
+      fullPath: '/institute-selection'
       preLoaderRoute: typeof InstituteSelectionIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/enquiry-response/': {
       id: '/enquiry-response/'
       path: '/enquiry-response'
-      fullPath: '/enquiry-response/'
+      fullPath: '/enquiry-response'
       preLoaderRoute: typeof EnquiryResponseIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/delete-user/': {
       id: '/delete-user/'
       path: '/delete-user'
-      fullPath: '/delete-user/'
+      fullPath: '/delete-user'
       preLoaderRoute: typeof DeleteUserIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/': {
       id: '/dashboard/'
       path: '/dashboard'
-      fullPath: '/dashboard/'
+      fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/courses/': {
       id: '/courses/'
       path: '/courses'
-      fullPath: '/courses/'
+      fullPath: '/courses'
       preLoaderRoute: typeof CoursesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/change-password/': {
       id: '/change-password/'
       path: '/change-password'
-      fullPath: '/change-password/'
+      fullPath: '/change-password'
       preLoaderRoute: typeof ChangePasswordIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth-transfer/': {
       id: '/auth-transfer/'
       path: '/auth-transfer'
-      fullPath: '/auth-transfer/'
+      fullPath: '/auth-transfer'
       preLoaderRoute: typeof AuthTransferIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/audience-response/': {
       id: '/audience-response/'
       path: '/audience-response'
-      fullPath: '/audience-response/'
+      fullPath: '/audience-response'
       preLoaderRoute: typeof AudienceResponseIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assessment/': {
       id: '/assessment/'
       path: '/assessment'
-      fullPath: '/assessment/'
+      fullPath: '/assessment'
       preLoaderRoute: typeof AssessmentIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ai-settings/': {
       id: '/ai-settings/'
       path: '/ai-settings'
-      fullPath: '/ai-settings/'
+      fullPath: '/ai-settings'
       preLoaderRoute: typeof AiSettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$tagName/': {
       id: '/$tagName/'
       path: '/$tagName'
-      fullPath: '/$tagName/'
+      fullPath: '/$tagName'
       preLoaderRoute: typeof TagNameIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -1317,63 +1317,63 @@ declare module '@tanstack/react-router' {
     '/user-profile/edit/': {
       id: '/user-profile/edit/'
       path: '/user-profile/edit'
-      fullPath: '/user-profile/edit/'
+      fullPath: '/user-profile/edit'
       preLoaderRoute: typeof UserProfileEditIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/live-class/': {
       id: '/study-library/live-class/'
       path: '/study-library/live-class'
-      fullPath: '/study-library/live-class/'
+      fullPath: '/study-library/live-class'
       preLoaderRoute: typeof StudyLibraryLiveClassIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/courses/': {
       id: '/study-library/courses/'
       path: '/study-library/courses'
-      fullPath: '/study-library/courses/'
+      fullPath: '/study-library/courses'
       preLoaderRoute: typeof StudyLibraryCoursesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register/live-class/': {
       id: '/register/live-class/'
       path: '/register/live-class'
-      fullPath: '/register/live-class/'
+      fullPath: '/register/live-class'
       preLoaderRoute: typeof RegisterLiveClassIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/planning/planning-logs/': {
       id: '/planning/planning-logs/'
       path: '/planning/planning-logs'
-      fullPath: '/planning/planning-logs/'
+      fullPath: '/planning/planning-logs'
       preLoaderRoute: typeof PlanningPlanningLogsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/planning/activity-logs/': {
       id: '/planning/activity-logs/'
       path: '/planning/activity-logs'
-      fullPath: '/planning/activity-logs/'
+      fullPath: '/planning/activity-logs'
       preLoaderRoute: typeof PlanningActivityLogsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parent/tracker/': {
       id: '/parent/tracker/'
       path: '/parent/tracker'
-      fullPath: '/parent/tracker/'
+      fullPath: '/parent/tracker'
       preLoaderRoute: typeof ParentTrackerIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parent/schedule/': {
       id: '/parent/schedule/'
       path: '/parent/schedule'
-      fullPath: '/parent/schedule/'
+      fullPath: '/parent/schedule'
       preLoaderRoute: typeof ParentScheduleIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parent/payment/': {
       id: '/parent/payment/'
       path: '/parent/payment'
-      fullPath: '/parent/payment/'
+      fullPath: '/parent/payment'
       preLoaderRoute: typeof ParentPaymentIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -1387,119 +1387,119 @@ declare module '@tanstack/react-router' {
     '/parent/dashboard/': {
       id: '/parent/dashboard/'
       path: '/parent/dashboard'
-      fullPath: '/parent/dashboard/'
+      fullPath: '/parent/dashboard'
       preLoaderRoute: typeof ParentDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parent/application/': {
       id: '/parent/application/'
       path: '/parent/application'
-      fullPath: '/parent/application/'
+      fullPath: '/parent/application'
       preLoaderRoute: typeof ParentApplicationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parent/admission/': {
       id: '/parent/admission/'
       path: '/parent/admission'
-      fullPath: '/parent/admission/'
+      fullPath: '/parent/admission'
       preLoaderRoute: typeof ParentAdmissionIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/my-reports/$processId/': {
       id: '/my-reports/$processId/'
       path: '/my-reports/$processId'
-      fullPath: '/my-reports/$processId/'
+      fullPath: '/my-reports/$processId'
       preLoaderRoute: typeof MyReportsProcessIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/my-files/$folderName/': {
       id: '/my-files/$folderName/'
       path: '/my-files/$folderName'
-      fullPath: '/my-files/$folderName/'
+      fullPath: '/my-files/$folderName'
       preLoaderRoute: typeof MyFilesFolderNameIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login/forgot-password/': {
       id: '/login/forgot-password/'
       path: '/login/forgot-password'
-      fullPath: '/login/forgot-password/'
+      fullPath: '/login/forgot-password'
       preLoaderRoute: typeof LoginForgotPasswordIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/live-class-guest/waiting-room/': {
       id: '/live-class-guest/waiting-room/'
       path: '/live-class-guest/waiting-room'
-      fullPath: '/live-class-guest/waiting-room/'
+      fullPath: '/live-class-guest/waiting-room'
       preLoaderRoute: typeof LiveClassGuestWaitingRoomIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/live-class-guest/embed/': {
       id: '/live-class-guest/embed/'
       path: '/live-class-guest/embed'
-      fullPath: '/live-class-guest/embed/'
+      fullPath: '/live-class-guest/embed'
       preLoaderRoute: typeof LiveClassGuestEmbedIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/learning-centre/attendance/': {
       id: '/learning-centre/attendance/'
       path: '/learning-centre/attendance'
-      fullPath: '/learning-centre/attendance/'
+      fullPath: '/learning-centre/attendance'
       preLoaderRoute: typeof LearningCentreAttendanceIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/homework/reports/': {
       id: '/homework/reports/'
       path: '/homework/reports'
-      fullPath: '/homework/reports/'
+      fullPath: '/homework/reports'
       preLoaderRoute: typeof HomeworkReportsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/homework/list/': {
       id: '/homework/list/'
       path: '/homework/list'
-      fullPath: '/homework/list/'
+      fullPath: '/homework/list'
       preLoaderRoute: typeof HomeworkListIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/notifications/': {
       id: '/dashboard/notifications/'
       path: '/dashboard/notifications'
-      fullPath: '/dashboard/notifications/'
+      fullPath: '/dashboard/notifications'
       preLoaderRoute: typeof DashboardNotificationsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/courses/course-details/': {
       id: '/courses/course-details/'
       path: '/courses/course-details'
-      fullPath: '/courses/course-details/'
+      fullPath: '/courses/course-details'
       preLoaderRoute: typeof CoursesCourseDetailsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assessment/reports/': {
       id: '/assessment/reports/'
       path: '/assessment/reports'
-      fullPath: '/assessment/reports/'
+      fullPath: '/assessment/reports'
       preLoaderRoute: typeof AssessmentReportsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assessment/list/': {
       id: '/assessment/list/'
       path: '/assessment/list'
-      fullPath: '/assessment/list/'
+      fullPath: '/assessment/list'
       preLoaderRoute: typeof AssessmentListIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assessment/examination/': {
       id: '/assessment/examination/'
       path: '/assessment/examination'
-      fullPath: '/assessment/examination/'
+      fullPath: '/assessment/examination'
       preLoaderRoute: typeof AssessmentExaminationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$tagName/$courseId/': {
       id: '/$tagName/$courseId/'
       path: '/$tagName/$courseId'
-      fullPath: '/$tagName/$courseId/'
+      fullPath: '/$tagName/$courseId'
       preLoaderRoute: typeof TagNameCourseIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -1520,70 +1520,70 @@ declare module '@tanstack/react-router' {
     '/study-library/live-class/waiting-room/': {
       id: '/study-library/live-class/waiting-room/'
       path: '/study-library/live-class/waiting-room'
-      fullPath: '/study-library/live-class/waiting-room/'
+      fullPath: '/study-library/live-class/waiting-room'
       preLoaderRoute: typeof StudyLibraryLiveClassWaitingRoomIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/live-class/feedback/': {
       id: '/study-library/live-class/feedback/'
       path: '/study-library/live-class/feedback'
-      fullPath: '/study-library/live-class/feedback/'
+      fullPath: '/study-library/live-class/feedback'
       preLoaderRoute: typeof StudyLibraryLiveClassFeedbackIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/live-class/embed/': {
       id: '/study-library/live-class/embed/'
       path: '/study-library/live-class/embed'
-      fullPath: '/study-library/live-class/embed/'
+      fullPath: '/study-library/live-class/embed'
       preLoaderRoute: typeof StudyLibraryLiveClassEmbedIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/live-class/$username/': {
       id: '/study-library/live-class/$username/'
       path: '/study-library/live-class/$username'
-      fullPath: '/study-library/live-class/$username/'
+      fullPath: '/study-library/live-class/$username'
       preLoaderRoute: typeof StudyLibraryLiveClassUsernameIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/courses/course-details/': {
       id: '/study-library/courses/course-details/'
       path: '/study-library/courses/course-details'
-      fullPath: '/study-library/courses/course-details/'
+      fullPath: '/study-library/courses/course-details'
       preLoaderRoute: typeof StudyLibraryCoursesCourseDetailsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/m/$mediaId/$phoneNumber/': {
       id: '/m/$mediaId/$phoneNumber/'
       path: '/m/$mediaId/$phoneNumber'
-      fullPath: '/m/$mediaId/$phoneNumber/'
+      fullPath: '/m/$mediaId/$phoneNumber'
       preLoaderRoute: typeof MMediaIdPhoneNumberIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assessment/reports/student-report/': {
       id: '/assessment/reports/student-report/'
       path: '/assessment/reports/student-report'
-      fullPath: '/assessment/reports/student-report/'
+      fullPath: '/assessment/reports/student-report'
       preLoaderRoute: typeof AssessmentReportsStudentReportIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assessment/reports/comparison/': {
       id: '/assessment/reports/comparison/'
       path: '/assessment/reports/comparison'
-      fullPath: '/assessment/reports/comparison/'
+      fullPath: '/assessment/reports/comparison'
       preLoaderRoute: typeof AssessmentReportsComparisonIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assessment/reports/ai-report/': {
       id: '/assessment/reports/ai-report/'
       path: '/assessment/reports/ai-report'
-      fullPath: '/assessment/reports/ai-report/'
+      fullPath: '/assessment/reports/ai-report'
       preLoaderRoute: typeof AssessmentReportsAiReportIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assessment/examination/$assessmentId/': {
       id: '/assessment/examination/$assessmentId/'
       path: '/assessment/examination/$assessmentId'
-      fullPath: '/assessment/examination/$assessmentId/'
+      fullPath: '/assessment/examination/$assessmentId'
       preLoaderRoute: typeof AssessmentExaminationAssessmentIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -1604,42 +1604,42 @@ declare module '@tanstack/react-router' {
     '/un/$channel/$username/$category/': {
       id: '/un/$channel/$username/$category/'
       path: '/un/$channel/$username/$category'
-      fullPath: '/un/$channel/$username/$category/'
+      fullPath: '/un/$channel/$username/$category'
       preLoaderRoute: typeof UnChannelUsernameCategoryIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/courses/course-details/subjects/': {
       id: '/study-library/courses/course-details/subjects/'
       path: '/study-library/courses/course-details/subjects'
-      fullPath: '/study-library/courses/course-details/subjects/'
+      fullPath: '/study-library/courses/course-details/subjects'
       preLoaderRoute: typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/courses/course-details/subjects/modules/': {
       id: '/study-library/courses/course-details/subjects/modules/'
       path: '/study-library/courses/course-details/subjects/modules'
-      fullPath: '/study-library/courses/course-details/subjects/modules/'
+      fullPath: '/study-library/courses/course-details/subjects/modules'
       preLoaderRoute: typeof StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admission/payment/$instituteId/$applicantId/$paymentOptionId/': {
       id: '/admission/payment/$instituteId/$applicantId/$paymentOptionId/'
       path: '/admission/payment/$instituteId/$applicantId/$paymentOptionId'
-      fullPath: '/admission/payment/$instituteId/$applicantId/$paymentOptionId/'
+      fullPath: '/admission/payment/$instituteId/$applicantId/$paymentOptionId'
       preLoaderRoute: typeof AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/courses/course-details/subjects/modules/chapters/': {
       id: '/study-library/courses/course-details/subjects/modules/chapters/'
       path: '/study-library/courses/course-details/subjects/modules/chapters'
-      fullPath: '/study-library/courses/course-details/subjects/modules/chapters/'
+      fullPath: '/study-library/courses/course-details/subjects/modules/chapters'
       preLoaderRoute: typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/courses/course-details/subjects/modules/chapters/slides/': {
       id: '/study-library/courses/course-details/subjects/modules/chapters/slides/'
       path: '/study-library/courses/course-details/subjects/modules/chapters/slides'
-      fullPath: '/study-library/courses/course-details/subjects/modules/chapters/slides/'
+      fullPath: '/study-library/courses/course-details/subjects/modules/chapters/slides'
       preLoaderRoute: typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }

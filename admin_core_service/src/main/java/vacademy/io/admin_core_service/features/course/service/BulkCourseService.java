@@ -385,13 +385,13 @@ public class BulkCourseService {
 
         // Create new payment option based on type
         String paymentType = config.getPaymentType();
-        if (!StringUtils.hasText(paymentType)) {
-            // No type specified, use institute default
+        if (!StringUtils.hasText(paymentType) || vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType.FREE.name().equalsIgnoreCase(paymentType)) {
+            // No type specified or FREE, use institute default
             return paymentOptionService.getPaymentOption(
                     PaymentOptionSource.INSTITUTE.name(),
                     instituteId,
                     PaymentOptionTag.DEFAULT.name(),
-                    List.of(StatusEnum.ACTIVE.name())).orElse(null);
+                    List.of(StatusEnum.ACTIVE.name())).orElseThrow(() -> new vacademy.io.common.exceptions.VacademyException("Institute does not have a default payment option configured."));
         }
 
         return createPaymentOption(config, instituteId, courseName);

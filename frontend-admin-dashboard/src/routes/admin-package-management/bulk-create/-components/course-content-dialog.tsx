@@ -19,6 +19,8 @@ import { TokenKey } from '@/constants/auth/tokens';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { ImageSquare, PencilSimpleLine, Trash, Image, TextT } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface CourseContentData {
     why_learn_html?: string | null;
@@ -247,7 +249,7 @@ export function CourseContentDialog({
             <Dialog open={open} onOpenChange={onOpenChange}>
                 <DialogContent className="max-h-[90vh] sm:max-w-4xl">
                     <DialogHeader>
-                        <DialogTitle>Course Content & Media</DialogTitle>
+                        <DialogTitle>{getTerminology(ContentTerms.Course, SystemTerms.Course)} Content & Media</DialogTitle>
                         <DialogDescription>
                             Add content and media for &quot;{courseName}&quot;
                         </DialogDescription>
@@ -270,10 +272,10 @@ export function CourseContentDialog({
                                 {/* Why Learn */}
                                 <div className="space-y-2">
                                     <Label className="text-sm font-medium">
-                                        Why Learn This Course?
+                                        Why Learn This {getTerminology(ContentTerms.Course, SystemTerms.Course)}?
                                     </Label>
                                     <p className="text-xs text-neutral-500">
-                                        Explain the benefits and value of taking this course
+                                        Explain the benefits and value of taking this {getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()}
                                     </p>
                                     <RichTextEditor
                                         value={formData.why_learn_html || ''}
@@ -284,15 +286,15 @@ export function CourseContentDialog({
                                             }))
                                         }
                                         minHeight={100}
-                                        placeholder="Enter reasons why learners should take this course..."
+                                        placeholder={`Enter reasons why ${getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLowerCase()} should take this ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()}...`}
                                     />
                                 </div>
 
                                 {/* Who Should Learn */}
                                 <div className="space-y-2">
-                                    <Label className="text-sm font-medium">Target Audience</Label>
+                                    <Label className="text-sm font-medium">Target {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}</Label>
                                     <p className="text-xs text-neutral-500">
-                                        Describe who this course is designed for
+                                        Describe who this {getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()} is designed for
                                     </p>
                                     <RichTextEditor
                                         value={formData.who_should_learn_html || ''}
@@ -303,15 +305,15 @@ export function CourseContentDialog({
                                             }))
                                         }
                                         minHeight={100}
-                                        placeholder="Describe the ideal learner for this course..."
+                                        placeholder={`Describe the ideal ${getTerminology(RoleTerms.Learner, SystemTerms.Learner).toLowerCase()} for this ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()}...`}
                                     />
                                 </div>
 
                                 {/* About the Course */}
                                 <div className="space-y-2">
-                                    <Label className="text-sm font-medium">About the Course</Label>
+                                    <Label className="text-sm font-medium">About the {getTerminology(ContentTerms.Course, SystemTerms.Course)}</Label>
                                     <p className="text-xs text-neutral-500">
-                                        Provide a detailed overview of the course content
+                                        Provide a detailed overview of the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()} content
                                     </p>
                                     <RichTextEditor
                                         value={formData.about_the_course_html || ''}
@@ -322,17 +324,17 @@ export function CourseContentDialog({
                                             }))
                                         }
                                         minHeight={120}
-                                        placeholder="Provide a detailed description of the course..."
+                                        placeholder={`Provide a detailed description of the ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()}...`}
                                     />
                                 </div>
 
                                 {/* Course Description */}
                                 <div className="space-y-2">
                                     <Label className="text-sm font-medium">
-                                        Course Description (HTML)
+                                        {getTerminology(ContentTerms.Course, SystemTerms.Course)} Description (HTML)
                                     </Label>
                                     <p className="text-xs text-neutral-500">
-                                        Additional description content for the course page
+                                        Additional description content for the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()} page
                                     </p>
                                     <RichTextEditor
                                         value={formData.course_html_description || ''}
@@ -343,7 +345,7 @@ export function CourseContentDialog({
                                             }))
                                         }
                                         minHeight={100}
-                                        placeholder="Additional course description..."
+                                        placeholder={`Additional ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()} description...`}
                                     />
                                 </div>
                             </TabsContent>
@@ -353,7 +355,7 @@ export function CourseContentDialog({
                                     {/* Thumbnail */}
                                     <MediaUploadCard
                                         title="Thumbnail"
-                                        description="Course card thumbnail (1:1 ratio)"
+                                        description={`${getTerminology(ContentTerms.Course, SystemTerms.Course)} card thumbnail (1:1 ratio)`}
                                         previewUrl={mediaPreview.thumbnail}
                                         isUploading={uploadingStates.thumbnail}
                                         aspectHint="1:1"
@@ -368,7 +370,7 @@ export function CourseContentDialog({
                                     {/* Preview Image */}
                                     <MediaUploadCard
                                         title="Preview Image"
-                                        description="Course preview thumbnail (2:1 ratio)"
+                                        description={`${getTerminology(ContentTerms.Course, SystemTerms.Course)} preview thumbnail (2:1 ratio)`}
                                         previewUrl={mediaPreview.preview}
                                         isUploading={uploadingStates.preview}
                                         aspectHint="2:1"
@@ -383,7 +385,7 @@ export function CourseContentDialog({
                                     {/* Banner Image */}
                                     <MediaUploadCard
                                         title="Banner Image"
-                                        description="Course page banner (2.64:1 ratio)"
+                                        description={`${getTerminology(ContentTerms.Course, SystemTerms.Course)} page banner (2.64:1 ratio)`}
                                         previewUrl={mediaPreview.banner}
                                         isUploading={uploadingStates.banner}
                                         aspectHint="2.64:1"
@@ -397,7 +399,7 @@ export function CourseContentDialog({
 
                                     {/* Course Media */}
                                     <MediaUploadCard
-                                        title="Course Media"
+                                        title={`${getTerminology(ContentTerms.Course, SystemTerms.Course)} Media`}
                                         description="Featured media (image/video, 16:9)"
                                         previewUrl={mediaPreview.media}
                                         isUploading={uploadingStates.media}
@@ -420,7 +422,7 @@ export function CourseContentDialog({
                             Cancel
                         </Button>
                         <Button onClick={handleSave} disabled={isUploading}>
-                            {isUploading ? 'Uploading...' : 'Save Content'}
+                            {isUploading ? 'Uploading...' : `Save ${getTerminology(ContentTerms.Course, SystemTerms.Course)} Content`}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

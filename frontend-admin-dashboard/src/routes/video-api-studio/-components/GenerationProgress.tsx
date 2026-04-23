@@ -15,6 +15,8 @@ import {
     Check,
     Clock,
     Volume2,
+    Zap,
+    AlertTriangle,
 } from 'lucide-react';
 
 interface GenerationProgressProps {
@@ -25,6 +27,15 @@ interface GenerationProgressProps {
     scriptUrl?: string;
     audioUrl?: string;
     wordsUrl?: string;
+    shotsCompleted?: number;
+    shotsTotal?: number;
+    cumulativeTokens?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+        estimated_cost_usd?: number | null;
+    };
+    recentErrors?: Array<{ shot_index: number; shot_type?: string; error: string; retrying: boolean }>;
 }
 
 const STAGES: {
@@ -276,6 +287,84 @@ function StagePanel({
     );
 }
 
+// ── Shot progress panel (shown during HTML stage) ─────────────────────────────
+function ShotProgress({
+    shotsCompleted,
+    shotsTotal,
+    cumulativeTokens,
+    recentErrors,
+}: {
+    shotsCompleted?: number;
+    shotsTotal?: number;
+    cumulativeTokens?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; estimated_cost_usd?: number | null };
+    recentErrors?: Array<{ shot_index: number; shot_type?: string; error: string; retrying: boolean }>;
+}) {
+    const [errorsOpen, setErrorsOpen] = useState(false);
+    const shotPct = shotsTotal && shotsCompleted != null ? Math.round((shotsCompleted / shotsTotal) * 100) : 0;
+    const hasErrors = (recentErrors?.length ?? 0) > 0;
+
+    return (
+        <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+            {/* Shot progress */}
+            {shotsTotal != null && (
+                <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium text-blue-700">
+                            {shotsCompleted != null ? `Shot ${shotsCompleted} / ${shotsTotal}` : `Planning ${shotsTotal} shots…`}
+                        </span>
+                        <span className="tabular-nums text-blue-500">{shotPct}%</span>
+                    </div>
+                    <Progress value={shotPct} className="h-1" />
+                </div>
+            )}
+
+            {/* Token / cost strip */}
+            {cumulativeTokens && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                        <Zap className="size-3 text-amber-500" />
+                        {cumulativeTokens.total_tokens.toLocaleString()} tokens
+                    </span>
+                    {cumulativeTokens.estimated_cost_usd != null && (
+                        <span className="font-mono text-[11px]">
+                            ≈ ${cumulativeTokens.estimated_cost_usd.toFixed(3)} USD
+                        </span>
+                    )}
+                    <span className="text-muted-foreground/60">
+                        {cumulativeTokens.prompt_tokens.toLocaleString()} in / {cumulativeTokens.completion_tokens.toLocaleString()} out
+                    </span>
+                </div>
+            )}
+
+            {/* Recent errors */}
+            {hasErrors && (
+                <div>
+                    <button
+                        onClick={() => setErrorsOpen((o) => !o)}
+                        className="flex items-center gap-1.5 text-[11px] text-amber-600 hover:text-amber-700"
+                    >
+                        <AlertTriangle className="size-3" />
+                        {recentErrors!.length} shot {recentErrors!.length === 1 ? 'issue' : 'issues'}
+                        {errorsOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                    </button>
+                    {errorsOpen && (
+                        <ul className="mt-1.5 space-y-1">
+                            {recentErrors!.map((e, i) => (
+                                <li key={i} className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                                    <span className="font-medium">Shot {e.shot_index + 1}</span>
+                                    {e.shot_type && <span className="ml-1 text-amber-600">({e.shot_type})</span>}
+                                    {e.retrying && <span className="ml-1 text-blue-500">retrying…</span>}
+                                    <span className="ml-1 text-amber-700">— {e.error.slice(0, 120)}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export function GenerationProgress({
     currentStage,
@@ -285,15 +374,19 @@ export function GenerationProgress({
     scriptUrl,
     audioUrl,
     wordsUrl,
+    shotsCompleted,
+    shotsTotal,
+    cumulativeTokens,
+    recentErrors,
 }: GenerationProgressProps) {
     const currentIndex = getStageIndex(currentStage);
     const contentLabel = getContentTypeLabel(contentType);
 
-    // Auto-expand the most recently completed stage's panel
-    // (tracked by whichever URL just appeared)
     const scriptReady = !!scriptUrl;
     const audioReady = !!audioUrl;
     const wordsReady = !!wordsUrl;
+    const showShotProgress =
+        currentStage === 'HTML' && (shotsTotal != null || cumulativeTokens != null);
 
     return (
         <div className="w-full space-y-5">
@@ -371,6 +464,16 @@ export function GenerationProgress({
                 <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-center text-xs text-blue-700">
                     {message}
                 </div>
+            )}
+
+            {/* ── Shot progress + token usage (HTML phase only) ── */}
+            {showShotProgress && (
+                <ShotProgress
+                    shotsCompleted={shotsCompleted}
+                    shotsTotal={shotsTotal}
+                    cumulativeTokens={cumulativeTokens}
+                    recentErrors={recentErrors}
+                />
             )}
 
             {/* ── Stage result panels (appear progressively as each stage finishes) ── */}

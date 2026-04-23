@@ -26,6 +26,7 @@ import {
     retryVideo,
     fetchScriptText,
     getVideoUrls,
+    getVideoStatus,
     getRemoteHistory,
     DEFAULT_OPTIONS,
 } from '../-services/video-generation';
@@ -78,6 +79,15 @@ interface CurrentGeneration {
     scriptUrl?: string;
     options: Omit<GenerateVideoRequest, 'prompt'>;
     tokenUsage?: TokenUsage | null;
+    shotsCompleted?: number;
+    shotsTotal?: number;
+    cumulativeTokens?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+        estimated_cost_usd?: number | null;
+    };
+    recentErrors?: Array<{ shot_index: number; shot_type?: string; error: string; retrying: boolean }>;
 }
 
 /** Persisted across page navigations so polling can resume after SSE disconnect */
@@ -95,6 +105,8 @@ interface PendingGeneration {
     prompt: string;
     contentType: ContentType;
     options: Omit<GenerateVideoRequest, 'prompt'>;
+    /** The target_stage at generation time — so polling knows if SCRIPT completion is expected */
+    targetStage?: VideoStage;
 }
 
 function VideoConsole() {
@@ -284,7 +296,11 @@ function VideoConsole() {
                 }
 
                 try {
-                    const urls = await getVideoUrls(pending.videoId, apiKey);
+                    const [urls, statusResp] = await Promise.all([
+                        getVideoUrls(pending.videoId, apiKey),
+                        getVideoStatus(pending.videoId, apiKey).catch(() => null),
+                    ]);
+                    const genProg = statusResp?.generation_progress ?? null;
 
                     if (urls.html_url && (urls.audio_url || !needsAudio(pending.contentType))) {
                         // Success — content is ready
@@ -307,7 +323,6 @@ function VideoConsole() {
                         setConsoleState('complete');
                         toast.success('Content is ready!');
                     } else if (urls.status === 'FAILED') {
-                        // Backend marked the job as failed
                         if (pollingRef.current) clearInterval(pollingRef.current);
                         pollingRef.current = null;
                         localStorage.removeItem(PENDING_GENERATION_KEY);
@@ -318,7 +333,6 @@ function VideoConsole() {
                             `Generation failed at "${friendlyStage(urls.current_stage)}" step. Please try again.`
                         );
                     } else if (urls.status === 'STALLED') {
-                        // Backend detected the job has not progressed in >15 min
                         if (pollingRef.current) clearInterval(pollingRef.current);
                         pollingRef.current = null;
                         localStorage.removeItem(PENDING_GENERATION_KEY);
@@ -329,28 +343,52 @@ function VideoConsole() {
                             `Generation appears stuck at "${friendlyStage(urls.current_stage)}" step. Please try again.`
                         );
                     } else if (urls.status === 'COMPLETED' && !urls.html_url) {
-                        // Completed but missing HTML — show what stage it actually reached
+                        // COMPLETED without html_url — only treat as an error if we expected HTML.
+                        // When targetStage was SCRIPT (review mode), this is normal — don't alarm the user.
                         if (pollingRef.current) clearInterval(pollingRef.current);
                         pollingRef.current = null;
                         localStorage.removeItem(PENDING_GENERATION_KEY);
                         setConsoleState('idle');
                         setCurrentGeneration(null);
-                        toast.error(
-                            urls.error_message ||
-                            `Generation stopped at "${friendlyStage(urls.current_stage)}" step without producing visual content. Please try again.`
-                        );
+                        if (pending.targetStage === 'SCRIPT' || urls.current_stage === 'SCRIPT') {
+                            toast.info('Script is ready. Open from History to review and continue.');
+                        } else {
+                            toast.error(
+                                urls.error_message ||
+                                `Generation stopped at "${friendlyStage(urls.current_stage)}" step without producing visual content. Please try again.`
+                            );
+                        }
                     } else {
-                        // Still IN_PROGRESS — update stage progress so UI shows real stages
+                        // Still IN_PROGRESS — update stage + sub-stage progress from DB
+                        const subStageMsg = genProg
+                            ? (genProg.shots_completed != null && genProg.shots_total
+                                ? `Generating visuals… shot ${genProg.shots_completed} / ${genProg.shots_total}`
+                                : genProg.sub_stage
+                                    ? genProg.sub_stage.replace(/_/g, ' ')
+                                    : `${friendlyStage(urls.current_stage)}…`)
+                            : `${friendlyStage(urls.current_stage)}…`;
+
                         setCurrentGeneration((prev) =>
                             prev
                                 ? {
                                       ...prev,
                                       stage: (urls.current_stage as VideoStage) || prev.stage,
                                       percentage: stageToPercentage(urls.current_stage),
-                                      message: `${friendlyStage(urls.current_stage)}...`,
+                                      message: subStageMsg,
                                       htmlUrl: urls.html_url ?? prev.htmlUrl,
                                       audioUrl: urls.audio_url ?? prev.audioUrl,
                                       wordsUrl: urls.words_url ?? prev.wordsUrl,
+                                      shotsCompleted: genProg?.shots_completed ?? prev.shotsCompleted,
+                                      shotsTotal: genProg?.shots_total ?? prev.shotsTotal,
+                                      cumulativeTokens: genProg?.cumulative_tokens ?? prev.cumulativeTokens,
+                                      recentErrors: genProg?.errors
+                                          ? genProg.errors.slice(-5).map((e) => ({
+                                                shot_index: e.shot_index,
+                                                shot_type: e.shot_type,
+                                                error: e.error,
+                                                retrying: e.retrying,
+                                            }))
+                                          : prev.recentErrors,
                                   }
                                 : null
                         );
@@ -603,6 +641,41 @@ function VideoConsole() {
                                 quality_tier: request.quality_tier,
                             },
                         });
+                    } else if (event.type === 'sub_stage') {
+                        if (event.message) {
+                            setCurrentGeneration((prev) => (prev ? { ...prev, message: event.message! } : null));
+                        }
+                    } else if (event.type === 'shot_done') {
+                        const shotMsg = event.total_shots
+                            ? `Generating visuals… shot ${event.shot_index + 1} / ${event.total_shots}`
+                            : (event.message || 'Generating visuals…');
+                        setCurrentGeneration((prev) =>
+                            prev
+                                ? {
+                                      ...prev,
+                                      message: shotMsg,
+                                      shotsCompleted: (event.shot_index ?? 0) + 1,
+                                      shotsTotal: event.total_shots ?? prev.shotsTotal,
+                                      cumulativeTokens: event.cumulative_tokens ?? prev.cumulativeTokens,
+                                  }
+                                : null
+                        );
+                    } else if (event.type === 'shot_error') {
+                        const errEntry = {
+                            shot_index: event.shot_index,
+                            shot_type: event.shot_type,
+                            error: event.error || '',
+                            retrying: event.retrying,
+                        };
+                        setCurrentGeneration((prev) => {
+                            if (!prev) return null;
+                            const existing = prev.recentErrors ?? [];
+                            return {
+                                ...prev,
+                                message: event.retrying && event.message ? event.message : prev.message,
+                                recentErrors: [...existing.slice(-4), errEntry],
+                            };
+                        });
                     } else if (event.type === 'error') {
                         // Check if error happened after HTML stage
                         const errorStage = event.stage;
@@ -697,6 +770,7 @@ function VideoConsole() {
                     prompt: request.prompt,
                     contentType,
                     options: pendingOptions,
+                    targetStage: finalRequest.target_stage || 'HTML',
                 } satisfies PendingGeneration)
             );
 
@@ -1254,6 +1328,10 @@ function VideoConsole() {
                                 scriptUrl={currentGeneration.scriptUrl}
                                 audioUrl={currentGeneration.audioUrl}
                                 wordsUrl={currentGeneration.wordsUrl}
+                                shotsCompleted={currentGeneration.shotsCompleted}
+                                shotsTotal={currentGeneration.shotsTotal}
+                                cumulativeTokens={currentGeneration.cumulativeTokens}
+                                recentErrors={currentGeneration.recentErrors}
                             />
                         </div>
                     )}

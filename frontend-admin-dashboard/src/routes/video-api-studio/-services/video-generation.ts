@@ -255,7 +255,61 @@ export interface ErrorEvent {
     video_id?: string;
 }
 
-export type SSEEvent = ProgressEvent | CompletedEvent | InfoEvent | ErrorEvent;
+/** Sub-stage progress event emitted during long phases (e.g. director_planning, shot_done) */
+export interface SubStageEvent {
+    type: 'sub_stage';
+    sub_stage: string;
+    message?: string;
+    video_id?: string;
+    /** Director shot count — only present when sub_stage === 'director_done' */
+    shot_count?: number;
+    /** Per-shot token cost — only present on script/html stage completion sub-stages */
+    token_delta?: { prompt_tokens: number; completion_tokens: number; estimated_cost_usd?: number | null };
+}
+
+/** Emitted after each shot's HTML is generated */
+export interface ShotDoneEvent {
+    type: 'shot_done';
+    shot_index: number;
+    total_shots: number;
+    shot_type?: string;
+    duration_s?: number;
+    start_time?: number;
+    end_time?: number;
+    model?: string;
+    message?: string;
+    video_id?: string;
+    token_delta?: { prompt_tokens: number; completion_tokens: number; estimated_cost_usd?: number | null };
+    cumulative_tokens?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+        estimated_cost_usd?: number | null;
+    };
+}
+
+/** Emitted when a shot fails (with retrying=true) or permanently fails (retrying=false) */
+export interface ShotErrorEvent {
+    type: 'shot_error';
+    shot_index: number;
+    total_shots?: number;
+    shot_type?: string;
+    error?: string;
+    retrying: boolean;
+    attempt?: number;
+    max_attempts?: number;
+    message?: string;
+    video_id?: string;
+}
+
+export type SSEEvent =
+    | ProgressEvent
+    | CompletedEvent
+    | InfoEvent
+    | ErrorEvent
+    | SubStageEvent
+    | ShotDoneEvent
+    | ShotErrorEvent;
 
 export interface TokenUsage {
     prompt_tokens: number;
@@ -284,6 +338,46 @@ export interface VideoUrls {
     token_usage?: TokenUsage | null;
 }
 
+export interface GenerationProgress {
+    sub_stage?: string;
+    shots_completed?: number;
+    shots_total?: number;
+    shot_plan?: Array<{
+        shot_index: number;
+        shot_type: string;
+        duration_s: number;
+        start_time: number;
+        end_time: number;
+        narration_excerpt?: string;
+    }>;
+    shots_history?: Array<{
+        shot_index: number;
+        shot_type: string;
+        duration_s: number;
+        start_time: number;
+        end_time: number;
+        model?: string;
+        token_delta?: { prompt_tokens: number; completion_tokens: number; estimated_cost_usd?: number | null };
+        cumulative_tokens?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; estimated_cost_usd?: number | null };
+    }>;
+    errors?: Array<{
+        shot_index: number;
+        shot_type?: string;
+        error: string;
+        retrying: boolean;
+        attempt?: number;
+        timestamp: string;
+    }>;
+    cumulative_tokens?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+        estimated_cost_usd?: number | null;
+    };
+    last_shot?: ShotDoneEvent;
+    last_event?: Record<string, unknown>;
+}
+
 export interface VideoStatusResponse {
     id: string;
     video_id: string;
@@ -295,6 +389,8 @@ export interface VideoStatusResponse {
         video?: string;
     };
     created_at: string;
+    /** Real-time sub-stage breakdown — populated while generation is in progress and after completion */
+    generation_progress?: GenerationProgress | null;
 }
 
 export interface HistoryItem {

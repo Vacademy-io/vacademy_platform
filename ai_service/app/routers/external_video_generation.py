@@ -912,7 +912,7 @@ async def request_video_render(
         repo = AiVideoRepository(session=db)
         video_record = repo.get_by_video_id(video_id)
         if video_record:
-            meta = video_record.metadata or {}
+            meta = dict(video_record.extra_metadata or {})
             meta["render_job_id"] = job_id
             repo.update_metadata(video_id, meta)
     except Exception as e:

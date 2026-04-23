@@ -284,11 +284,11 @@ class AiVideoRepository:
                 flag_modified(video, "file_ids")
             # Also clear render_job_id from metadata so the frontend doesn't
             # try to resume a stale render job after the URL is cleared.
-            if video.metadata and "render_job_id" in video.metadata:
-                new_meta = dict(video.metadata)
+            if video.extra_metadata and "render_job_id" in video.extra_metadata:
+                new_meta = dict(video.extra_metadata)
                 new_meta.pop("render_job_id", None)
-                video.metadata = new_meta
-                flag_modified(video, "metadata")
+                video.extra_metadata = new_meta
+                flag_modified(video, "extra_metadata")
             video.updated_at = datetime.utcnow()
             session.commit()
             session.refresh(video)

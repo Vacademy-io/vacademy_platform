@@ -158,7 +158,7 @@ const toBackendFieldType = (type?: string): string => {
 
 export const fetchCustomFields = (data: InviteForm): CustomFieldType[] => {
     const customFields: CustomFieldType[] =
-        data.custom_fields?.map((field) => ({
+        data.custom_fields?.map((field, index) => ({
             id: field._id || crypto.randomUUID(),
             field_name: field.name,
             field_type: toBackendFieldType(field.type),
@@ -167,6 +167,7 @@ export const fetchCustomFields = (data: InviteForm): CustomFieldType[] => {
             is_mandatory: field.isRequired,
             comma_separated_options: field.options?.map((option) => option.value).join(',') || '',
             status: field.status,
+            form_order: (field as any).order ?? index,
         })) || [];
     return customFields;
 };

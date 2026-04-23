@@ -257,6 +257,7 @@ public class EnrollInviteService {
         enrollInvite.setName(enrollInviteDTO.getName());
         enrollInvite.setVendorId(enrollInviteDTO.getVendorId());
         enrollInvite.setIsBundled(enrollInviteDTO.getIsBundled());
+        enrollInvite.setSettingJson(enrollInviteDTO.getSettingJson());
     }
 
     public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId,
@@ -265,7 +266,8 @@ public class EnrollInviteService {
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
         Page<EnrollInviteWithSessionsProjection> pageResult;
 
-        // Filter by faculty mapping: if user has EnrollInvite entries, scope to those only.
+        // Filter by faculty mapping: if user has EnrollInvite entries, scope to those
+        // only.
         // No entries = full access.
         List<String> allowedEnrollInviteIds = null;
         if (user != null) {

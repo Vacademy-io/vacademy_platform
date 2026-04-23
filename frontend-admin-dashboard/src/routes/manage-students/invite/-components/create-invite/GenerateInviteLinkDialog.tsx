@@ -33,6 +33,7 @@ import RestrictSameBatch from './-components/RestrictSameBatch';
 import CustomInviteFormCard from './-components/CustomInviteFormCard';
 import LearnerAccessDurationCard from './-components/LearnerAccessDurationCard';
 import CustomHTMLCard from './-components/CustomHTMLCard';
+import PostFormFillConfigurationCard from './-components/PostFormFillConfigurationCard';
 import { toast } from 'sonner';
 import { AxiosError } from 'axios';
 import { handleEnrollInvite, handleGetEnrollSingleInviteDetails } from './-services/enroll-invite';
@@ -73,9 +74,9 @@ const GenerateInviteLinkDialog = ({
         singlePackageSessionId && inviteLinkId
             ? handleGetEnrollSingleInviteDetails({ inviteId: inviteLinkId })
             : {
-                  queryKey: ['empty-invite-details'],
-                  queryFn: () => null,
-              }
+                queryKey: ['empty-invite-details'],
+                queryFn: () => null,
+            }
     );
     const { data: referralProgramDetails } = useSuspenseQuery(handleGetReferralProgramDetails());
     const { data: paymentsData } = useSuspenseQuery(handleGetPaymentDetails());
@@ -147,6 +148,11 @@ const GenerateInviteLinkDialog = ({
             textFieldValue: '',
             dropdownOptions: [],
             isDialogOpen: false,
+            postformfillConfiguration: {
+                redirectPath: '',
+                showLoginButton: true,
+                content: '',
+            },
         },
     });
 
@@ -260,8 +266,8 @@ const GenerateInviteLinkDialog = ({
                 });
                 toast.error(
                     error?.response?.data?.ex ||
-                        error?.response?.data?.message ||
-                        'Failed to save invite link',
+                    error?.response?.data?.message ||
+                    'Failed to save invite link',
                     {
                         className: 'error-toast',
                         duration: 3000,
@@ -717,9 +723,9 @@ const GenerateInviteLinkDialog = ({
                 })),
                 selectedPlan: selectedPaymentPlan
                     ? {
-                          ...selectedPaymentPlan,
-                          price: selectedPaymentPlan.price || '',
-                      }
+                        ...selectedPaymentPlan,
+                        price: selectedPaymentPlan.price || '',
+                    }
                     : undefined,
                 planReferralMappings: planReferralMappings,
                 discounts: [],
@@ -738,6 +744,11 @@ const GenerateInviteLinkDialog = ({
                 showRelatedCourses:
                     safeJsonParse(inviteLinkDetails?.web_page_meta_data_json, {})
                         ?.showRelatedCourses || false,
+                postformfillConfiguration: safeJsonParse(inviteLinkDetails?.setting_json, {})?.postformfillConfiguration || {
+                    redirectPath: '',
+                    showLoginButton: true,
+                    content: '',
+                },
             });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -851,6 +862,9 @@ const GenerateInviteLinkDialog = ({
 
                             {/* Custom HTML Card */}
                             <CustomHTMLCard form={form} />
+
+                            {/* Post Form Fill Configuration Card */}
+                            <PostFormFillConfigurationCard form={form} />
                         </form>
                     </Form>
                 </div>

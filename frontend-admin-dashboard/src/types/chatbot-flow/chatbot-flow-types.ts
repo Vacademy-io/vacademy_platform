@@ -164,7 +164,7 @@ export const NODE_TYPE_REGISTRY: NodeTypeInfo[] = [
         color: '#14b8a6',
         icon: '🤖',
         defaultConfig: {
-            modelId: 'google/gemini-2.0-flash-001',
+            modelId: 'google/gemini-2.5-flash',
             systemPrompt: '',
             maxTokens: 500,
             temperature: 0.7,

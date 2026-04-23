@@ -704,8 +704,8 @@ function AiResponseConfig({ config, onChange }: { config: Record<string, unknown
         <>
             <SectionLabel>AI Conversation</SectionLabel>
             <FieldLabel>Model</FieldLabel>
-            <select value={(config.modelId as string) || 'google/gemini-2.0-flash-001'} onChange={(e) => onChange('modelId', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded">
-                <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (fast)</option>
+            <select value={(config.modelId as string) || 'google/gemini-2.0-flash'} onChange={(e) => onChange('modelId', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded">
+                <option value="google/gemini-2.0-flash">Gemini 2.0 Flash (fast)</option>
                 <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
                 <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
                 <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>

@@ -32,7 +32,7 @@ public class ChatbotAiService {
                 UUID.randomUUID().toString(),
                 null,
                 request.getInstituteId(),
-                request.getModelId() != null ? request.getModelId() : "google/gemini-2.0-flash-001",
+                request.getModelId() != null ? request.getModelId() : "google/gemini-2.5-flash",
                 null
         );
 

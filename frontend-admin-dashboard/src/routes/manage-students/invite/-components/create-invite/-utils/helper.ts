@@ -239,10 +239,10 @@ export function ReTransformCustomFields(inviteDetails: IndividualInviteLinkDetai
 
         const options = config.coommaSepartedOptions
             ? config.coommaSepartedOptions.split(',').map((option: string, optIndex: number) => ({
-                  id: String(optIndex),
-                  value: option.trim(),
-                  disabled: true,
-              }))
+                id: String(optIndex),
+                value: option.trim(),
+                disabled: true,
+            }))
             : undefined;
 
         const cfKey = (field.custom_field.fieldKey || '').toLowerCase();
@@ -345,6 +345,10 @@ export function convertInviteData(
                 ? data.accessDurationDays
                 : null,
         web_page_meta_data_json: JSON.stringify(jsonMetaData),
+        setting_json: JSON.stringify({
+            ...(existingInviteDetails?.setting_json ? JSON.parse(existingInviteDetails.setting_json) : {}),
+            postformfillConfiguration: data.postformfillConfiguration || { showLoginButton: true },
+        }),
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
         institute_custom_fields: transformCustomFields(data.custom_fields, instituteId || ''),
@@ -899,7 +903,7 @@ export function convertRegistrationFormData(data: CustomFieldForConversion[]) {
         comma_separated_options:
             field.type === 'dropdown'
                 ? field.options?.map((opt: DropdownOptionForConversion) => opt.value).join(',') ||
-                  ''
+                ''
                 : '',
         created_at: now,
         field_key: field.key || (field.name ?? '').toLowerCase().replace(/\s+/g, '_'),

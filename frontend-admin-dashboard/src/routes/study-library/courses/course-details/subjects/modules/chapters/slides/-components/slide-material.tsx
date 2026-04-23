@@ -721,14 +721,32 @@ export const SlideMaterial = ({
                         ) {
                             return { ...slateEl, children: [{ text: '' }] };
                         }
-                        return slateEl;
+                        return processNode(slateEl);
                     });
                 }
             }
 
+            // Ensure inline nodes always have at least one text child.
+            // This prevents Slate from throwing on selection/point lookup.
             if (newNode.children && Array.isArray(newNode.children)) {
-                newNode.children = newNode.children.map(processNode);
+                newNode.children = newNode.children.map((child: any) => {
+                    if (!child) {
+                        return { text: '' };
+                    }
+                    if (child.children && Array.isArray(child.children)) {
+                        const normalized = processNode(child);
+                        if (normalized.children.length === 0) {
+                            return { ...normalized, children: [{ text: '' }] };
+                        }
+                        return normalized;
+                    }
+                    return processNode(child);
+                });
+                if (newNode.children.length === 0) {
+                    newNode.children = [{ text: '' }];
+                }
             }
+
             return newNode;
         };
 
@@ -844,9 +862,8 @@ export const SlideMaterial = ({
     };
 
     const getCurrentEditorHTMLContent: () => string = () => {
-        const data = editor.getEditorValue();
         try {
-            const htmlString = html.serialize(editor, data);
+            const htmlString = html.serialize(editor, editor.children);
             const formatted = formatHTMLString(htmlString);
             // Keep the last-known-good snapshot in sync so future serialize
             // failures (e.g. the Yoopta accordion "Cannot find descendant

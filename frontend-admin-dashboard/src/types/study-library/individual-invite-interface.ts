@@ -87,6 +87,7 @@ export interface IndividualInviteLinkDetails {
     tag: string;
     learner_access_days: number;
     web_page_meta_data_json: string;
+    setting_json: string;
     institute_custom_fields: InstituteCustomField[];
     package_session_to_payment_options: PackageSessionToPaymentOption[];
 }

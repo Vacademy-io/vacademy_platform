@@ -116,6 +116,10 @@ class AiGenVideo(Base):
             "error_message": self.error_message,
             "metadata": _meta,
             "token_usage": _meta.get("token_usage"),
+            # Real-time sub-stage progress — updated by the SSE polling loop.
+            # Contains the last significant pipeline event (director_done, shot_done, etc.)
+            # plus a running shots_completed / shots_total counter.
+            "generation_progress": _meta.get("generation_progress"),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,

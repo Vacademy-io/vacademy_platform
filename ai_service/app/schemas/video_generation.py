@@ -241,6 +241,25 @@ class VideoStatusResponse(BaseModel):
         None,
         description="Token/cost breakdown for this generation (prompt_tokens, completion_tokens, estimated_cost_usd, model, etc.)"
     )
+    generation_progress: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Real-time sub-stage progress, updated every ~250ms during generation and persisted to DB. "
+            "Fields: "
+            "sub_stage (str — current label e.g. 'Shot 4/18 ready (VIDEO_HERO)'), "
+            "shots_completed (int), shots_total (int), "
+            "shot_plan (list[{shot_index, shot_type, duration_s, start_time, end_time, narration_excerpt}] "
+            "— full Director plan, set once when planning completes), "
+            "shots_history (list[{shot_index, shot_type, duration_s, start_time, end_time, "
+            "model, token_delta:{prompt_tokens,completion_tokens,estimated_cost_usd}, "
+            "cumulative_tokens}] — every completed shot, capped at 200, for post-run analysis), "
+            "cumulative_tokens ({prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd} "
+            "— running total updated after every shot), "
+            "last_shot ({shot_index, shot_type, duration_s} — quick access to last completed shot), "
+            "errors (list[{shot_index, shot_type, error, retrying, attempt, timestamp}] — shot errors, capped at 50), "
+            "last_event (raw last pipeline event dict)."
+        )
+    )
     created_at: Optional[str]
     updated_at: Optional[str]
     completed_at: Optional[str]

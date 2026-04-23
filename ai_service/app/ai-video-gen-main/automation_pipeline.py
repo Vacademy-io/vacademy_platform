@@ -1224,6 +1224,7 @@ class VideoGenerationPipeline:
         input_video_context: Optional[Dict[str, Any]] = None,
         input_video_contexts: Optional[list] = None,
         mute_tts_on_source_clips: bool = False,
+        progress_callback: Optional[Any] = None,
     ) -> Dict[str, Any]:
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
         self.video_width = video_width
@@ -1252,6 +1253,19 @@ class VideoGenerationPipeline:
         # If True, audio mixing replaces TTS with source audio during SOURCE_CLIP
         # shots. Default False: TTS plays continuously (marketing/explainer mode).
         self._mute_tts_on_source_clips = bool(mute_tts_on_source_clips)
+        # Caller-provided callback for real-time progress events (SSE bridge).
+        # Called as progress_callback(event_dict) from any pipeline thread.
+        # Must be thread-safe (the caller is responsible for queue/lock).
+        self._progress_callback = progress_callback
+        # Thread-safe running token totals — updated by each shot thread so every
+        # shot_done event carries an up-to-date cumulative snapshot.
+        import threading as _threading_mod
+        self._token_lock = _threading_mod.Lock()
+        self._cumulative_tokens: dict = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
         # True when user's input prompt contained a complete script (NARRATOR lines,
         # scene markers, timing). Used to switch Director to narrative-first mode.
         self._user_had_script: bool = False
@@ -1628,9 +1642,21 @@ class VideoGenerationPipeline:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
             print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
+            self._emit_progress({"type": "sub_stage", "sub_stage": "script_writing",
+                                  "message": "Writing script..."})
             script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration, content_type=content_type)
             script_plan = script_out["result"]
-            accumulate_usage(script_out.get("usage", {}))
+            _script_usage = script_out.get("usage", {})
+            accumulate_usage(_script_usage)
+            self._emit_progress({
+                "type": "sub_stage", "sub_stage": "script_done",
+                "message": "Script ready",
+                "token_delta": {
+                    "prompt_tokens": _script_usage.get("prompt_tokens", 0),
+                    "completion_tokens": _script_usage.get("completion_tokens", 0),
+                },
+                "cumulative_tokens": dict(total_usage),
+            })
 
             # Two-pass script review (Premium/Ultra tiers)
             if self._tier_config.get("two_pass_script") and content_type == "VIDEO":
@@ -1666,7 +1692,8 @@ class VideoGenerationPipeline:
         # Only proceed to TTS if we are not stopping before it
         if self.STAGE_INDEX["tts"] < stop_idx:
             if do_tts:
-                # print("🗣️  Synthesize narration ...") # Already printed in method
+                self._emit_progress({"type": "sub_stage", "sub_stage": "tts_generating",
+                                      "message": "Generating voice narration..."})
                 tts_outputs = self._synthesize_voice(
                     script_plan["script_path"],
                     run_dir,
@@ -1676,7 +1703,12 @@ class VideoGenerationPipeline:
                     voice_id=voice_id,
                 )
                 # Track TTS character count for credit deduction
-                accumulate_usage({"tts_character_count": tts_outputs.get("tts_character_count", 0)})
+                _tts_chars = tts_outputs.get("tts_character_count", 0)
+                accumulate_usage({"tts_character_count": _tts_chars})
+                self._emit_progress({"type": "sub_stage", "sub_stage": "tts_done",
+                                      "message": "Voice narration ready",
+                                      "tts_character_count": _tts_chars,
+                                      "cumulative_tokens": dict(total_usage)})
             elif content_type not in NO_AUDIO_TYPES:
                 # Resuming from a checkpoint after TTS — files must already exist
                 self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
@@ -1908,23 +1940,71 @@ class VideoGenerationPipeline:
                             if _ckpt_plan and _ckpt_plan.get("shots"):
                                 _director_plan = _ckpt_plan
                                 print(f"♻️  Loaded Director plan from checkpoint ({len(_ckpt_plan['shots'])} shots)")
+                                self._emit_progress({
+                                    "type": "sub_stage", "sub_stage": "director_done",
+                                    "message": f"Shot plan loaded from checkpoint ({len(_ckpt_plan['shots'])} shots)",
+                                    "shot_count": len(_ckpt_plan["shots"]),
+                                    "from_checkpoint": True,
+                                    "shots_summary": [
+                                        {"shot_index": s.get("shot_index", i),
+                                         "shot_type": s.get("shot_type", ""),
+                                         "duration_s": round(s.get("end_time", 0) - s.get("start_time", 0), 2),
+                                         "start_time": s.get("start_time", 0),
+                                         "end_time": s.get("end_time", 0),
+                                         "narration_excerpt": s.get("narration_excerpt", "")[:80]}
+                                        for i, s in enumerate(_ckpt_plan["shots"])
+                                    ],
+                                })
                         except Exception as _ckpt_err:
                             print(f"⚠️ Could not load Director checkpoint: {_ckpt_err} — re-running Director")
                     if _director_plan is None:
                         if _seg_audio_dur > 0:
+                            self._emit_progress({
+                                "type": "sub_stage", "sub_stage": "director_planning",
+                                "message": f"Director planning shots for {_seg_audio_dur:.0f}s video...",
+                                "quality_tier": self._quality_tier,
+                            })
                             _director_plan, director_usage = self._run_director(
                                 script_plan, words, style_guide, run_dir,
                                 language=language,
                                 audio_duration=_seg_audio_dur,
                                 target_audience=target_audience,
                             )
-                            accumulate_usage(director_usage)
+                            _dir_usage = director_usage
+                            accumulate_usage(_dir_usage)
+                            if _director_plan and _director_plan.get("shots"):
+                                self._emit_progress({
+                                    "type": "sub_stage", "sub_stage": "director_done",
+                                    "message": f"Shot plan ready: {len(_director_plan['shots'])} shots",
+                                    "shot_count": len(_director_plan["shots"]),
+                                    "from_checkpoint": False,
+                                    "token_delta": {
+                                        "prompt_tokens": _dir_usage.get("prompt_tokens", 0),
+                                        "completion_tokens": _dir_usage.get("completion_tokens", 0),
+                                    },
+                                    "cumulative_tokens": dict(total_usage),
+                                    "shots_summary": [
+                                        {"shot_index": s.get("shot_index", i),
+                                         "shot_type": s.get("shot_type", ""),
+                                         "duration_s": round(s.get("end_time", 0) - s.get("start_time", 0), 2),
+                                         "start_time": s.get("start_time", 0),
+                                         "end_time": s.get("end_time", 0),
+                                         "narration_excerpt": s.get("narration_excerpt", "")[:80]}
+                                        for i, s in enumerate(_director_plan["shots"])
+                                    ],
+                                })
                         else:
                             print("⚠️ Audio duration unknown — skipping Director stage")
 
                 if _director_plan and _director_plan.get("shots"):
                     # Per-shot HTML generation using Director plan
                     print(f"🎬 Using Director plan: {len(_director_plan['shots'])} shots")
+                    self._emit_progress({
+                        "type": "sub_stage", "sub_stage": "html_generating",
+                        "message": f"Generating visuals for {len(_director_plan['shots'])} shots...",
+                        "total_shots": len(_director_plan["shots"]),
+                        "mode": "per_shot",
+                    })
                     html_results, html_usage = self._generate_html_per_shot(
                         _director_plan, style_guide, words, run_dir,
                         language=language,
@@ -1932,13 +2012,30 @@ class VideoGenerationPipeline:
                     )
                 else:
                     # Fallback: segment-based flow (free/standard, or Director failed)
+                    self._emit_progress({
+                        "type": "sub_stage", "sub_stage": "html_generating",
+                        "message": f"Generating visuals for {len(segments)} segments...",
+                        "total_shots": len(segments),
+                        "mode": "segment",
+                    })
                     html_results, html_usage = self._generate_html_segments(
                         segments, style_guide, plan_data, run_dir,
                         language=language,
                         on_segment_done=_on_html_segment_done,
                     )
                 html_segments = html_results
-                accumulate_usage(html_usage)
+                _html_usage = html_usage
+                accumulate_usage(_html_usage)
+                self._emit_progress({
+                    "type": "sub_stage", "sub_stage": "html_done",
+                    "message": f"Visuals ready ({len(html_segments)} shots)",
+                    "total_shots": len(html_segments),
+                    "token_delta": {
+                        "prompt_tokens": _html_usage.get("prompt_tokens", 0),
+                        "completion_tokens": _html_usage.get("completion_tokens", 0),
+                    },
+                    "cumulative_tokens": dict(total_usage),
+                })
 
                 # Collect results from pipelined image tasks (already running/done)
                 print(f"🖼️  Waiting for {len(_early_futures)} pipelined image task(s)...")
@@ -5067,7 +5164,27 @@ class VideoGenerationPipeline:
                 except (ValueError, Exception) as e:
                     if attempt == max_attempts - 1:
                         print(f"   ❌ Shot {shot_idx + 1} failed after {max_attempts} attempts: {e}")
+                        self._emit_progress({
+                            "type": "shot_error",
+                            "shot_index": shot_idx,
+                            "total_shots": total_shots,
+                            "shot_type": shot_type,
+                            "error": str(e)[:200],
+                            "retrying": False,
+                            "message": f"Shot {shot_idx + 1} failed: {str(e)[:120]}",
+                        })
                         return [], {}
+                    self._emit_progress({
+                        "type": "shot_error",
+                        "shot_index": shot_idx,
+                        "total_shots": total_shots,
+                        "shot_type": shot_type,
+                        "error": str(e)[:200],
+                        "retrying": True,
+                        "attempt": attempt + 1,
+                        "max_attempts": max_attempts,
+                        "message": f"Shot {shot_idx + 1} retry {attempt + 1}/{max_attempts - 1}: {str(e)[:80]}",
+                    })
                     time.sleep(1.5 * (1.6 ** attempt))
 
             # Build the entry in the same format as _expand_shots
@@ -5311,6 +5428,50 @@ class VideoGenerationPipeline:
                     on_segment_done(entries)
                 except Exception:
                     pass
+
+            # Emit per-shot progress event to SSE bridge
+            _pt = usage.get("prompt_tokens", 0)
+            _ct = usage.get("completion_tokens", 0)
+            # Thread-safe cumulative token update
+            with self._token_lock:
+                self._cumulative_tokens["prompt_tokens"] += _pt
+                self._cumulative_tokens["completion_tokens"] += _ct
+                self._cumulative_tokens["total_tokens"] += _pt + _ct
+                _cum_snap = dict(self._cumulative_tokens)
+            # Estimate USD cost for this shot (best-effort; None if model pricing unknown)
+            _model_id = getattr(self.html_client, 'current_model',
+                                getattr(self.html_client, 'default_model', ''))
+            _shot_cost_usd: float | None = None
+            try:
+                from constants.models import get_model_pricing as _gmp  # type: ignore
+                _pricing = _gmp(_model_id) or {}
+                _inp = _pricing.get("input_token_price") or 0.0
+                _outp = _pricing.get("output_token_price") or 0.0
+                _shot_cost_usd = round(_pt * _inp + _ct * _outp, 6)
+                _cum_snap["estimated_cost_usd"] = round(
+                    _cum_snap["prompt_tokens"] * _inp
+                    + _cum_snap["completion_tokens"] * _outp,
+                    4,
+                )
+            except Exception:
+                pass
+            self._emit_progress({
+                "type": "shot_done",
+                "shot_index": shot_idx,
+                "total_shots": total_shots,
+                "shot_type": shot_type,
+                "duration_s": round(end_time - start_time, 2),
+                "start_time": start_time,
+                "end_time": end_time,
+                "message": f"Shot {shot_idx + 1}/{total_shots} ready ({shot_type})",
+                "model": _model_id,
+                "token_delta": {
+                    "prompt_tokens": _pt,
+                    "completion_tokens": _ct,
+                    "estimated_cost_usd": _shot_cost_usd,
+                },
+                "cumulative_tokens": _cum_snap,
+            })
 
             # Save checkpoint so a retry can skip this shot
             try:
@@ -8717,6 +8878,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not output_video.exists():
             raise RuntimeError(f"Video not found at {output_video}")
         return output_video
+
+    def _emit_progress(self, event: Dict[str, Any]) -> None:
+        """Fire a progress event to the SSE bridge (non-fatal if callback missing)."""
+        if self._progress_callback:
+            try:
+                self._progress_callback(event)
+            except Exception:
+                pass  # never let a callback error break the pipeline
 
     def _resolve_run_dir(self, run_name: Optional[str], resume_run: Optional[str]) -> Path:
         if resume_run:

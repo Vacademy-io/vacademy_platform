@@ -322,8 +322,8 @@ class AiVideoRepository:
         try:
             video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
             if video:
-                video.metadata = metadata
-                flag_modified(video, "metadata")
+                video.extra_metadata = metadata
+                flag_modified(video, "extra_metadata")
                 video.updated_at = datetime.utcnow()
                 session.commit()
         except Exception:
@@ -331,6 +331,100 @@ class AiVideoRepository:
         finally:
             if not self.session:
                 session.close()
+
+    def update_generation_progress(
+        self,
+        video_id: str,
+        event: Dict[str, Any],
+    ) -> None:
+        """Merge a pipeline progress event into extra_metadata.generation_progress.
+
+        Persisted structure (all fields optional — set as they become available):
+          sub_stage          str    current human-readable label
+          shots_completed    int    running count of completed shots
+          shots_total        int    total shots planned by Director
+          shot_plan          list   [{shot_index, shot_type, duration_s, start_time,
+                                      end_time, narration_excerpt}]  — set once from director_done
+          shots_history      list   per-shot record: {shot_index, shot_type, duration_s,
+                                      start_time, end_time, token_delta, cumulative_tokens}
+                                    capped at 200 entries for storage safety
+          cumulative_tokens  dict   {prompt_tokens, completion_tokens, total_tokens,
+                                      estimated_cost_usd}  — latest snapshot
+          last_shot          dict   most recent completed shot (quick access)
+          errors             list   [{shot_index, shot_type, error, retrying, attempt,
+                                      timestamp}]  — all shot_error events, capped at 50
+          last_event         dict   raw last pipeline event (no shots_summary/shot_plan)
+        """
+        session = self._get_fresh_session()
+        try:
+            video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
+            if not video:
+                return
+            meta = dict(video.extra_metadata or {})
+            prog = dict(meta.get("generation_progress") or {})
+
+            event_type = event.get("type")
+
+            if event_type == "shot_done":
+                prog["shots_completed"] = prog.get("shots_completed", 0) + 1
+                prog["sub_stage"] = event.get("message", "Generating visuals")
+
+                _shot_record = {
+                    "shot_index": event.get("shot_index"),
+                    "shot_type": event.get("shot_type"),
+                    "duration_s": event.get("duration_s"),
+                    "start_time": event.get("start_time"),
+                    "end_time": event.get("end_time"),
+                    "model": event.get("model"),
+                    "token_delta": event.get("token_delta"),
+                    "cumulative_tokens": event.get("cumulative_tokens"),
+                }
+                prog["last_shot"] = _shot_record
+                # Full per-shot history for post-run analysis (capped at 200)
+                history = list(prog.get("shots_history") or [])
+                history.append(_shot_record)
+                prog["shots_history"] = history[-200:]
+
+            elif event_type == "shot_error":
+                prog["sub_stage"] = event.get("message", "Shot error")
+                errors = list(prog.get("errors") or [])
+                errors.append({
+                    "shot_index": event.get("shot_index"),
+                    "shot_type": event.get("shot_type"),
+                    "error": event.get("error", "")[:300],
+                    "retrying": event.get("retrying", False),
+                    "attempt": event.get("attempt"),
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+                prog["errors"] = errors[-50:]  # keep last 50 errors
+
+            elif event_type == "sub_stage":
+                prog["sub_stage"] = event.get("message") or event.get("sub_stage", "")
+                sub = event.get("sub_stage", "")
+                if sub == "director_done":
+                    prog["shots_total"] = event.get("shot_count", prog.get("shots_total"))
+                    if event.get("shots_summary"):
+                        prog["shot_plan"] = event["shots_summary"]
+
+            if event.get("cumulative_tokens"):
+                prog["cumulative_tokens"] = event["cumulative_tokens"]
+
+            # Compact last_event (strip large lists to keep JSONB row size sane)
+            prog["last_event"] = {k: v for k, v in event.items()
+                                  if k not in ("shots_summary", "shot_plan", "shots_history")}
+
+            meta["generation_progress"] = prog
+            video.extra_metadata = meta
+            flag_modified(video, "extra_metadata")
+            video.updated_at = datetime.utcnow()
+            session.commit()
+        except Exception:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
 
     def mark_failed(
         self,

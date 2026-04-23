@@ -7,13 +7,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import queue as _queue
 import re
 import shutil
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, AsyncIterator
+from typing import Optional, Dict, Any, AsyncIterator, List
 from uuid import uuid4
 
 from ..repositories.ai_video_repository import AiVideoRepository
@@ -783,6 +784,12 @@ class VideoGenerationService:
                 _vid_width = 1080 if orientation == "portrait" else 1920
                 _vid_height = 1920 if orientation == "portrait" else 1080
 
+                # Thread-safe queue: pipeline thread puts events; async loop drains them
+                _prog_queue: _queue.Queue = _queue.Queue()
+
+                def _progress_cb(event: Dict[str, Any]) -> None:
+                    _prog_queue.put_nowait(event)
+
                 pipeline_run = functools.partial(
                     pipeline.run,
                     base_prompt=prompt,
@@ -810,10 +817,51 @@ class VideoGenerationService:
                     sound_effects_enabled=sound_effects_enabled,
                     input_video_contexts=input_video_contexts,
                     mute_tts_on_source_clips=mute_tts_on_source_clips,
+                    progress_callback=_progress_cb,
                 )
 
+                # Run pipeline in thread while draining the progress queue in the
+                # async event loop so sub-stage events reach the SSE client in real time.
                 with ThreadPoolExecutor() as executor:
-                    outputs = await loop.run_in_executor(executor, pipeline_run)
+                    _pipeline_future = loop.run_in_executor(executor, pipeline_run)
+                    while not _pipeline_future.done():
+                        # Drain all queued events without blocking the event loop
+                        _drained: List[Dict[str, Any]] = []
+                        while not _prog_queue.empty():
+                            try:
+                                _drained.append(_prog_queue.get_nowait())
+                            except _queue.Empty:
+                                break
+                        for _ev in _drained:
+                            # Attach video_id so the FE can correlate without extra state
+                            _ev.setdefault("video_id", video_id)
+                            # Persist latest generation_progress to DB metadata so
+                            # GET /status also reflects sub-stage detail
+                            if _ev.get("type") in (
+                                "sub_stage", "shot_done", "shot_error"
+                            ):
+                                try:
+                                    self.repository.update_generation_progress(video_id, _ev)
+                                except Exception:
+                                    pass
+                            yield _ev
+                        await asyncio.sleep(0.25)
+                    # Drain any remaining events after the future completes
+                    while not _prog_queue.empty():
+                        try:
+                            _ev = _prog_queue.get_nowait()
+                            _ev.setdefault("video_id", video_id)
+                            if _ev.get("type") in (
+                                "sub_stage", "shot_done", "shot_error"
+                            ):
+                                try:
+                                    self.repository.update_generation_progress(video_id, _ev)
+                                except Exception:
+                                    pass
+                            yield _ev
+                        except _queue.Empty:
+                            break
+                    outputs = await _pipeline_future
                 
                 # Record token usage per stage
                 if outputs and "token_usage" in outputs and db_session:

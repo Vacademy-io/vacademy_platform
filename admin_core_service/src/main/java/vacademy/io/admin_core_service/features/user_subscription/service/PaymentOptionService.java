@@ -8,7 +8,9 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOpti
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionTag;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -24,8 +26,23 @@ public class PaymentOptionService {
     @Autowired
     private PaymentPlanService paymentPlanService;
 
+    @Autowired
+    private PaymentPlanRepository paymentPlanRepository;
+
     public boolean savePaymentOption(PaymentOptionDTO paymentOptionDTO){
         PaymentOption paymentOption = new PaymentOption(paymentOptionDTO);
+        
+        if (PaymentOptionType.FREE.name().equalsIgnoreCase(paymentOption.getType()) && paymentOption.getPaymentPlans().isEmpty()) {
+             PaymentPlan freePlan = new PaymentPlan();
+             freePlan.setName("Free Plan");
+             freePlan.setStatus(StatusEnum.ACTIVE.name());
+             freePlan.setPaymentOption(paymentOption);
+             freePlan.setActualPrice(0.0);
+             freePlan.setElevatedPrice(0.0);
+             freePlan.setCurrency("INR");
+             paymentOption.getPaymentPlans().add(freePlan);
+        }
+        
         paymentOptionRepository.save(paymentOption);
         return true;
     }

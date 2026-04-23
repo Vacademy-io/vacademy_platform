@@ -10,7 +10,7 @@ prompt containing only the documentation for that specific shot type.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Optional, Tuple
 import json
 import re
 
@@ -360,6 +360,7 @@ WORD TIMESTAMPS (key words):
 STYLE: Background={background_type}
 CANVAS: {width}x{height} ({aspect_label})
 LANGUAGE: {language}
+TARGET AUDIENCE: {target_audience}
 TOTAL AUDIO DURATION: {audio_duration:.1f}s
 
 SHOT COUNT IS YOUR CALL. You decide how many shots the video needs based on the content,
@@ -425,6 +426,10 @@ def build_director_user_prompt(
     act_plan: Dict[str, Any] | None = None,
     emphasis_map: str = "",
     require_shot_density: bool = False,
+    max_shots: Optional[int] = None,
+    target_shot_duration_s: Optional[float] = None,
+    quality_tier: str = "",
+    target_audience: str = "General/Adult",
 ) -> str:
     """Assemble the Director user prompt from pipeline data."""
     aspect_label = "9:16 portrait" if width < height else "16:9"
@@ -491,6 +496,7 @@ def build_director_user_prompt(
         height=height,
         aspect_label=aspect_label,
         language=language,
+        target_audience=target_audience,
         audio_duration=audio_duration,
         pace_hint_sec=pace_hint_sec,
     )
@@ -516,6 +522,36 @@ def build_director_user_prompt(
             "\n\n**REQUIRED EXTRA FIELDS** (add to the top-level JSON object, alongside `shots`):\n"
             "- `shot_density`: `\"fast\"` | `\"medium\"` | `\"slow\"`\n"
             "- `pacing_rationale`: one sentence explaining your density choice vs the content.\n"
+        )
+
+    if max_shots is not None:
+        _dur_low = target_shot_duration_s or (audio_duration / max_shots)
+        _dur_high = _dur_low + 2
+        extras.append(
+            f"\n\n**SHOT COUNT HARD LIMIT**: This video MUST have at most {max_shots} shots total. "
+            f"Do not exceed this number under any circumstances.\n"
+            f"Target duration per shot: {_dur_low:.0f}–{_dur_high:.0f} seconds each. "
+            f"Because each shot is longer, make it VISUALLY DENSE: layer multiple GSAP tweens, "
+            f"staggered entrances, parallax motion, and rich visual storytelling within the shot. "
+            f"Fewer but richer shots produce better quality than many thin short shots."
+        )
+    elif quality_tier == "super_ultra":
+        # No hard cap for super_ultra — its features (two-pass Director, motion_bias,
+        # kinetic_text_shots) depend on dense short shots. Instead guide for richness.
+        extras.append(
+            "\n\n**QUALITY OVER QUANTITY**: Every shot must earn its place with a distinct "
+            "visual concept and dense animation. Prefer focused 3–5s shots over 8–10s sparse ones. "
+            "KINETIC_TEXT and KINETIC_TITLE shots: 2–3s max — punchy, not lingering. "
+            "Do not pad duration; instead add more animation layers within each shot."
+        )
+
+    if target_audience and target_audience.lower() not in ("general/adult", "general", "adult", ""):
+        extras.append(
+            f"\n\n**AUDIENCE CALIBRATION — {target_audience}**: "
+            "Adjust shot complexity, animation density, vocabulary of visual metaphors, "
+            "and text reading speed to match this audience. "
+            "Younger/beginner audiences: simpler layouts, larger text, slower reveals, concrete metaphors. "
+            "Expert/professional audiences: dense data layers, faster pacing, domain-specific visuals."
         )
 
     return base + "".join(extras)

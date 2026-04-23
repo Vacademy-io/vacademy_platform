@@ -228,6 +228,7 @@ async def generate_video_external(
                         sound_effects_enabled=p.sound_effects_enabled,
                         input_video_ids=p.input_video_ids,
                         input_video_audio=p.input_video_audio,
+                        mute_tts_on_source_clips=p.mute_tts_on_source_clips,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -389,6 +390,7 @@ async def resume_video_external(
                         sound_effects_enabled=p.sound_effects_enabled,
                         input_video_ids=_meta.get("input_video_ids"),
                         input_video_audio=_meta.get("input_video_audio"),
+                        mute_tts_on_source_clips=_meta.get("mute_tts_on_source_clips", False),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -425,6 +427,129 @@ async def resume_video_external(
                 yield f"data: {event_json}\n\n"
         except (GeneratorExit, asyncio.CancelledError):
             logger.info(f"[Resume] SSE client disconnected for {video_id}; background task continues")
+
+    return StreamingResponse(
+        sse_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Video-ID": video_id,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Retry a failed generation — resumes from last checkpoint
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/retry/{video_id}",
+    summary="Retry a failed video generation from last checkpoint (External)",
+    response_class=StreamingResponse,
+)
+async def retry_video_external(
+    video_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+    _credits_check=Depends(require_credits("video", estimated_tokens=3000)),
+    db: Session = Depends(db_dependency),
+) -> StreamingResponse:
+    """
+    Retry a FAILED or STALLED video generation.
+
+    The pipeline resumes from the HTML stage, loading the Director plan and
+    per-shot HTML checkpoints uploaded to S3 after the previous run, so only
+    incomplete shots are re-generated.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    repo = AiVideoRepository(session=db)
+    video_record = repo.get_by_video_id(video_id)
+    if not video_record:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    if video_record.status not in ("FAILED", "STALLED"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Video {video_id} is not in a retryable state (status={video_record.status})"
+        )
+
+    queue: asyncio.Queue = asyncio.Queue()
+    _generation_queues[video_id] = queue
+
+    async def _run_retry(q: asyncio.Queue, vid: str, inst_id: str) -> None:
+        try:
+            with make_db_session() as bg_session:
+                bg_svc = VideoGenerationService(
+                    repository=AiVideoRepository(session=bg_session),
+                    s3_service=S3Service(),
+                )
+                rec = bg_svc.repository.get_by_video_id(vid)
+                if not rec:
+                    await q.put(json.dumps({"type": "error", "message": f"Video {vid} not found", "video_id": vid}))
+                    return
+
+                _meta = rec.extra_metadata or {}
+                # Resume from HTML stage — checkpoint download happens automatically in _run_pipeline_stages
+                async for event in bg_svc.generate_till_stage(
+                    video_id=vid,
+                    prompt=rec.prompt or "",
+                    target_stage="HTML",
+                    language=rec.language or "English",
+                    resume=True,
+                    content_type=rec.content_type or "VIDEO",
+                    db_session=bg_session,
+                    institute_id=inst_id,
+                    orientation=_meta.get("orientation", "landscape"),
+                    visual_style=_meta.get("visual_style", "standard"),
+                    quality_tier=_meta.get("quality_tier", "ultra"),
+                    voice_gender=_meta.get("voice_gender", "female"),
+                    tts_provider=_meta.get("tts_provider", "standard"),
+                    voice_id=_meta.get("voice_id"),
+                    captions_enabled=True,
+                    html_quality=_meta.get("html_quality", "advanced"),
+                    target_audience=_meta.get("target_audience", "General/Adult"),
+                    target_duration=_meta.get("target_duration", "2-3 minutes"),
+                    model=_meta.get("model", ""),
+                    sound_effects_enabled=True,
+                    input_video_ids=_meta.get("input_video_ids"),
+                    input_video_audio=_meta.get("input_video_audio"),
+                    mute_tts_on_source_clips=_meta.get("mute_tts_on_source_clips", False),
+                ):
+                    await q.put(json.dumps(event))
+        except Exception as exc:
+            logger.error(f"[Retry] Background task error for {vid}: {exc}")
+            try:
+                with make_db_session() as refund_session:
+                    from ..services.token_usage_service import TokenUsageService
+                    TokenUsageService(refund_session).refund_video_credits(vid, inst_id)
+            except Exception as refund_err:
+                logger.error(f"[Retry] Failed to refund credits for {vid}: {refund_err}")
+            await q.put(json.dumps({"type": "error", "message": str(exc), "video_id": vid}))
+        finally:
+            await q.put(None)
+            _generation_tasks.pop(vid, None)
+            _generation_queues.pop(vid, None)
+            _institute_active_tasks.get(inst_id, set()).discard(vid)
+            logger.info(f"[Retry] Background task finished for {vid}")
+
+    task = asyncio.create_task(_run_retry(queue, video_id, institute_id))
+    _generation_tasks[video_id] = task
+    _institute_active_tasks[institute_id].add(video_id)
+    logger.info(f"[Retry] Started background task for {video_id}")
+
+    async def sse_stream():
+        try:
+            while True:
+                try:
+                    event_json = await asyncio.wait_for(queue.get(), timeout=60.0)
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+                if event_json is None:
+                    break
+                yield f"data: {event_json}\n\n"
+        except (GeneratorExit, asyncio.CancelledError):
+            logger.info(f"[Retry] SSE client disconnected for {video_id}; background task continues")
 
     return StreamingResponse(
         sse_stream(),
@@ -787,7 +912,7 @@ async def request_video_render(
         repo = AiVideoRepository(session=db)
         video_record = repo.get_by_video_id(video_id)
         if video_record:
-            meta = video_record.metadata or {}
+            meta = dict(video_record.extra_metadata or {})
             meta["render_job_id"] = job_id
             repo.update_metadata(video_id, meta)
     except Exception as e:

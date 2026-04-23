@@ -299,9 +299,9 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_diversity_enforcement": True,
         "segment_context": True,
         "use_director": True,
-        "director_max_tokens": 20000,
+        "director_max_tokens": 14000,  # was 20000 — Director JSON plans don't need essay budgets
         "shot_pack_enabled": True,
-        "per_shot_max_tokens": 16000,
+        "per_shot_max_tokens": 12000,  # was 16000 — measured outputs 8-12K; cap removed waste
         "crossfade_duration": 0.35,
         "sound_enabled": True,
         "sound_max_cues_per_shot": 1,
@@ -318,11 +318,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_diversity_enforcement": True,
         "segment_context": True,
         "use_director": True,
-        "director_max_tokens": 32000,
+        "director_max_tokens": 20000,  # was 32000
         "director_emphasis_map": True,
         "shot_pack_enabled": True,
         "skill_library_enabled": True,
-        "per_shot_max_tokens": 24000,
+        "per_shot_max_tokens": 16000,  # was 24000 — measured outputs ~10-14K
         "crossfade_duration": 0.35,
         "sound_enabled": True,
         "sound_max_cues_per_shot": 2,
@@ -339,7 +339,7 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_diversity_enforcement": True,
         "segment_context": True,
         "use_director": True,
-        "director_max_tokens": 40000,
+        "director_max_tokens": 28000,  # was 40000 — still generous for two-pass + few-shot
         "director_emphasis_map": True,
         "director_two_pass": True,
         "director_few_shot": True,
@@ -348,7 +348,7 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_animation_validator": True,
         "stock_video_ranking": True,
         "skill_library_enabled": True,
-        "per_shot_max_tokens": 32000,
+        "per_shot_max_tokens": 20000,  # was 32000 — densest HTML ~14-18K; 20K gives headroom
         "kinetic_text_shots": True,
         "crossfade_duration": 0.35,
         "motion_density_enforcement": True,
@@ -359,6 +359,36 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_max_cues_per_video": 40,
     },
 }
+
+
+# Per-million token USD rates for models routed through OpenRouter.
+# Fallback rates are used for unknown model IDs.
+_LLM_PRICING: Dict[str, Dict[str, float]] = {
+    "google/gemini-2.5-pro": {"input": 1.25, "output": 10.0},
+    "google/gemini-2.5-pro-preview": {"input": 1.25, "output": 10.0},
+    "google/gemini-2.0-pro": {"input": 1.25, "output": 5.0},
+    "google/gemini-2.0-flash": {"input": 0.10, "output": 0.40},
+    "google/gemini-pro-1.5": {"input": 1.25, "output": 5.0},
+    "google/gemini-1.5-pro": {"input": 1.25, "output": 5.0},
+    "google/gemini-1.5-flash": {"input": 0.075, "output": 0.30},
+}
+_LLM_PRICING_FALLBACK: Dict[str, float] = {"input": 1.25, "output": 5.0}
+_IMAGE_COST_USD: float = 0.04          # per generated image
+_TTS_COST_PER_1K_CHARS_USD: float = 0.30  # ElevenLabs standard rate
+
+
+def _calculate_generation_cost(
+    model_id: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    image_count: int,
+    tts_character_count: int,
+) -> float:
+    rates = _LLM_PRICING.get(model_id, _LLM_PRICING_FALLBACK)
+    llm_cost = (prompt_tokens / 1_000_000) * rates["input"] + (completion_tokens / 1_000_000) * rates["output"]
+    img_cost = image_count * _IMAGE_COST_USD
+    tts_cost = (tts_character_count / 1000) * _TTS_COST_PER_1K_CHARS_USD
+    return round(llm_cost + img_cost + tts_cost, 4)
 
 
 def _validate_whisper_script(word_entries: list, lang_code: str) -> bool:
@@ -551,10 +581,14 @@ class OpenRouterClient:
         default_model: str,
         referer: str = "https://stilllift-automation.local",
         title: str = "StillLift Automation",
+        use_prompt_cache: bool = True,
     ) -> None:
         self.api_key = api_key
         self.default_model = default_model
-        
+        self.use_prompt_cache = use_prompt_cache
+        # Tracks the model used in the last successful chat() call (for cost reporting)
+        self.current_model: str = default_model
+
         self.model_chain = self._fetch_models()
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.headers = {
@@ -599,12 +633,28 @@ class OpenRouterClient:
         else:
             models_to_try = [self.default_model]
 
+        # Apply prompt caching: wrap system message content in cache_control array
+        if self.use_prompt_cache:
+            cached_messages: list = []
+            for msg in messages:
+                if msg.get("role") == "system" and isinstance(msg.get("content"), str):
+                    msg = {
+                        "role": "system",
+                        "content": [
+                            {"type": "text", "text": msg["content"],
+                             "cache_control": {"type": "ephemeral"}}
+                        ],
+                    }
+                cached_messages.append(msg)
+        else:
+            cached_messages = list(messages)
+
         last_error = None
         for model_to_use in models_to_try:
             try:
                 payload: Dict[str, Any] = {
                     "model": model_to_use,
-                    "messages": list(messages),
+                    "messages": cached_messages,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
                 }
@@ -621,11 +671,18 @@ class OpenRouterClient:
                     # Parse JSON response and return content
                     data = json.loads(raw)
                     content = data["choices"][0]["message"]["content"]
-                    
+
                     if not content or not content.strip():
                         raise ValueError("Model returned an empty string.")
-                        
+
                     usage = data.get("usage", {})
+                    # Expose cache hit metrics when available (OpenRouter passes these through)
+                    cache_read = usage.get("cache_read_input_tokens", 0)
+                    cache_write = usage.get("cache_creation_input_tokens", 0)
+                    if cache_read or cache_write:
+                        usage["cache_read_input_tokens"] = cache_read
+                        usage["cache_creation_input_tokens"] = cache_write
+                    self.current_model = model_to_use
                     return content, usage
             except Exception as exc:
                 if isinstance(exc, urllib.error.HTTPError):
@@ -1085,21 +1142,21 @@ class VideoGenerationPipeline:
         "reels": {
             "seconds_per_shot": 3,
             "min_shots": 3,
-            "max_shots": 12,
+            "max_shots": 8,      # was 12 — tightened to control free/standard segment call count
             "min_shot_duration": 2.0,
             "max_shot_duration": 5.0,
         },
         "marketing": {
             "seconds_per_shot": 5,
             "min_shots": 2,
-            "max_shots": 9,
+            "max_shots": 7,      # was 9
             "min_shot_duration": 3.0,
             "max_shot_duration": 12.0,
         },
         "education": {
             "seconds_per_shot": 8,
             "min_shots": 2,
-            "max_shots": 7,
+            "max_shots": 5,      # was 7
             "min_shot_duration": 4.0,
             "max_shot_duration": 20.0,
         },
@@ -1166,6 +1223,8 @@ class VideoGenerationPipeline:
         sound_effects_enabled: bool = True,
         input_video_context: Optional[Dict[str, Any]] = None,
         input_video_contexts: Optional[list] = None,
+        mute_tts_on_source_clips: bool = False,
+        progress_callback: Optional[Any] = None,
     ) -> Dict[str, Any]:
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
         self.video_width = video_width
@@ -1191,6 +1250,25 @@ class VideoGenerationPipeline:
         self._input_video_context = (
             self._input_video_contexts[0] if self._input_video_contexts else None
         )
+        # If True, audio mixing replaces TTS with source audio during SOURCE_CLIP
+        # shots. Default False: TTS plays continuously (marketing/explainer mode).
+        self._mute_tts_on_source_clips = bool(mute_tts_on_source_clips)
+        # Caller-provided callback for real-time progress events (SSE bridge).
+        # Called as progress_callback(event_dict) from any pipeline thread.
+        # Must be thread-safe (the caller is responsible for queue/lock).
+        self._progress_callback = progress_callback
+        # Thread-safe running token totals — updated by each shot thread so every
+        # shot_done event carries an up-to-date cumulative snapshot.
+        import threading as _threading_mod
+        self._token_lock = _threading_mod.Lock()
+        self._cumulative_tokens: dict = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+        # True when user's input prompt contained a complete script (NARRATOR lines,
+        # scene markers, timing). Used to switch Director to narrative-first mode.
+        self._user_had_script: bool = False
         # Dedup set for LLM-ranked stock video selection (super_ultra only).
         # Tracks Pexels video IDs already used in this run so shots don't reuse clips.
         self._used_pexels_video_ids: set = set()
@@ -1200,6 +1278,36 @@ class VideoGenerationPipeline:
         # ── Pacing profile ──
         # Derived from target_duration: short→reels, medium→marketing, long→education
         self._pacing_style = self._derive_pacing_style(target_duration, content_type)
+
+        # Tier-aware shot cap for Director-based tiers (videos > 2 min only).
+        # super_ultra: no cap — two-pass Director, motion_bias, and kinetic_text_shots all
+        # rely on dense, short shots. A hard cap fights these features directly.
+        # ultra: capped at 40 — no two-pass, saves ~20% LLM calls without quality loss.
+        # premium: capped at 30 — no animation validator; longer shots are the right tradeoff.
+        # free/standard: use segment path (hardened pacing hints instead of a shot cap).
+        import re as _re_dur
+        _dur_lower = target_duration.lower().strip()
+        _dur_nums = [float(n) for n in _re_dur.findall(r"[\d.]+", _dur_lower)]
+        if _dur_nums:
+            _dur_s = (sum(_dur_nums) / len(_dur_nums)) * (1 if "second" in _dur_lower else 60)
+        else:
+            _dur_s = 0.0
+        _SHOT_CAPS: dict[str, int] = {
+            "premium": 30,
+            "ultra":   40,
+            # super_ultra: intentionally absent — no cap
+        }
+        self._max_total_shots: int | None = (
+            _SHOT_CAPS.get(self._quality_tier) if _dur_s > 120 else None
+        )
+        self._target_shot_duration_s: float | None = (
+            round(_dur_s / self._max_total_shots, 1) if self._max_total_shots else None
+        )
+        if self._max_total_shots:
+            print(f"🎬 Shot cap: ≤{self._max_total_shots} shots "
+                  f"(~{self._target_shot_duration_s}s each) for {_dur_s:.0f}s video"
+                  f" [{self._quality_tier}]")
+
         # Store reference context (processed images/PDFs from user uploads)
         self._reference_context = reference_context
         if start_from not in self.STAGE_INDEX:
@@ -1398,6 +1506,22 @@ class VideoGenerationPipeline:
             _iv_demo = _iv_ctx.get("demo_only", {}) if _iv_v_mode == "demo" else {}
             _iv_transcript = _iv_ctx.get("transcript", [])
 
+            # Detect user-authored script BEFORE building context block so we can
+            # use a different closing instruction (preserve vs rewrite).
+            import re as _re_tts_detect
+            _tts_script_markers = [
+                r"NARRATOR\s*\(?V?\.?O?\.?\)?\s*:",
+                r"\[\s*OPENING", r"\[\s*CLOSING", r"\[\s*SCENE",
+                r"\bV\.O\.", r"\bVOICEOVER\b", r"SCRIPT\s*\n", r"SHOT\s*LIST",
+                r"\d{1,2}:\d{2}\s*[-–—]",
+            ]
+            _user_has_script = any(
+                _re_tts_detect.search(p, base_prompt, flags=_re_tts_detect.IGNORECASE)
+                for p in _tts_script_markers
+            ) or (len(base_prompt) > 800 and "\n\n" in base_prompt)
+            # Store on self so the Director prompt can use it
+            self._user_had_script = _user_has_script
+
             # Build a context block describing what's in the video
             _iv_meta = _iv_ctx.get("meta", {})
             _iv_dur = _iv_meta.get("duration_s", 0)
@@ -1405,7 +1529,16 @@ class VideoGenerationPipeline:
 
             # Source video duration + mode-specific guidance
             if _iv_dur > 0:
-                if _iv_v_mode == "demo":
+                if _user_has_script:
+                    _context_parts.append(
+                        f"Source video duration: {_iv_dur:.0f}s. "
+                        "The user has already written their narration script. "
+                        "DO NOT rewrite or replace their wording. "
+                        "Your job is to PRESERVE their script and use the video context "
+                        "below ONLY to understand which UI elements and timestamps correspond "
+                        "to each narrative beat."
+                    )
+                elif _iv_v_mode == "demo":
                     _context_parts.append(
                         f"Source video duration: {_iv_dur:.0f}s. "
                         "Write narration as a GUIDED WALKTHROUGH of this demo — "
@@ -1422,22 +1555,33 @@ class VideoGenerationPipeline:
                         "Don't repeat what the speaker says verbatim — add context and insight."
                     )
 
-            if _iv_demo:
-                ui_elements = _iv_demo.get("ui_elements_seen", [])
-                if ui_elements:
-                    _context_parts.append(f"UI elements visible: {', '.join(ui_elements[:15])}")
-                key_events = _iv_demo.get("key_onscreen_events", [])
-                if key_events:
-                    event_descs = [f"{e.get('kind', '?')} near '{e.get('near_text', '?')}' at {e.get('t', 0):.1f}s"
-                                  for e in key_events[:10]]
-                    _context_parts.append(f"Key events: {'; '.join(event_descs)}")
-            if _iv_transcript:
-                transcript_text = " ".join(s.get("text", "") for s in _iv_transcript[:20])
-                if transcript_text.strip():
-                    _context_parts.append(f"Narration heard: {transcript_text[:500]}")
+            # In user-script mode skip demo narration/UI from context — the video's
+            # own narration ("Front Desk Test", "Interaction Model") pollutes the LLM
+            # and overrides the user's script. Only include timing-relevant data.
+            if not _user_has_script:
+                if _iv_demo:
+                    ui_elements = _iv_demo.get("ui_elements_seen", [])
+                    if ui_elements:
+                        _context_parts.append(f"UI elements visible: {', '.join(ui_elements[:15])}")
+                    key_events = _iv_demo.get("key_onscreen_events", [])
+                    if key_events:
+                        event_descs = [f"{e.get('kind', '?')} near '{e.get('near_text', '?')}' at {e.get('t', 0):.1f}s"
+                                      for e in key_events[:10]]
+                        _context_parts.append(f"Key events: {'; '.join(event_descs)}")
+                if _iv_transcript:
+                    transcript_text = " ".join(s.get("text", "") for s in _iv_transcript[:20])
+                    if transcript_text.strip():
+                        _context_parts.append(f"Narration heard: {transcript_text[:500]}")
 
             if _context_parts:
-                if _iv_v_mode == "demo":
+                if _user_has_script:
+                    _closing = (
+                        "\n\n🚨 USER SCRIPT DETECTED: The user has already written their narration. "
+                        "OUTPUT THEIR SCRIPT VERBATIM. Do NOT rewrite, paraphrase, or replace any "
+                        "sentence. Use the video context above only to confirm timing/structure. "
+                        "Your entire output should be the user's own words, preserved exactly.\n"
+                    )
+                elif _iv_v_mode == "demo":
                     _closing = (
                         "\n\nIMPORTANT: Write narration that walks through the demo "
                         "step by step. Describe what the viewer sees on screen at each moment. "
@@ -1498,9 +1642,21 @@ class VideoGenerationPipeline:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
             print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
+            self._emit_progress({"type": "sub_stage", "sub_stage": "script_writing",
+                                  "message": "Writing script..."})
             script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration, content_type=content_type)
             script_plan = script_out["result"]
-            accumulate_usage(script_out.get("usage", {}))
+            _script_usage = script_out.get("usage", {})
+            accumulate_usage(_script_usage)
+            self._emit_progress({
+                "type": "sub_stage", "sub_stage": "script_done",
+                "message": "Script ready",
+                "token_delta": {
+                    "prompt_tokens": _script_usage.get("prompt_tokens", 0),
+                    "completion_tokens": _script_usage.get("completion_tokens", 0),
+                },
+                "cumulative_tokens": dict(total_usage),
+            })
 
             # Two-pass script review (Premium/Ultra tiers)
             if self._tier_config.get("two_pass_script") and content_type == "VIDEO":
@@ -1536,7 +1692,8 @@ class VideoGenerationPipeline:
         # Only proceed to TTS if we are not stopping before it
         if self.STAGE_INDEX["tts"] < stop_idx:
             if do_tts:
-                # print("🗣️  Synthesize narration ...") # Already printed in method
+                self._emit_progress({"type": "sub_stage", "sub_stage": "tts_generating",
+                                      "message": "Generating voice narration..."})
                 tts_outputs = self._synthesize_voice(
                     script_plan["script_path"],
                     run_dir,
@@ -1546,7 +1703,12 @@ class VideoGenerationPipeline:
                     voice_id=voice_id,
                 )
                 # Track TTS character count for credit deduction
-                accumulate_usage({"tts_character_count": tts_outputs.get("tts_character_count", 0)})
+                _tts_chars = tts_outputs.get("tts_character_count", 0)
+                accumulate_usage({"tts_character_count": _tts_chars})
+                self._emit_progress({"type": "sub_stage", "sub_stage": "tts_done",
+                                      "message": "Voice narration ready",
+                                      "tts_character_count": _tts_chars,
+                                      "cumulative_tokens": dict(total_usage)})
             elif content_type not in NO_AUDIO_TYPES:
                 # Resuming from a checkpoint after TTS — files must already exist
                 self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
@@ -1581,10 +1743,21 @@ class VideoGenerationPipeline:
 
         style_guide = None  # Will be set if do_html; used later to store palette in timeline meta
         if do_html:
-            print("🎨 Designing Visual Style Guide ...")
-            # Stash script text for the Sound Planner's topic-aware palette.
-            self._current_script_text = str(script_plan.get("script_text", "") or "")
-            style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type, style_config=self._current_style_config)
+            # Checkpoint: load style guide from prior run to skip this LLM call on resume
+            _sg_ckpt = run_dir / "style_guide.json"
+            if _sg_ckpt.exists():
+                try:
+                    _sg_cached = json.loads(_sg_ckpt.read_text())
+                    if _sg_cached and _sg_cached.get("palette"):
+                        style_guide = _sg_cached
+                        print("♻️  Loaded style guide from checkpoint")
+                except Exception:
+                    pass
+            if style_guide is None:
+                print("🎨 Designing Visual Style Guide ...")
+                # Stash script text for the Sound Planner's topic-aware palette.
+                self._current_script_text = str(script_plan.get("script_text", "") or "")
+                style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type, style_config=self._current_style_config)
             
             # CHECK FOR INTERACTIVE CONTENT TYPES
             interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "SIMULATION", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION", "MAP_EXPLORATION", "SLIDES"]
@@ -1759,19 +1932,79 @@ class VideoGenerationPipeline:
                 # segment-based flow on failure.
                 _director_plan = None
                 if self._tier_config.get("use_director") and content_type == "VIDEO":
-                    if _seg_audio_dur > 0:
-                        _director_plan, director_usage = self._run_director(
-                            script_plan, words, style_guide, run_dir,
-                            language=language,
-                            audio_duration=_seg_audio_dur,
-                        )
-                        accumulate_usage(director_usage)
-                    else:
-                        print("⚠️ Audio duration unknown — skipping Director stage")
+                    # Checkpoint: load existing Director plan on resume (avoids re-running 2 LLM calls)
+                    _director_ckpt = run_dir / "director_plan.json"
+                    if _director_ckpt.exists():
+                        try:
+                            _ckpt_plan = json.loads(_director_ckpt.read_text())
+                            if _ckpt_plan and _ckpt_plan.get("shots"):
+                                _director_plan = _ckpt_plan
+                                print(f"♻️  Loaded Director plan from checkpoint ({len(_ckpt_plan['shots'])} shots)")
+                                self._emit_progress({
+                                    "type": "sub_stage", "sub_stage": "director_done",
+                                    "message": f"Shot plan loaded from checkpoint ({len(_ckpt_plan['shots'])} shots)",
+                                    "shot_count": len(_ckpt_plan["shots"]),
+                                    "from_checkpoint": True,
+                                    "shots_summary": [
+                                        {"shot_index": s.get("shot_index", i),
+                                         "shot_type": s.get("shot_type", ""),
+                                         "duration_s": round(s.get("end_time", 0) - s.get("start_time", 0), 2),
+                                         "start_time": s.get("start_time", 0),
+                                         "end_time": s.get("end_time", 0),
+                                         "narration_excerpt": s.get("narration_excerpt", "")[:80]}
+                                        for i, s in enumerate(_ckpt_plan["shots"])
+                                    ],
+                                })
+                        except Exception as _ckpt_err:
+                            print(f"⚠️ Could not load Director checkpoint: {_ckpt_err} — re-running Director")
+                    if _director_plan is None:
+                        if _seg_audio_dur > 0:
+                            self._emit_progress({
+                                "type": "sub_stage", "sub_stage": "director_planning",
+                                "message": f"Director planning shots for {_seg_audio_dur:.0f}s video...",
+                                "quality_tier": self._quality_tier,
+                            })
+                            _director_plan, director_usage = self._run_director(
+                                script_plan, words, style_guide, run_dir,
+                                language=language,
+                                audio_duration=_seg_audio_dur,
+                                target_audience=target_audience,
+                            )
+                            _dir_usage = director_usage
+                            accumulate_usage(_dir_usage)
+                            if _director_plan and _director_plan.get("shots"):
+                                self._emit_progress({
+                                    "type": "sub_stage", "sub_stage": "director_done",
+                                    "message": f"Shot plan ready: {len(_director_plan['shots'])} shots",
+                                    "shot_count": len(_director_plan["shots"]),
+                                    "from_checkpoint": False,
+                                    "token_delta": {
+                                        "prompt_tokens": _dir_usage.get("prompt_tokens", 0),
+                                        "completion_tokens": _dir_usage.get("completion_tokens", 0),
+                                    },
+                                    "cumulative_tokens": dict(total_usage),
+                                    "shots_summary": [
+                                        {"shot_index": s.get("shot_index", i),
+                                         "shot_type": s.get("shot_type", ""),
+                                         "duration_s": round(s.get("end_time", 0) - s.get("start_time", 0), 2),
+                                         "start_time": s.get("start_time", 0),
+                                         "end_time": s.get("end_time", 0),
+                                         "narration_excerpt": s.get("narration_excerpt", "")[:80]}
+                                        for i, s in enumerate(_director_plan["shots"])
+                                    ],
+                                })
+                        else:
+                            print("⚠️ Audio duration unknown — skipping Director stage")
 
                 if _director_plan and _director_plan.get("shots"):
                     # Per-shot HTML generation using Director plan
                     print(f"🎬 Using Director plan: {len(_director_plan['shots'])} shots")
+                    self._emit_progress({
+                        "type": "sub_stage", "sub_stage": "html_generating",
+                        "message": f"Generating visuals for {len(_director_plan['shots'])} shots...",
+                        "total_shots": len(_director_plan["shots"]),
+                        "mode": "per_shot",
+                    })
                     html_results, html_usage = self._generate_html_per_shot(
                         _director_plan, style_guide, words, run_dir,
                         language=language,
@@ -1779,13 +2012,30 @@ class VideoGenerationPipeline:
                     )
                 else:
                     # Fallback: segment-based flow (free/standard, or Director failed)
+                    self._emit_progress({
+                        "type": "sub_stage", "sub_stage": "html_generating",
+                        "message": f"Generating visuals for {len(segments)} segments...",
+                        "total_shots": len(segments),
+                        "mode": "segment",
+                    })
                     html_results, html_usage = self._generate_html_segments(
                         segments, style_guide, plan_data, run_dir,
                         language=language,
                         on_segment_done=_on_html_segment_done,
                     )
                 html_segments = html_results
-                accumulate_usage(html_usage)
+                _html_usage = html_usage
+                accumulate_usage(_html_usage)
+                self._emit_progress({
+                    "type": "sub_stage", "sub_stage": "html_done",
+                    "message": f"Visuals ready ({len(html_segments)} shots)",
+                    "total_shots": len(html_segments),
+                    "token_delta": {
+                        "prompt_tokens": _html_usage.get("prompt_tokens", 0),
+                        "completion_tokens": _html_usage.get("completion_tokens", 0),
+                    },
+                    "cumulative_tokens": dict(total_usage),
+                })
 
                 # Collect results from pipelined image tasks (already running/done)
                 print(f"🖼️  Waiting for {len(_early_futures)} pipelined image task(s)...")
@@ -1865,20 +2115,30 @@ class VideoGenerationPipeline:
                 style_guide=style_guide,
             )
 
-            # ── Per-shot audio mixing ──
-            # When TTS mode + SOURCE_CLIP shots exist, mix source video audio
-            # into the narration (TTS during graphics, source audio during clips).
+            # ── Per-shot audio mixing (opt-in) ──
+            # Only runs when user explicitly requested `mute_tts_on_source_clips`.
+            # Default behavior: TTS plays continuously (marketing/explainer mode).
+            # When True: source video audio replaces TTS during SOURCE_CLIP shots
+            # (podcast mode where hearing the speaker matters).
             _iv_audio_pref = (self._input_video_contexts[0] if self._input_video_contexts else {}).get("audio_preference", "")
             _tts_audio = tts_outputs.get("audio_path")
-            if _iv_audio_pref == "tts" and _tts_audio and self._input_video_contexts:
+            if (
+                self._mute_tts_on_source_clips
+                and _iv_audio_pref == "tts"
+                and _tts_audio
+                and self._input_video_contexts
+            ):
                 _words_path = word_outputs.get("words_json")
                 if _words_path:
+                    print("🎵 Audio mixing enabled: TTS will be muted during SOURCE_CLIP shots")
                     self._mix_audio_with_source_clips(
                         audio_path=Path(_tts_audio),
                         words_json_path=Path(_words_path),
                         timeline_path=timeline_path,
                         run_dir=run_dir,
                     )
+            elif _iv_audio_pref == "tts" and self._input_video_contexts:
+                print("🎵 TTS plays continuously during SOURCE_CLIP shots (mute_tts_on_source_clips=False)")
 
         avatar_video_path = None
         if do_avatar:
@@ -1913,6 +2173,22 @@ class VideoGenerationPipeline:
             )
         else:
             video_path = None
+
+        # Attach per-video cost estimate so the service layer can persist it in metadata
+        _model_id = getattr(self.html_client, 'current_model', self.html_client.default_model)
+        total_usage["model"] = _model_id
+        total_usage["estimated_cost_usd"] = _calculate_generation_cost(
+            model_id=_model_id,
+            prompt_tokens=total_usage.get("prompt_tokens", 0),
+            completion_tokens=total_usage.get("completion_tokens", 0),
+            image_count=total_usage.get("image_count", 0),
+            tts_character_count=total_usage.get("tts_character_count", 0),
+        )
+        print(f"💰 Estimated generation cost: ${total_usage['estimated_cost_usd']:.4f} "
+              f"({total_usage.get('prompt_tokens', 0):,} in / "
+              f"{total_usage.get('completion_tokens', 0):,} out tokens, "
+              f"{total_usage.get('image_count', 0)} images, "
+              f"{total_usage.get('tts_character_count', 0):,} TTS chars)")
 
         return {
             "run_dir": run_dir,
@@ -1964,6 +2240,46 @@ class VideoGenerationPipeline:
                 target_duration=target_duration,
                 aspect_label=_aspect,
             ).strip()
+
+            # Detect if user's prompt already contains a script (NARRATOR lines,
+            # scene markers, V.O., timing). If so, prepend a strong instruction
+            # to use it AS-IS rather than invent new content.
+            import re as _re_script
+            _script_markers = [
+                r"NARRATOR\s*\(?V?\.?O?\.?\)?\s*:",
+                r"\[\s*OPENING",
+                r"\[\s*CLOSING",
+                r"\[\s*SCENE",
+                r"\bV\.O\.",
+                r"\bVOICEOVER\b",
+                r"SCRIPT\s*\n",
+                r"SHOT\s*LIST",
+                r"\d{1,2}:\d{2}\s*[-–—]",  # timing like "0:08-0:20"
+            ]
+            _has_script = any(
+                _re_script.search(p, base_prompt, flags=_re_script.IGNORECASE)
+                for p in _script_markers
+            )
+            # Also treat very long prompts (>800 chars) with structure as user-authored
+            _is_long_structured = len(base_prompt) > 800 and "\n\n" in base_prompt
+
+            if _has_script or _is_long_structured:
+                print("📝 Detected user-authored script in prompt — prioritizing verbatim usage")
+                _priority_block = (
+                    "\n\n🚨 CRITICAL INSTRUCTION: The user has provided a COMPLETE SCRIPT "
+                    "or highly-structured content above. Your job is to EXTRACT and USE "
+                    "the narration content from their input — NOT to invent new narration.\n\n"
+                    "RULES:\n"
+                    "1. If the input has NARRATOR / V.O. / voiceover lines, use THOSE as the script.\n"
+                    "2. Strip scene markers like [OPENING], [CLOSING], timing (0:00–0:08), "
+                    "SHOT LIST, and stage directions — these are for the Director, not the narrator.\n"
+                    "3. Keep the user's WORDING and TONE — don't rewrite sentences to be more "
+                    "'marketing-friendly' or 'concise'. The user chose those words deliberately.\n"
+                    "4. Maintain the sequence/structure of their script. Don't reorder sections.\n"
+                    "5. The user's content takes priority over your own creative instincts.\n"
+                    "6. Only generate new content if a section has no narration specified.\n"
+                )
+                user_prompt = user_prompt + _priority_block
         else:
             # Use content-type-specific prompts
             system_prompt = ct_prompts["system"]
@@ -3693,7 +4009,9 @@ class VideoGenerationPipeline:
                 rel_t = max(0.0, abs_t - start_time)
                 if rel_t > (end_time - start_time) + 0.3:
                     continue  # sync point outside the shot — ignore
-                if not any(abs(rel_t - d) <= 0.2 for d in delays):
+                # super_ultra targets word-level sync at ~60fps; tighter tolerance.
+                _sync_tol = 0.08 if self._quality_tier == "super_ultra" else 0.20
+                if not any(abs(rel_t - d) <= _sync_tol for d in delays):
                     word = sp.get("word", "")
                     unmatched.append(f"{rel_t:.2f}s{f' ({word})' if word else ''}")
             if unmatched:
@@ -3800,6 +4118,7 @@ class VideoGenerationPipeline:
         run_dir: Path,
         language: str = "English",
         audio_duration: float = 0.0,
+        target_audience: str = "General/Adult",
     ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
         """Run the Director LLM call to produce a shot-by-shot plan.
 
@@ -3863,6 +4182,8 @@ class VideoGenerationPipeline:
         emphasis_map = ""
         if self._tier_config.get("director_emphasis_map"):
             emphasis_map = build_emphasis_map(words)
+        # Store so per-shot HTML generation can highlight narrator stress peaks
+        self._emphasis_map = emphasis_map
 
         user_prompt = build_director_user_prompt(
             script_text=script_text,
@@ -3877,6 +4198,10 @@ class VideoGenerationPipeline:
             act_plan=act_plan,
             emphasis_map=emphasis_map,
             require_shot_density=bool(self._tier_config.get("director_shot_density")),
+            max_shots=getattr(self, '_max_total_shots', None),
+            target_shot_duration_s=getattr(self, '_target_shot_duration_s', None),
+            quality_tier=self._quality_tier,
+            target_audience=target_audience,
         )
 
         # ── Input video context for Director ──────────────────────────
@@ -3916,13 +4241,20 @@ class VideoGenerationPipeline:
                 _is_portrait = _src_w > 0 and _src_h > 0 and _src_w < _src_h
                 _orient = "PORTRAIT 9:16" if _is_portrait else "LANDSCAPE 16:9"
 
+                _user_script_dir = getattr(self, '_user_had_script', False)
+                # In user-script mode, label transcript as TIMING ONLY so Director
+                # doesn't generate shot content based on the video's own narration.
+                _transcript_label = (
+                    "Transcript (TIMING REFERENCE ONLY — DO NOT use this as shot content):\n"
+                    if _user_script_dir else "Transcript:\n"
+                )
                 _section = (
                     f"\n### Video {_label}: \"{_v_name}\" ({_v_mode}, {_v_dur:.0f}s, {_orient}, {_src_w}x{_src_h})\n"
                     f"source_video_index: {_vidx}\n"
                     f"Highlight window: {_iv_highlight.get('t_start', 0):.1f}-"
                     f"{_iv_highlight.get('t_end', 0):.1f}s "
                     f"({_iv_highlight.get('reason', '')})\n\n"
-                    "Transcript:\n" + "\n".join(_transcript_lines) + "\n\n"
+                    + _transcript_label + "\n".join(_transcript_lines) + "\n\n"
                     "Emphasis marks:\n" + "\n".join(_emphasis_lines) + "\n\n"
                     f"Scene cuts: {', '.join(_scene_times)}\n"
                 )
@@ -3932,36 +4264,84 @@ class VideoGenerationPipeline:
                     _iv_demo = _iv_ctx.get("demo_only", {})
                     _ui_elements = _iv_demo.get("ui_elements_seen", [])
                     _key_events = _iv_demo.get("key_onscreen_events", [])
-                    if _ui_elements:
+                    # In user-script mode, suppress UI elements — they cause the Director
+                    # to generate shot titles like "Header Navigation" instead of script beats.
+                    if _ui_elements and not _user_script_dir:
                         _section += f"\nUI elements: {', '.join(_ui_elements[:15])}\n"
                     if _key_events:
                         _ev = [f"  {e.get('t', 0):.1f}s: {e.get('kind', '?')} near \"{e.get('near_text', '')}\""
                                for e in _key_events[:10]]
-                        _section += "\nKey events:\n" + "\n".join(_ev) + "\n"
-                    _section += (
-                        "\nCaption guidance: title MUST describe what's on screen at that timestamp. "
-                        "BAD: 'No More Tool Jumping'. GOOD: 'Exploring Course Library'.\n"
-                    )
+                        _ev_label = (
+                            "\nKey interaction timestamps (use for SOURCE_CLIP start/end — NOT for shot naming):\n"
+                            if _user_script_dir else "\nKey events:\n"
+                        )
+                        _section += _ev_label + "\n".join(_ev) + "\n"
+                    if _user_script_dir:
+                        _section += (
+                            "\n⚠️ USER SCRIPT MODE: Shot titles and content MUST come from the "
+                            "user's script (sections like OPENING, PROBLEM, BRAND REVEAL, etc.). "
+                            "The transcript/events above are for timestamp alignment ONLY. "
+                            "NEVER name a shot after a UI element or the video's own narration.\n"
+                        )
+                    else:
+                        _section += (
+                            "\nCaption guidance: title MUST describe what's on screen at that timestamp. "
+                            "BAD: 'No More Tool Jumping'. GOOD: 'Exploring Course Library'.\n"
+                        )
 
                 _video_sections.append(_section)
 
+            _user_script_mode = getattr(self, '_user_had_script', False)
+            if _user_script_mode:
+                # Extract section labels from the user's script (e.g. [OPENING], [PROBLEM])
+                import re as _re_dir_secs
+                _raw_prompt = getattr(self, '_base_prompt', '') or ''
+                _sec_matches = _re_dir_secs.findall(
+                    r'\[([A-Z][A-Z\s/&\-]+?)(?:\s*[—–-]\s*[\d:]+[^]]*?)?\]',
+                    _raw_prompt
+                )
+                _sec_labels = list(dict.fromkeys(s.strip() for s in _sec_matches if len(s.strip()) >= 3))
+                _sec_label_str = (
+                    " → ".join(_sec_labels) if _sec_labels
+                    else "OPENING → PROBLEM → BRAND REVEAL → HOW IT WORKS → CTA"
+                )
+                _source_clip_rules = (
+                    "**SOURCE_CLIP RULES (USER SCRIPT MODE)**:\n"
+                    "- SOURCE_CLIP should be used for 50-65% of shots.\n"
+                    f"- NARRATIVE-FIRST: the user's script has these sections: {_sec_label_str}.\n"
+                    "  Organize SOURCE_CLIP shots to ILLUSTRATE these narrative beats in order.\n"
+                    "  Do NOT walk chronologically through the demo footage.\n"
+                    "- Shot titles MUST echo the script section labels above,\n"
+                    "  NEVER describe UI elements like 'Header Navigation' or 'Selection Step'.\n"
+                    "- Pick source_start/source_end timestamps that best ILLUSTRATE the current\n"
+                    "  narrative beat — not necessarily the next sequential moment in the video.\n"
+                    "- Each SOURCE_CLIP shot MUST include:\n"
+                    "  - `source_video_index`: integer (0 = Video A, 1 = Video B, ...)\n"
+                    "  - `source_start`: timestamp (seconds) in THAT video\n"
+                    "  - `source_end`: timestamp (seconds) in THAT video\n"
+                    "- Match source_start/source_end to the transcript timestamps of the CORRECT video.\n"
+                )
+            else:
+                _source_clip_rules = (
+                    "**SOURCE_CLIP RULES**:\n"
+                    "- SOURCE_CLIP should be the PRIMARY shot type — use it for 60-70% of shots.\n"
+                    "  The source video IS the content. Use other types (KINETIC_TITLE, TEXT_DIAGRAM)\n"
+                    "  only for intro/outro titles and brief concept summaries between clips.\n"
+                    "- Structure as a GUIDED WALKTHROUGH: SOURCE_CLIP shows the demo footage,\n"
+                    "  interleaved with brief AI graphics that explain what was just shown.\n"
+                    "- Each SOURCE_CLIP shot MUST include:\n"
+                    "  - `source_video_index`: integer (0 = Video A, 1 = Video B, ...)\n"
+                    "  - `source_start`: timestamp (seconds) in THAT video\n"
+                    "  - `source_end`: timestamp (seconds) in THAT video\n"
+                    "- Cover the source video chronologically — walk through the demo from start\n"
+                    "  to finish, don't skip large sections or jump around randomly.\n"
+                    "- Match source_start/source_end to the transcript timestamps of the CORRECT video.\n"
+                )
             _source_video_block = (
                 "\n\n## SOURCE VIDEO CONTEXTS\n"
                 f"You have {_num_sources} source video(s) available.\n"
                 + "".join(_video_sections) + "\n"
-                "**SOURCE_CLIP RULES**:\n"
-                "- SOURCE_CLIP should be the PRIMARY shot type — use it for 60-70% of shots.\n"
-                "  The source video IS the content. Use other types (KINETIC_TITLE, TEXT_DIAGRAM)\n"
-                "  only for intro/outro titles and brief concept summaries between clips.\n"
-                "- Structure as a GUIDED WALKTHROUGH: SOURCE_CLIP shows the demo footage,\n"
-                "  interleaved with brief AI graphics that explain what was just shown.\n"
-                "- Each SOURCE_CLIP shot MUST include:\n"
-                "  - `source_video_index`: integer (0 = Video A, 1 = Video B, ...)\n"
-                "  - `source_start`: timestamp (seconds) in THAT video\n"
-                "  - `source_end`: timestamp (seconds) in THAT video\n"
-                "- Cover the source video chronologically — walk through the demo from start\n"
-                "  to finish, don't skip large sections or jump around randomly.\n"
-                "- Match source_start/source_end to the transcript timestamps of the CORRECT video.\n"
+                + _source_clip_rules
             )
             user_prompt = user_prompt + _source_video_block
 
@@ -3976,7 +4356,7 @@ class VideoGenerationPipeline:
                 f"For a {int(audio_duration)}s audio, target ~{max(1, int(audio_duration / 3))} shots "
                 f"(roughly one per 2.5-3.5 seconds of narration)."
             ) if audio_duration > 0 else ""
-            director_system = DIRECTOR_SYSTEM_PROMPT + (
+            director_system = director_system + (
                 "\n\n**⚡ SUPER ULTRA — REEL PACE + MOTION BIAS** (overrides rules 2, 4, 11):\n"
                 f"- REEL PACE: every shot should be {_target_shot_dur} long. "
                 f"{_min_shots_hint} "
@@ -4229,6 +4609,11 @@ class VideoGenerationPipeline:
         total_shots = len(shots)
         continuity_notes = director_plan.get("continuity_notes", "")
 
+        # Per-shot checkpoint cache: saves completed shot HTML to disk so a resume
+        # can skip already-generated shots without re-paying their token cost.
+        _shot_cache_dir = run_dir / "shot_cache"
+        _shot_cache_dir.mkdir(exist_ok=True)
+
         total_usage = {
             "prompt_tokens": 0, "completion_tokens": 0,
             "total_tokens": 0, "image_count": 0,
@@ -4268,8 +4653,26 @@ class VideoGenerationPipeline:
                 "so IDs never collide between shots.\n"
             )
 
+        # Overall speech rate — used to dynamically scale word-timing window per shot
+        _total_audio_dur = director_plan.get("audio_duration") or (
+            shots[-1].get("end_time", 0) if shots else 0
+        )
+        _words_per_second = len(words) / max(1.0, float(_total_audio_dur))
+
         def _shot_task(shot_idx: int, shot: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
             """Generate HTML for a single shot."""
+            # Resume: load from cache if this shot was already generated in a prior run
+            _cache_path = _shot_cache_dir / f"shot_{shot_idx:03d}.json"
+            if _cache_path.exists():
+                try:
+                    _cached = json.loads(_cache_path.read_text())
+                    if _cached.get("entries"):
+                        print(f"   ♻️  Shot {shot_idx + 1} loaded from cache — skipping LLM call")
+                        # Return zero usage so we don't double-count already-paid tokens
+                        return _cached["entries"], {}
+                except Exception:
+                    pass  # corrupt cache — regenerate
+
             shot_type = shot.get("shot_type", "TEXT_DIAGRAM")
             start_time = float(shot.get("start_time", 0))
             end_time = float(shot.get("end_time", start_time + 8))
@@ -4294,12 +4697,37 @@ class VideoGenerationPipeline:
 
             # Filter word timings to this shot's time range
             shot_words = [w for w in words if start_time <= float(w.get("start", 0)) < end_time]
+            # Dynamic word limit: scale with shot duration so a 10s shot gets ~55 words,
+            # a 3s shot gets ~20 — captures full context without token waste on short shots.
+            _word_limit = max(20, min(60, round(duration * _words_per_second * 1.5)))
             word_lines = ["Rel(s)  | Abs(s)  | Word", "--------|---------|--------"]
-            for w in shot_words[:30]:  # Limit to 30 words
+            for w in shot_words[:_word_limit]:
                 abs_t = float(w["start"])
                 rel_t = round(abs_t - start_time, 3)
                 word_lines.append(f"{rel_t:>6.2f}  | {abs_t:>7.2f}  | {w.get('word', '')}")
             word_timings = "\n".join(word_lines)
+
+            # Emphasis markers: inject narrator stress peaks for this shot's time window
+            # so the LLM knows which words to animate with extra impact treatment.
+            _em = getattr(self, '_emphasis_map', '')
+            if _em:
+                import re as _re_em
+                # Extract time-stamped entries that fall within this shot's range
+                _em_lines = []
+                for _line in _em.splitlines():
+                    _m = _re_em.search(r'(\d+\.?\d*)\s*s', _line)
+                    if _m:
+                        _t = float(_m.group(1))
+                        if start_time <= _t < end_time:
+                            _rel = round(_t - start_time, 2)
+                            _em_lines.append(f"  t={_rel:.2f}s: {_line.strip()}")
+                if _em_lines:
+                    word_timings += (
+                        "\n\n** NARRATOR STRESS PEAKS in this shot "
+                        "(give these words IMPACT treatment — scale pulse, highlight box, "
+                        "color flash, or underline wipe):\n"
+                        + "\n".join(_em_lines)
+                    )
 
             # Sync points from Director — formatted as ready-to-copy GSAP scaffold
             sync_lines = []
@@ -4414,6 +4842,13 @@ class VideoGenerationPipeline:
                     "(innerText growth), clip-path wipe, or mask reveal.\n"
                     "- NEVER render text with `opacity:1` static — always animate from opacity:0 "
                     "with a GSAP tween.\n"
+                    "- WORD-BREAK RULE (CRITICAL): When hand-writing per-character spans "
+                    "(e.g. `<span class='char'>R</span><span class='char'>E</span>...`), you MUST "
+                    "wrap all chars of the same word in a `<span style='display:inline-block;"
+                    "white-space:nowrap'>` parent so the browser cannot break a line mid-word. "
+                    "Never place naked per-char inline-block spans directly inside a block container "
+                    "— they will split across lines. Prefer `splitReveal()` which handles this "
+                    "automatically.\n"
                     "- Key terms (the ones the narrator emphasises) must have an IMPACT treatment: "
                     "scale pulse, highlight box drawing in behind them, underline wipe, or color "
                     "flash. Use at least 1 key-term treatment per shot.\n"
@@ -4627,6 +5062,91 @@ class VideoGenerationPipeline:
                 return [entry], {}
             # ── end KINETIC_TEXT bypass ──
 
+            # ── Portrait demo SOURCE_CLIP bypass — deterministic side-by-side HTML ──
+            # When a portrait (9:16) source video is used in a landscape (16:9) output,
+            # the LLM fights the SOURCE_CLIP system-prompt ("background MUST be #000000")
+            # and produces pillarbox instead of side-by-side. Build it deterministically.
+            if shot_type == "SOURCE_CLIP" and _iv_mode == "demo":
+                _res_chk = (_clip_ctx or {}).get("context", {}).get("meta", {}).get("resolution", [0, 0])
+                _is_src_portrait = len(_res_chk) >= 2 and _res_chk[0] < _res_chk[1]
+                _is_out_landscape = getattr(self, 'video_width', 1920) >= getattr(self, 'video_height', 1080)
+                if _is_src_portrait and _is_out_landscape:
+                    # Compute source video timing (normally done post-LLM)
+                    _sbs_src_start = float(shot.get("source_start", 0))
+                    _sbs_src_end = float(shot.get("source_end", end_time - start_time))
+                    _sbs_sv_idx = int(shot.get("source_video_index", 0))
+                    _sbs_src_url = ""
+                    if _clip_ctx:
+                        _iv_assets_sbs = _clip_ctx.get("assets_urls", {})
+                        _sbs_src_url = (
+                            _iv_assets_sbs.get("source_video", "")
+                            or _clip_ctx.get("source_public_url", "")
+                            or _clip_ctx.get("source_url", "")
+                        )
+
+                    _sbs_title = (shot.get("title", "") or shot.get("visual_description", "Demo Step"))[:80]
+                    _sbs_desc = (shot.get("narration_excerpt", "") or "")[:220]
+                    _accent = (palette or {}).get("accent", "#6366f1")
+                    _sbs_html = (
+                        "<!DOCTYPE html><html><head>"
+                        "<style>*{margin:0;padding:0;box-sizing:border-box}</style>"
+                        "</head><body style='width:100%;height:100%;background:transparent;overflow:hidden;'>"
+                        "<div style='width:100%;height:100%;background:#111827;display:flex;"
+                        "align-items:center;padding:3% 4%;gap:5%;'>"
+                        "<div id='vid-panel' style='width:30%;aspect-ratio:9/16;max-height:88%;"
+                        "background:#000000;border-radius:14px;overflow:hidden;"
+                        "flex-shrink:0;box-shadow:0 12px 40px rgba(0,0,0,0.65);'></div>"
+                        "<div style='flex:1;display:flex;flex-direction:column;"
+                        "justify-content:center;gap:1.4rem;opacity:0;transform:translateX(20px);' id='anno'>"
+                        f"<div style='width:3rem;height:4px;background:{_accent};border-radius:2px;'></div>"
+                        f"<h2 style='font-family:Inter,sans-serif;font-size:2rem;font-weight:700;"
+                        f"color:#fff;line-height:1.25;'>{_sbs_title}</h2>"
+                        f"<p style='font-family:Inter,sans-serif;font-size:1.15rem;"
+                        f"color:rgba(255,255,255,0.72);line-height:1.6;'>{_sbs_desc}</p>"
+                        "</div></div>"
+                        "<script>window.addEventListener('load',function(){"
+                        "if(typeof gsap!=='undefined'){"
+                        "gsap.to('#anno',{opacity:1,x:0,duration:0.55,ease:'power2.out',delay:0.15});"
+                        "gsap.from('#vid-panel',{opacity:0,scale:0.96,duration:0.45,ease:'power2.out'});"
+                        "}})</script></body></html>"
+                    )
+                    _sbs_html = self._ensure_fonts(_sbs_html)
+                    if _sbs_src_url:
+                        _sbs_vid = (
+                            f'<video data-source-clip="true" data-source-start="{_sbs_src_start}" '
+                            f'src="{_sbs_src_url}#t={_sbs_src_start},{_sbs_src_end}" '
+                            f'autoplay muted playsinline '
+                            f'style="width:100%;height:100%;object-fit:cover;pointer-events:none;"></video>'
+                        )
+                        _sbs_html = _sbs_html.replace(
+                            "background:#000000;border-radius:14px;overflow:hidden;"
+                            "flex-shrink:0;box-shadow:0 12px 40px rgba(0,0,0,0.65);'></div>",
+                            "background:#000000;border-radius:14px;overflow:hidden;"
+                            f"flex-shrink:0;box-shadow:0 12px 40px rgba(0,0,0,0.65);'>{_sbs_vid}</div>",
+                        )
+                    _sbs_entry = {
+                        "start": start_time, "end": end_time,
+                        "htmlStartX": 0, "htmlStartY": 0, "htmlEndX": _w, "htmlEndY": _h,
+                        "html": _sbs_html,
+                        "id": f"shot-{shot_idx}", "index": shot_idx,
+                        "z": shot.get("z", 10),
+                        "_shot_type": shot_type,
+                        "_narration_excerpt": shot.get("narration_excerpt", ""),
+                        "_visual_description": shot.get("visual_description", ""),
+                        "_skill_audio_events": [],
+                        "source_start": _sbs_src_start,
+                        "source_end": _sbs_src_end,
+                        "source_video_index": _sbs_sv_idx,
+                    }
+                    print(f"   ✅ Shot {shot_idx + 1} SOURCE_CLIP portrait side-by-side (no LLM)")
+                    if on_segment_done:
+                        try:
+                            on_segment_done([_sbs_entry])
+                        except Exception:
+                            pass
+                    return [_sbs_entry], {}
+            # ── end portrait SOURCE_CLIP bypass ──
+
             # LLM call with retry
             max_attempts = 3
             for attempt in range(max_attempts):
@@ -4644,7 +5164,29 @@ class VideoGenerationPipeline:
                 except (ValueError, Exception) as e:
                     if attempt == max_attempts - 1:
                         print(f"   ❌ Shot {shot_idx + 1} failed after {max_attempts} attempts: {e}")
+                        self._emit_progress({
+                            "type": "shot_error",
+                            "shot_index": shot_idx,
+                            "total_shots": total_shots,
+                            "shot_type": shot_type,
+                            "error": str(e)[:200],
+                            "retrying": False,
+                            "attempt": max_attempts,
+                            "max_attempts": max_attempts,
+                            "message": f"Shot {shot_idx + 1} failed: {str(e)[:120]}",
+                        })
                         return [], {}
+                    self._emit_progress({
+                        "type": "shot_error",
+                        "shot_index": shot_idx,
+                        "total_shots": total_shots,
+                        "shot_type": shot_type,
+                        "error": str(e)[:200],
+                        "retrying": True,
+                        "attempt": attempt + 1,
+                        "max_attempts": max_attempts,
+                        "message": f"Shot {shot_idx + 1} retry {attempt + 1}/{max_attempts - 1}: {str(e)[:80]}",
+                    })
                     time.sleep(1.5 * (1.6 ** attempt))
 
             # Build the entry in the same format as _expand_shots
@@ -4714,10 +5256,11 @@ class VideoGenerationPipeline:
             # Scans the generated HTML for GSAP tweens and sync-point delays. If the
             # count is below the tier threshold OR the sync points weren't honored,
             # fire ONE corrective regeneration call. Doesn't loop forever.
+            _shot_duration_s = end_time - start_time
             if (
                 self._tier_config.get("shot_animation_validator")
-                and shot_type != "KINETIC_TEXT"
-                and shot_type != "KINETIC_TITLE"
+                and shot_type not in ("KINETIC_TEXT", "KINETIC_TITLE")
+                and _shot_duration_s >= 3.0
             ):
                 issues = self._validate_shot_animation_density(
                     html=html,
@@ -4887,6 +5430,56 @@ class VideoGenerationPipeline:
                     on_segment_done(entries)
                 except Exception:
                     pass
+
+            # Emit per-shot progress event to SSE bridge
+            _pt = usage.get("prompt_tokens", 0)
+            _ct = usage.get("completion_tokens", 0)
+            # Thread-safe cumulative token update
+            with self._token_lock:
+                self._cumulative_tokens["prompt_tokens"] += _pt
+                self._cumulative_tokens["completion_tokens"] += _ct
+                self._cumulative_tokens["total_tokens"] += _pt + _ct
+                _cum_snap = dict(self._cumulative_tokens)
+            # Estimate USD cost for this shot (best-effort; None if model pricing unknown)
+            _model_id = getattr(self.html_client, 'current_model',
+                                getattr(self.html_client, 'default_model', ''))
+            _shot_cost_usd: float | None = None
+            try:
+                from constants.models import get_model_pricing as _gmp  # type: ignore
+                _pricing = _gmp(_model_id) or {}
+                _inp = _pricing.get("input_token_price") or 0.0
+                _outp = _pricing.get("output_token_price") or 0.0
+                _shot_cost_usd = round(_pt * _inp + _ct * _outp, 6)
+                _cum_snap["estimated_cost_usd"] = round(
+                    _cum_snap["prompt_tokens"] * _inp
+                    + _cum_snap["completion_tokens"] * _outp,
+                    4,
+                )
+            except Exception:
+                pass
+            self._emit_progress({
+                "type": "shot_done",
+                "shot_index": shot_idx,
+                "total_shots": total_shots,
+                "shot_type": shot_type,
+                "duration_s": round(end_time - start_time, 2),
+                "start_time": start_time,
+                "end_time": end_time,
+                "message": f"Shot {shot_idx + 1}/{total_shots} ready ({shot_type})",
+                "model": _model_id,
+                "token_delta": {
+                    "prompt_tokens": _pt,
+                    "completion_tokens": _ct,
+                    "estimated_cost_usd": _shot_cost_usd,
+                },
+                "cumulative_tokens": _cum_snap,
+            })
+
+            # Save checkpoint so a retry can skip this shot
+            try:
+                _cache_path.write_text(json.dumps({"entries": entries, "usage": usage}, default=str))
+            except Exception:
+                pass  # cache write failure is non-fatal
 
             return entries, usage
 
@@ -5311,7 +5904,8 @@ class VideoGenerationPipeline:
             }.get(self._pacing_style, "")
             user_prompt += (
                 f"\n**SEGMENT DURATION**: {_seg_duration:.0f} seconds."
-                f" Aim for approximately {_recommended_shots} shots to fill this time."
+                f" Generate EXACTLY {_recommended_shots} shots — no more, no fewer."
+                f" Each shot: {int(_sps)}–{int(_sps) + 2}s duration."
                 f"\n**PACING STYLE**: {self._pacing_style.upper()} — {_pacing_hint}\n"
             )
 
@@ -6018,6 +6612,28 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               overflow-wrap: break-word;
               word-break: break-word;
               box-sizing: border-box;
+            }}
+            /* Character-level animation spans must NEVER break across lines.
+               LLMs wrap individual letters in inline-block spans (e.g. class="s6-char",
+               "-char", "-letter") — word-break:break-word lets the browser split lines
+               between characters, producing "REALISTI" / "C" on separate lines.
+               Force them to keep-all so line breaks only happen at word boundaries. */
+            [class*="-char"],
+            [class*="-letter"],
+            [class*="char-"],
+            [class*="letter-"] {{
+              display: inline-block;
+              white-space: nowrap;
+              word-break: normal;
+              overflow-wrap: normal;
+            }}
+            /* Word-level wrappers: prevent internal breaks, allow breaks between words */
+            [class*="-word"],
+            [class*="word-"] {{
+              display: inline-block;
+              white-space: nowrap;
+              word-break: normal;
+              overflow-wrap: normal;
             }}
             /* Prevent any element from exceeding the viewport */
             body, html {{
@@ -8264,6 +8880,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not output_video.exists():
             raise RuntimeError(f"Video not found at {output_video}")
         return output_video
+
+    def _emit_progress(self, event: Dict[str, Any]) -> None:
+        """Fire a progress event to the SSE bridge (non-fatal if callback missing)."""
+        if self._progress_callback:
+            try:
+                self._progress_callback(event)
+            except Exception:
+                pass  # never let a callback error break the pipeline
 
     def _resolve_run_dir(self, run_name: Optional[str], resume_run: Optional[str]) -> Path:
         if resume_run:

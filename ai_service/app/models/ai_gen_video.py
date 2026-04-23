@@ -102,6 +102,7 @@ class AiGenVideo(Base):
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert model to dictionary for API responses."""
+        _meta = self.extra_metadata or {}
         return {
             "id": str(self.id),
             "video_id": self.video_id,
@@ -113,7 +114,8 @@ class AiGenVideo(Base):
             "prompt": self.prompt,
             "language": self.language,
             "error_message": self.error_message,
-            "metadata": self.extra_metadata or {},
+            "metadata": _meta,
+            "token_usage": _meta.get("token_usage"),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,

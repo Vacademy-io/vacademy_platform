@@ -225,7 +225,7 @@ class VideoGenerationResumeRequest(BaseModel):
 
 class VideoStatusResponse(BaseModel):
     """Response for video/content generation status."""
-    
+
     id: str
     video_id: str
     current_stage: str
@@ -237,6 +237,10 @@ class VideoStatusResponse(BaseModel):
     language: str
     error_message: Optional[str]
     metadata: Dict[str, Any]
+    token_usage: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Token/cost breakdown for this generation (prompt_tokens, completion_tokens, estimated_cost_usd, model, etc.)"
+    )
     created_at: Optional[str]
     updated_at: Optional[str]
     completed_at: Optional[str]

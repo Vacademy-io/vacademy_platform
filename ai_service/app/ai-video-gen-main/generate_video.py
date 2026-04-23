@@ -588,16 +588,50 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     if (!text || !text.trim()) return;
                     el.innerHTML = '';
                     el.style.opacity = '1';
-                    const units = opts.type === 'words' ? text.split(/\\s+/) : text.split('');
-                    units.forEach(function(unit, i) {
-                      var span = document.createElement('span');
-                      span.style.display = 'inline-block';
-                      span.style.opacity = '0';
-                      span.textContent = unit + (opts.type === 'words' && i < units.length - 1 ? '\u00A0' : '');
-                      el.appendChild(span);
-                    });
+                    const allSpans = [];
+                    if (opts.type === 'words') {
+                      text.split(/\\s+/).forEach(function(word, i, arr) {
+                        var span = document.createElement('span');
+                        span.style.display = 'inline-block';
+                        span.style.whiteSpace = 'nowrap';
+                        span.style.opacity = '0';
+                        span.textContent = word + (i < arr.length - 1 ? '\u00A0' : '');
+                        el.appendChild(span);
+                        allSpans.push(span);
+                      });
+                    } else {
+                      // Char mode: group chars of the same word in a nowrap wrapper so
+                      // the browser never line-breaks mid-word between inline-block spans.
+                      var wordBuf = [];
+                      var flushWord = function() {
+                        if (!wordBuf.length) return;
+                        var wrapper = document.createElement('span');
+                        wrapper.style.display = 'inline-block';
+                        wrapper.style.whiteSpace = 'nowrap';
+                        wordBuf.forEach(function(s) { wrapper.appendChild(s); });
+                        el.appendChild(wrapper);
+                        wordBuf = [];
+                      };
+                      text.split('').forEach(function(ch) {
+                        if (ch === ' ' || ch === '\u00A0') {
+                          flushWord();
+                          var sp = document.createElement('span');
+                          sp.style.display = 'inline-block';
+                          sp.textContent = '\u00A0';
+                          el.appendChild(sp);
+                        } else {
+                          var span = document.createElement('span');
+                          span.style.display = 'inline-block';
+                          span.style.opacity = '0';
+                          span.textContent = ch;
+                          wordBuf.push(span);
+                          allSpans.push(span);
+                        }
+                      });
+                      flushWord();
+                    }
                     try {
-                      gsap.fromTo(el.children,
+                      gsap.fromTo(allSpans,
                         { opacity: 0, y: opts.y },
                         { opacity: 1, y: 0, duration: opts.duration, stagger: opts.stagger, delay: opts.delay, ease: opts.ease }
                       );

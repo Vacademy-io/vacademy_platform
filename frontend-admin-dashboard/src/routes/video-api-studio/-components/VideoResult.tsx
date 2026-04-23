@@ -27,6 +27,7 @@ import {
     getRenderStatus,
     clearRenderedVideo,
     type RenderSettings,
+    type TokenUsage,
 } from '../-services/video-generation';
 import { LatexRenderer } from './LatexRenderer';
 import { RenderSettingsDialog } from './RenderSettingsDialog';
@@ -78,6 +79,7 @@ interface VideoResultProps {
     orientation?: VideoOrientation;
     prompt: string;
     apiKey?: string;
+    tokenUsage?: TokenUsage | null;
 }
 
 type RenderState = 'idle' | 'submitting' | 'rendering' | 'done' | 'error';
@@ -91,6 +93,7 @@ export function VideoResult({
     orientation = 'landscape',
     prompt,
     apiKey,
+    tokenUsage,
 }: VideoResultProps) {
     const isPortrait = orientation === 'portrait';
     const playerWidth = isPortrait ? 1080 : 1920;
@@ -606,6 +609,49 @@ export function VideoResult({
                         )}
                     </div>
                 </div>
+                {/* Generation Details */}
+                {tokenUsage && (
+                    <details className="rounded-xl border bg-card shadow-sm">
+                        <summary className="cursor-pointer select-none rounded-xl px-4 py-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50">
+                            Generation Details
+                        </summary>
+                        <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 px-4 pb-4 pt-2 text-[11px]">
+                            {tokenUsage.model && (
+                                <>
+                                    <dt className="text-muted-foreground">Model</dt>
+                                    <dd className="truncate font-mono">{tokenUsage.model.split('/').pop()}</dd>
+                                </>
+                            )}
+                            <dt className="text-muted-foreground">LLM tokens</dt>
+                            <dd>
+                                {tokenUsage.total_tokens.toLocaleString()}
+                                <span className="ml-1 text-muted-foreground/70">
+                                    ({tokenUsage.prompt_tokens.toLocaleString()} in / {tokenUsage.completion_tokens.toLocaleString()} out)
+                                </span>
+                            </dd>
+                            {tokenUsage.image_count > 0 && (
+                                <>
+                                    <dt className="text-muted-foreground">Images</dt>
+                                    <dd>{tokenUsage.image_count}</dd>
+                                </>
+                            )}
+                            {tokenUsage.tts_character_count > 0 && (
+                                <>
+                                    <dt className="text-muted-foreground">TTS chars</dt>
+                                    <dd>{tokenUsage.tts_character_count.toLocaleString()}</dd>
+                                </>
+                            )}
+                            {tokenUsage.estimated_cost_usd != null && (
+                                <>
+                                    <dt className="font-medium text-foreground">Est. cost</dt>
+                                    <dd className="font-medium text-emerald-600">
+                                        ${tokenUsage.estimated_cost_usd.toFixed(4)}
+                                    </dd>
+                                </>
+                            )}
+                        </dl>
+                    </details>
+                )}
             </div>
 
             {/* Render settings dialog */}

@@ -20,8 +20,10 @@ import {
     SSEEvent,
     ContentType,
     VideoOrientation,
+    TokenUsage,
     generateVideo,
     resumeVideo,
+    retryVideo,
     fetchScriptText,
     getVideoUrls,
     getRemoteHistory,
@@ -75,6 +77,7 @@ interface CurrentGeneration {
     wordsUrl?: string;
     scriptUrl?: string;
     options: Omit<GenerateVideoRequest, 'prompt'>;
+    tokenUsage?: TokenUsage | null;
 }
 
 /** Persisted across page navigations so polling can resume after SSE disconnect */
@@ -755,6 +758,7 @@ function VideoConsole() {
                     audioUrl: item.audio_url,
                     wordsUrl: item.words_url,
                     options: item.options,
+                    tokenUsage: item.token_usage ?? null,
                 });
                 setConsoleState('complete');
                 return;
@@ -838,6 +842,7 @@ function VideoConsole() {
                         audioUrl: urls.audio_url ?? undefined,
                         wordsUrl: urls.words_url ?? undefined,
                         options: item.options,
+                        tokenUsage: item.token_usage ?? null,
                     });
                     setConsoleState('complete');
                     toast.success('Content loaded successfully');
@@ -1009,6 +1014,90 @@ function VideoConsole() {
         setConsoleState('idle');
     }, []);
 
+    // Retry a failed generation — resumes from last checkpoint via SSE stream
+    const handleRetry = useCallback((videoId: string) => {
+        if (!activeApiKey) return;
+
+        const failedItem = history.find((h) => h.video_id === videoId);
+        setCurrentGeneration({
+            videoId,
+            prompt: failedItem?.prompt || '',
+            stage: 'HTML',
+            percentage: 0,
+            message: 'Resuming from last checkpoint...',
+            contentType: (failedItem?.content_type as ContentType) || 'VIDEO',
+            options: failedItem?.options || DEFAULT_OPTIONS,
+        });
+        setConsoleState('generating');
+
+        const { abort } = retryVideo(
+            videoId,
+            activeApiKey,
+            (event: SSEEvent) => {
+                if (event.type === 'progress') {
+                    const audioUrl = event.files?.audio?.s3_url;
+                    const timelineUrl = event.files?.timeline?.s3_url;
+                    const wordsUrl = event.files?.words?.s3_url;
+
+                    setCurrentGeneration((prev) =>
+                        prev ? {
+                            ...prev,
+                            stage: event.stage,
+                            percentage: event.percentage,
+                            message: event.message,
+                            htmlUrl: timelineUrl || prev.htmlUrl,
+                            audioUrl: audioUrl || prev.audioUrl,
+                            wordsUrl: wordsUrl || prev.wordsUrl,
+                        } : null
+                    );
+                    setHistory((prev) =>
+                        prev.map((h) =>
+                            h.video_id === videoId
+                                ? { ...h, status: 'generating' as const, stage: event.stage }
+                                : h
+                        )
+                    );
+                    setCurrentGeneration((prev) => {
+                        if (
+                            event.stage === 'HTML' &&
+                            (timelineUrl || prev?.htmlUrl) &&
+                            (audioUrl || prev?.audioUrl)
+                        ) {
+                            setConsoleState('complete');
+                            toast.success('Content regenerated successfully!');
+                        }
+                        return prev;
+                    });
+                } else if (event.type === 'completed') {
+                    setConsoleState('complete');
+                    toast.success('Content regenerated successfully!');
+                    setCurrentGeneration((prev) => prev ? { ...prev, stage: 'HTML', percentage: 100 } : null);
+                    setHistory((prev) =>
+                        prev.map((h) =>
+                            h.video_id === videoId ? { ...h, status: 'completed', stage: 'HTML' } : h
+                        )
+                    );
+                } else if (event.type === 'error') {
+                    toast.error(event.message || 'Retry failed');
+                    setConsoleState('idle');
+                    setCurrentGeneration(null);
+                    setHistory((prev) =>
+                        prev.map((h) =>
+                            h.video_id === videoId ? { ...h, status: 'failed' as const } : h
+                        )
+                    );
+                }
+            },
+            (error) => {
+                toast.error(`Retry failed: ${error.message}`);
+                setConsoleState('idle');
+                setCurrentGeneration(null);
+            }
+        );
+
+        abortRef.current = abort;
+    }, [activeApiKey, history]);
+
     // No API keys or no stored full key - redirect to main page
     const hasActiveKeys = apiKeys.filter((k) => k.status === 'active').length > 0;
 
@@ -1066,6 +1155,7 @@ function VideoConsole() {
                             setIsMobileHistoryOpen(false);
                         }}
                         onDelete={handleDeleteHistory}
+                        onRetry={handleRetry}
                         onNewVideo={() => {
                             handleNewVideo();
                             setIsMobileHistoryOpen(false);
@@ -1094,6 +1184,7 @@ function VideoConsole() {
                     selectedId={selectedHistoryId}
                     onSelect={handleSelectHistory}
                     onDelete={handleDeleteHistory}
+                    onRetry={handleRetry}
                     onNewVideo={handleNewVideo}
                     isCollapsed={!isSidebarOpen}
                     onToggleCollapse={() => setIsSidebarOpen((prev) => !prev)}
@@ -1190,6 +1281,7 @@ function VideoConsole() {
                                 orientation={currentGeneration.orientation || (options.orientation as VideoOrientation) || 'landscape'}
                                 prompt={currentGeneration.prompt}
                                 apiKey={activeApiKey}
+                                tokenUsage={currentGeneration.tokenUsage}
                             />
                         )}
                 </div>

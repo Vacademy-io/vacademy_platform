@@ -521,7 +521,43 @@ class VideoGenerationService:
                         logger.info(f"[VideoGenService] Downloading narration.words.json from S3...")
                         if self.s3_service.download_file(words_url, words_path):
                             logger.info(f"[VideoGenService] Successfully downloaded narration.words.json")
-            
+
+                # Download shot checkpoints for intra-HTML-stage resume (director plan + per-shot cache)
+                try:
+                    from ..config import get_settings as _get_settings_ckpt
+                    _ckpt_settings = _get_settings_ckpt()
+                    _ckpt_bucket = _ckpt_settings.aws_bucket_name or _ckpt_settings.aws_s3_public_bucket
+                    _ckpt_prefix = f"ai-videos/{video_id}/checkpoints"
+                    _ckpt_base_url = f"https://{_ckpt_bucket}.s3.amazonaws.com/{_ckpt_prefix}"
+
+                    # style_guide.json
+                    _sg_local = run_dir / "style_guide.json"
+                    if not _sg_local.exists():
+                        self.s3_service.download_file(f"{_ckpt_base_url}/style_guide.json", _sg_local)
+
+                    # director_plan.json
+                    _dp_local = run_dir / "director_plan.json"
+                    if not _dp_local.exists():
+                        self.s3_service.download_file(f"{_ckpt_base_url}/director_plan.json", _dp_local)
+
+                    # Per-shot cache files (shot_000.json … shot_NNN.json)
+                    _shot_cache_local = run_dir / "shot_cache"
+                    _shot_cache_local.mkdir(exist_ok=True)
+                    _downloaded_shots = 0
+                    for _shot_idx in range(200):  # max 200 shots
+                        _sc_key = f"{_ckpt_base_url}/shot_cache/shot_{_shot_idx:03d}.json"
+                        _sc_local = _shot_cache_local / f"shot_{_shot_idx:03d}.json"
+                        if _sc_local.exists():
+                            _downloaded_shots += 1
+                            continue
+                        if not self.s3_service.download_file(_sc_key, _sc_local):
+                            break  # No more shot cache files
+                        _downloaded_shots += 1
+                    if _downloaded_shots:
+                        logger.info(f"[VideoGenService] Downloaded {_downloaded_shots} shot checkpoints for {video_id}")
+                except Exception as _ckpt_dl_err:
+                    logger.info(f"[VideoGenService] No shot checkpoints found or download failed (new run): {_ckpt_dl_err}")
+
             # Need branding_meta.json for render stage (audio delay)
             if start_stage_idx >= 5:  # RENDER
                 branding_meta_url = video_record.s3_urls.get("branding_meta")
@@ -881,7 +917,33 @@ class VideoGenerationService:
                                 logger.info(f"[VideoGenService] Deducted {'premium ' if _is_premium_tts else ''}TTS credits for {_tts_chars} chars in stage {stage_pipeline_name}")
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
-                
+
+                # Persist full token/cost breakdown into video metadata so it's
+                # queryable without joining ai_token_usage (used by FE cost display)
+                if outputs and "token_usage" in outputs and db_session:
+                    try:
+                        _usage = outputs["token_usage"]
+                        if _usage.get("total_tokens", 0) > 0 or _usage.get("estimated_cost_usd") is not None:
+                            from datetime import datetime as _dt
+                            _video_rec = self.repository.get_by_video_id(video_id)
+                            _existing_meta = (_video_rec.extra_metadata or {}) if _video_rec else {}
+                            _existing_meta["token_usage"] = {
+                                "prompt_tokens": _usage.get("prompt_tokens", 0),
+                                "completion_tokens": _usage.get("completion_tokens", 0),
+                                "total_tokens": _usage.get("total_tokens", 0),
+                                "image_count": _usage.get("image_count", 0),
+                                "tts_character_count": _usage.get("tts_character_count", 0),
+                                "stock_count": _usage.get("stock_count", 0),
+                                "estimated_cost_usd": _usage.get("estimated_cost_usd"),
+                                "model": _usage.get("model"),
+                                "recorded_at": _dt.utcnow().isoformat(),
+                            }
+                            self.repository.update_metadata(video_id, _existing_meta)
+                            logger.info(f"[VideoGenService] Saved token_usage to metadata for {video_id}: "
+                                        f"est. ${_usage.get('estimated_cost_usd', 0):.4f}")
+                    except Exception as _me:
+                        logger.warning(f"[VideoGenService] Failed to save token_usage to metadata: {_me}")
+
                 if outputs and "run_dir" in outputs:
                     run_dir = outputs["run_dir"]
 
@@ -1310,6 +1372,28 @@ class VideoGenerationService:
                         logger.warning(f"[VideoGenService] Could not process file path {file_path}: {e}")
             
             if stage_has_files:
+                # After HTML stage: upload shot checkpoints to S3 so a retry can resume
+                # from the last saved shot without re-running Director or completed shots.
+                if stage_pipeline_name == "html":
+                    try:
+                        _ckpt_files = []
+                        _dir_plan = run_dir / "director_plan.json"
+                        if _dir_plan.exists():
+                            _ckpt_files.append((_dir_plan, f"ai-videos/{video_id}/checkpoints/director_plan.json"))
+                        _shot_cache_dir = run_dir / "shot_cache"
+                        if _shot_cache_dir.exists():
+                            for _sc_file in sorted(_shot_cache_dir.glob("shot_*.json")):
+                                _ckpt_files.append((_sc_file, f"ai-videos/{video_id}/checkpoints/shot_cache/{_sc_file.name}"))
+                        _sg_file = run_dir / "style_guide.json"
+                        if _sg_file.exists():
+                            _ckpt_files.append((_sg_file, f"ai-videos/{video_id}/checkpoints/style_guide.json"))
+                        for _f, _key in _ckpt_files:
+                            self.s3_service.upload_file(_f, s3_key=_key, content_type="application/json")
+                        if _ckpt_files:
+                            logger.info(f"[VideoGenService] Uploaded {len(_ckpt_files)} checkpoint files to S3 for {video_id}")
+                    except Exception as _ckpt_err:
+                        logger.warning(f"[VideoGenService] Failed to upload checkpoints to S3: {_ckpt_err}")
+
                 # Update stage status — wrap in try/except so a stale-session error
                 # doesn't abort the entire pipeline after files were already uploaded.
                 try:

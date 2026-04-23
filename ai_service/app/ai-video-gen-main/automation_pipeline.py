@@ -299,9 +299,9 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_diversity_enforcement": True,
         "segment_context": True,
         "use_director": True,
-        "director_max_tokens": 20000,
+        "director_max_tokens": 14000,  # was 20000 — Director JSON plans don't need essay budgets
         "shot_pack_enabled": True,
-        "per_shot_max_tokens": 16000,
+        "per_shot_max_tokens": 12000,  # was 16000 — measured outputs 8-12K; cap removed waste
         "crossfade_duration": 0.35,
         "sound_enabled": True,
         "sound_max_cues_per_shot": 1,
@@ -318,11 +318,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_diversity_enforcement": True,
         "segment_context": True,
         "use_director": True,
-        "director_max_tokens": 32000,
+        "director_max_tokens": 20000,  # was 32000
         "director_emphasis_map": True,
         "shot_pack_enabled": True,
         "skill_library_enabled": True,
-        "per_shot_max_tokens": 24000,
+        "per_shot_max_tokens": 16000,  # was 24000 — measured outputs ~10-14K
         "crossfade_duration": 0.35,
         "sound_enabled": True,
         "sound_max_cues_per_shot": 2,
@@ -339,7 +339,7 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_diversity_enforcement": True,
         "segment_context": True,
         "use_director": True,
-        "director_max_tokens": 40000,
+        "director_max_tokens": 28000,  # was 40000 — still generous for two-pass + few-shot
         "director_emphasis_map": True,
         "director_two_pass": True,
         "director_few_shot": True,
@@ -348,7 +348,7 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_animation_validator": True,
         "stock_video_ranking": True,
         "skill_library_enabled": True,
-        "per_shot_max_tokens": 32000,
+        "per_shot_max_tokens": 20000,  # was 32000 — densest HTML ~14-18K; 20K gives headroom
         "kinetic_text_shots": True,
         "crossfade_duration": 0.35,
         "motion_density_enforcement": True,
@@ -359,6 +359,36 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_max_cues_per_video": 40,
     },
 }
+
+
+# Per-million token USD rates for models routed through OpenRouter.
+# Fallback rates are used for unknown model IDs.
+_LLM_PRICING: Dict[str, Dict[str, float]] = {
+    "google/gemini-2.5-pro": {"input": 1.25, "output": 10.0},
+    "google/gemini-2.5-pro-preview": {"input": 1.25, "output": 10.0},
+    "google/gemini-2.0-pro": {"input": 1.25, "output": 5.0},
+    "google/gemini-2.0-flash": {"input": 0.10, "output": 0.40},
+    "google/gemini-pro-1.5": {"input": 1.25, "output": 5.0},
+    "google/gemini-1.5-pro": {"input": 1.25, "output": 5.0},
+    "google/gemini-1.5-flash": {"input": 0.075, "output": 0.30},
+}
+_LLM_PRICING_FALLBACK: Dict[str, float] = {"input": 1.25, "output": 5.0}
+_IMAGE_COST_USD: float = 0.04          # per generated image
+_TTS_COST_PER_1K_CHARS_USD: float = 0.30  # ElevenLabs standard rate
+
+
+def _calculate_generation_cost(
+    model_id: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    image_count: int,
+    tts_character_count: int,
+) -> float:
+    rates = _LLM_PRICING.get(model_id, _LLM_PRICING_FALLBACK)
+    llm_cost = (prompt_tokens / 1_000_000) * rates["input"] + (completion_tokens / 1_000_000) * rates["output"]
+    img_cost = image_count * _IMAGE_COST_USD
+    tts_cost = (tts_character_count / 1000) * _TTS_COST_PER_1K_CHARS_USD
+    return round(llm_cost + img_cost + tts_cost, 4)
 
 
 def _validate_whisper_script(word_entries: list, lang_code: str) -> bool:
@@ -551,10 +581,14 @@ class OpenRouterClient:
         default_model: str,
         referer: str = "https://stilllift-automation.local",
         title: str = "StillLift Automation",
+        use_prompt_cache: bool = True,
     ) -> None:
         self.api_key = api_key
         self.default_model = default_model
-        
+        self.use_prompt_cache = use_prompt_cache
+        # Tracks the model used in the last successful chat() call (for cost reporting)
+        self.current_model: str = default_model
+
         self.model_chain = self._fetch_models()
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.headers = {
@@ -599,12 +633,28 @@ class OpenRouterClient:
         else:
             models_to_try = [self.default_model]
 
+        # Apply prompt caching: wrap system message content in cache_control array
+        if self.use_prompt_cache:
+            cached_messages: list = []
+            for msg in messages:
+                if msg.get("role") == "system" and isinstance(msg.get("content"), str):
+                    msg = {
+                        "role": "system",
+                        "content": [
+                            {"type": "text", "text": msg["content"],
+                             "cache_control": {"type": "ephemeral"}}
+                        ],
+                    }
+                cached_messages.append(msg)
+        else:
+            cached_messages = list(messages)
+
         last_error = None
         for model_to_use in models_to_try:
             try:
                 payload: Dict[str, Any] = {
                     "model": model_to_use,
-                    "messages": list(messages),
+                    "messages": cached_messages,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
                 }
@@ -621,11 +671,18 @@ class OpenRouterClient:
                     # Parse JSON response and return content
                     data = json.loads(raw)
                     content = data["choices"][0]["message"]["content"]
-                    
+
                     if not content or not content.strip():
                         raise ValueError("Model returned an empty string.")
-                        
+
                     usage = data.get("usage", {})
+                    # Expose cache hit metrics when available (OpenRouter passes these through)
+                    cache_read = usage.get("cache_read_input_tokens", 0)
+                    cache_write = usage.get("cache_creation_input_tokens", 0)
+                    if cache_read or cache_write:
+                        usage["cache_read_input_tokens"] = cache_read
+                        usage["cache_creation_input_tokens"] = cache_write
+                    self.current_model = model_to_use
                     return content, usage
             except Exception as exc:
                 if isinstance(exc, urllib.error.HTTPError):
@@ -1085,21 +1142,21 @@ class VideoGenerationPipeline:
         "reels": {
             "seconds_per_shot": 3,
             "min_shots": 3,
-            "max_shots": 12,
+            "max_shots": 8,      # was 12 — tightened to control free/standard segment call count
             "min_shot_duration": 2.0,
             "max_shot_duration": 5.0,
         },
         "marketing": {
             "seconds_per_shot": 5,
             "min_shots": 2,
-            "max_shots": 9,
+            "max_shots": 7,      # was 9
             "min_shot_duration": 3.0,
             "max_shot_duration": 12.0,
         },
         "education": {
             "seconds_per_shot": 8,
             "min_shots": 2,
-            "max_shots": 7,
+            "max_shots": 5,      # was 7
             "min_shot_duration": 4.0,
             "max_shot_duration": 20.0,
         },
@@ -1207,6 +1264,36 @@ class VideoGenerationPipeline:
         # ── Pacing profile ──
         # Derived from target_duration: short→reels, medium→marketing, long→education
         self._pacing_style = self._derive_pacing_style(target_duration, content_type)
+
+        # Tier-aware shot cap for Director-based tiers (videos > 2 min only).
+        # super_ultra: no cap — two-pass Director, motion_bias, and kinetic_text_shots all
+        # rely on dense, short shots. A hard cap fights these features directly.
+        # ultra: capped at 40 — no two-pass, saves ~20% LLM calls without quality loss.
+        # premium: capped at 30 — no animation validator; longer shots are the right tradeoff.
+        # free/standard: use segment path (hardened pacing hints instead of a shot cap).
+        import re as _re_dur
+        _dur_lower = target_duration.lower().strip()
+        _dur_nums = [float(n) for n in _re_dur.findall(r"[\d.]+", _dur_lower)]
+        if _dur_nums:
+            _dur_s = (sum(_dur_nums) / len(_dur_nums)) * (1 if "second" in _dur_lower else 60)
+        else:
+            _dur_s = 0.0
+        _SHOT_CAPS: dict[str, int] = {
+            "premium": 30,
+            "ultra":   40,
+            # super_ultra: intentionally absent — no cap
+        }
+        self._max_total_shots: int | None = (
+            _SHOT_CAPS.get(self._quality_tier) if _dur_s > 120 else None
+        )
+        self._target_shot_duration_s: float | None = (
+            round(_dur_s / self._max_total_shots, 1) if self._max_total_shots else None
+        )
+        if self._max_total_shots:
+            print(f"🎬 Shot cap: ≤{self._max_total_shots} shots "
+                  f"(~{self._target_shot_duration_s}s each) for {_dur_s:.0f}s video"
+                  f" [{self._quality_tier}]")
+
         # Store reference context (processed images/PDFs from user uploads)
         self._reference_context = reference_context
         if start_from not in self.STAGE_INDEX:
@@ -1624,10 +1711,21 @@ class VideoGenerationPipeline:
 
         style_guide = None  # Will be set if do_html; used later to store palette in timeline meta
         if do_html:
-            print("🎨 Designing Visual Style Guide ...")
-            # Stash script text for the Sound Planner's topic-aware palette.
-            self._current_script_text = str(script_plan.get("script_text", "") or "")
-            style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type, style_config=self._current_style_config)
+            # Checkpoint: load style guide from prior run to skip this LLM call on resume
+            _sg_ckpt = run_dir / "style_guide.json"
+            if _sg_ckpt.exists():
+                try:
+                    _sg_cached = json.loads(_sg_ckpt.read_text())
+                    if _sg_cached and _sg_cached.get("palette"):
+                        style_guide = _sg_cached
+                        print("♻️  Loaded style guide from checkpoint")
+                except Exception:
+                    pass
+            if style_guide is None:
+                print("🎨 Designing Visual Style Guide ...")
+                # Stash script text for the Sound Planner's topic-aware palette.
+                self._current_script_text = str(script_plan.get("script_text", "") or "")
+                style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type, style_config=self._current_style_config)
             
             # CHECK FOR INTERACTIVE CONTENT TYPES
             interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "SIMULATION", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION", "MAP_EXPLORATION", "SLIDES"]
@@ -1802,15 +1900,27 @@ class VideoGenerationPipeline:
                 # segment-based flow on failure.
                 _director_plan = None
                 if self._tier_config.get("use_director") and content_type == "VIDEO":
-                    if _seg_audio_dur > 0:
-                        _director_plan, director_usage = self._run_director(
-                            script_plan, words, style_guide, run_dir,
-                            language=language,
-                            audio_duration=_seg_audio_dur,
-                        )
-                        accumulate_usage(director_usage)
-                    else:
-                        print("⚠️ Audio duration unknown — skipping Director stage")
+                    # Checkpoint: load existing Director plan on resume (avoids re-running 2 LLM calls)
+                    _director_ckpt = run_dir / "director_plan.json"
+                    if _director_ckpt.exists():
+                        try:
+                            _ckpt_plan = json.loads(_director_ckpt.read_text())
+                            if _ckpt_plan and _ckpt_plan.get("shots"):
+                                _director_plan = _ckpt_plan
+                                print(f"♻️  Loaded Director plan from checkpoint ({len(_ckpt_plan['shots'])} shots)")
+                        except Exception as _ckpt_err:
+                            print(f"⚠️ Could not load Director checkpoint: {_ckpt_err} — re-running Director")
+                    if _director_plan is None:
+                        if _seg_audio_dur > 0:
+                            _director_plan, director_usage = self._run_director(
+                                script_plan, words, style_guide, run_dir,
+                                language=language,
+                                audio_duration=_seg_audio_dur,
+                                target_audience=target_audience,
+                            )
+                            accumulate_usage(director_usage)
+                        else:
+                            print("⚠️ Audio duration unknown — skipping Director stage")
 
                 if _director_plan and _director_plan.get("shots"):
                     # Per-shot HTML generation using Director plan
@@ -1966,6 +2076,22 @@ class VideoGenerationPipeline:
             )
         else:
             video_path = None
+
+        # Attach per-video cost estimate so the service layer can persist it in metadata
+        _model_id = getattr(self.html_client, 'current_model', self.html_client.default_model)
+        total_usage["model"] = _model_id
+        total_usage["estimated_cost_usd"] = _calculate_generation_cost(
+            model_id=_model_id,
+            prompt_tokens=total_usage.get("prompt_tokens", 0),
+            completion_tokens=total_usage.get("completion_tokens", 0),
+            image_count=total_usage.get("image_count", 0),
+            tts_character_count=total_usage.get("tts_character_count", 0),
+        )
+        print(f"💰 Estimated generation cost: ${total_usage['estimated_cost_usd']:.4f} "
+              f"({total_usage.get('prompt_tokens', 0):,} in / "
+              f"{total_usage.get('completion_tokens', 0):,} out tokens, "
+              f"{total_usage.get('image_count', 0)} images, "
+              f"{total_usage.get('tts_character_count', 0):,} TTS chars)")
 
         return {
             "run_dir": run_dir,
@@ -3786,7 +3912,9 @@ class VideoGenerationPipeline:
                 rel_t = max(0.0, abs_t - start_time)
                 if rel_t > (end_time - start_time) + 0.3:
                     continue  # sync point outside the shot — ignore
-                if not any(abs(rel_t - d) <= 0.2 for d in delays):
+                # super_ultra targets word-level sync at ~60fps; tighter tolerance.
+                _sync_tol = 0.08 if self._quality_tier == "super_ultra" else 0.20
+                if not any(abs(rel_t - d) <= _sync_tol for d in delays):
                     word = sp.get("word", "")
                     unmatched.append(f"{rel_t:.2f}s{f' ({word})' if word else ''}")
             if unmatched:
@@ -3893,6 +4021,7 @@ class VideoGenerationPipeline:
         run_dir: Path,
         language: str = "English",
         audio_duration: float = 0.0,
+        target_audience: str = "General/Adult",
     ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
         """Run the Director LLM call to produce a shot-by-shot plan.
 
@@ -3956,6 +4085,8 @@ class VideoGenerationPipeline:
         emphasis_map = ""
         if self._tier_config.get("director_emphasis_map"):
             emphasis_map = build_emphasis_map(words)
+        # Store so per-shot HTML generation can highlight narrator stress peaks
+        self._emphasis_map = emphasis_map
 
         user_prompt = build_director_user_prompt(
             script_text=script_text,
@@ -3970,6 +4101,10 @@ class VideoGenerationPipeline:
             act_plan=act_plan,
             emphasis_map=emphasis_map,
             require_shot_density=bool(self._tier_config.get("director_shot_density")),
+            max_shots=getattr(self, '_max_total_shots', None),
+            target_shot_duration_s=getattr(self, '_target_shot_duration_s', None),
+            quality_tier=self._quality_tier,
+            target_audience=target_audience,
         )
 
         # ── Input video context for Director ──────────────────────────
@@ -4124,7 +4259,7 @@ class VideoGenerationPipeline:
                 f"For a {int(audio_duration)}s audio, target ~{max(1, int(audio_duration / 3))} shots "
                 f"(roughly one per 2.5-3.5 seconds of narration)."
             ) if audio_duration > 0 else ""
-            director_system = DIRECTOR_SYSTEM_PROMPT + (
+            director_system = director_system + (
                 "\n\n**⚡ SUPER ULTRA — REEL PACE + MOTION BIAS** (overrides rules 2, 4, 11):\n"
                 f"- REEL PACE: every shot should be {_target_shot_dur} long. "
                 f"{_min_shots_hint} "
@@ -4377,6 +4512,11 @@ class VideoGenerationPipeline:
         total_shots = len(shots)
         continuity_notes = director_plan.get("continuity_notes", "")
 
+        # Per-shot checkpoint cache: saves completed shot HTML to disk so a resume
+        # can skip already-generated shots without re-paying their token cost.
+        _shot_cache_dir = run_dir / "shot_cache"
+        _shot_cache_dir.mkdir(exist_ok=True)
+
         total_usage = {
             "prompt_tokens": 0, "completion_tokens": 0,
             "total_tokens": 0, "image_count": 0,
@@ -4416,8 +4556,26 @@ class VideoGenerationPipeline:
                 "so IDs never collide between shots.\n"
             )
 
+        # Overall speech rate — used to dynamically scale word-timing window per shot
+        _total_audio_dur = director_plan.get("audio_duration") or (
+            shots[-1].get("end_time", 0) if shots else 0
+        )
+        _words_per_second = len(words) / max(1.0, float(_total_audio_dur))
+
         def _shot_task(shot_idx: int, shot: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
             """Generate HTML for a single shot."""
+            # Resume: load from cache if this shot was already generated in a prior run
+            _cache_path = _shot_cache_dir / f"shot_{shot_idx:03d}.json"
+            if _cache_path.exists():
+                try:
+                    _cached = json.loads(_cache_path.read_text())
+                    if _cached.get("entries"):
+                        print(f"   ♻️  Shot {shot_idx + 1} loaded from cache — skipping LLM call")
+                        # Return zero usage so we don't double-count already-paid tokens
+                        return _cached["entries"], {}
+                except Exception:
+                    pass  # corrupt cache — regenerate
+
             shot_type = shot.get("shot_type", "TEXT_DIAGRAM")
             start_time = float(shot.get("start_time", 0))
             end_time = float(shot.get("end_time", start_time + 8))
@@ -4442,12 +4600,37 @@ class VideoGenerationPipeline:
 
             # Filter word timings to this shot's time range
             shot_words = [w for w in words if start_time <= float(w.get("start", 0)) < end_time]
+            # Dynamic word limit: scale with shot duration so a 10s shot gets ~55 words,
+            # a 3s shot gets ~20 — captures full context without token waste on short shots.
+            _word_limit = max(20, min(60, round(duration * _words_per_second * 1.5)))
             word_lines = ["Rel(s)  | Abs(s)  | Word", "--------|---------|--------"]
-            for w in shot_words[:30]:  # Limit to 30 words
+            for w in shot_words[:_word_limit]:
                 abs_t = float(w["start"])
                 rel_t = round(abs_t - start_time, 3)
                 word_lines.append(f"{rel_t:>6.2f}  | {abs_t:>7.2f}  | {w.get('word', '')}")
             word_timings = "\n".join(word_lines)
+
+            # Emphasis markers: inject narrator stress peaks for this shot's time window
+            # so the LLM knows which words to animate with extra impact treatment.
+            _em = getattr(self, '_emphasis_map', '')
+            if _em:
+                import re as _re_em
+                # Extract time-stamped entries that fall within this shot's range
+                _em_lines = []
+                for _line in _em.splitlines():
+                    _m = _re_em.search(r'(\d+\.?\d*)\s*s', _line)
+                    if _m:
+                        _t = float(_m.group(1))
+                        if start_time <= _t < end_time:
+                            _rel = round(_t - start_time, 2)
+                            _em_lines.append(f"  t={_rel:.2f}s: {_line.strip()}")
+                if _em_lines:
+                    word_timings += (
+                        "\n\n** NARRATOR STRESS PEAKS in this shot "
+                        "(give these words IMPACT treatment — scale pulse, highlight box, "
+                        "color flash, or underline wipe):\n"
+                        + "\n".join(_em_lines)
+                    )
 
             # Sync points from Director — formatted as ready-to-copy GSAP scaffold
             sync_lines = []
@@ -4562,6 +4745,13 @@ class VideoGenerationPipeline:
                     "(innerText growth), clip-path wipe, or mask reveal.\n"
                     "- NEVER render text with `opacity:1` static — always animate from opacity:0 "
                     "with a GSAP tween.\n"
+                    "- WORD-BREAK RULE (CRITICAL): When hand-writing per-character spans "
+                    "(e.g. `<span class='char'>R</span><span class='char'>E</span>...`), you MUST "
+                    "wrap all chars of the same word in a `<span style='display:inline-block;"
+                    "white-space:nowrap'>` parent so the browser cannot break a line mid-word. "
+                    "Never place naked per-char inline-block spans directly inside a block container "
+                    "— they will split across lines. Prefer `splitReveal()` which handles this "
+                    "automatically.\n"
                     "- Key terms (the ones the narrator emphasises) must have an IMPACT treatment: "
                     "scale pulse, highlight box drawing in behind them, underline wipe, or color "
                     "flash. Use at least 1 key-term treatment per shot.\n"
@@ -4947,10 +5137,11 @@ class VideoGenerationPipeline:
             # Scans the generated HTML for GSAP tweens and sync-point delays. If the
             # count is below the tier threshold OR the sync points weren't honored,
             # fire ONE corrective regeneration call. Doesn't loop forever.
+            _shot_duration_s = end_time - start_time
             if (
                 self._tier_config.get("shot_animation_validator")
-                and shot_type != "KINETIC_TEXT"
-                and shot_type != "KINETIC_TITLE"
+                and shot_type not in ("KINETIC_TEXT", "KINETIC_TITLE")
+                and _shot_duration_s >= 3.0
             ):
                 issues = self._validate_shot_animation_density(
                     html=html,
@@ -5120,6 +5311,12 @@ class VideoGenerationPipeline:
                     on_segment_done(entries)
                 except Exception:
                     pass
+
+            # Save checkpoint so a retry can skip this shot
+            try:
+                _cache_path.write_text(json.dumps({"entries": entries, "usage": usage}, default=str))
+            except Exception:
+                pass  # cache write failure is non-fatal
 
             return entries, usage
 
@@ -5544,7 +5741,8 @@ class VideoGenerationPipeline:
             }.get(self._pacing_style, "")
             user_prompt += (
                 f"\n**SEGMENT DURATION**: {_seg_duration:.0f} seconds."
-                f" Aim for approximately {_recommended_shots} shots to fill this time."
+                f" Generate EXACTLY {_recommended_shots} shots — no more, no fewer."
+                f" Each shot: {int(_sps)}–{int(_sps) + 2}s duration."
                 f"\n**PACING STYLE**: {self._pacing_style.upper()} — {_pacing_hint}\n"
             )
 
@@ -6251,6 +6449,28 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               overflow-wrap: break-word;
               word-break: break-word;
               box-sizing: border-box;
+            }}
+            /* Character-level animation spans must NEVER break across lines.
+               LLMs wrap individual letters in inline-block spans (e.g. class="s6-char",
+               "-char", "-letter") — word-break:break-word lets the browser split lines
+               between characters, producing "REALISTI" / "C" on separate lines.
+               Force them to keep-all so line breaks only happen at word boundaries. */
+            [class*="-char"],
+            [class*="-letter"],
+            [class*="char-"],
+            [class*="letter-"] {{
+              display: inline-block;
+              white-space: nowrap;
+              word-break: normal;
+              overflow-wrap: normal;
+            }}
+            /* Word-level wrappers: prevent internal breaks, allow breaks between words */
+            [class*="-word"],
+            [class*="word-"] {{
+              display: inline-block;
+              white-space: nowrap;
+              word-break: normal;
+              overflow-wrap: normal;
             }}
             /* Prevent any element from exceeding the viewport */
             body, html {{

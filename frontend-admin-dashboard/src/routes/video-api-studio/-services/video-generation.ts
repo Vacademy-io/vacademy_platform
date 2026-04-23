@@ -257,6 +257,18 @@ export interface ErrorEvent {
 
 export type SSEEvent = ProgressEvent | CompletedEvent | InfoEvent | ErrorEvent;
 
+export interface TokenUsage {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    image_count: number;
+    tts_character_count: number;
+    stock_count?: number;
+    estimated_cost_usd: number | null;
+    model: string | null;
+    recorded_at: string;
+}
+
 export interface VideoUrls {
     video_id: string;
     html_url: string | null;
@@ -269,6 +281,7 @@ export interface VideoUrls {
     updated_at?: string | null;
     error_message?: string | null;
     render_job_id?: string | null;
+    token_usage?: TokenUsage | null;
 }
 
 export interface VideoStatusResponse {
@@ -298,6 +311,7 @@ export interface HistoryItem {
     timeline_url?: string;
     words_url?: string;
     options: Omit<GenerateVideoRequest, 'prompt'>;
+    token_usage?: TokenUsage | null;
 }
 
 const HISTORY_STORAGE_KEY = 'vacademy_video_generation_history';
@@ -647,6 +661,81 @@ export function resumeVideo(
 }
 
 /**
+ * Retry a FAILED or STALLED video generation from the last saved checkpoint.
+ * Returns the same SSE stream as generateVideo — pipe it through the same onProgress handler.
+ */
+export function retryVideo(
+    videoId: string,
+    apiKey: string,
+    onProgress: (event: SSEEvent) => void,
+    onError: (error: Error) => void
+): { abort: () => void } {
+    const controller = new AbortController();
+
+    fetch(
+        `${AI_SERVICE_BASE_URL}/external/video/v1/retry/${encodeURIComponent(videoId)}`,
+        {
+            method: 'POST',
+            headers: { 'X-Institute-Key': apiKey },
+            signal: controller.signal,
+        }
+    )
+        .then(async (response) => {
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => response.statusText);
+                if (response.status === 402) {
+                    const err = new Error(
+                        (() => { try { return JSON.parse(errorText).detail; } catch { return errorText || 'Insufficient credits'; } })()
+                    );
+                    err.name = 'InsufficientCreditsError';
+                    throw err;
+                }
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error('No response body');
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            let jsonStr = line.slice(6).trim();
+                            jsonStr = jsonStr
+                                .replace(/'/g, '"')
+                                .replace(/None/g, 'null')
+                                .replace(/True/g, 'true')
+                                .replace(/False/g, 'false');
+                            const data = JSON.parse(jsonStr) as SSEEvent;
+                            onProgress(data);
+                        } catch (e) {
+                            console.warn('SSE parse error (retry):', e, 'Line:', line);
+                        }
+                    }
+                }
+            }
+        })
+        .catch((error) => {
+            if (error.name !== 'AbortError') {
+                onError(error);
+            }
+        });
+
+    return { abort: () => controller.abort() };
+}
+
+/**
  * Fetch the raw script text from its S3 URL.
  */
 export async function fetchScriptText(scriptUrl: string): Promise<string> {
@@ -871,6 +960,7 @@ interface RemoteHistoryItem {
     language: string;
     error_message: string | null;
     metadata: Record<string, unknown>;
+    token_usage?: TokenUsage | null;
     created_at: string;
     updated_at: string;
     completed_at: string | null;
@@ -939,6 +1029,7 @@ export async function getRemoteHistory(apiKey: string, limit: number = 20, offse
                 orientation: metaOrientation,
                 visual_style: metaVisualStyle,
             },
+            token_usage: item.token_usage ?? null,
         };
     });
 }

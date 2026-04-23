@@ -88,6 +88,7 @@ interface CurrentGeneration {
         estimated_cost_usd?: number | null;
     };
     recentErrors?: Array<{ shot_index: number; shot_type?: string; error: string; retrying: boolean }>;
+    shotPlan?: Array<{ shot_index: number; shot_type: string; start_time: number; end_time: number; duration_s: number; narration_excerpt?: string }>;
 }
 
 /** Persisted across page navigations so polling can resume after SSE disconnect */
@@ -343,8 +344,46 @@ function VideoConsole() {
                             `Generation appears stuck at "${friendlyStage(urls.current_stage)}" step. Please try again.`
                         );
                     } else if (urls.status === 'COMPLETED' && !urls.html_url) {
-                        // COMPLETED without html_url — only treat as an error if we expected HTML.
-                        // When targetStage was SCRIPT (review mode), this is normal — don't alarm the user.
+                        // COMPLETED without html_url.
+                        // Two signals determine if generation is still active:
+                        // 1. Stage-based: pre-HTML stages (WORDS, TTS, AUDIO) showing COMPLETED means
+                        //    sub-stage finished and pipeline is transitioning — not a terminal state.
+                        // 2. Progress-based: if status API returned generation_progress with sub_stage
+                        //    or shot data, the pipeline was actively running recently.
+                        const PRE_HTML_STAGES = new Set(['PENDING', 'SCRIPT', 'TTS', 'AUDIO', 'WORDS']);
+                        const stageIsTransitioning =
+                            PRE_HTML_STAGES.has(urls.current_stage) &&
+                            pending.targetStage !== 'SCRIPT';
+                        // generation_progress exists and has pipeline activity data → still running
+                        const progressSignalsActive =
+                            genProg != null &&
+                            (genProg.sub_stage != null || (genProg.shots_total ?? 0) > 0);
+                        const isTransitioning = stageIsTransitioning || progressSignalsActive;
+
+                        if (isTransitioning) {
+                            // Keep polling — use richer progress message if available from status API
+                            const msg = genProg?.shots_completed != null && genProg?.shots_total
+                                ? `Generating visuals… shot ${genProg.shots_completed} / ${genProg.shots_total}`
+                                : genProg?.sub_stage
+                                    ? genProg.sub_stage.replace(/_/g, ' ')
+                                    : `${friendlyStage(urls.current_stage)} complete, preparing visuals…`;
+                            setCurrentGeneration((prev) =>
+                                prev
+                                    ? {
+                                          ...prev,
+                                          stage: (genProg?.shots_total ?? 0) > 0 ? 'HTML' : ((urls.current_stage as VideoStage) || prev.stage),
+                                          percentage: (genProg?.shots_total ?? 0) > 0 ? stageToPercentage('HTML') : stageToPercentage(urls.current_stage),
+                                          message: msg,
+                                          shotsCompleted: genProg?.shots_completed ?? prev.shotsCompleted,
+                                          shotsTotal: genProg?.shots_total ?? prev.shotsTotal,
+                                          cumulativeTokens: genProg?.cumulative_tokens ?? prev.cumulativeTokens,
+                                          shotPlan: genProg?.shot_plan ?? prev.shotPlan,
+                                      }
+                                    : null
+                            );
+                            return;
+                        }
+
                         if (pollingRef.current) clearInterval(pollingRef.current);
                         pollingRef.current = null;
                         localStorage.removeItem(PENDING_GENERATION_KEY);
@@ -359,7 +398,13 @@ function VideoConsole() {
                             );
                         }
                     } else {
-                        // Still IN_PROGRESS — update stage + sub-stage progress from DB
+                        // Still IN_PROGRESS — update stage + sub-stage progress from DB.
+                        // When shots are being generated, override stage to HTML even if the
+                        // urls endpoint still reports WORDS (transitioning window).
+                        const hasShots = (genProg?.shots_total ?? 0) > 0;
+                        const effectiveStage: VideoStage = hasShots
+                            ? 'HTML'
+                            : ((urls.current_stage as VideoStage) || 'PENDING');
                         const subStageMsg = genProg
                             ? (genProg.shots_completed != null && genProg.shots_total
                                 ? `Generating visuals… shot ${genProg.shots_completed} / ${genProg.shots_total}`
@@ -372,8 +417,8 @@ function VideoConsole() {
                             prev
                                 ? {
                                       ...prev,
-                                      stage: (urls.current_stage as VideoStage) || prev.stage,
-                                      percentage: stageToPercentage(urls.current_stage),
+                                      stage: effectiveStage,
+                                      percentage: stageToPercentage(effectiveStage),
                                       message: subStageMsg,
                                       htmlUrl: urls.html_url ?? prev.htmlUrl,
                                       audioUrl: urls.audio_url ?? prev.audioUrl,
@@ -381,6 +426,7 @@ function VideoConsole() {
                                       shotsCompleted: genProg?.shots_completed ?? prev.shotsCompleted,
                                       shotsTotal: genProg?.shots_total ?? prev.shotsTotal,
                                       cumulativeTokens: genProg?.cumulative_tokens ?? prev.cumulativeTokens,
+                                      shotPlan: genProg?.shot_plan ?? prev.shotPlan,
                                       recentErrors: genProg?.errors
                                           ? genProg.errors.slice(-5).map((e) => ({
                                                 shot_index: e.shot_index,
@@ -481,10 +527,11 @@ function VideoConsole() {
                 });
             };
 
-            // When review mode is on, stop at SCRIPT stage
-            const finalRequest = reviewModeEnabled
-                ? { ...request, target_stage: 'SCRIPT' as const }
-                : request;
+            // Always set target_stage explicitly — never trust whatever may be in options/localStorage.
+            const finalRequest: GenerateVideoRequest = {
+                ...request,
+                target_stage: reviewModeEnabled ? 'SCRIPT' : 'HTML',
+            };
 
             const { abort, videoId } = generateVideo(
                 finalRequest,
@@ -642,9 +689,21 @@ function VideoConsole() {
                             },
                         });
                     } else if (event.type === 'sub_stage') {
-                        if (event.message) {
-                            setCurrentGeneration((prev) => (prev ? { ...prev, message: event.message! } : null));
-                        }
+                        setCurrentGeneration((prev) => {
+                            if (!prev) return null;
+                            const updates: Partial<CurrentGeneration> = {};
+                            if (event.message) updates.message = event.message;
+                            // director_done carries shot_count and shot_plan
+                            if (event.shot_count != null) {
+                                updates.shotsTotal = event.shot_count;
+                                updates.stage = 'HTML';
+                                updates.percentage = stageToPercentage('HTML');
+                            }
+                            if ((event as unknown as Record<string, unknown>).shot_plan) {
+                                updates.shotPlan = (event as unknown as Record<string, unknown>).shot_plan as CurrentGeneration['shotPlan'];
+                            }
+                            return { ...prev, ...updates };
+                        });
                     } else if (event.type === 'shot_done') {
                         const shotMsg = event.total_shots
                             ? `Generating visuals… shot ${event.shot_index + 1} / ${event.total_shots}`
@@ -653,6 +712,8 @@ function VideoConsole() {
                             prev
                                 ? {
                                       ...prev,
+                                      stage: 'HTML',
+                                      percentage: stageToPercentage('HTML'),
                                       message: shotMsg,
                                       shotsCompleted: (event.shot_index ?? 0) + 1,
                                       shotsTotal: event.total_shots ?? prev.shotsTotal,
@@ -867,8 +928,12 @@ function VideoConsole() {
                     // player when the required URLs are actually present.
                     if (!urls.html_url || (!urls.audio_url && needsAudio(item.content_type))) {
                         setIsLoadingVideoUrls(false);
-                        // If status is COMPLETED but no HTML, the generation stopped early
-                        if (urls.status === 'COMPLETED') {
+                        // COMPLETED + pre-HTML stage = pipeline transitioning, not stopped.
+                        // COMPLETED + HTML+ stage with no html_url = truly stopped early.
+                        const PRE_HTML_STAGES = new Set(['PENDING', 'SCRIPT', 'TTS', 'AUDIO', 'WORDS']);
+                        const stoppedEarly =
+                            urls.status === 'COMPLETED' && !PRE_HTML_STAGES.has(urls.current_stage);
+                        if (stoppedEarly) {
                             toast.error(
                                 urls.error_message ||
                                 `Generation stopped at "${friendlyStage(urls.current_stage)}" step without producing visual content. Please try again.`
@@ -877,7 +942,7 @@ function VideoConsole() {
                             setCurrentGeneration(null);
                             return;
                         }
-                        // Still IN_PROGRESS — start polling
+                        // Still generating (IN_PROGRESS or COMPLETED at a transitioning stage) — start polling
                         toast.info('Content is still being generated. Waiting for completion…');
                         startPollingForVideo(
                             {
@@ -1332,6 +1397,7 @@ function VideoConsole() {
                                 shotsTotal={currentGeneration.shotsTotal}
                                 cumulativeTokens={currentGeneration.cumulativeTokens}
                                 recentErrors={currentGeneration.recentErrors}
+                                shotPlan={currentGeneration.shotPlan}
                             />
                         </div>
                     )}

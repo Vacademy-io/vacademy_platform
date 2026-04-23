@@ -556,10 +556,12 @@ export function PromptInput({
     };
 
     const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
+        // Snapshot to array first — e.target.files is a live FileList that becomes
+        // empty as soon as e.target.value is reset.
+        const files = Array.from(e.target.files || []);
         e.target.value = '';
-        await processFiles(Array.from(files));
+        if (files.length === 0) return;
+        await processFiles(files);
     };
 
     // Drag-and-drop handlers for the prompt area

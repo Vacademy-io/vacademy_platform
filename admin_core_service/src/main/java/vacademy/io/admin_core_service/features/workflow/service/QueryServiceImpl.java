@@ -145,15 +145,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             if (packageSessionIds == null || packageSessionIds.isEmpty()) {
                 String instituteId = (String) params.get("instituteId");
                 if (instituteId != null) {
-                    packageSessionIds = ssigmRepo.findAll().stream()
-                        .filter(m -> m.getInstitute() != null
-                            && instituteId.equals(m.getInstitute().getId())
-                            && "ACTIVE".equalsIgnoreCase(m.getStatus())
-                            && m.getPackageSession() != null)
-                        .map(m -> m.getPackageSession().getId())
-                        .distinct()
-                        .limit(10)
-                        .collect(Collectors.toList());
+                    packageSessionIds = ssigmRepo.findDistinctPackageSessionIdsByInstituteAndStatus(
+                        instituteId, List.of("ACTIVE"), 10);
                     log.info("No packageSessionIds provided. Found {} active batches for institute {}", packageSessionIds.size(), instituteId);
                 } else {
                     return Map.of("error", "Either packageSessionIds/batchId or instituteId is required");
@@ -178,14 +171,22 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             for (Object[] row : rows) {
                 Map<String, Object> mapping = new HashMap<>();
+                // Snake_case (original) + camelCase (alias) for template compatibility
                 mapping.put("mapping_id", String.valueOf(row[0]));
+                mapping.put("mappingId", String.valueOf(row[0]));
                 mapping.put("user_id", String.valueOf(row[1]));
+                mapping.put("userId", String.valueOf(row[1]));
                 mapping.put("expiry_date", (row[2] instanceof Timestamp ts) ? new Date(ts.getTime()) : row[2]);
+                mapping.put("expiryDate", mapping.get("expiry_date"));
                 mapping.put("full_name", String.valueOf(row[3]));
+                mapping.put("fullName", String.valueOf(row[3]));
                 mapping.put("mobile_number", String.valueOf(row[4]));
+                mapping.put("mobileNumber", String.valueOf(row[4]));
                 mapping.put("email", String.valueOf(row[5]));
                 mapping.put("username", String.valueOf(row[6]));
                 mapping.put("package_session_id", String.valueOf(row[7]));
+                mapping.put("packageSessionId", String.valueOf(row[7]));
+                mapping.put("batchId", String.valueOf(row[7]));
                 ssigmList.add(mapping);
             }
 
@@ -1171,52 +1172,68 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     .map(String::trim).filter(s -> !s.isEmpty())
                     .collect(Collectors.toList());
             } else if (instituteId != null) {
-                batchIds = ssigmRepo.findAll().stream()
-                    .filter(m -> m.getInstitute() != null
-                        && instituteId.equals(m.getInstitute().getId())
-                        && "ACTIVE".equalsIgnoreCase(m.getStatus())
-                        && m.getPackageSession() != null)
-                    .map(m -> m.getPackageSession().getId())
-                    .distinct()
-                    .limit(5)
-                    .collect(Collectors.toList());
+                // Use proper query to find batch IDs, then fetch student contacts
+                List<String> instituteBatchIds = ssigmRepo.findDistinctPackageSessionIdsByInstituteAndStatus(
+                    instituteId, List.of("ACTIVE"), 5);
+                if (instituteBatchIds.isEmpty()) {
+                    return Map.of("students", List.of(), "totalStudents", 0);
+                }
+                List<Object[]> allRows = ssigmRepo.findMappingsWithStudentContacts(instituteBatchIds, List.of("ACTIVE"));
+                // Convert to student list format directly
+                List<Map<String, Object>> fallbackStudents = new ArrayList<>();
+                for (Object[] row : allRows) {
+                    Map<String, Object> student = new LinkedHashMap<>();
+                    student.put("userId", String.valueOf(row[1]));
+                    student.put("batchId", String.valueOf(row[7]));
+                    student.put("fullName", String.valueOf(row[3]));
+                    student.put("full_name", String.valueOf(row[3]));
+                    student.put("email", String.valueOf(row[5]));
+                    student.put("mobileNumber", String.valueOf(row[4]));
+                    student.put("mobile_number", String.valueOf(row[4]));
+                    if (student.get("email") != null && !((String) student.get("email")).isEmpty()) {
+                        fallbackStudents.add(student);
+                    }
+                }
+                return Map.of("students", fallbackStudents, "totalStudents", fallbackStudents.size());
             } else {
                 return Map.of("error", "Either batchId or instituteId is required");
             }
 
             List<Map<String, Object>> students = new ArrayList<>();
             java.util.Set<String> seenUserIds = new java.util.HashSet<>();
+            List<String> activeStatuses = List.of("ACTIVE");
 
             for (String bid : batchIds) {
-                ssigmRepo.findAll().stream()
-                    .filter(m -> m.getPackageSession() != null
-                        && bid.equals(m.getPackageSession().getId())
-                        && "ACTIVE".equalsIgnoreCase(m.getStatus())
-                        && m.getUserId() != null
-                        && !seenUserIds.contains(m.getUserId()))
-                    .forEach(mapping -> {
-                        seenUserIds.add(mapping.getUserId());
-                        Map<String, Object> student = new LinkedHashMap<>();
-                        student.put("userId", mapping.getUserId());
-                        student.put("batchId", bid);
-                        try {
-                            var entities = instituteStudentRepository.findByUserId(mapping.getUserId());
-                            if (!entities.isEmpty()) {
-                                var s = entities.get(0);
-                                student.put("fullName", s.getFullName() != null ? s.getFullName() : "");
-                                student.put("email", s.getEmail() != null ? s.getEmail() : "");
-                                student.put("mobileNumber", s.getMobileNumber() != null ? s.getMobileNumber() : "");
-                                student.put("parentsEmail", s.getParentsEmail() != null ? s.getParentsEmail() : "");
-                                student.put("guardianEmail", s.getGuardianEmail() != null ? s.getGuardianEmail() : "");
-                            }
-                        } catch (Exception e) {
-                            student.put("fullName", "");
-                            student.put("email", "");
+                List<StudentSessionInstituteGroupMapping> mappings = ssigmRepo.findByPackageSessionIdAndStatusIn(bid, activeStatuses);
+                for (StudentSessionInstituteGroupMapping mapping : mappings) {
+                    if (mapping.getUserId() == null || seenUserIds.contains(mapping.getUserId())) {
+                        continue;
+                    }
+                    seenUserIds.add(mapping.getUserId());
+                    Map<String, Object> student = new LinkedHashMap<>();
+                    student.put("userId", mapping.getUserId());
+                    student.put("batchId", bid);
+                    try {
+                        var entities = instituteStudentRepository.findByUserId(mapping.getUserId());
+                        if (!entities.isEmpty()) {
+                            var s = entities.get(0);
+                            student.put("fullName", s.getFullName() != null ? s.getFullName() : "");
+                            student.put("full_name", s.getFullName() != null ? s.getFullName() : "");
+                            student.put("email", s.getEmail() != null ? s.getEmail() : "");
+                            student.put("mobileNumber", s.getMobileNumber() != null ? s.getMobileNumber() : "");
+                            student.put("mobile_number", s.getMobileNumber() != null ? s.getMobileNumber() : "");
+                            student.put("parentsEmail", s.getParentsEmail() != null ? s.getParentsEmail() : "");
+                            student.put("guardianEmail", s.getGuardianEmail() != null ? s.getGuardianEmail() : "");
                         }
-                        if (student.get("email") != null && !((String) student.get("email")).isEmpty()) {
-                            students.add(student);
-                        }
-                    });
+                    } catch (Exception e) {
+                        student.put("fullName", "");
+                        student.put("full_name", "");
+                        student.put("email", "");
+                    }
+                    if (student.get("email") != null && !((String) student.get("email")).isEmpty()) {
+                        students.add(student);
+                    }
+                }
             }
 
             return Map.of("students", students, "totalStudents", students.size());
@@ -1336,17 +1353,41 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             LocalDateTime now = LocalDateTime.now();
             int finalDaysUntilExpiry = daysUntilExpiry;
 
-            List<Map<String, Object>> expiringList = allPlans.stream()
+            // Collect user IDs for batch email lookup
+            List<UserPlan> activePlans = allPlans.stream()
                     .filter(plan -> "ACTIVE".equalsIgnoreCase(plan.getStatus()))
                     .filter(plan -> plan.getCreatedAt() != null)
+                    .collect(Collectors.toList());
+
+            // Batch fetch user details for email/name
+            List<String> userIds = activePlans.stream()
+                    .map(UserPlan::getUserId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
+            Map<String, UserDTO> userMap = new HashMap<>();
+            if (!userIds.isEmpty()) {
+                try {
+                    authService.getUsersFromAuthServiceByUserIds(userIds)
+                            .forEach(u -> userMap.put(u.getId(), u));
+                } catch (Exception e) {
+                    log.warn("Failed to fetch users for expiring memberships: {}", e.getMessage());
+                }
+            }
+
+            List<Map<String, Object>> expiringList = activePlans.stream()
                     .map(plan -> {
                         Map<String, Object> map = new LinkedHashMap<>();
                         map.put("userPlanId", plan.getId());
                         map.put("userId", plan.getUserId());
                         map.put("status", plan.getStatus());
                         map.put("createdAt", plan.getCreatedAt().toString());
+                        // Add user contact info for email sending
+                        UserDTO user = userMap.get(plan.getUserId());
+                        map.put("email", user != null && user.getEmail() != null ? user.getEmail() : "");
+                        map.put("fullName", user != null && user.getFullName() != null ? user.getFullName() : "");
+                        map.put("full_name", map.get("fullName"));
+                        map.put("mobileNumber", user != null && user.getMobileNumber() != null ? user.getMobileNumber() : "");
                         return map;
                     })
+                    .filter(map -> map.get("email") != null && !((String) map.get("email")).isEmpty())
                     .collect(Collectors.toList());
 
             return Map.of("expiringMemberships", expiringList, "daysUntilExpiry", finalDaysUntilExpiry);

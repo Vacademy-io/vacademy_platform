@@ -157,6 +157,7 @@ export const PUBLIC_INSTITUTE_BRANDING_URL = `${BASE_URL}/admin-core-service/pub
 export const DOMAIN_ROUTING_RESOLVE_URL = `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`;
 export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v2/search`;
 export const urlOpenLevels = `${BASE_URL}/admin-core-service/open/level/v1/get-levels`;
+export const urlOpenInstituteTags = `${BASE_URL}/admin-core-service/open/packages/v1/tags`;
 export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/learner-packages/v1/search`;
 // export const urlInstructor = `${BASE_URL}/auth-service/public/v1/users-of-status`;
 export const urlInstructor = `${BASE_URL}/admin-core-service/open/institute/v1/faculty/by-institute/only-creator`;

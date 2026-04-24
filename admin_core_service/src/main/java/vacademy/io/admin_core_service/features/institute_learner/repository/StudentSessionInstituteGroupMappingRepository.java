@@ -263,6 +263,27 @@ public interface StudentSessionInstituteGroupMappingRepository
 
   long countByPackageSessionIdAndStatus(String packageSessionId, String status);
 
+  @Query(value = """
+      SELECT * FROM student_session_institute_group_mapping
+      WHERE package_session_id = :packageSessionId
+        AND status IN (:statuses)
+      """, nativeQuery = true)
+  List<StudentSessionInstituteGroupMapping> findByPackageSessionIdAndStatusIn(
+      @Param("packageSessionId") String packageSessionId,
+      @Param("statuses") List<String> statuses);
+
+  @Query(value = """
+      SELECT DISTINCT package_session_id FROM student_session_institute_group_mapping
+      WHERE institute_id = :instituteId
+        AND status IN (:statuses)
+        AND package_session_id IS NOT NULL
+      LIMIT :maxResults
+      """, nativeQuery = true)
+  List<String> findDistinctPackageSessionIdsByInstituteAndStatus(
+      @Param("instituteId") String instituteId,
+      @Param("statuses") List<String> statuses,
+      @Param("maxResults") int maxResults);
+
   // -------------------------------------------------------------------------
   // Unique Methods from 'autonation-fixes'
   // -------------------------------------------------------------------------

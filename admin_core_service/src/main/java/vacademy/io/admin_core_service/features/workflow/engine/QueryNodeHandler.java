@@ -82,6 +82,11 @@ public class QueryNodeHandler implements NodeHandler {
                     }
                 }
 
+                // Auto-inject instituteId from workflow context if not explicitly provided
+                if (!queryParams.containsKey("instituteId") && context.containsKey("instituteId")) {
+                    queryParams.put("instituteId", context.get("instituteId"));
+                }
+
                 log.debug("Executing query with key: {}, params: {}", prebuiltKey, queryParams);
                 Map<String, Object> queryResult = queryService.execute(prebuiltKey, queryParams);
                 if (queryResult != null) {

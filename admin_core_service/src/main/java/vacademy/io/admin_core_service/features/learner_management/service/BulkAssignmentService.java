@@ -20,9 +20,13 @@ import vacademy.io.admin_core_service.features.institute_learner.notification.Le
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
@@ -60,6 +64,8 @@ public class BulkAssignmentService {
     private final StudentRegistrationManager studentRegistrationManager;
     private final SubOrgAutoLinkService subOrgAutoLinkService;
     private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
+    private final PaymentLogRepository paymentLogRepository;
+    private final InvoiceService invoiceService;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -504,12 +510,30 @@ public class BulkAssignmentService {
                 }
                 paymentSpecificData.put("source", "BULK_ASSIGN");
 
-                // Use updatePaymentLogOnly to avoid triggering invoice generation and email notifications
+                // Use updatePaymentLogOnly to avoid triggering the sync payment-gateway post-payment
+                // logic (abandoned-cart cleanup). Invoice generation is handled explicitly below.
                 paymentLogService.updatePaymentLogOnly(
                         paymentLogId,
                         vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.SUCCESS.name(),
                         vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
                         vacademy.io.admin_core_service.features.common.util.JsonUtil.toJson(paymentSpecificData));
+
+                // Generate invoice for non-FREE payments (e.g. ReadOnRent buy). FREE paths
+                // (e.g. rent/membership, school enrollment) skip invoice generation entirely.
+                // INVOICE_SETTING.sendInvoiceEmail is honored inside generateInvoice for the email step.
+                String paymentType = config.getPaymentOption() != null ? config.getPaymentOption().getType() : null;
+                if (StringUtils.hasText(paymentType)
+                        && !PaymentOptionType.FREE.name().equalsIgnoreCase(paymentType)) {
+                    try {
+                        PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
+                                .orElseThrow(() -> new RuntimeException(
+                                        "Payment log not found: " + paymentLogId));
+                        invoiceService.generateInvoice(userPlan, persistedLog, instituteId);
+                    } catch (Exception e) {
+                        log.warn("Failed to generate invoice for userId={}, paymentLogId={}: {}",
+                                userId, paymentLogId, e.getMessage());
+                    }
+                }
             } catch (Exception e) {
                 log.warn("Failed to create payment log for userId={}: {}", userId, e.getMessage());
             }

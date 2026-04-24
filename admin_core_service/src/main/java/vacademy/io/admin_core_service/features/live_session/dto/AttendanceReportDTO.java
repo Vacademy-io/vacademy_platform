@@ -19,4 +19,5 @@ public interface AttendanceReportDTO {
     String getStatusType();
     String getEngagementData();
     Integer getProviderTotalDurationMinutes();
+    String getFeedbackDetails();
 }

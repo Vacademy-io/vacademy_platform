@@ -588,16 +588,50 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                     if (!text || !text.trim()) return;
                     el.innerHTML = '';
                     el.style.opacity = '1';
-                    const units = opts.type === 'words' ? text.split(/\\s+/) : text.split('');
-                    units.forEach(function(unit, i) {
-                      var span = document.createElement('span');
-                      span.style.display = 'inline-block';
-                      span.style.opacity = '0';
-                      span.textContent = unit + (opts.type === 'words' && i < units.length - 1 ? '\u00A0' : '');
-                      el.appendChild(span);
-                    });
+                    const allSpans = [];
+                    if (opts.type === 'words') {
+                      text.split(/\\s+/).forEach(function(word, i, arr) {
+                        var span = document.createElement('span');
+                        span.style.display = 'inline-block';
+                        span.style.whiteSpace = 'nowrap';
+                        span.style.opacity = '0';
+                        span.textContent = word + (i < arr.length - 1 ? '\u00A0' : '');
+                        el.appendChild(span);
+                        allSpans.push(span);
+                      });
+                    } else {
+                      // Char mode: group chars of the same word in a nowrap wrapper so
+                      // the browser never line-breaks mid-word between inline-block spans.
+                      var wordBuf = [];
+                      var flushWord = function() {
+                        if (!wordBuf.length) return;
+                        var wrapper = document.createElement('span');
+                        wrapper.style.display = 'inline-block';
+                        wrapper.style.whiteSpace = 'nowrap';
+                        wordBuf.forEach(function(s) { wrapper.appendChild(s); });
+                        el.appendChild(wrapper);
+                        wordBuf = [];
+                      };
+                      text.split('').forEach(function(ch) {
+                        if (ch === ' ' || ch === '\u00A0') {
+                          flushWord();
+                          var sp = document.createElement('span');
+                          sp.style.display = 'inline-block';
+                          sp.textContent = '\u00A0';
+                          el.appendChild(sp);
+                        } else {
+                          var span = document.createElement('span');
+                          span.style.display = 'inline-block';
+                          span.style.opacity = '0';
+                          span.textContent = ch;
+                          wordBuf.push(span);
+                          allSpans.push(span);
+                        }
+                      });
+                      flushWord();
+                    }
                     try {
-                      gsap.fromTo(el.children,
+                      gsap.fromTo(allSpans,
                         { opacity: 0, y: opts.y },
                         { opacity: 1, y: 0, duration: opts.duration, stagger: opts.stagger, delay: opts.delay, ease: opts.ease }
                       );
@@ -1150,6 +1184,52 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       originalCode = originalCode.split('document.getElementById').join('__sd_getElementById');
                       originalCode = originalCode.split('document.querySelectorAll').join('__sd_querySelectorAll');
                       originalCode = originalCode.split('document.querySelector').join('__sd_querySelector');
+                      // Unwrap `document.addEventListener("DOMContentLoaded", handler)` and
+                      // `window.addEventListener("load", handler)` — snippets run AFTER the page
+                      // has loaded, so those events never fire. We convert them to direct
+                      // invocation: `document.addEventListener("DOMContentLoaded", fn)` → `(fn)()`.
+                      // Strategy: locate the call, find its matching close paren, then rewrite.
+                      const _unwrapReadyListener = (src) => {
+                          const pattern = /(document|window)\s*\.\s*addEventListener\s*\(\s*["'](DOMContentLoaded|load|readystatechange)["']\s*,\s*/g;
+                          let out = '', last = 0, m;
+                          while ((m = pattern.exec(src)) !== null) {
+                              out += src.slice(last, m.index);
+                              // find matching close paren for the addEventListener call
+                              let i = m.index + m[0].length, depth = 1, inStr = null, esc = false;
+                              while (i < src.length && depth > 0) {
+                                  const c = src[i];
+                                  if (esc) { esc = false; }
+                                  else if (inStr) {
+                                      if (c === '\\\\') esc = true;
+                                      else if (c === inStr) inStr = null;
+                                  } else if (c === '"' || c === "'" || c === '`') inStr = c;
+                                  else if (c === '(') depth++;
+                                  else if (c === ')') depth--;
+                                  if (depth === 0) break;
+                                  i++;
+                              }
+                              // handler expression is src[m.index+m[0].length .. i-1], optionally followed by ", options"
+                              let handler = src.slice(m.index + m[0].length, i);
+                              // Drop trailing options arg (simple heuristic: last top-level comma)
+                              let pd = 0, cut = -1, ins = null, es = false;
+                              for (let j = 0; j < handler.length; j++) {
+                                  const ch = handler[j];
+                                  if (es) { es = false; continue; }
+                                  if (ins) { if (ch === '\\\\') es = true; else if (ch === ins) ins = null; continue; }
+                                  if (ch === '"' || ch === "'" || ch === '`') { ins = ch; continue; }
+                                  if (ch === '(' || ch === '[' || ch === '{') pd++;
+                                  else if (ch === ')' || ch === ']' || ch === '}') pd--;
+                                  else if (ch === ',' && pd === 0) cut = j;
+                              }
+                              if (cut >= 0) handler = handler.slice(0, cut);
+                              out += '(' + handler + ')()';
+                              last = i + 1;
+                              pattern.lastIndex = last;
+                          }
+                          out += src.slice(last);
+                          return out;
+                      };
+                      originalCode = _unwrapReadyListener(originalCode);
                       const scopedCode = `
                         (function(scope) {
                             // Helper to resolve selectors in this shadow root
@@ -1165,6 +1245,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                             const __sd_getElementById = (id) => scope.querySelector('#' + CSS.escape(id));
                             const __sd_querySelector = (sel) => scope.querySelector(sel);
                             const __sd_querySelectorAll = (sel) => scope.querySelectorAll(sel);
+
 
                             // Proxy global helpers to use scoped resolution
                             const annotate = (target, opts) => {

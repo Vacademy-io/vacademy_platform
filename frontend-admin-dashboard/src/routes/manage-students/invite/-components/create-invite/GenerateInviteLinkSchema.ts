@@ -307,6 +307,11 @@ export const inviteLinkSchema = z.object({
         )
         .default([]),
     isDialogOpen: z.boolean().default(false),
+    postformfillConfiguration: z.object({
+        redirectPath: z.string().optional(),
+        showLoginButton: z.boolean().default(true),
+        content: z.string().optional(),
+    }).default({ showLoginButton: true }),
 });
 
 export type InviteLinkFormValues = z.infer<typeof inviteLinkSchema>;

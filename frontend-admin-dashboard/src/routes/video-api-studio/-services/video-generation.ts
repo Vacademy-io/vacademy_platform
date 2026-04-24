@@ -172,6 +172,8 @@ export interface GenerateVideoRequest {
     input_video_ids?: string[];
     /** Audio source: 'original' (single video only) or 'tts' (AI narration). Forced to 'tts' for multi-source. */
     input_video_audio?: 'original' | 'tts';
+    /** When true and audio=tts: TTS mutes during SOURCE_CLIP shots so source audio plays instead. */
+    mute_tts_on_source_clips?: boolean;
 }
 
 export const QUALITY_TIERS: Array<{
@@ -253,7 +255,73 @@ export interface ErrorEvent {
     video_id?: string;
 }
 
-export type SSEEvent = ProgressEvent | CompletedEvent | InfoEvent | ErrorEvent;
+/** Sub-stage progress event emitted during long phases (e.g. director_planning, shot_done) */
+export interface SubStageEvent {
+    type: 'sub_stage';
+    sub_stage: string;
+    message?: string;
+    video_id?: string;
+    /** Director shot count — only present when sub_stage === 'director_done' */
+    shot_count?: number;
+    /** Per-shot token cost — only present on script/html stage completion sub-stages */
+    token_delta?: { prompt_tokens: number; completion_tokens: number; estimated_cost_usd?: number | null };
+}
+
+/** Emitted after each shot's HTML is generated */
+export interface ShotDoneEvent {
+    type: 'shot_done';
+    shot_index: number;
+    total_shots: number;
+    shot_type?: string;
+    duration_s?: number;
+    start_time?: number;
+    end_time?: number;
+    model?: string;
+    message?: string;
+    video_id?: string;
+    token_delta?: { prompt_tokens: number; completion_tokens: number; estimated_cost_usd?: number | null };
+    cumulative_tokens?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+        estimated_cost_usd?: number | null;
+    };
+}
+
+/** Emitted when a shot fails (with retrying=true) or permanently fails (retrying=false) */
+export interface ShotErrorEvent {
+    type: 'shot_error';
+    shot_index: number;
+    total_shots?: number;
+    shot_type?: string;
+    error?: string;
+    retrying: boolean;
+    attempt?: number;
+    max_attempts?: number;
+    message?: string;
+    video_id?: string;
+}
+
+export type SSEEvent =
+    | ProgressEvent
+    | CompletedEvent
+    | InfoEvent
+    | ErrorEvent
+    | SubStageEvent
+    | ShotDoneEvent
+    | ShotErrorEvent;
+
+export interface TokenUsage {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    image_count: number;
+    tts_character_count: number;
+    stock_count?: number;
+    estimated_cost_usd: number | null;
+    model: string | null;
+    recorded_at: string;
+}
 
 export interface VideoUrls {
     video_id: string;
@@ -267,6 +335,47 @@ export interface VideoUrls {
     updated_at?: string | null;
     error_message?: string | null;
     render_job_id?: string | null;
+    token_usage?: TokenUsage | null;
+}
+
+export interface GenerationProgress {
+    sub_stage?: string;
+    shots_completed?: number;
+    shots_total?: number;
+    shot_plan?: Array<{
+        shot_index: number;
+        shot_type: string;
+        duration_s: number;
+        start_time: number;
+        end_time: number;
+        narration_excerpt?: string;
+    }>;
+    shots_history?: Array<{
+        shot_index: number;
+        shot_type: string;
+        duration_s: number;
+        start_time: number;
+        end_time: number;
+        model?: string;
+        token_delta?: { prompt_tokens: number; completion_tokens: number; estimated_cost_usd?: number | null };
+        cumulative_tokens?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; estimated_cost_usd?: number | null };
+    }>;
+    errors?: Array<{
+        shot_index: number;
+        shot_type?: string;
+        error: string;
+        retrying: boolean;
+        attempt?: number;
+        timestamp: string;
+    }>;
+    cumulative_tokens?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+        estimated_cost_usd?: number | null;
+    };
+    last_shot?: ShotDoneEvent;
+    last_event?: Record<string, unknown>;
 }
 
 export interface VideoStatusResponse {
@@ -280,6 +389,8 @@ export interface VideoStatusResponse {
         video?: string;
     };
     created_at: string;
+    /** Real-time sub-stage breakdown — populated while generation is in progress and after completion */
+    generation_progress?: GenerationProgress | null;
 }
 
 export interface HistoryItem {
@@ -296,21 +407,59 @@ export interface HistoryItem {
     timeline_url?: string;
     words_url?: string;
     options: Omit<GenerateVideoRequest, 'prompt'>;
+    token_usage?: TokenUsage | null;
 }
 
 const HISTORY_STORAGE_KEY = 'vacademy_video_generation_history';
 
 export const LANGUAGES = [
-    // Global
-    { value: 'English (US)', label: 'English (US)', group: 'Global' },
-    { value: 'English (UK)', label: 'English (UK)', group: 'Global' },
-    { value: 'Spanish', label: 'Spanish', group: 'Global' },
-    { value: 'French', label: 'French', group: 'Global' },
-    { value: 'German', label: 'German', group: 'Global' },
-    { value: 'Japanese', label: 'Japanese', group: 'Global' },
-    { value: 'Chinese', label: 'Chinese', group: 'Global' },
+    // English variants
+    { value: 'English (US)', label: 'English (US)', group: 'English' },
+    { value: 'English (UK)', label: 'English (UK)', group: 'English' },
+    { value: 'English (Australia)', label: 'English (Australia)', group: 'English' },
+    { value: 'English (India)', label: 'English (India)', group: 'English' },
+    // European
+    { value: 'Spanish', label: 'Spanish', group: 'European' },
+    { value: 'Spanish (US)', label: 'Spanish (US)', group: 'European' },
+    { value: 'Portuguese (Brazil)', label: 'Portuguese (Brazil)', group: 'European' },
+    { value: 'Portuguese (Portugal)', label: 'Portuguese (Portugal)', group: 'European' },
+    { value: 'French', label: 'French', group: 'European' },
+    { value: 'French (Canada)', label: 'French (Canada)', group: 'European' },
+    { value: 'German', label: 'German', group: 'European' },
+    { value: 'Italian', label: 'Italian', group: 'European' },
+    { value: 'Dutch', label: 'Dutch', group: 'European' },
+    { value: 'Dutch (Belgium)', label: 'Dutch (Belgium)', group: 'European' },
+    { value: 'Danish', label: 'Danish', group: 'European' },
+    { value: 'Finnish', label: 'Finnish', group: 'European' },
+    { value: 'Norwegian', label: 'Norwegian', group: 'European' },
+    { value: 'Swedish', label: 'Swedish', group: 'European' },
+    { value: 'Icelandic', label: 'Icelandic', group: 'European' },
+    { value: 'Polish', label: 'Polish', group: 'European' },
+    { value: 'Russian', label: 'Russian', group: 'European' },
+    { value: 'Ukrainian', label: 'Ukrainian', group: 'European' },
+    { value: 'Czech', label: 'Czech', group: 'European' },
+    { value: 'Slovak', label: 'Slovak', group: 'European' },
+    { value: 'Hungarian', label: 'Hungarian', group: 'European' },
+    { value: 'Romanian', label: 'Romanian', group: 'European' },
+    { value: 'Bulgarian', label: 'Bulgarian', group: 'European' },
+    { value: 'Greek', label: 'Greek', group: 'European' },
+    { value: 'Catalan', label: 'Catalan', group: 'European' },
+    // Middle East / Africa
+    { value: 'Arabic', label: 'Arabic', group: 'Middle East / Africa' },
+    { value: 'Hebrew', label: 'Hebrew', group: 'Middle East / Africa' },
+    { value: 'Turkish', label: 'Turkish', group: 'Middle East / Africa' },
+    { value: 'Afrikaans', label: 'Afrikaans', group: 'Middle East / Africa' },
+    // Asian
+    { value: 'Japanese', label: 'Japanese', group: 'Asian' },
+    { value: 'Korean', label: 'Korean', group: 'Asian' },
+    { value: 'Chinese', label: 'Chinese (Mandarin)', group: 'Asian' },
+    { value: 'Chinese (Taiwan)', label: 'Chinese (Taiwan)', group: 'Asian' },
+    { value: 'Thai', label: 'Thai', group: 'Asian' },
+    { value: 'Vietnamese', label: 'Vietnamese', group: 'Asian' },
+    { value: 'Indonesian', label: 'Indonesian', group: 'Asian' },
+    { value: 'Malay', label: 'Malay', group: 'Asian' },
+    { value: 'Filipino', label: 'Filipino', group: 'Asian' },
     // Indian
-    { value: 'English (India)', label: 'English (India)', group: 'Indian' },
     { value: 'Hindi', label: 'Hindi', group: 'Indian' },
     { value: 'Bengali', label: 'Bengali', group: 'Indian' },
     { value: 'Tamil', label: 'Tamil', group: 'Indian' },
@@ -319,6 +468,7 @@ export const LANGUAGES = [
     { value: 'Kannada', label: 'Kannada', group: 'Indian' },
     { value: 'Gujarati', label: 'Gujarati', group: 'Indian' },
     { value: 'Malayalam', label: 'Malayalam', group: 'Indian' },
+    { value: 'Urdu', label: 'Urdu', group: 'Indian' },
 ] as const;
 
 export const VOICE_GENDERS = [
@@ -645,6 +795,81 @@ export function resumeVideo(
 }
 
 /**
+ * Retry a FAILED or STALLED video generation from the last saved checkpoint.
+ * Returns the same SSE stream as generateVideo — pipe it through the same onProgress handler.
+ */
+export function retryVideo(
+    videoId: string,
+    apiKey: string,
+    onProgress: (event: SSEEvent) => void,
+    onError: (error: Error) => void
+): { abort: () => void } {
+    const controller = new AbortController();
+
+    fetch(
+        `${AI_SERVICE_BASE_URL}/external/video/v1/retry/${encodeURIComponent(videoId)}`,
+        {
+            method: 'POST',
+            headers: { 'X-Institute-Key': apiKey },
+            signal: controller.signal,
+        }
+    )
+        .then(async (response) => {
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => response.statusText);
+                if (response.status === 402) {
+                    const err = new Error(
+                        (() => { try { return JSON.parse(errorText).detail; } catch { return errorText || 'Insufficient credits'; } })()
+                    );
+                    err.name = 'InsufficientCreditsError';
+                    throw err;
+                }
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error('No response body');
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            let jsonStr = line.slice(6).trim();
+                            jsonStr = jsonStr
+                                .replace(/'/g, '"')
+                                .replace(/None/g, 'null')
+                                .replace(/True/g, 'true')
+                                .replace(/False/g, 'false');
+                            const data = JSON.parse(jsonStr) as SSEEvent;
+                            onProgress(data);
+                        } catch (e) {
+                            console.warn('SSE parse error (retry):', e, 'Line:', line);
+                        }
+                    }
+                }
+            }
+        })
+        .catch((error) => {
+            if (error.name !== 'AbortError') {
+                onError(error);
+            }
+        });
+
+    return { abort: () => controller.abort() };
+}
+
+/**
  * Fetch the raw script text from its S3 URL.
  */
 export async function fetchScriptText(scriptUrl: string): Promise<string> {
@@ -869,6 +1094,7 @@ interface RemoteHistoryItem {
     language: string;
     error_message: string | null;
     metadata: Record<string, unknown>;
+    token_usage?: TokenUsage | null;
     created_at: string;
     updated_at: string;
     completed_at: string | null;
@@ -937,6 +1163,7 @@ export async function getRemoteHistory(apiKey: string, limit: number = 20, offse
                 orientation: metaOrientation,
                 visual_style: metaVisualStyle,
             },
+            token_usage: item.token_usage ?? null,
         };
     });
 }

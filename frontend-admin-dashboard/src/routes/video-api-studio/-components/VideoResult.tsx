@@ -24,9 +24,12 @@ import {
     requiresAudio,
     requestVideoRender,
     getVideoUrls,
+    getVideoStatus,
     getRenderStatus,
     clearRenderedVideo,
     type RenderSettings,
+    type TokenUsage,
+    type GenerationProgress,
 } from '../-services/video-generation';
 import { LatexRenderer } from './LatexRenderer';
 import { RenderSettingsDialog } from './RenderSettingsDialog';
@@ -78,9 +81,177 @@ interface VideoResultProps {
     orientation?: VideoOrientation;
     prompt: string;
     apiKey?: string;
+    tokenUsage?: TokenUsage | null;
 }
 
 type RenderState = 'idle' | 'submitting' | 'rendering' | 'done' | 'error';
+
+// ---------------------------------------------------------------------------
+// Generation Details — token / shot / error breakdown shown after video is ready
+// ---------------------------------------------------------------------------
+
+function GenerationDetails({
+    tokenUsage,
+    genProgress,
+}: {
+    tokenUsage?: TokenUsage | null;
+    genProgress: GenerationProgress | null;
+}) {
+    const [shotsOpen, setShotsOpen] = useState(false);
+    const [errorsOpen, setErrorsOpen] = useState(false);
+
+    // Prefer the richer cumulative_tokens from generation_progress if available
+    const totalPrompt = genProgress?.cumulative_tokens?.prompt_tokens ?? tokenUsage?.prompt_tokens ?? 0;
+    const totalCompletion = genProgress?.cumulative_tokens?.completion_tokens ?? tokenUsage?.completion_tokens ?? 0;
+    const totalTokens = genProgress?.cumulative_tokens?.total_tokens ?? tokenUsage?.total_tokens ?? 0;
+    const estCost = genProgress?.cumulative_tokens?.estimated_cost_usd ?? tokenUsage?.estimated_cost_usd ?? null;
+
+    // Sort shots by index for stable display (backend stores reverse-chronological)
+    const shotsHistory = (genProgress?.shots_history ?? [])
+        .slice()
+        .sort((a, b) => a.shot_index - b.shot_index);
+    const errors = genProgress?.errors ?? [];
+
+    return (
+        <details className="rounded-xl border bg-card shadow-sm" open>
+            <summary className="cursor-pointer select-none rounded-xl px-4 py-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50">
+                Generation Details
+            </summary>
+            <div className="space-y-3 px-4 pb-4 pt-2">
+                {/* Top-line summary */}
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+                    {tokenUsage?.model && (
+                        <>
+                            <dt className="text-muted-foreground">Model</dt>
+                            <dd className="truncate font-mono">{tokenUsage.model.split('/').pop()}</dd>
+                        </>
+                    )}
+                    <dt className="text-muted-foreground">LLM tokens</dt>
+                    <dd>
+                        {totalTokens.toLocaleString()}
+                        <span className="ml-1 text-muted-foreground/70">
+                            ({totalPrompt.toLocaleString()} in / {totalCompletion.toLocaleString()} out)
+                        </span>
+                    </dd>
+                    {(tokenUsage?.image_count ?? 0) > 0 && (
+                        <>
+                            <dt className="text-muted-foreground">Images</dt>
+                            <dd>{tokenUsage!.image_count}</dd>
+                        </>
+                    )}
+                    {(tokenUsage?.tts_character_count ?? 0) > 0 && (
+                        <>
+                            <dt className="text-muted-foreground">TTS chars</dt>
+                            <dd>{tokenUsage!.tts_character_count.toLocaleString()}</dd>
+                        </>
+                    )}
+                    {genProgress?.shots_total != null && (
+                        <>
+                            <dt className="text-muted-foreground">Shots</dt>
+                            <dd>
+                                {genProgress.shots_completed ?? 0} / {genProgress.shots_total}
+                            </dd>
+                        </>
+                    )}
+                    {estCost != null && (
+                        <>
+                            <dt className="font-medium text-foreground">Est. cost</dt>
+                            <dd className="font-medium text-emerald-600">${estCost.toFixed(4)}</dd>
+                        </>
+                    )}
+                </dl>
+
+                {/* Per-shot breakdown */}
+                {shotsHistory.length > 0 && (
+                    <div className="border-t pt-2">
+                        <button
+                            onClick={() => setShotsOpen((o) => !o)}
+                            className="flex w-full items-center justify-between text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                        >
+                            <span>Per-shot breakdown ({shotsHistory.length})</span>
+                            <span>{shotsOpen ? '▲' : '▼'}</span>
+                        </button>
+                        {shotsOpen && (
+                            <div className="mt-2 max-h-64 overflow-y-auto rounded border bg-muted/20">
+                                <table className="w-full text-[10px]">
+                                    <thead className="sticky top-0 bg-muted/60 text-muted-foreground">
+                                        <tr>
+                                            <th className="px-2 py-1 text-left font-medium">#</th>
+                                            <th className="px-2 py-1 text-left font-medium">Type</th>
+                                            <th className="px-2 py-1 text-right font-medium">Dur</th>
+                                            <th className="px-2 py-1 text-right font-medium">Tokens</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {shotsHistory.map((s) => {
+                                            const td = s.token_delta;
+                                            const tTotal = (td?.prompt_tokens ?? 0) + (td?.completion_tokens ?? 0);
+                                            return (
+                                                <tr key={s.shot_index} className="border-t border-border/50">
+                                                    <td className="px-2 py-1 font-mono">{s.shot_index + 1}</td>
+                                                    <td className="px-2 py-1">{s.shot_type.replace(/_/g, ' ')}</td>
+                                                    <td className="px-2 py-1 text-right tabular-nums">{s.duration_s.toFixed(1)}s</td>
+                                                    <td className="px-2 py-1 text-right tabular-nums">
+                                                        {tTotal.toLocaleString()}
+                                                        {td && (
+                                                            <span className="ml-1 text-muted-foreground/60">
+                                                                ({td.prompt_tokens.toLocaleString()}/{td.completion_tokens.toLocaleString()})
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Error log */}
+                {errors.length > 0 && (
+                    <div className="border-t pt-2">
+                        <button
+                            onClick={() => setErrorsOpen((o) => !o)}
+                            className="flex w-full items-center justify-between text-[11px] font-medium text-amber-700 hover:text-amber-900"
+                        >
+                            <span>Warnings & retries ({errors.length})</span>
+                            <span>{errorsOpen ? '▲' : '▼'}</span>
+                        </button>
+                        {errorsOpen && (
+                            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+                                {errors.map((e, i) => (
+                                    <li
+                                        key={i}
+                                        className="rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-800"
+                                    >
+                                        <span className="font-medium">Shot {e.shot_index + 1}</span>
+                                        {e.shot_type && (
+                                            <span className="ml-1 text-amber-600">({e.shot_type})</span>
+                                        )}
+                                        {e.retrying && (
+                                            <span className="ml-1 text-blue-600">· retry {e.attempt ?? '?'}</span>
+                                        )}
+                                        <div className="mt-0.5 font-mono text-[10px] text-amber-700">
+                                            {e.error.slice(0, 240)}
+                                            {e.error.length > 240 && '…'}
+                                        </div>
+                                        {e.timestamp && (
+                                            <div className="text-[9px] text-muted-foreground">
+                                                {new Date(e.timestamp).toLocaleTimeString()}
+                                            </div>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                )}
+            </div>
+        </details>
+    );
+}
 
 export function VideoResult({
     videoId,
@@ -91,6 +262,7 @@ export function VideoResult({
     orientation = 'landscape',
     prompt,
     apiKey,
+    tokenUsage,
 }: VideoResultProps) {
     const isPortrait = orientation === 'portrait';
     const playerWidth = isPortrait ? 1080 : 1920;
@@ -103,7 +275,18 @@ export function VideoResult({
     const [renderProgress, setRenderProgress] = useState<number>(0);
     const [renderJobId, setRenderJobId] = useState<string | null>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [genProgress, setGenProgress] = useState<GenerationProgress | null>(null);
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Fetch rich generation details (shots_history, errors, cumulative tokens) once
+    useEffect(() => {
+        if (!apiKey || !videoId) return;
+        getVideoStatus(videoId, apiKey)
+            .then((resp) => {
+                if (resp?.generation_progress) setGenProgress(resp.generation_progress);
+            })
+            .catch((err) => console.warn('[VideoResult] getVideoStatus failed:', err));
+    }, [videoId, apiKey]);
 
     const showDownload = (contentType === 'VIDEO' || requiresAudio(contentType)) && !!apiKey;
 
@@ -606,6 +789,10 @@ export function VideoResult({
                         )}
                     </div>
                 </div>
+                {/* Generation Details */}
+                {(tokenUsage || genProgress) && (
+                    <GenerationDetails tokenUsage={tokenUsage} genProgress={genProgress} />
+                )}
             </div>
 
             {/* Render settings dialog */}

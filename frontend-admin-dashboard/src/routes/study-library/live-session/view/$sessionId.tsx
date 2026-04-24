@@ -5,6 +5,7 @@ import { getPublicUrl } from '@/services/upload_file';
 import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb } from '../-services/utils';
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording } from '../-services/utils';
 import { AttendanceMarkingTable } from '../-components/AttendanceMarkingTable';
+import { FeedbackStats } from './-components/FeedbackStats';
 import {
     CalendarRange,
     Timer,
@@ -880,6 +881,10 @@ function ViewLiveSession() {
                                 )}
                                 {attendanceData && !attendanceLoading && (
                                     <div className="mt-4">
+                                        <FeedbackStats
+                                            data={attendanceData}
+                                            feedbackConfig={sessionData?.schedule?.feedback_config}
+                                        />
                                         <AttendanceMarkingTable
                                             data={attendanceData}
                                             sessionId={sessionId}

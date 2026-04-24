@@ -7,13 +7,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import queue as _queue
 import re
 import shutil
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, AsyncIterator
+from typing import Optional, Dict, Any, AsyncIterator, List
 from uuid import uuid4
 
 from ..repositories.ai_video_repository import AiVideoRepository
@@ -102,6 +103,7 @@ class VideoGenerationService:
         input_video_id: Optional[str] = None,
         input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
+        mute_tts_on_source_clips: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -169,6 +171,9 @@ class VideoGenerationService:
             if input_video_ids:
                 gen_metadata["input_video_ids"] = input_video_ids
                 gen_metadata["input_video_id"] = input_video_ids[0]  # compat
+            if input_video_audio:
+                gen_metadata["input_video_audio"] = input_video_audio
+            gen_metadata["mute_tts_on_source_clips"] = bool(mute_tts_on_source_clips)
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -240,6 +245,7 @@ class VideoGenerationService:
                     sound_effects_enabled=sound_effects_enabled,
                     input_video_ids=input_video_ids,
                     input_video_audio=input_video_audio,
+                    mute_tts_on_source_clips=mute_tts_on_source_clips,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -322,6 +328,7 @@ class VideoGenerationService:
         sound_effects_enabled: bool = True,
         input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
+        mute_tts_on_source_clips: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -347,20 +354,18 @@ class VideoGenerationService:
         from ..config import get_settings
         settings = get_settings()
         openrouter_key = settings.openrouter_api_key
-        gemini_key = settings.gemini_api_key
-        
-        # API keys loaded from environment (not logging to avoid exposing key status)
-        
+
         if not openrouter_key:
             error_msg = "OPENROUTER_API_KEY not set in environment. Please add it to your .env.stage file."
             logger.error(f"[VideoGenService] {error_msg}")
             raise ValueError(error_msg)
-        
-        # Prepare pipeline arguments
+
+        # Prepare pipeline arguments. Image generation now runs through OpenRouter
+        # (bytedance-seed/seedream-4.5); stock photos/videos come from Pexels and Pixabay.
         pipeline_args = {
             "openrouter_key": openrouter_key,
-            "gemini_image_key": gemini_key or "",  # Pass Gemini key for image generation
-            "pexels_api_keys": settings.pexels_api_keys or "",  # Pexels stock photos/videos
+            "pexels_api_keys": settings.pexels_api_keys or "",
+            "pixabay_api_keys": settings.pixabay_api_keys or "",
             "runs_dir": work_dir.parent,
             "quality_tier": quality_tier,
         }
@@ -515,7 +520,43 @@ class VideoGenerationService:
                         logger.info(f"[VideoGenService] Downloading narration.words.json from S3...")
                         if self.s3_service.download_file(words_url, words_path):
                             logger.info(f"[VideoGenService] Successfully downloaded narration.words.json")
-            
+
+                # Download shot checkpoints for intra-HTML-stage resume (director plan + per-shot cache)
+                try:
+                    from ..config import get_settings as _get_settings_ckpt
+                    _ckpt_settings = _get_settings_ckpt()
+                    _ckpt_bucket = _ckpt_settings.aws_bucket_name or _ckpt_settings.aws_s3_public_bucket
+                    _ckpt_prefix = f"ai-videos/{video_id}/checkpoints"
+                    _ckpt_base_url = f"https://{_ckpt_bucket}.s3.amazonaws.com/{_ckpt_prefix}"
+
+                    # style_guide.json
+                    _sg_local = run_dir / "style_guide.json"
+                    if not _sg_local.exists():
+                        self.s3_service.download_file(f"{_ckpt_base_url}/style_guide.json", _sg_local)
+
+                    # director_plan.json
+                    _dp_local = run_dir / "director_plan.json"
+                    if not _dp_local.exists():
+                        self.s3_service.download_file(f"{_ckpt_base_url}/director_plan.json", _dp_local)
+
+                    # Per-shot cache files (shot_000.json … shot_NNN.json)
+                    _shot_cache_local = run_dir / "shot_cache"
+                    _shot_cache_local.mkdir(exist_ok=True)
+                    _downloaded_shots = 0
+                    for _shot_idx in range(200):  # max 200 shots
+                        _sc_key = f"{_ckpt_base_url}/shot_cache/shot_{_shot_idx:03d}.json"
+                        _sc_local = _shot_cache_local / f"shot_{_shot_idx:03d}.json"
+                        if _sc_local.exists():
+                            _downloaded_shots += 1
+                            continue
+                        if not self.s3_service.download_file(_sc_key, _sc_local):
+                            break  # No more shot cache files
+                        _downloaded_shots += 1
+                    if _downloaded_shots:
+                        logger.info(f"[VideoGenService] Downloaded {_downloaded_shots} shot checkpoints for {video_id}")
+                except Exception as _ckpt_dl_err:
+                    logger.info(f"[VideoGenService] No shot checkpoints found or download failed (new run): {_ckpt_dl_err}")
+
             # Need branding_meta.json for render stage (audio delay)
             if start_stage_idx >= 5:  # RENDER
                 branding_meta_url = video_record.s3_urls.get("branding_meta")
@@ -741,6 +782,12 @@ class VideoGenerationService:
                 _vid_width = 1080 if orientation == "portrait" else 1920
                 _vid_height = 1920 if orientation == "portrait" else 1080
 
+                # Thread-safe queue: pipeline thread puts events; async loop drains them
+                _prog_queue: _queue.Queue = _queue.Queue()
+
+                def _progress_cb(event: Dict[str, Any]) -> None:
+                    _prog_queue.put_nowait(event)
+
                 pipeline_run = functools.partial(
                     pipeline.run,
                     base_prompt=prompt,
@@ -767,39 +814,88 @@ class VideoGenerationService:
                     visual_style=visual_style,
                     sound_effects_enabled=sound_effects_enabled,
                     input_video_contexts=input_video_contexts,
+                    mute_tts_on_source_clips=mute_tts_on_source_clips,
+                    progress_callback=_progress_cb,
                 )
 
+                # Run pipeline in thread while draining the progress queue in the
+                # async event loop so sub-stage events reach the SSE client in real time.
                 with ThreadPoolExecutor() as executor:
-                    outputs = await loop.run_in_executor(executor, pipeline_run)
+                    _pipeline_future = loop.run_in_executor(executor, pipeline_run)
+                    while not _pipeline_future.done():
+                        # Drain all queued events without blocking the event loop
+                        _drained: List[Dict[str, Any]] = []
+                        while not _prog_queue.empty():
+                            try:
+                                _drained.append(_prog_queue.get_nowait())
+                            except _queue.Empty:
+                                break
+                        for _ev in _drained:
+                            # Attach video_id so the FE can correlate without extra state
+                            _ev.setdefault("video_id", video_id)
+                            # Persist latest generation_progress to DB metadata so
+                            # GET /status also reflects sub-stage detail
+                            if _ev.get("type") in (
+                                "sub_stage", "shot_done", "shot_error"
+                            ):
+                                try:
+                                    self.repository.update_generation_progress(video_id, _ev)
+                                except Exception:
+                                    pass
+                            yield _ev
+                        await asyncio.sleep(0.25)
+                    # Drain any remaining events after the future completes
+                    while not _prog_queue.empty():
+                        try:
+                            _ev = _prog_queue.get_nowait()
+                            _ev.setdefault("video_id", video_id)
+                            if _ev.get("type") in (
+                                "sub_stage", "shot_done", "shot_error"
+                            ):
+                                try:
+                                    self.repository.update_generation_progress(video_id, _ev)
+                                except Exception:
+                                    pass
+                            yield _ev
+                        except _queue.Empty:
+                            break
+                    outputs = await _pipeline_future
                 
                 # Record token usage per stage
                 if outputs and "token_usage" in outputs and db_session:
                     try:
                         from .token_usage_service import TokenUsageService
                         usage = outputs["token_usage"]
-                        if usage.get("total_tokens", 0) > 0 or usage.get("image_count", 0) > 0:
+                        has_tokens = usage.get("total_tokens", 0) > 0
+                        has_images = usage.get("image_count", 0) > 0
+                        has_tts = usage.get("tts_character_count", 0) > 0
+                        has_stock = usage.get("stock_count", 0) > 0
+                        
+                        if has_tokens or has_images or has_tts or has_stock:
                             token_service = TokenUsageService(db_session)
                             provider = ApiProvider.OPENAI
                             if resolved_model and "gemini" in resolved_model.lower():
                                 provider = ApiProvider.GEMINI
+                                
                             # Deduct for LLM tokens (video request type)
-                            token_service.record_usage_and_deduct_credits(
-                                api_provider=provider,
-                                prompt_tokens=usage.get("prompt_tokens", 0),
-                                completion_tokens=usage.get("completion_tokens", 0),
-                                total_tokens=usage.get("total_tokens", 0),
-                                request_type=RequestType.VIDEO,
-                                institute_id=institute_id,
-                                user_id=user_id,
-                                model=resolved_model or "video-gen-pipeline",
-                                metadata={
-                                    "video_id": video_id,
-                                    "image_count": usage.get("image_count", 0),
-                                    "stage": stage_pipeline_name
-                                },
-                                batch_id=video_id,
-                            )
-                            logger.info(f"[VideoGenService] Recorded token usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
+                            if has_tokens:
+                                token_service.record_usage_and_deduct_credits(
+                                    api_provider=provider,
+                                    prompt_tokens=usage.get("prompt_tokens", 0),
+                                    completion_tokens=usage.get("completion_tokens", 0),
+                                    total_tokens=usage.get("total_tokens", 0),
+                                    request_type=RequestType.VIDEO,
+                                    institute_id=institute_id,
+                                    user_id=user_id,
+                                    model=resolved_model or "video-gen-pipeline",
+                                    metadata={
+                                        "video_id": video_id,
+                                        "image_count": usage.get("image_count", 0),
+                                        "stage": stage_pipeline_name
+                                    },
+                                    batch_id=video_id,
+                                )
+                                logger.info(f"[VideoGenService] Recorded token usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
 
                             # Deduct separately for images generated in this stage
                             _image_count = usage.get("image_count", 0)
@@ -818,6 +914,24 @@ class VideoGenerationService:
                                         batch_id=video_id,
                                     )
                                 logger.info(f"[VideoGenService] Deducted credits for {_image_count} images in stage {stage_pipeline_name}")
+
+                            # Deduct separately for stock images & videos
+                            _stock_count = usage.get("stock_count", 0)
+                            if _stock_count > 0:
+                                for _ in range(_stock_count):
+                                    token_service.record_usage_and_deduct_credits(
+                                        api_provider=ApiProvider.OPENAI,
+                                        prompt_tokens=0,
+                                        completion_tokens=0,
+                                        total_tokens=0,
+                                        request_type=RequestType.STOCK,
+                                        institute_id=institute_id,
+                                        user_id=user_id,
+                                        model="pexels-stock-api",
+                                        metadata={"video_id": video_id, "stage": stage_pipeline_name},
+                                        batch_id=video_id,
+                                    )
+                                logger.info(f"[VideoGenService] Deducted credits for {_stock_count} stock media insertions in stage {stage_pipeline_name}")
 
                             # Deduct separately for TTS characters
                             # Use premium pricing (2x) for premium/google/sarvam providers
@@ -849,7 +963,33 @@ class VideoGenerationService:
                                 logger.info(f"[VideoGenService] Deducted {'premium ' if _is_premium_tts else ''}TTS credits for {_tts_chars} chars in stage {stage_pipeline_name}")
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
-                
+
+                # Persist full token/cost breakdown into video metadata so it's
+                # queryable without joining ai_token_usage (used by FE cost display)
+                if outputs and "token_usage" in outputs and db_session:
+                    try:
+                        _usage = outputs["token_usage"]
+                        if _usage.get("total_tokens", 0) > 0 or _usage.get("estimated_cost_usd") is not None:
+                            from datetime import datetime as _dt
+                            _video_rec = self.repository.get_by_video_id(video_id)
+                            _existing_meta = (_video_rec.extra_metadata or {}) if _video_rec else {}
+                            _existing_meta["token_usage"] = {
+                                "prompt_tokens": _usage.get("prompt_tokens", 0),
+                                "completion_tokens": _usage.get("completion_tokens", 0),
+                                "total_tokens": _usage.get("total_tokens", 0),
+                                "image_count": _usage.get("image_count", 0),
+                                "tts_character_count": _usage.get("tts_character_count", 0),
+                                "stock_count": _usage.get("stock_count", 0),
+                                "estimated_cost_usd": _usage.get("estimated_cost_usd"),
+                                "model": _usage.get("model"),
+                                "recorded_at": _dt.utcnow().isoformat(),
+                            }
+                            self.repository.update_metadata(video_id, _existing_meta)
+                            logger.info(f"[VideoGenService] Saved token_usage to metadata for {video_id}: "
+                                        f"est. ${_usage.get('estimated_cost_usd', 0):.4f}")
+                    except Exception as _me:
+                        logger.warning(f"[VideoGenService] Failed to save token_usage to metadata: {_me}")
+
                 if outputs and "run_dir" in outputs:
                     run_dir = outputs["run_dir"]
 
@@ -1278,6 +1418,28 @@ class VideoGenerationService:
                         logger.warning(f"[VideoGenService] Could not process file path {file_path}: {e}")
             
             if stage_has_files:
+                # After HTML stage: upload shot checkpoints to S3 so a retry can resume
+                # from the last saved shot without re-running Director or completed shots.
+                if stage_pipeline_name == "html":
+                    try:
+                        _ckpt_files = []
+                        _dir_plan = run_dir / "director_plan.json"
+                        if _dir_plan.exists():
+                            _ckpt_files.append((_dir_plan, f"ai-videos/{video_id}/checkpoints/director_plan.json"))
+                        _shot_cache_dir = run_dir / "shot_cache"
+                        if _shot_cache_dir.exists():
+                            for _sc_file in sorted(_shot_cache_dir.glob("shot_*.json")):
+                                _ckpt_files.append((_sc_file, f"ai-videos/{video_id}/checkpoints/shot_cache/{_sc_file.name}"))
+                        _sg_file = run_dir / "style_guide.json"
+                        if _sg_file.exists():
+                            _ckpt_files.append((_sg_file, f"ai-videos/{video_id}/checkpoints/style_guide.json"))
+                        for _f, _key in _ckpt_files:
+                            self.s3_service.upload_file(_f, s3_key=_key, content_type="application/json")
+                        if _ckpt_files:
+                            logger.info(f"[VideoGenService] Uploaded {len(_ckpt_files)} checkpoint files to S3 for {video_id}")
+                    except Exception as _ckpt_err:
+                        logger.warning(f"[VideoGenService] Failed to upload checkpoints to S3: {_ckpt_err}")
+
                 # Update stage status — wrap in try/except so a stale-session error
                 # doesn't abort the entire pipeline after files were already uploaded.
                 try:

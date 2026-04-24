@@ -22,6 +22,7 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
         isPreviewMode,
         seek,
         entryTransforms,
+        entryBackgrounds,
         deleteEntry,
     } = useVideoEditorStore();
 
@@ -178,6 +179,7 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
                             const cssTransform = t
                                 ? `translate(${t.x}px, ${t.y}px) scale(${t.scale}) rotate(${t.rotation}deg)`
                                 : undefined;
+                            const bg = entryBackgrounds[entry.id];
                             const isSelected = entry.id === selectedEntryId;
 
                             return (
@@ -189,6 +191,7 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
                                         transform: cssTransform,
                                         transformOrigin: 'center center',
                                         zIndex: entry.z ?? i,
+                                        background: bg,
                                     }}
                                 >
                                     <iframe
@@ -200,14 +203,15 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
                                             width: '100%',
                                             height: '100%',
                                             border: 'none',
-                                            background:
-                                                i === 0
-                                                    ? meta.palette?.background ?? '#ffffff'
-                                                    : 'transparent',
+                                            background: bg
+                                                ? 'transparent'
+                                                : i === 0
+                                                  ? meta.palette?.background ?? '#ffffff'
+                                                  : 'transparent',
                                             pointerEvents: 'none',
                                         }}
                                         title={`Editor Layer ${entry.id}`}
-                                        sandbox="allow-scripts allow-same-origin"
+                                        sandbox="allow-scripts"
                                     />
                                     {/* Selection ring — transformed with the entry */}
                                     {!isPreviewMode && isSelected && (

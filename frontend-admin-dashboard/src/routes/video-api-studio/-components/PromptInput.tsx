@@ -163,6 +163,7 @@ export function PromptInput({
     const [processingVideos, setProcessingVideos] = useState<InputVideoItem[]>([]);
     const [selectedInputVideoIds, setSelectedInputVideoIds] = useState<string[]>([]);
     const [inputVideoAudio, setInputVideoAudio] = useState<'original' | 'tts'>('tts');
+    const [muteTtsDuringSourceClips, setMuteTtsDuringSourceClips] = useState(false);
     const [isUploadingVideo, setIsUploadingVideo] = useState(false);
     const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
     const [pendingVideoMode, setPendingVideoMode] = useState<'podcast' | 'demo'>('demo');
@@ -404,7 +405,13 @@ export function PromptInput({
             ...options,
             ...(referenceFiles.length > 0 ? { reference_files: referenceFiles } : {}),
             ...(selectedInputVideoIds.length > 0
-                ? { input_video_ids: selectedInputVideoIds, input_video_audio: inputVideoAudio }
+                ? {
+                      input_video_ids: selectedInputVideoIds,
+                      input_video_audio: inputVideoAudio,
+                      ...(inputVideoAudio === 'tts' && muteTtsDuringSourceClips
+                          ? { mute_tts_on_source_clips: true }
+                          : {}),
+                  }
                 : {}),
         });
     };
@@ -549,10 +556,12 @@ export function PromptInput({
     };
 
     const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
+        // Snapshot to array first — e.target.files is a live FileList that becomes
+        // empty as soon as e.target.value is reset.
+        const files = Array.from(e.target.files || []);
         e.target.value = '';
-        await processFiles(Array.from(files));
+        if (files.length === 0) return;
+        await processFiles(files);
     };
 
     // Drag-and-drop handlers for the prompt area
@@ -849,6 +858,43 @@ export function PromptInput({
                                     Multiple videos require AI narration
                                 </p>
                             )}
+                        </OptionBubble>
+                    )}
+
+                    {/* Mute TTS on source clips toggle (only when TTS + source video) */}
+                    {selectedInputVideoIds.length > 0 && inputVideoAudio === 'tts' && (
+                        <OptionBubble
+                            icon={<Mic className="size-3" />}
+                            label="Source Clips"
+                            value={muteTtsDuringSourceClips ? 'Source audio' : 'TTS over clips'}
+                        >
+                            <div className="inline-flex w-full rounded-lg border bg-muted p-0.5">
+                                <button
+                                    onClick={() => setMuteTtsDuringSourceClips(false)}
+                                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                        !muteTtsDuringSourceClips
+                                            ? 'bg-background text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    TTS over clips
+                                </button>
+                                <button
+                                    onClick={() => setMuteTtsDuringSourceClips(true)}
+                                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                        muteTtsDuringSourceClips
+                                            ? 'bg-background text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    Source audio
+                                </button>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                {muteTtsDuringSourceClips
+                                    ? 'TTS mutes when showing source clips; source audio plays instead'
+                                    : 'TTS narration plays continuously over source footage'}
+                            </p>
                         </OptionBubble>
                     )}
 

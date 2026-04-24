@@ -1,5 +1,20 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Layers, Type, Sliders, Image, Loader2, Trash2, Wand2, Check, X, Code2, AlertTriangle } from 'lucide-react';
+import {
+    Layers,
+    Type,
+    Sliders,
+    Image,
+    Loader2,
+    Trash2,
+    Wand2,
+    Check,
+    X,
+    Code2,
+    AlertTriangle,
+    Shapes,
+    Film,
+    Upload,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useVideoEditorStore, DEFAULT_TRANSFORM } from './stores/video-editor-store';
 import { regenerateFrame } from '@/routes/video-api-studio/-services/video-generation';
@@ -18,6 +33,16 @@ import {
 } from './utils/html-media-editor';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId } from '@/utils/userDetails';
+import { MonacoHtmlEditor, countInlineBase64 } from './MonacoHtmlEditor';
+import {
+    Overlay,
+    listOverlays,
+    upsertOverlay,
+    deleteOverlay,
+    newTextOverlay,
+    newImageOverlay,
+    newVideoOverlay,
+} from './utils/html-overlay-editor';
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -72,11 +97,52 @@ interface TransformTabProps {
 }
 
 function TransformTab({ entryId, canvasW, canvasH }: TransformTabProps) {
-    const { entryTransforms, updateEntryTransform, resetEntryTransform } = useVideoEditorStore();
+    const {
+        entryTransforms,
+        entryBackgrounds,
+        updateEntryTransform,
+        resetEntryTransform,
+        updateEntryBackground,
+    } = useVideoEditorStore();
     const transform = entryTransforms[entryId] ?? DEFAULT_TRANSFORM;
+    const background = entryBackgrounds[entryId] ?? '';
+    // Only feed a valid 7-char hex into <input type="color"> (it can't render gradients/named colors).
+    const pickerValue = /^#[0-9a-fA-F]{6}$/.test(background) ? background : '#ffffff';
 
     return (
         <div className="space-y-3 p-3">
+            <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
+                <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-gray-600">Background</span>
+                    {background && (
+                        <button
+                            onClick={() => updateEntryBackground(entryId, undefined)}
+                            className="text-[10px] text-gray-400 hover:text-gray-700"
+                        >
+                            Clear
+                        </button>
+                    )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <input
+                        type="color"
+                        value={pickerValue}
+                        onChange={(e) => updateEntryBackground(entryId, e.target.value)}
+                        className="h-7 w-9 cursor-pointer rounded border border-gray-300 bg-white p-0"
+                        aria-label="Background color"
+                    />
+                    <input
+                        type="text"
+                        value={background}
+                        placeholder="#ffffff or linear-gradient(...)"
+                        onChange={(e) => updateEntryBackground(entryId, e.target.value)}
+                        className="h-7 flex-1 rounded border border-gray-300 px-2 font-mono text-[11px] focus:border-indigo-400 focus:outline-none"
+                    />
+                </div>
+                <div className="text-[10px] text-gray-400">
+                    Solid color, CSS gradient, or image URL — applied behind this shot.
+                </div>
+            </div>
             <SliderField
                 label="X Offset"
                 value={transform.x}
@@ -535,7 +601,6 @@ function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
     const { updateEntryHtml } = useVideoEditorStore();
     const [localHtml, setLocalHtml] = useState(entryHtml);
     const [isDirty, setIsDirty] = useState(false);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     // Sync when entryHtml changes externally (undo, remake accept, etc.)
     useEffect(() => {
@@ -543,10 +608,13 @@ function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
         setIsDirty(false);
     }, [entryHtml]);
 
-    const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setLocalHtml(e.target.value);
-        setIsDirty(e.target.value !== entryHtml);
-    }, [entryHtml]);
+    const handleChange = useCallback(
+        (next: string) => {
+            setLocalHtml(next);
+            setIsDirty(next !== entryHtml);
+        },
+        [entryHtml]
+    );
 
     const handleApply = useCallback(() => {
         if (!localHtml.trim()) return;
@@ -561,45 +629,32 @@ function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
 
     const sizeKb = (new TextEncoder().encode(localHtml).length / 1024).toFixed(1);
     const isLarge = parseFloat(sizeKb) > 50;
+    const inline = useMemo(() => countInlineBase64(localHtml), [localHtml]);
 
     return (
         <div className="flex h-full flex-col">
             {isLarge && (
                 <div className="flex items-center gap-1.5 border-b border-amber-200 bg-amber-50 px-3 py-1.5">
                     <AlertTriangle className="size-3 shrink-0 text-amber-500" />
-                    <span className="text-[10px] text-amber-700">Large HTML ({sizeKb} KB) — edit carefully</span>
+                    <span className="text-[10px] text-amber-700">
+                        Large HTML ({sizeKb} KB)
+                        {inline.count > 0 && (
+                            <>
+                                {' '}
+                                — {inline.count} inline image{inline.count === 1 ? '' : 's'}{' '}
+                                folded (hover to preview)
+                            </>
+                        )}
+                    </span>
                 </div>
             )}
-            <textarea
-                ref={textareaRef}
-                value={localHtml}
-                onChange={handleChange}
-                spellCheck={false}
-                className="flex-1 resize-none border-0 bg-gray-950 p-3 font-mono text-[11px] leading-relaxed text-green-300 focus:outline-none"
-                style={{ minHeight: 240, tabSize: 2 }}
-                onKeyDown={(e) => {
-                    // Tab key inserts 2 spaces instead of moving focus
-                    if (e.key === 'Tab') {
-                        e.preventDefault();
-                        const el = e.currentTarget;
-                        const start = el.selectionStart;
-                        const end = el.selectionEnd;
-                        const next = localHtml.substring(0, start) + '  ' + localHtml.substring(end);
-                        setLocalHtml(next);
-                        setIsDirty(next !== entryHtml);
-                        // Restore cursor after React re-render
-                        requestAnimationFrame(() => {
-                            el.selectionStart = start + 2;
-                            el.selectionEnd = start + 2;
-                        });
-                    }
-                    // Ctrl/Cmd+Enter to apply
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                        e.preventDefault();
-                        handleApply();
-                    }
-                }}
-            />
+            <div className="flex-1 bg-[#1e1e1e]">
+                <MonacoHtmlEditor
+                    value={localHtml}
+                    onChange={handleChange}
+                    onApply={handleApply}
+                />
+            </div>
             <div className="flex shrink-0 items-center gap-2 border-t border-gray-200 bg-white px-3 py-2">
                 <span className="flex-1 font-mono text-[10px] text-gray-400">{sizeKb} KB</span>
                 {isDirty && (
@@ -620,17 +675,308 @@ function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
                         </Button>
                     </>
                 )}
-                {!isDirty && (
-                    <span className="text-[10px] text-gray-400">⌘↵ to apply</span>
-                )}
+                {!isDirty && <span className="text-[10px] text-gray-400">⌘↵ to apply</span>}
             </div>
+        </div>
+    );
+}
+
+// ── Overlays tab ───────────────────────────────────────────────────────────
+
+interface OverlaysTabProps {
+    entryId: string;
+    entryHtml: string;
+}
+
+function OverlayEditor({
+    overlay,
+    onPatch,
+    onDelete,
+    onReplaceSrc,
+}: {
+    overlay: Overlay;
+    onPatch: (patch: Partial<Overlay>) => void;
+    onDelete: () => void;
+    onReplaceSrc: () => void;
+}) {
+    return (
+        <div className="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-2">
+            <div className="flex items-center gap-1.5">
+                {overlay.kind === 'text' && <Type className="size-3 text-indigo-500" />}
+                {overlay.kind === 'image' && <Image className="size-3 text-indigo-500" />}
+                {overlay.kind === 'video' && <Film className="size-3 text-indigo-500" />}
+                <span className="flex-1 truncate text-[10px] font-medium text-gray-600">
+                    {overlay.kind}
+                </span>
+                <button
+                    onClick={onDelete}
+                    className="text-gray-300 hover:text-red-500"
+                    title="Delete overlay"
+                >
+                    <Trash2 className="size-3" />
+                </button>
+            </div>
+
+            {overlay.kind === 'text' && (
+                <>
+                    <textarea
+                        value={overlay.text}
+                        onChange={(e) => onPatch({ text: e.target.value } as Partial<Overlay>)}
+                        rows={2}
+                        className="w-full resize-none rounded border border-gray-200 bg-white px-2 py-1 text-[11px] focus:border-indigo-400 focus:outline-none"
+                        placeholder="Overlay text"
+                    />
+                    <div className="flex items-center gap-1.5">
+                        <label className="text-[10px] text-gray-500">Size</label>
+                        <input
+                            type="number"
+                            min={8}
+                            max={256}
+                            value={overlay.fontPx}
+                            onChange={(e) =>
+                                onPatch({
+                                    fontPx: parseInt(e.target.value, 10) || 32,
+                                } as Partial<Overlay>)
+                            }
+                            className="h-6 w-14 rounded border border-gray-200 bg-white px-1 font-mono text-[11px]"
+                        />
+                        <input
+                            type="color"
+                            value={
+                                /^#[0-9a-fA-F]{6}$/.test(overlay.color)
+                                    ? overlay.color
+                                    : '#ffffff'
+                            }
+                            onChange={(e) =>
+                                onPatch({ color: e.target.value } as Partial<Overlay>)
+                            }
+                            className="h-6 w-8 cursor-pointer rounded border border-gray-200 bg-white p-0"
+                        />
+                        <div className="flex gap-0.5">
+                            {(['left', 'center', 'right'] as const).map((a) => (
+                                <button
+                                    key={a}
+                                    onClick={() => onPatch({ align: a } as Partial<Overlay>)}
+                                    className={[
+                                        'h-6 rounded px-1.5 text-[10px]',
+                                        overlay.align === a
+                                            ? 'bg-indigo-100 text-indigo-700'
+                                            : 'bg-white text-gray-500 hover:text-gray-800',
+                                    ].join(' ')}
+                                >
+                                    {a[0]!.toUpperCase()}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {overlay.kind !== 'text' && (
+                <div className="flex items-center gap-1.5">
+                    <button
+                        onClick={onReplaceSrc}
+                        className="flex h-6 flex-1 items-center justify-center gap-1 rounded border border-gray-200 bg-white text-[11px] text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
+                    >
+                        <Upload className="size-3" />
+                        Replace
+                    </button>
+                    <div className="flex gap-0.5">
+                        {(['contain', 'cover', 'fill'] as const).map((f) => (
+                            <button
+                                key={f}
+                                onClick={() => onPatch({ objectFit: f } as Partial<Overlay>)}
+                                className={[
+                                    'h-6 rounded px-1.5 text-[10px]',
+                                    overlay.objectFit === f
+                                        ? 'bg-indigo-100 text-indigo-700'
+                                        : 'bg-white text-gray-500 hover:text-gray-800',
+                                ].join(' ')}
+                            >
+                                {f[0]}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <SliderField
+                label="X"
+                value={overlay.left}
+                min={0}
+                max={100}
+                step={1}
+                unit="%"
+                onChange={(v) => onPatch({ left: v } as Partial<Overlay>)}
+            />
+            <SliderField
+                label="Y"
+                value={overlay.top}
+                min={0}
+                max={100}
+                step={1}
+                unit="%"
+                onChange={(v) => onPatch({ top: v } as Partial<Overlay>)}
+            />
+            {overlay.width != null && (
+                <SliderField
+                    label="Width"
+                    value={overlay.width}
+                    min={5}
+                    max={100}
+                    step={1}
+                    unit="%"
+                    onChange={(v) => onPatch({ width: v } as Partial<Overlay>)}
+                />
+            )}
+            <SliderField
+                label="Opacity"
+                value={Math.round(overlay.opacity * 100)}
+                min={0}
+                max={100}
+                step={5}
+                unit="%"
+                onChange={(v) => onPatch({ opacity: v / 100 } as Partial<Overlay>)}
+            />
+        </div>
+    );
+}
+
+function OverlaysTab({ entryId, entryHtml }: OverlaysTabProps) {
+    const { updateEntryHtml } = useVideoEditorStore();
+    const { uploadFile, getPublicUrl } = useFileUpload();
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const replaceTargetRef = useRef<{ id: string; kind: 'image' | 'video' } | null>(null);
+
+    const overlays = useMemo(() => listOverlays(entryHtml), [entryHtml]);
+
+    const patchHtml = useCallback(
+        (nextHtml: string) => {
+            updateEntryHtml(entryId, nextHtml);
+        },
+        [entryId, updateEntryHtml]
+    );
+
+    const handleAddText = () => {
+        patchHtml(upsertOverlay(entryHtml, newTextOverlay('New text')));
+    };
+
+    const openFilePicker = (kind: 'image' | 'video', overlayId: string) => {
+        replaceTargetRef.current = { id: overlayId, kind };
+        const input = fileInputRef.current;
+        if (!input) return;
+        input.accept = kind === 'image' ? 'image/*' : 'video/*';
+        input.value = '';
+        input.click();
+    };
+
+    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        const target = replaceTargetRef.current;
+        if (!file || !target) return;
+        try {
+            const fileId = await uploadFile({
+                file,
+                setIsUploading: () => {},
+                userId: getUserId(),
+                source: 'VIDEO_EDITOR_MEDIA',
+                sourceId: 'ADMIN',
+                publicUrl: true,
+            });
+            if (!fileId) throw new Error('Upload failed');
+            const url = await getPublicUrl(fileId as string);
+            if (!url) throw new Error('Failed to get public URL');
+
+            // If it's a "create new" stub (id == 'NEW'), add; otherwise replace src
+            if (target.id === 'NEW') {
+                const fresh =
+                    target.kind === 'image' ? newImageOverlay(url) : newVideoOverlay(url);
+                patchHtml(upsertOverlay(entryHtml, fresh));
+            } else {
+                const existing = overlays.find((o) => o.id === target.id);
+                if (existing && existing.kind !== 'text') {
+                    patchHtml(upsertOverlay(entryHtml, { ...existing, src: url }));
+                }
+            }
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Upload failed');
+        } finally {
+            replaceTargetRef.current = null;
+        }
+    };
+
+    const handlePatch = (overlayId: string) => (patch: Partial<Overlay>) => {
+        const current = listOverlays(entryHtml).find((o) => o.id === overlayId);
+        if (!current) return;
+        patchHtml(upsertOverlay(entryHtml, { ...current, ...patch } as Overlay));
+    };
+
+    const handleDelete = (overlayId: string) => () => {
+        patchHtml(deleteOverlay(entryHtml, overlayId));
+    };
+
+    return (
+        <div className="space-y-2 p-3">
+            <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleFile}
+            />
+            <div className="grid grid-cols-3 gap-1.5">
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 text-[11px]"
+                    onClick={handleAddText}
+                >
+                    <Type className="size-3" />
+                    Text
+                </Button>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 text-[11px]"
+                    onClick={() => openFilePicker('image', 'NEW')}
+                >
+                    <Image className="size-3" />
+                    Image
+                </Button>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 text-[11px]"
+                    onClick={() => openFilePicker('video', 'NEW')}
+                >
+                    <Film className="size-3" />
+                    Video
+                </Button>
+            </div>
+
+            {overlays.length === 0 ? (
+                <p className="py-4 text-center text-[11px] text-gray-400">
+                    No overlays yet — add text, image, or video above.
+                </p>
+            ) : (
+                overlays.map((o) => (
+                    <OverlayEditor
+                        key={o.id}
+                        overlay={o}
+                        onPatch={handlePatch(o.id)}
+                        onDelete={handleDelete(o.id)}
+                        onReplaceSrc={() =>
+                            o.kind !== 'text' && openFilePicker(o.kind, o.id)
+                        }
+                    />
+                ))
+            )}
         </div>
     );
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-type Tab = 'transform' | 'text' | 'media' | 'code';
+type Tab = 'transform' | 'text' | 'media' | 'overlays' | 'code';
 
 interface PropertiesPanelProps {
     /**
@@ -843,8 +1189,8 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                 )}
             </div>
 
-            {/* Tab bar */}
-            <div className="flex shrink-0 border-b border-gray-200">
+            {/* Tab bar — horizontally scrollable so narrow panels still reveal every tab */}
+            <div className="flex shrink-0 overflow-x-auto border-b border-gray-200 [scrollbar-width:thin]">
                 {(
                     [
                         {
@@ -854,13 +1200,18 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                         },
                         { id: 'text', icon: <Type className="size-3" />, label: 'Text' },
                         { id: 'media', icon: <Image className="size-3" />, label: 'Media' },
+                        {
+                            id: 'overlays',
+                            icon: <Shapes className="size-3" />,
+                            label: 'Overlays',
+                        },
                         { id: 'code', icon: <Code2 className="size-3" />, label: 'HTML' },
                     ] as const
                 ).map(({ id, icon, label }) => (
                     <button
                         key={id}
                         className={[
-                            'flex flex-1 items-center justify-center gap-1 py-2 text-[11px] transition-colors',
+                            'flex shrink-0 items-center justify-center gap-1 whitespace-nowrap px-3 py-2 text-[11px] transition-colors',
                             tab === id
                                 ? 'border-b-2 border-indigo-500 text-indigo-600'
                                 : 'text-gray-500 hover:text-gray-700',
@@ -887,6 +1238,9 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                     />
                 )}
                 {tab === 'media' && <MediaTab entryId={entryId} entryHtml={entry.html} />}
+                {tab === 'overlays' && (
+                    <OverlaysTab entryId={entryId} entryHtml={entry.html} />
+                )}
                 {tab === 'code' && <HtmlTab entryId={entryId} entryHtml={entry.html} />}
             </div>
 

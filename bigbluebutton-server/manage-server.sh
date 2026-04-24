@@ -834,17 +834,23 @@ cmd_sync() {
     echo "============================================="
     echo ""
 
-    echo "[1/4] Scripts to /root/..."
+    echo "[1/6] Scripts to /root/..."
     local root_scripts=(configure-bbb.sh install-recording-hook.sh post-publish-s3-upload.sh setup-hetzner.sh)
     for f in "${root_scripts[@]}"; do
         [ -f "$SCRIPT_DIR/$f" ] && scp $ssh_opts "$SCRIPT_DIR/$f" "root@$ip:/root/$f" && echo "  ✓ $f"
     done
 
-    echo "[2/4] Boot-time IP fix..."
+    echo "[2/6] Service files to /root/..."
+    local svc_files=(bbb-heal-service.py bbb-heal-service.service vacademy-heal.nginx bbb-health-dashboard.py bbb-health-dashboard.service vacademy-health.nginx)
+    for f in "${svc_files[@]}"; do
+        [ -f "$SCRIPT_DIR/$f" ] && scp $ssh_opts "$SCRIPT_DIR/$f" "root@$ip:/root/$f" && echo "  ✓ $f"
+    done
+
+    echo "[3/6] Boot-time IP fix..."
     [ -f "$SCRIPT_DIR/bbb-fix-ip-on-boot.sh" ] && scp $ssh_opts "$SCRIPT_DIR/bbb-fix-ip-on-boot.sh" "root@$ip:/opt/" && echo "  ✓ bbb-fix-ip-on-boot.sh"
     [ -f "$SCRIPT_DIR/bbb-fix-ip-on-boot.service" ] && scp $ssh_opts "$SCRIPT_DIR/bbb-fix-ip-on-boot.service" "root@$ip:/etc/systemd/system/" && echo "  ✓ bbb-fix-ip-on-boot.service"
 
-    echo "[3/4] Monitoring scripts..."
+    echo "[4/6] Monitoring scripts..."
     ssh $ssh_opts "root@$ip" "mkdir -p /opt/vacademy"
     if [ -d "$SCRIPT_DIR/monitoring" ]; then
         for f in "$SCRIPT_DIR/monitoring/"*.sh; do
@@ -855,16 +861,17 @@ cmd_sync() {
         done
     fi
 
-    echo "[4/4] Permissions & services..."
+    echo "[5/6] Permissions & services..."
     ssh $ssh_opts "root@$ip" bash -s <<'REMOTE'
         chmod +x /opt/bbb-fix-ip-on-boot.sh 2>/dev/null || true
         chmod +x /root/*.sh 2>/dev/null || true
+        chmod +x /root/*.py 2>/dev/null || true
         chmod +x /opt/vacademy/*.sh 2>/dev/null || true
         systemctl daemon-reload
         systemctl enable bbb-fix-ip-on-boot.service 2>/dev/null || true
 REMOTE
 
-    echo "[5/5] Deploying recording hook..."
+    echo "[6/6] Deploying recording hook..."
     ssh $ssh_opts "root@$ip" bash -s <<'REMOTE'
         HOOK_DIR="/usr/local/bigbluebutton/core/scripts/post_publish"
         SRC="/root/post-publish-s3-upload.sh"

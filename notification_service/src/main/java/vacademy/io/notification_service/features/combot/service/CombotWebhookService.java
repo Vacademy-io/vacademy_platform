@@ -173,7 +173,18 @@ public class CombotWebhookService {
             log.info("Stored WhatsApp status {} for message {}", statusValue, messageId);
 
             if ("failed".equalsIgnoreCase(statusValue)) {
-                Map<String, Object> errors = (Map<String, Object>) status.get(CombotWebhookKeys.ERRORS);
+                Object errorsRaw = status.get(CombotWebhookKeys.ERRORS);
+                Map<String, Object> errors = null;
+                if (errorsRaw instanceof List<?> list && !((List<?>) list).isEmpty()) {
+                    Object first = ((List<?>) list).get(0);
+                    if (first instanceof Map<?, ?>) {
+                        //noinspection unchecked
+                        errors = (Map<String, Object>) first;
+                    }
+                } else if (errorsRaw instanceof Map<?, ?>) {
+                    //noinspection unchecked
+                    errors = (Map<String, Object>) errorsRaw;
+                }
                 processMessageFailedFromWebhook(messageId, recipientId, errors, entry);
             }
         }

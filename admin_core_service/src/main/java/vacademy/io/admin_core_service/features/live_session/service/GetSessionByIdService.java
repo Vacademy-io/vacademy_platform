@@ -174,6 +174,16 @@ public class GetSessionByIdService {
                         System.err.println("Error deserializing bbbConfigJson: " + e.getMessage());
                     }
                 }
+                // Load feedback config
+                if (liveSession.getFeedbackConfigJson() != null && !liveSession.getFeedbackConfigJson().isBlank()) {
+                    try {
+                        Object feedbackCfg = new com.fasterxml.jackson.databind.ObjectMapper()
+                                .readValue(liveSession.getFeedbackConfigJson(), Object.class);
+                        dto.setFeedbackConfig(feedbackCfg);
+                    } catch (Exception e) {
+                        System.err.println("Error deserializing feedbackConfigJson: " + e.getMessage());
+                    }
+                }
             });
         }
 

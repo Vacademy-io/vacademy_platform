@@ -36,7 +36,7 @@ public class CustomFieldValidator {
             case NUMBER -> validateNumber(value);
             case DATE -> validateDate(value);
             case CHECKBOX -> "true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value);
-            case TEXT, TEXTAREA, DROPDOWN, RADIO, FILE -> true;
+            case TEXT, TEXTAREA, DROPDOWN, RADIO, FILE, MULTI_SELECT -> true;
         };
     }
 

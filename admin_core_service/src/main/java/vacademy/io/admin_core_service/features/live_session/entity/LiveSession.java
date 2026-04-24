@@ -87,6 +87,10 @@ public class LiveSession {
     @Column(name = "bbb_config_json", columnDefinition = "text")
     private String bbbConfigJson;
 
+    /** JSON config for post-session learner feedback (enabled, questions with type/mandatory flags) */
+    @Column(name = "feedback_config_json", columnDefinition = "text")
+    private String feedbackConfigJson;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

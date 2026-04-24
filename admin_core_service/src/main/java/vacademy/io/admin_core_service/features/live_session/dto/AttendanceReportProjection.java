@@ -24,4 +24,5 @@ public interface AttendanceReportProjection {
     LocalTime getStartTime();
     LocalTime getLastEntryTime();
     Boolean getDailyAttendance();
+    String getFeedbackDetails();
 }

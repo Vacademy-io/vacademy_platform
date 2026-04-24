@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.live_session.provider.repository.
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
+import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.meeting.dto.CreateMeetingRequestDTO;
 import vacademy.io.common.meeting.dto.CreateMeetingResponseDTO;
@@ -263,10 +264,12 @@ public class LiveSessionProviderService {
                 String fileName = schedule.getProviderMeetingId() + "-"
                         + (bbbRec.getType() != null ? bbbRec.getType() : "recording") + ".mp4";
                 MultipartFile multipartFile = new ByteArrayMultipartFile(fileBytes, fileName, "video/mp4");
-                String fileId = mediaService.uploadFile(multipartFile); // BC-10: upload failure
-
-                // Step 5: Resolve S3 URL and build enriched DTO
-                String s3Url = mediaService.getFilePublicUrlByIdWithoutExpiry(fileId);
+                // Use V2 endpoint: returns FileDetailsDTO with both id and url.
+                // (V1 uploadFile returns the S3 URL as a String, not a fileId — passing
+                //  that URL back to getFilePublicUrlByIdWithoutExpiry yields 510 File Not Found.)
+                FileDetailsDTO uploaded = mediaService.uploadFileV2(multipartFile); // BC-10: upload failure
+                String fileId = uploaded.getId();
+                String s3Url = uploaded.getUrl();
                 MeetingRecordingDTO synced = MeetingRecordingDTO.builder()
                         .recordingId(bbbRec.getRecordingId())
                         .fileId(fileId)

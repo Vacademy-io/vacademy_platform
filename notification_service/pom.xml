@@ -203,6 +203,7 @@
                     <project>java-spring-boot</project>
                     <!-- Auth token passed via Maven property: -Dsentry.authToken -->
                     <authToken>${sentry.authToken}</authToken>
+                    <skip>${sentry.skip}</skip>
                 </configuration>
                 <executions>
                     <execution>

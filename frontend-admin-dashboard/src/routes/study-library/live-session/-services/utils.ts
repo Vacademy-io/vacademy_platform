@@ -109,6 +109,18 @@ export interface Schedule {
         webcams_only_for_moderator?: boolean;
         guest_policy?: string;
     } | null;
+    feedback_config?: {
+        enabled?: boolean;
+        questions?: Array<{
+            id: string;
+            type: string;
+            label: string;
+            enabled: boolean;
+            mandatory: boolean;
+            max_stars?: number;
+            allow_half?: boolean;
+        }>;
+    } | null;
     schedule_id: string | null;
     meeting_date: string | null;
     timezone?: string;
@@ -194,6 +206,7 @@ export interface LiveSessionReport {
     statusType: string | null;
     engagementData: string | null;
     providerTotalDurationMinutes: number | null;
+    feedbackDetails: string | null;
 }
 
 export interface SessionBySessionIdResponse {

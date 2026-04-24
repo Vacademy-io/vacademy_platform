@@ -222,6 +222,18 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     handleGetEnrollInviteData({ instituteId, inviteCode })
   );
 
+  const inviteConfig = useMemo(() => {
+    try {
+      if (inviteData?.setting_json) {
+        const settings = JSON.parse(inviteData.setting_json);
+        return settings?.postformfillConfiguration || {};
+      }
+    } catch (e) {
+      console.warn("Failed to parse setting_json", e);
+    }
+    return {};
+  }, [inviteData?.setting_json]);
+
   // Inject GTM if the institute has configured a container ID
   useEffect(() => {
     const gtmId = inviteData?.gtm_container_id;
@@ -328,24 +340,16 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             >,
             field
           ) => {
-            if (field.field_type === "dropdown") {
-              defaults[field.field_key] = {
-                id: field.id,
-                name: field.field_name,
-                value: "",
-                is_mandatory: field.is_mandatory || false,
-                type: field.field_type,
-                config: field.config || "{}",
-              };
-            } else {
-              defaults[field.field_key] = {
-                id: field.id,
-                name: field.field_name,
-                value: "",
-                is_mandatory: field.is_mandatory || false,
-                type: field.field_type,
-              };
-            }
+            // Always pass config so non-dropdown types (radio, multi_select,
+            // date, file, checkbox, etc.) can read their metadata.
+            defaults[field.field_key] = {
+              id: field.id,
+              name: field.field_name,
+              value: "",
+              is_mandatory: field.is_mandatory || false,
+              type: field.field_type,
+              config: field.config || "{}",
+            };
             return defaults;
           },
           {} as Record<
@@ -738,7 +742,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
 
         toast.success("Enrollment successful! Redirecting to dashboard...");
         setTimeout(() => {
-          window.location.href = `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
+          window.location.href = inviteConfig?.redirectPath || `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
         }, 1500);
         return;
       } catch (error) {
@@ -759,7 +763,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
 
         toast.success("Login successful! Redirecting to dashboard...");
         setTimeout(() => {
-          window.location.href = `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
+          window.location.href = inviteConfig?.redirectPath || `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
         }, 1500);
       } catch (error) {
         console.error("[EnrollByInvite] Auto-login failed:", error);
@@ -769,7 +773,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       // If no credentials, user might be already logged in or it's an existing user
       // We still wait a bit then redirect
       setTimeout(() => {
-        window.location.href = `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
+        window.location.href = inviteConfig?.redirectPath || `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
       }, 2000);
     }
   };
@@ -933,6 +937,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           // userId: submittedUserId || undefined,
         });
         setPaymentCompletionResponse(paymentResponse);
+        if (inviteConfig?.redirectPath) {
+          window.location.href = inviteConfig.redirectPath;
+          return;
+        }
         setCurrentStep(5); // Go directly to success for FREE payments
 
         // Fetch and handle enrollment policy (shows dialog if needed)
@@ -995,6 +1003,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             paymentResponse?.payment_response?.response_data?.paymentStatus ===
             "PAID"
           ) {
+            if (inviteConfig?.redirectPath) {
+              window.location.href = inviteConfig.redirectPath;
+              return;
+            }
             setCurrentStep(5);
             // Fetch and handle enrollment policy (shows dialog if needed)
             await fetchAndHandleEnrollmentPolicy();
@@ -1267,6 +1279,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           paymentResponse?.payment_response?.response_data?.paymentStatus ===
           "PAID"
         ) {
+          if (inviteConfig?.redirectPath) {
+            window.location.href = inviteConfig.redirectPath;
+            return;
+          }
           setCurrentStep(5);
           // Fetch and handle enrollment policy (shows dialog if needed)
           await fetchAndHandleEnrollmentPolicy();
@@ -1336,6 +1352,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               paymentResponse?.payment_response?.response_data
                 ?.paymentStatus === "PAID"
             ) {
+              if (inviteConfig?.redirectPath) {
+                window.location.href = inviteConfig.redirectPath;
+                return;
+              }
               setCurrentStep(5);
               // Fetch and handle enrollment policy (shows dialog if needed)
               await fetchAndHandleEnrollmentPolicy();
@@ -1845,6 +1865,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             }
             email={enrollmentData?.registrationData?.email?.value || ""}
             isAutoLoggingIn={isAutoLoggingIn}
+            config={inviteConfig}
           />
         );
       default:

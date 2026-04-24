@@ -42,6 +42,7 @@ public class GetSessionByIdResponseDTO {
     private String sessionStreamingServiceType;
     private String timezone;
     private Map<String, Object> bbbConfig;
+    private Object feedbackConfig;
     private List<String> packageSessionIds;
     private List<PackageSessionDetail> packageSessionDetails;
     private List<ScheduleItem> addedSchedules;

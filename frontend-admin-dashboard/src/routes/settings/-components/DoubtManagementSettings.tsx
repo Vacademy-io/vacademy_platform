@@ -15,6 +15,7 @@ type DoubtAssigneeSource = 'SUBJECT_TEACHER' | 'BATCH_TEACHER' | 'BOTH' | 'NONE'
 interface NotificationChannelPrefs {
     push_enabled: boolean;
     email_enabled: boolean;
+    system_alert_enabled: boolean;
     email_template_id: string | null;
 }
 
@@ -31,7 +32,8 @@ interface DoubtManagementSettingsData {
 
 const DEFAULT_CHANNEL_PREFS: NotificationChannelPrefs = {
     push_enabled: true,
-    email_enabled: false,
+    email_enabled: true,
+    system_alert_enabled: true,
     email_template_id: null,
 };
 
@@ -218,9 +220,10 @@ export default function DoubtManagementSettings() {
 
     const showFallbackToggle = settings.default_assignee_source === 'SUBJECT_TEACHER';
 
-    // Email can be turned on without explicitly picking a template — the backend falls back to the
-    // institute's seeded default (doubt-raised-tpl-<instituteId> / doubt-resolved-tpl-<instituteId>)
-    // from migration V214.
+    // Email can be turned on without explicitly picking a template — the backend resolves through
+    // three layers: admin-configured id → institute-specific override row → global DEFAULT row
+    // seeded by V215 (see DoubtNotificationService.resolveTemplateId). Email defaults to ON;
+    // admins can turn it off per-event below.
     const handleSave = () => {
         save(settings);
     };
@@ -413,6 +416,7 @@ function NotificationEventCard({
 }) {
     const pushId = `${idPrefix}-push`;
     const emailId = `${idPrefix}-email`;
+    const systemAlertId = `${idPrefix}-system-alert`;
     const templateId = `${idPrefix}-template`;
 
     return (
@@ -444,6 +448,27 @@ function NotificationEventCard({
 
                 <div className="flex items-start gap-3">
                     <Switch
+                        id={systemAlertId}
+                        checked={prefs.system_alert_enabled}
+                        onCheckedChange={(v) => onChange({ system_alert_enabled: v })}
+                    />
+                    <div>
+                        <Label
+                            htmlFor={systemAlertId}
+                            className="cursor-pointer text-sm font-medium text-neutral-800"
+                        >
+                            In-app bell alert
+                        </Label>
+                        <p className="mt-0.5 text-xs text-neutral-600">
+                            Default on. Shows a persistent entry in the recipient's bell icon —
+                            stays visible when the user returns to the app even if they missed
+                            the push.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                    <Switch
                         id={emailId}
                         checked={prefs.email_enabled}
                         onCheckedChange={(v) =>
@@ -458,8 +483,8 @@ function NotificationEventCard({
                             Email notification
                         </Label>
                         <p className="mt-0.5 text-xs text-neutral-600">
-                            Off by default. Pick an email template to send alongside (or instead of)
-                            the push.
+                            On by default. Sent alongside the push — turn off to suppress.
+                            Uses the seeded default template unless you pick a custom one below.
                         </p>
 
                         {prefs.email_enabled && (

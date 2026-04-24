@@ -30,24 +30,53 @@ function isIdentity(t: EntryTransform): boolean {
     return t.x === 0 && t.y === 0 && t.scale === 1 && t.rotation === 0;
 }
 
-const WRAPPER_RE =
+/**
+ * Shot wrapper: a single outer <div> that carries per-shot visual state
+ * (transform, background) baked into the saved HTML. Marked with
+ * data-vx-shot="1" so we can recognize and rewrite it idempotently.
+ */
+const SHOT_WRAPPER_OPEN_RE = /^<div\s+data-vx-shot="1"\s+style="[^"]*">/;
+const LEGACY_TRANSFORM_WRAPPER_RE =
     /^<div style="position:absolute;inset:0;transform:[^"]*;transform-origin:center center;overflow:visible;">([\s\S]*)<\/div>$/;
 
-/** Strip any previously baked transform wrapper so we never double-wrap on re-save. */
-function stripTransformWrapper(html: string): string {
-    const m = html.match(WRAPPER_RE);
-    return m ? m[1] ?? html : html;
+/** Strip any previously baked wrapper so we never double-wrap on re-save. */
+function stripShotWrapper(html: string): string {
+    if (SHOT_WRAPPER_OPEN_RE.test(html) && html.endsWith('</div>')) {
+        return html.replace(SHOT_WRAPPER_OPEN_RE, '').slice(0, -'</div>'.length);
+    }
+    const legacy = html.match(LEGACY_TRANSFORM_WRAPPER_RE);
+    return legacy ? (legacy[1] ?? html) : html;
 }
 
-function injectTransformWrapper(html: string, t: EntryTransform): string {
-    const inner = stripTransformWrapper(html);
-    const transform = `translate(${t.x}px, ${t.y}px) scale(${t.scale}) rotate(${t.rotation}deg)`;
-    return `<div style="position:absolute;inset:0;transform:${transform};transform-origin:center center;overflow:visible;">${inner}</div>`;
+function injectShotWrapper(
+    html: string,
+    t: EntryTransform | undefined,
+    background: string | undefined
+): string {
+    const inner = stripShotWrapper(html);
+    const hasTransform = t && !isIdentity(t);
+    const hasBackground = !!background && background.trim() !== '';
+    if (!hasTransform && !hasBackground) return inner;
+
+    const styles: string[] = [
+        'position:absolute',
+        'inset:0',
+        'transform-origin:center center',
+        'overflow:visible',
+    ];
+    if (hasTransform) {
+        styles.push(
+            `transform:translate(${t!.x}px, ${t!.y}px) scale(${t!.scale}) rotate(${t!.rotation}deg)`
+        );
+    }
+    if (hasBackground) styles.push(`background:${background}`);
+    return `<div data-vx-shot="1" style="${styles.join(';')}">${inner}</div>`;
 }
 
 interface HistorySnapshot {
     entries: Entry[];
     entryTransforms: Record<string, EntryTransform>;
+    entryBackgrounds: Record<string, string>;
     dirtyEntryIds: string[];
     newEntryIds: string[];
 }
@@ -88,6 +117,9 @@ export interface VideoEditorState {
     // Per-entry CSS transforms (client-side; baked into HTML on save)
     entryTransforms: Record<string, EntryTransform>;
 
+    // Per-entry background color / CSS value (client-side; baked into HTML on save)
+    entryBackgrounds: Record<string, string>;
+
     // Undo/Redo history
     past: HistorySnapshot[];
     future: HistorySnapshot[];
@@ -113,6 +145,8 @@ export interface VideoEditorState {
     removeAudioTrack: (trackId: string) => void;
     updateEntryTransform: (entryId: string, patch: Partial<EntryTransform>) => void;
     resetEntryTransform: (entryId: string) => void;
+    /** Set or clear an entry's background CSS value (empty string / undefined clears it). */
+    updateEntryBackground: (entryId: string, background: string | undefined) => void;
     undo: () => void;
     redo: () => void;
     saveChanges: () => Promise<void>;
@@ -122,6 +156,7 @@ function snapshot(s: VideoEditorState): HistorySnapshot {
     return {
         entries: s.entries,
         entryTransforms: s.entryTransforms,
+        entryBackgrounds: s.entryBackgrounds,
         dirtyEntryIds: s.dirtyEntryIds,
         newEntryIds: s.newEntryIds,
     };
@@ -153,6 +188,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     newEntryIds: [],
     audioTracks: [],
     entryTransforms: {},
+    entryBackgrounds: {},
     past: [],
     future: [],
     isSaving: false,
@@ -177,6 +213,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             newEntryIds: [],
             audioTracks: [],
             entryTransforms: {},
+            entryBackgrounds: {},
             past: [],
             future: [],
             isSaving: false,
@@ -266,15 +303,18 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
 
     deleteEntry: (entryId) => {
         set((s) => {
-            const next = { ...s.entryTransforms };
-            delete next[entryId];
+            const nextT = { ...s.entryTransforms };
+            delete nextT[entryId];
+            const nextB = { ...s.entryBackgrounds };
+            delete nextB[entryId];
             return {
                 ...pushPast(s),
                 entries: s.entries.filter((e) => e.id !== entryId),
                 selectedEntryId: s.selectedEntryId === entryId ? null : s.selectedEntryId,
                 dirtyEntryIds: s.dirtyEntryIds.filter((id) => id !== entryId),
                 newEntryIds: s.newEntryIds.filter((id) => id !== entryId),
-                entryTransforms: next,
+                entryTransforms: nextT,
+                entryBackgrounds: nextB,
             };
         });
     },
@@ -312,6 +352,25 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         });
     },
 
+    updateEntryBackground: (entryId, background) => {
+        set((s) => {
+            const next = { ...s.entryBackgrounds };
+            const normalized = background?.trim();
+            if (normalized) {
+                next[entryId] = normalized;
+            } else {
+                delete next[entryId];
+            }
+            return {
+                ...pushPast(s),
+                entryBackgrounds: next,
+                dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
+                    ? s.dirtyEntryIds
+                    : [...s.dirtyEntryIds, entryId],
+            };
+        });
+    },
+
     undo: () => {
         set((s) => {
             if (s.past.length === 0) return {};
@@ -321,6 +380,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 future: [snapshot(s), ...s.future.slice(0, 49)],
                 entries: prev.entries,
                 entryTransforms: prev.entryTransforms,
+                entryBackgrounds: prev.entryBackgrounds,
                 dirtyEntryIds: prev.dirtyEntryIds,
                 newEntryIds: prev.newEntryIds,
             };
@@ -336,6 +396,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 future: s.future.slice(1),
                 entries: next.entries,
                 entryTransforms: next.entryTransforms,
+                entryBackgrounds: next.entryBackgrounds,
                 dirtyEntryIds: next.dirtyEntryIds,
                 newEntryIds: next.newEntryIds,
             };
@@ -352,13 +413,22 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         set((s) => ({ audioTracks: s.audioTracks.filter((t) => t.id !== trackId) })),
 
     saveChanges: async () => {
-        const { videoId, apiKey, entries, dirtyEntryIds, newEntryIds, entryTransforms } = get();
+        const {
+            videoId,
+            apiKey,
+            entries,
+            dirtyEntryIds,
+            newEntryIds,
+            entryTransforms,
+            entryBackgrounds,
+        } = get();
 
         // Collect entries that need saving
         const toSave = entries.filter(
             (e) =>
                 dirtyEntryIds.includes(e.id) ||
-                (entryTransforms[e.id] != null && !isIdentity(entryTransforms[e.id]!))
+                (entryTransforms[e.id] != null && !isIdentity(entryTransforms[e.id]!)) ||
+                !!entryBackgrounds[e.id]
         );
 
         if (toSave.length === 0) return;
@@ -375,8 +445,8 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             // New entries (never persisted) use frame/add; existing use frame/update.
             for (const entry of toSave) {
                 const t = entryTransforms[entry.id];
-                const newHtml =
-                    t && !isIdentity(t) ? injectTransformWrapper(entry.html, t) : entry.html;
+                const bg = entryBackgrounds[entry.id];
+                const newHtml = injectShotWrapper(entry.html, t, bg);
                 const isNew = newEntryIds.includes(entry.id);
 
                 if (isNew) {
@@ -423,14 +493,17 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 }
             }
 
-            // Bake transforms into local entry HTML so canvas re-renders correctly
+            // Bake transforms + backgrounds into local entry HTML so canvas re-renders correctly
             set((s) => ({
                 entries: s.entries.map((e) => {
                     const t = s.entryTransforms[e.id];
-                    if (!t || isIdentity(t)) return e;
-                    return { ...e, html: injectTransformWrapper(e.html, t) };
+                    const bg = s.entryBackgrounds[e.id];
+                    const hasT = t && !isIdentity(t);
+                    if (!hasT && !bg) return e;
+                    return { ...e, html: injectShotWrapper(e.html, t, bg) };
                 }),
                 entryTransforms: {},
+                entryBackgrounds: {},
                 dirtyEntryIds: [],
                 newEntryIds: [], // all new entries are now persisted
                 past: [],

@@ -48,6 +48,7 @@ public class LiveSessionProviderController {
     private final LiveSessionLogsRepository liveSessionLogsRepository;
     private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository liveSessionRepository;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
     private final vacademy.io.common.media.service.FileService fileService;
     private final vacademy.io.common.auth.repository.UserRepository userRepository;
 
@@ -706,6 +707,122 @@ public class LiveSessionProviderController {
                     .updatedAt(new Timestamp(System.currentTimeMillis()))
                     .build();
             liveSessionLogsRepository.save(logEntry);
+        }
+    }
+
+    // ───────────────────────────── Feedback endpoints ─────────────────────────────
+
+    /**
+     * Returns the feedback configuration for a schedule.
+     * Learner feedback page calls this on mount to decide whether to show the form.
+     */
+    @GetMapping("meeting/feedback-config")
+    public ResponseEntity<?> getFeedbackConfig(
+            @RequestParam String scheduleId,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal CustomUserDetails user) {
+        try {
+            // Look up schedule → session
+            SessionSchedule schedule = scheduleRepository.findById(scheduleId).orElse(null);
+            if (schedule == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            var session = liveSessionRepository.findById(schedule.getSessionId()).orElse(null);
+            if (session == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // Parse feedback config
+            Object feedbackConfig = null;
+            if (session.getFeedbackConfigJson() != null && !session.getFeedbackConfigJson().isBlank()) {
+                feedbackConfig = objectMapper.readValue(session.getFeedbackConfigJson(), Object.class);
+            }
+
+            // Check if user already submitted
+            boolean alreadySubmitted = liveSessionLogsRepository.hasFeedbackBeenSubmitted(
+                    scheduleId, user.getUserId());
+
+            // Get institute branding
+            String instituteName = null;
+            String instituteLogo = null;
+            if (session.getInstituteId() != null) {
+                var institute = instituteRepository.findById(session.getInstituteId()).orElse(null);
+                if (institute != null) {
+                    instituteName = institute.getInstituteName();
+                    if (institute.getLogoFileId() != null && !institute.getLogoFileId().isBlank()) {
+                        instituteLogo = institute.getLogoFileId();
+                    }
+                }
+            }
+
+            var response = vacademy.io.admin_core_service.features.live_session.dto.FeedbackConfigResponseDTO.builder()
+                    .feedbackConfig(feedbackConfig)
+                    .alreadySubmitted(alreadySubmitted)
+                    .sessionTitle(session.getTitle())
+                    .instituteName(instituteName)
+                    .instituteLogo(instituteLogo)
+                    .build();
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("[Feedback] Failed to get feedback config for schedule {}", scheduleId, e);
+            return ResponseEntity.internalServerError().body("Failed to get feedback config");
+        }
+    }
+
+    /**
+     * Submits learner feedback for a session.
+     * Creates a FEEDBACK_SUBMITTED entry in live_session_logs.
+     * Prevents duplicate submissions.
+     */
+    @PostMapping("meeting/feedback")
+    public ResponseEntity<?> submitFeedback(
+            @RequestBody vacademy.io.admin_core_service.features.live_session.dto.FeedbackSubmitRequestDTO request,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal CustomUserDetails user) {
+        try {
+            String scheduleId = request.getScheduleId();
+            if (scheduleId == null || scheduleId.isBlank()) {
+                return ResponseEntity.badRequest().body("scheduleId is required");
+            }
+
+            // Look up schedule → session
+            SessionSchedule schedule = scheduleRepository.findById(scheduleId).orElse(null);
+            if (schedule == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            String sessionId = schedule.getSessionId();
+
+            // Prevent duplicate submissions
+            if (liveSessionLogsRepository.hasFeedbackBeenSubmitted(scheduleId, user.getUserId())) {
+                return ResponseEntity.ok(Map.of("status", "already_submitted",
+                        "message", "Feedback already submitted for this session"));
+            }
+
+            // Serialize responses to JSON
+            String responsesJson = objectMapper.writeValueAsString(request.getResponses());
+
+            // Create the feedback log entry
+            LiveSessionLogs feedbackLog = LiveSessionLogs.builder()
+                    .sessionId(sessionId)
+                    .scheduleId(scheduleId)
+                    .userSourceType("USER")
+                    .userSourceId(user.getUserId())
+                    .logType(SessionLog.FEEDBACK_SUBMITTED.name())
+                    .status("SUBMITTED")
+                    .statusType("ONLINE")
+                    .details(responsesJson)
+                    .createdAt(new Timestamp(System.currentTimeMillis()))
+                    .updatedAt(new Timestamp(System.currentTimeMillis()))
+                    .build();
+
+            liveSessionLogsRepository.save(feedbackLog);
+
+            return ResponseEntity.ok(Map.of("status", "success",
+                    "message", "Feedback submitted successfully"));
+        } catch (Exception e) {
+            log.error("[Feedback] Failed to submit feedback", e);
+            return ResponseEntity.internalServerError().body("Failed to submit feedback");
         }
     }
 }

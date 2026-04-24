@@ -101,6 +101,17 @@ export const sessionFormSchema = z
         bbbMuteOnStart: z.boolean().optional(),
         bbbWebcamsOnlyForModerator: z.boolean().optional(),
         bbbGuestPolicy: z.enum(['ALWAYS_ACCEPT', 'ASK_MODERATOR', 'ALWAYS_DENY']).optional(),
+        // Learner feedback configuration
+        feedbackEnabled: z.boolean().optional(),
+        feedbackQuestions: z.array(z.object({
+            id: z.string(),
+            type: z.string(),
+            label: z.string(),
+            enabled: z.boolean(),
+            mandatory: z.boolean(),
+            max_stars: z.number().optional(),
+            allow_half: z.boolean().optional(),
+        })).optional(),
     })
     .superRefine((data, ctx) => {
         if (data.sessionPlatform !== 'zoho' && data.sessionPlatform !== 'bbb' && !data.defaultLink) {

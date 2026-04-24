@@ -114,3 +114,33 @@ export interface SessionDetailsResponse {
   providerEmbedToken: string | null;
   providerHostUrl: string | null;
 }
+
+// Feedback types
+export interface FeedbackQuestion {
+    id: string;
+    type: 'star_rating' | 'free_text';
+    label: string;
+    enabled: boolean;
+    mandatory: boolean;
+    max_stars?: number;
+    allow_half?: boolean;
+}
+
+export interface FeedbackConfig {
+    enabled: boolean;
+    questions: FeedbackQuestion[];
+}
+
+export interface FeedbackConfigResponse {
+    feedback_config: FeedbackConfig | null;
+    already_submitted: boolean;
+    session_title: string;
+    institute_name?: string;
+    institute_logo?: string;
+}
+
+export interface FeedbackSubmitRequest {
+    schedule_id: string;
+    responses: Record<string, string | number>;
+}
+

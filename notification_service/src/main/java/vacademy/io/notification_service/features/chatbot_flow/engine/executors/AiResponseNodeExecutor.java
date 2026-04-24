@@ -94,7 +94,7 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
                     : new ArrayList<>();
 
             // Call admin-core-service AI endpoint
-            String modelId = (String) config.getOrDefault("modelId", "google/gemini-2.0-flash-001");
+            String modelId = (String) config.getOrDefault("modelId", "google/gemini-2.5-flash");
             String userSystemPrompt = (String) config.getOrDefault("systemPrompt", "You are a helpful assistant.");
             int maxTokens = config.get("maxTokens") instanceof Number
                     ? ((Number) config.get("maxTokens")).intValue() : 500;

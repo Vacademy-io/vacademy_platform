@@ -81,7 +81,7 @@ export default function RegistrationForm({
             className="flex flex-col gap-5"
           >
             <div className="flex flex-col gap-4 overflow-auto max-h-[50vh] pr-1">
-              {customFields?.map((responseField) => {
+              {[...(customFields || [])].sort((a, b) => (a.formOrder ?? 0) - (b.formOrder ?? 0)).map((responseField) => {
                 const renderType = getFieldRenderType(
                   responseField.fieldKey,
                   responseField.fieldType

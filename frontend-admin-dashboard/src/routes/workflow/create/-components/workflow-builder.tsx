@@ -686,8 +686,8 @@ function WorkflowSetupStep({ onComplete, triggerEventsCatalog, instituteId }: {
                                                 </div>
                                                 <EventEntityPicker
                                                     eventAppliedType={triggerConfig.eventAppliedType}
-                                                    value={triggerConfig.eventId}
-                                                    onChange={(id) => setTriggerConfig({ eventId: id })}
+                                                    multiValue={triggerConfig.eventIds ?? (triggerConfig.eventId ? [triggerConfig.eventId] : [])}
+                                                    onMultiChange={(ids) => setTriggerConfig({ eventIds: ids, eventId: ids.length === 1 ? ids[0] : undefined })}
                                                     instituteId={instituteId}
                                                 />
                                             </div>
@@ -790,10 +790,16 @@ function WorkflowConfigSummary({ triggerEventsCatalog, onEdit }: {
                                 {triggerConfig.eventAppliedType.replace(/_/g, ' ')}
                             </span>
                         )}
-                        {triggerConfig.eventId && (
+                        {(triggerConfig.eventIds?.length ?? 0) > 1 && (
+                            <span className="text-gray-400">{triggerConfig.eventIds!.length} selected</span>
+                        )}
+                        {(triggerConfig.eventIds?.length ?? 0) === 1 && (
+                            <span className="text-gray-400">1 selected</span>
+                        )}
+                        {!(triggerConfig.eventIds?.length) && triggerConfig.eventId && (
                             <span className="text-gray-400">ID: {triggerConfig.eventId}</span>
                         )}
-                        {!triggerConfig.eventId && (
+                        {!(triggerConfig.eventIds?.length) && !triggerConfig.eventId && (
                             <span className="text-gray-400">(all)</span>
                         )}
                     </div>
@@ -896,7 +902,9 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                 trigger_event_name: triggerConfig.eventName,
                 description: triggerConfig.description || undefined,
                 event_applied_type: triggerConfig.eventAppliedType || undefined,
-                event_id: triggerConfig.eventId || undefined,
+                // Send event_ids array for multi-select, event_id for backward compat
+                event_ids: triggerConfig.eventIds?.length ? triggerConfig.eventIds : undefined,
+                event_id: !triggerConfig.eventIds?.length ? triggerConfig.eventId : undefined,
             },
         }),
     });

@@ -12,8 +12,12 @@ import {
 
 interface EventEntityPickerProps {
     eventAppliedType: string;
-    value: string | undefined;
-    onChange: (id: string | undefined) => void;
+    /** Single value — backward compat (used if multiValue not provided) */
+    value?: string | undefined;
+    onChange?: (id: string | undefined) => void;
+    /** Multi-select mode */
+    multiValue?: string[];
+    onMultiChange?: (ids: string[]) => void;
     instituteId: string;
 }
 
@@ -150,12 +154,28 @@ const TYPE_LABELS: Record<string, string> = {
     PAYMENT: 'Payment',
 };
 
-export function EventEntityPicker({ eventAppliedType, value, onChange, instituteId }: EventEntityPickerProps) {
+export function EventEntityPicker({ eventAppliedType, value, onChange, multiValue, onMultiChange, instituteId }: EventEntityPickerProps) {
     const [showManual, setShowManual] = useState(false);
     const hasDropdownSupport = ['PACKAGE_SESSION', 'AUDIENCE', 'LIVE_SESSION', 'ENROLL_INVITE'].includes(eventAppliedType);
     const { data: options = [], isLoading, isError } = useEntityOptions(eventAppliedType, instituteId);
 
     const typeLabel = TYPE_LABELS[eventAppliedType] ?? eventAppliedType.replace(/_/g, ' ').toLowerCase();
+
+    // Multi-select mode
+    const isMulti = !!onMultiChange;
+    const selectedIds = multiValue ?? (value ? [value] : []);
+
+    const toggleId = (id: string) => {
+        if (!isMulti) {
+            // Single mode: just set the value
+            onChange?.(id || undefined);
+            return;
+        }
+        const updated = selectedIds.includes(id)
+            ? selectedIds.filter((s) => s !== id)
+            : [...selectedIds, id];
+        onMultiChange?.(updated);
+    };
 
     // For INSTITUTE — no entity picker needed
     if (eventAppliedType === 'INSTITUTE') {
@@ -166,13 +186,13 @@ export function EventEntityPicker({ eventAppliedType, value, onChange, institute
         );
     }
 
-    // For types without dropdown support (PACKAGE_SESSION, ASSESSMENT, USER_PLAN, PAYMENT) — manual input
+    // For types without dropdown support — manual input
     if (!hasDropdownSupport || showManual || isError) {
         return (
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <Label className="text-xs font-medium text-gray-600">
-                        Restrict to a specific {typeLabel} (optional)
+                        Restrict to specific {typeLabel}(s) (optional)
                     </Label>
                     {hasDropdownSupport && !isError && (
                         <button
@@ -185,14 +205,22 @@ export function EventEntityPicker({ eventAppliedType, value, onChange, institute
                     )}
                 </div>
                 <Input
-                    value={value ?? ''}
-                    onChange={(e) => onChange(e.target.value || undefined)}
+                    value={isMulti ? selectedIds.join(', ') : (value ?? '')}
+                    onChange={(e) => {
+                        const raw = e.target.value;
+                        if (isMulti) {
+                            const ids = raw.split(',').map((s) => s.trim()).filter(Boolean);
+                            onMultiChange?.(ids);
+                        } else {
+                            onChange?.(raw || undefined);
+                        }
+                    }}
                     className="text-sm"
-                    placeholder={`Enter ${typeLabel} ID or leave empty for all`}
+                    placeholder={`Enter ${typeLabel} ID(s), comma-separated, or leave empty for all`}
                 />
                 <p className="text-[10px] text-gray-400">
-                    {value
-                        ? `This workflow will only fire for this specific ${typeLabel}.`
+                    {selectedIds.length > 0
+                        ? `This workflow will fire for ${selectedIds.length} selected ${typeLabel}(s).`
                         : `Leave empty and the workflow fires for every ${typeLabel} in your institute.`
                     }
                 </p>
@@ -200,12 +228,12 @@ export function EventEntityPicker({ eventAppliedType, value, onChange, institute
         );
     }
 
-    // Dropdown mode for supported types
+    // Checkbox list mode for supported types (multi-select)
     return (
         <div className="space-y-2">
             <div className="flex items-center justify-between">
                 <Label className="text-xs font-medium text-gray-600">
-                    Restrict to a specific {typeLabel} (optional)
+                    Select {typeLabel}(s) — leave unchecked for all
                 </Label>
                 <button
                     type="button"
@@ -216,27 +244,46 @@ export function EventEntityPicker({ eventAppliedType, value, onChange, institute
                 </button>
             </div>
 
-            <select
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm"
-                value={value ?? ''}
-                onChange={(e) => onChange(e.target.value || undefined)}
-            >
-                <option value="">All {typeLabel}s (no restriction)</option>
-                {isLoading && <option disabled>Loading...</option>}
-                {options.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                        {opt.label}{opt.subtitle ? ` — ${opt.subtitle}` : ''}
-                    </option>
-                ))}
-                {!isLoading && options.length === 0 && (
-                    <option disabled>No {typeLabel}s found</option>
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-300 bg-white">
+                {isLoading && (
+                    <div className="px-3 py-2 text-xs text-gray-400">Loading...</div>
                 )}
-            </select>
+                {!isLoading && options.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-gray-400">No {typeLabel}s found</div>
+                )}
+                {options.map((opt) => {
+                    const checked = selectedIds.includes(opt.id);
+                    return (
+                        <label
+                            key={opt.id}
+                            className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer border-b last:border-b-0 transition-colors ${
+                                checked ? 'bg-primary-50' : 'hover:bg-gray-50'
+                            }`}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleId(opt.id)}
+                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
+                            />
+                            <div className="flex-1 min-w-0">
+                                <div className="text-sm text-gray-800 truncate">{opt.label}</div>
+                                {opt.subtitle && (
+                                    <div className="text-[10px] text-gray-400">{opt.subtitle}</div>
+                                )}
+                            </div>
+                        </label>
+                    );
+                })}
+            </div>
 
+            {/* Selected count summary */}
             <p className="text-[10px] text-gray-400">
-                {value
-                    ? `This workflow will only fire for the selected ${typeLabel}.`
-                    : `Leave as "All" and the workflow fires for every ${typeLabel} in your institute.`
+                {selectedIds.length === 0
+                    ? `No selection — the workflow fires for every ${typeLabel} in your institute.`
+                    : selectedIds.length === 1
+                        ? `Workflow fires only for the selected ${typeLabel}.`
+                        : `Workflow fires for ${selectedIds.length} selected ${typeLabel}(s). One trigger row will be created per selection.`
                 }
             </p>
         </div>

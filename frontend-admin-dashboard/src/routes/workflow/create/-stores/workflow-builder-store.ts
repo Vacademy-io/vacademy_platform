@@ -25,6 +25,8 @@ export interface TriggerConfig {
     description: string;
     eventAppliedType: string;
     eventId?: string;
+    /** Multiple event IDs for multi-select scope */
+    eventIds?: string[];
 }
 
 export interface WorkflowBuilderState {

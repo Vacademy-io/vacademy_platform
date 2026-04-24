@@ -110,6 +110,8 @@ export interface WorkflowBuilderTrigger {
     description?: string;
     event_applied_type?: string;
     event_id?: string;
+    /** Multiple event IDs — one trigger row created per ID */
+    event_ids?: string[];
 }
 
 export interface WorkflowBuilderDTO {

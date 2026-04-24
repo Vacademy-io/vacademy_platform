@@ -613,6 +613,7 @@ public class LiveSessionProviderController {
         }
 
         String meetingId = (String) body.get("meetingId");
+        String internalMeetingId = (String) body.get("internalMeetingId");
         String fileId = (String) body.get("fileId");
         String recordingId = (String) body.getOrDefault("recordingId", meetingId);
         long durationSeconds = body.containsKey("durationSeconds")
@@ -630,14 +631,16 @@ public class LiveSessionProviderController {
             return ResponseEntity.ok("No schedule found — recording registered but not linked");
         }
 
-        // Build recording entry
+        // Build recording entry. bbbInternalId is what the sync service uses to
+        // decide whether a recording has already been uploaded (and therefore
+        // whether to ask the heal service to re-run the post-publish hook).
         MeetingRecordingDTO recording = MeetingRecordingDTO.builder()
                 .recordingId(recordingId)
+                .bbbInternalId(internalMeetingId)
                 .fileId(fileId)
                 .durationSeconds(durationSeconds)
                 .startTime(startTime)
                 .providerMeetingId(meetingId)
-
                 .type(recordingType)
                 .build();
 

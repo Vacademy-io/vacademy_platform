@@ -557,40 +557,19 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
             long durationSecs = (endTimeMs - startTimeMs) / 1000;
             String startTimeIso = new Date(startTimeMs).toInstant().toString();
 
-            // BBB 3.0 structure: <playback><format><type>...</type><url>...</url></format></playback>
-            // A recording can have multiple formats (presentation, video, webcams, etc).
-            // Emit one MeetingRecordingDTO per format so all are surfaced.
-            NodeList playbackNodes = rec.getElementsByTagName("playback");
-            if (playbackNodes.getLength() > 0) {
-                Element playback = (Element) playbackNodes.item(0);
-                NodeList formats = playback.getElementsByTagName("format");
-                for (int j = 0; j < formats.getLength(); j++) {
-                    Element format = (Element) formats.item(j);
-                    String formatType = getChildText(format, "type", "presentation");
-                    String formatUrl = getChildText(format, "url", "");
-                    if (formatUrl.isEmpty()) continue;
-
-                    recordings.add(MeetingRecordingDTO.builder()
-                            .recordingId(recordId + "-" + formatType)
-                            .bbbInternalId(recordId)
-                            .playbackUrl(formatUrl)
-                            .downloadUrl(formatUrl)
-                            .durationSeconds(durationSecs)
-                            .startTime(startTimeIso)
-                            .providerMeetingId(providerMeetingId)
-                            .type(formatType)
-                            .build());
-                }
-            } else {
-                // No playback section — still emit a minimal entry so the caller knows this recording exists
-                recordings.add(MeetingRecordingDTO.builder()
-                        .recordingId(recordId)
-                        .bbbInternalId(recordId)
-                        .durationSeconds(durationSecs)
-                        .startTime(startTimeIso)
-                        .providerMeetingId(providerMeetingId)
-                        .build());
-            }
+            // BBB's getRecordings only advertises the HTML playback page as a format
+            // (type=presentation, url=https://.../playback/presentation/...). The actual
+            // MP4 files are produced and uploaded to S3 by our post-publish hook on the
+            // BBB server, not exposed by BBB's API. So we emit a single metadata-only
+            // DTO (no downloadable URL) — recovery of missing MP4s requires re-running
+            // the post-publish hook on the BBB host, not this sync endpoint.
+            recordings.add(MeetingRecordingDTO.builder()
+                    .recordingId(recordId)
+                    .bbbInternalId(recordId)
+                    .durationSeconds(durationSecs)
+                    .startTime(startTimeIso)
+                    .providerMeetingId(providerMeetingId)
+                    .build());
         }
         return recordings;
     }

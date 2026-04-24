@@ -233,17 +233,35 @@ public class LiveSessionProviderService {
                 .filter(r -> r.getFileId() != null && !r.getFileId().isBlank())
                 .map(MeetingRecordingDTO::getRecordingId)
                 .collect(Collectors.toSet());
+        Set<String> registeredInternalIds = existing.stream()
+                .filter(r -> r.getFileId() != null && !r.getFileId().isBlank())
+                .map(MeetingRecordingDTO::getBbbInternalId)
+                .filter(id -> id != null && !id.isBlank())
+                .collect(Collectors.toSet());
 
         List<MeetingRecordingDTO> updated = new ArrayList<>(existing);
         int newCount = 0;
         int failCount = 0;
+        boolean republishTriggered = false;
 
         for (MeetingRecordingDTO bbbRec : bbbRecordings) {
             // BC-5: Already in DB with fileId — skip (idempotent)
             if (syncedIds.contains(bbbRec.getRecordingId())) continue;
 
-            // BC-6: No URL from BBB — can't download
+            // BC-6: BBB has this recording but no downloadable URL. This is the
+            // normal case — BBB's getRecordings only advertises the HTML playback
+            // page; the actual MP4 upload is handled by the post-publish hook on
+            // the BBB server. If we don't yet have an S3 row for this recordId,
+            // ask the heal service to re-run the hook on the BBB host.
             if (bbbRec.getPlaybackUrl() == null || bbbRec.getPlaybackUrl().isBlank()) {
+                String bbbInternalId = bbbRec.getBbbInternalId();
+                boolean alreadyUploaded = bbbInternalId != null
+                        && registeredInternalIds.contains(bbbInternalId);
+                if (!alreadyUploaded && bbbInternalId != null && !bbbInternalId.isBlank()
+                        && triggerRepublish(bbbInternalId, schedule)) {
+                    republishTriggered = true;
+                    continue;
+                }
                 log.warn("[Sync] BBB recording {} has no URL, skipping", bbbRec.getRecordingId());
                 failCount++;
                 continue;
@@ -310,6 +328,11 @@ public class LiveSessionProviderService {
         // BC-13: Enrich all URLs before returning
         List<MeetingRecordingDTO> enriched = enrichUrls(updated);
 
+        // If we asked the BBB host to re-run the post-publish hook, surface that
+        // state to the UI so it knows to poll again in a few minutes.
+        if (republishTriggered && newCount == 0) {
+            return RecordingSyncResultDTO.reprocessing(enriched);
+        }
         if (failCount > 0 && newCount == 0) {
             return RecordingSyncResultDTO.bbbOffline(enriched); // all failed — treat as offline
         }
@@ -396,6 +419,49 @@ public class LiveSessionProviderService {
             default:
                 log.warn("[Heal] Unexpected heal service status '{}' for scheduleId={}", status, scheduleId);
                 return RecordingSyncResultDTO.ok(currentDbState, 0);
+        }
+    }
+
+    /**
+     * Calls the heal service /republish endpoint to re-run the post-publish hook
+     * for a recording that exists on BBB but wasn't uploaded to S3 (e.g. because
+     * the original hook run failed to register with the backend).
+     *
+     * Returns true if the heal service accepted the request (REPUBLISH_TRIGGERED
+     * or RATE_LIMITED — both mean a reprocess is in-flight). False on any error
+     * or unexpected status; caller falls back to the normal fail path.
+     */
+    private boolean triggerRepublish(String recordId, SessionSchedule schedule) {
+        if (schedule.getBbbServerId() == null || schedule.getBbbServerId().isBlank()) {
+            return false;
+        }
+        BbbServerPool server;
+        try {
+            server = bbbServerRouter.getServer(schedule.getBbbServerId());
+        } catch (Exception e) {
+            log.warn("[Republish] Could not resolve server {}: {}", schedule.getBbbServerId(), e.getMessage());
+            return false;
+        }
+        String healBaseUrl = deriveHealBaseUrl(server.getApiUrl());
+        if (healBaseUrl == null) {
+            log.warn("[Republish] Could not derive heal URL from apiUrl={}", server.getApiUrl());
+            return false;
+        }
+        try {
+            Map<String, Object> resp = webClientBuilder.build()
+                    .post()
+                    .uri(URI.create(healBaseUrl + "/republish?recordId=" + recordId))
+                    .header("X-BBB-Secret", server.getSecret())
+                    .retrieve()
+                    .bodyToMono(new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {})
+                    .timeout(Duration.ofSeconds(15))
+                    .block();
+            String status = resp == null ? "" : String.valueOf(resp.getOrDefault("status", ""));
+            log.info("[Republish] recordId={} status={}", recordId, status);
+            return "REPUBLISH_TRIGGERED".equals(status) || "RATE_LIMITED".equals(status);
+        } catch (Exception e) {
+            log.warn("[Republish] Heal service unreachable for recordId={}: {}", recordId, e.getMessage());
+            return false;
         }
     }
 

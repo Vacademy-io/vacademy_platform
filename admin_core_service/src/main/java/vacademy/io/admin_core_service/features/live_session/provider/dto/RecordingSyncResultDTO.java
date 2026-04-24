@@ -50,4 +50,10 @@ public record RecordingSyncResultDTO(
         return new RecordingSyncResultDTO(recordings, "NOT_FOUND",
                 "No recording was captured for this session on the BBB server.");
     }
+
+    public static RecordingSyncResultDTO reprocessing(List<MeetingRecordingDTO> recordings) {
+        return new RecordingSyncResultDTO(recordings, "REPROCESSING",
+                "Recording exists on the BBB server but hasn't been uploaded yet. "
+                        + "Re-running the upload — check back in a few minutes.");
+    }
 }

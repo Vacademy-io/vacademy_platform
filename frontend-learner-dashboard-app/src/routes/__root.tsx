@@ -356,6 +356,47 @@ const RootComponent = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Android hardware back button handler (native mobile only)
+  // Prevents the default WebView back behavior from navigating to an empty
+  // page (which triggers the auth guard and logs the user out). On root-level
+  // screens like /dashboard, minimize the app instead of navigating back.
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== "android") return;
+
+    const ROOT_ROUTES = [
+      "/dashboard",
+      "/learning-centre",
+      "/user-profile",
+      "/homework",
+      "/my-files",
+      "/courses",
+      "/login",
+      "/",
+    ];
+
+    const isRootRoute = (path: string) =>
+      ROOT_ROUTES.some(
+        (r) => path === r || path === `${r}/` || path.startsWith(`${r}?`),
+      );
+
+    let handle: { remove: () => void } | null = null;
+
+    App.addListener("backButton", ({ canGoBack }) => {
+      const currentPath = window.location.pathname;
+      if (!canGoBack || isRootRoute(currentPath)) {
+        App.minimizeApp();
+      } else {
+        window.history.back();
+      }
+    }).then((h) => {
+      handle = h;
+    });
+
+    return () => {
+      if (handle) handle.remove();
+    };
+  }, []);
+
   // Native OAuth deep-link listener (Android/iOS)
   // When the system browser completes OAuth and redirects to our public URL,
   // the deep link fires appUrlOpen with the tokens in the URL.

@@ -1162,11 +1162,15 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      */
     private Map<String, Object> fetchStudentsByBatch(Map<String, Object> params) {
         try {
-            String batchId = (String) params.get("batchId");
+            // Handle batchId as String or List<String> (PaymentLogService passes List)
+            Object batchIdObj = params.get("batchId");
             String instituteId = (String) params.get("instituteId");
 
             List<String> batchIds = new ArrayList<>();
-            if (batchId != null && !batchId.isEmpty()) {
+            if (batchIdObj instanceof List) {
+                batchIds = (List<String>) batchIdObj;
+            } else if (batchIdObj instanceof String && !((String) batchIdObj).isEmpty()) {
+                String batchId = (String) batchIdObj;
                 // Support comma-separated batch IDs
                 batchIds = java.util.Arrays.stream(batchId.split(","))
                     .map(String::trim).filter(s -> !s.isEmpty())

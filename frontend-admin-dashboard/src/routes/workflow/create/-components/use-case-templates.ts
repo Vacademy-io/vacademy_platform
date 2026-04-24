@@ -188,6 +188,9 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
     },
 
     // ─── 3. Payment failed retry email ───
+    // VERIFIED: PaymentLogService puts packageSessionIds as List<String> in context
+    //   fetch_ssigm_by_package natively handles List for packageSessionIds ✓
+    //   Output: ssigm_list with email, fullName (camelCase aliases added) ✓
     {
         id: 'payment_failed_email',
         name: 'Payment failed notification',
@@ -209,15 +212,16 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 triggerEvent: triggerEvent ?? 'PAYMENT_FAILED',
             }, 250, 50, true);
 
-            // Payment context has user info directly — wrap in a query to get email
+            // Use fetch_ssigm_by_package because PaymentLogService puts packageSessionIds as List<String>
+            // fetch_ssigm_by_package handles List natively, fetch_students_by_batch expects String
             const queryNode = makeNode('QUERY', 'Fetch student details', {
-                prebuiltKey: 'fetch_students_by_batch',
-                params: { batchId: "#ctx['packageSessionIds']" },
+                prebuiltKey: 'fetch_ssigm_by_package',
+                params: { packageSessionIds: "#ctx['packageSessionIds']" },
             }, 250, 230);
 
             const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
                 templateName: answers.templateName as string,
-                on: "#ctx['students']",
+                on: "#ctx['ssigm_list']",
                 forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
             }, 250, 410);
 
@@ -762,6 +766,12 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         workflowType: 'BOTH',
         questions: [
             {
+                id: 'daysUntilExpiry',
+                label: 'How many days before expiry to send reminder?',
+                type: 'number',
+                defaultValue: 7,
+            },
+            {
                 id: 'templateName',
                 label: 'Which reminder template?',
                 helpText: 'Template for the membership renewal reminder.',
@@ -776,7 +786,7 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
 
             const queryNode = makeNode('QUERY', 'Fetch expiring memberships', {
                 prebuiltKey: 'fetch_expiring_memberships',
-                params: { daysUntilExpiry: 7 },
+                params: { daysUntilExpiry: answers.daysUntilExpiry ?? 7 },
             }, 250, 230);
 
             const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {

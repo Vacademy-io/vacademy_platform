@@ -39,7 +39,9 @@ public class DoubtManagementSettingDataDto {
 
     /**
      * Per-event notification preferences. {@code null} means "no explicit preference configured" →
-     * defaults apply (push ON, email ON) at dispatch time.
+     * defaults apply (push ON, email ON, system alert ON) at dispatch time. Each channel is
+     * independently toggleable: a strict-privacy institute can disable email-only, a low-noise
+     * institute can disable push, etc.
      */
     private DoubtNotificationPrefs notifications;
 
@@ -69,6 +71,12 @@ public class DoubtManagementSettingDataDto {
          * from the Doubt Management settings page.
          */
         private Boolean emailEnabled;
+        /**
+         * Default true — populates the recipient's in-app bell (via an Announcement with
+         * modeType=SYSTEM_ALERT). Independent of push: bell stays visible when a user returns to
+         * the app even if they missed the push toast. Admins can opt out per event.
+         */
+        private Boolean systemAlertEnabled;
         /**
          * Id of a {@code Template} row (type=EMAIL) owned by this institute. Admin picks from the
          * existing Templates settings tab. Null is valid while email is disabled.

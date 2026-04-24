@@ -96,6 +96,8 @@ public class DoubtNotificationService {
 
         boolean pushOn = prefs.getPushEnabled() == null || Boolean.TRUE.equals(prefs.getPushEnabled());
         boolean emailOn = Boolean.TRUE.equals(prefs.getEmailEnabled());
+        boolean systemAlertOn = prefs.getSystemAlertEnabled() == null
+                || Boolean.TRUE.equals(prefs.getSystemAlertEnabled());
 
         InstituteContext ctx = loadInstituteContext(instituteId);
         Map<String, String> pushData = buildPushData(doubt, "DOUBT_RAISED");
@@ -114,15 +116,15 @@ public class DoubtNotificationService {
             }
         }
 
-        // Bell-icon alert: always fire for the assigned teacher(s). Unlike push/email this is a
-        // cheap, dismissible in-app signal, so we don't gate it behind the channel prefs — if an
-        // admin has opted out of push/email they still see the doubt in their bell.
-        // createdByRole="ADMIN" bypasses the institute's optional announcement_approval_required gate
-        // (see AnnouncementService.createAnnouncement:94) — system-generated doubt alerts must never
-        // wait for a human to approve them. We keep createdBy=learnerId for audit traceability.
-        dispatchSystemAlert(instituteId, assigneeUserIds, PUSH_TITLE_RAISED,
-                pushBody == null || pushBody.isEmpty() ? "A learner is waiting for your reply." : pushBody,
-                doubt.getUserId(), ctx, "ADMIN");
+        if (systemAlertOn) {
+            // createdByRole="ADMIN" bypasses the institute's optional announcement_approval_required
+            // gate (see AnnouncementService.createAnnouncement:94) — system-generated doubt alerts
+            // must never wait for a human to approve them. We keep createdBy=learnerId for audit
+            // traceability on the teacher-facing bell entry.
+            dispatchSystemAlert(instituteId, assigneeUserIds, PUSH_TITLE_RAISED,
+                    pushBody == null || pushBody.isEmpty() ? "A learner is waiting for your reply." : pushBody,
+                    doubt.getUserId(), ctx, "ADMIN");
+        }
     }
 
     public void notifyDoubtResolved(Doubts doubt, String instituteId) {
@@ -134,6 +136,8 @@ public class DoubtNotificationService {
 
         boolean pushOn = prefs.getPushEnabled() == null || Boolean.TRUE.equals(prefs.getPushEnabled());
         boolean emailOn = Boolean.TRUE.equals(prefs.getEmailEnabled());
+        boolean systemAlertOn = prefs.getSystemAlertEnabled() == null
+                || Boolean.TRUE.equals(prefs.getSystemAlertEnabled());
 
         InstituteContext ctx = loadInstituteContext(instituteId);
         List<String> recipient = List.of(doubt.getUserId());
@@ -153,11 +157,10 @@ public class DoubtNotificationService {
             }
         }
 
-        // Bell-icon alert for the learner. Same rationale as the raised path: unconditional,
-        // cheap, and dismissible — gives the learner a visible signal inside the app regardless
-        // of push/email configuration.
-        dispatchSystemAlert(instituteId, recipient, PUSH_TITLE_RESOLVED, pushBody,
-                /* createdBy = doubt system */ null, ctx, "ADMIN");
+        if (systemAlertOn) {
+            dispatchSystemAlert(instituteId, recipient, PUSH_TITLE_RESOLVED, pushBody,
+                    /* createdBy = doubt system */ null, ctx, "ADMIN");
+        }
     }
 
     /**
@@ -237,17 +240,17 @@ public class DoubtNotificationService {
                 // notifications out-of-the-box; admins who want to silence them can toggle off
                 // from the Doubt Management settings page. The seeded global default templates
                 // (V215) guarantee a working email template even without explicit institute config.
-                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(true).build();
+                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(true).systemAlertEnabled(true).build();
             }
             DoubtManagementSettingDataDto setting = objectMapper.convertValue(raw, DoubtManagementSettingDataDto.class);
             if (setting.getNotifications() == null) {
-                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(true).build();
+                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(true).systemAlertEnabled(true).build();
             }
             DoubtNotificationChannelPrefs event = raised
                     ? setting.getNotifications().getOnDoubtRaised()
                     : setting.getNotifications().getOnDoubtResolved();
             if (event == null) {
-                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(true).build();
+                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(true).systemAlertEnabled(true).build();
             }
             return event;
         } catch (Exception e) {

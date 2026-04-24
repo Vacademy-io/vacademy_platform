@@ -21,11 +21,9 @@ public interface WorkflowScheduleRepository extends JpaRepository<WorkflowSchedu
         List<WorkflowSchedule> findByStatusIgnoreCase(String status);
 
         /**
-         * Find schedules that are due for execution (next_run_at <= current time).
-         * Uses native query because column is 'timestamp without time zone'
-         * but Hibernate sends Instant as 'timestamp with time zone' — causing mismatch.
+         * Find schedules that are due for execution (next_run_at <= current time)
          */
-        @Query(value = "SELECT * FROM workflow_schedule WHERE status = 'ACTIVE' AND next_run_at <= NOW()", nativeQuery = true)
+        @Query("SELECT ws FROM WorkflowSchedule ws WHERE ws.status = 'ACTIVE' AND ws.nextRunAt <= :currentTime")
         List<WorkflowSchedule> findDueSchedules(@Param("currentTime") Instant currentTime);
 
         /**

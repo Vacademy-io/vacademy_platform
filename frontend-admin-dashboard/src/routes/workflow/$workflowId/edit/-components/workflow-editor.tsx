@@ -40,6 +40,7 @@ export function WorkflowEditor({ workflowId }: Props) {
                 description: data.trigger.description ?? '',
                 eventAppliedType: data.trigger.event_applied_type ?? '',
                 eventId: data.trigger.event_id ?? undefined,
+                eventIds: data.trigger.event_ids ?? undefined,
             });
         }
         if (data.schedule) {

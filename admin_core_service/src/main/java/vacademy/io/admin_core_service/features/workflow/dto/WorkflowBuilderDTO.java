@@ -130,10 +130,26 @@ public class WorkflowBuilderDTO {
         @JsonProperty("description")
         private String description;
 
+        /** Single event ID (backward compat) — used if event_ids is empty/null */
         @JsonProperty("event_id")
         private String eventId;
 
+        /** Multiple event IDs — one trigger row created per ID */
+        @JsonProperty("event_ids")
+        private List<String> eventIds;
+
         @JsonProperty("event_applied_type")
         private String eventAppliedType;
+
+        /** Returns the effective list: event_ids if present, else singleton of eventId, else empty */
+        public List<String> getEffectiveEventIds() {
+            if (eventIds != null && !eventIds.isEmpty()) {
+                return eventIds;
+            }
+            if (eventId != null && !eventId.isBlank()) {
+                return List.of(eventId);
+            }
+            return List.of(); // global trigger — no specific event IDs
+        }
     }
 }

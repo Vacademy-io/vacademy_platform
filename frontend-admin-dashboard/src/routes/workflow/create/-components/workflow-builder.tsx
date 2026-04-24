@@ -28,6 +28,7 @@ import { TemplateGallery } from './template-gallery';
 import { NodeSuggestions } from './node-suggestions';
 import { WorkflowWizard } from './workflow-wizard';
 import { EventEntityPicker } from './event-entity-picker';
+import { UseCaseWizardStep } from './use-case-wizard-step';
 
 const nodeTypes = { workflowNode: WorkflowCustomNode };
 
@@ -441,7 +442,8 @@ function WorkflowSetupStep({ onComplete, triggerEventsCatalog, instituteId }: {
 
     const [currentStep, setCurrentStep] = useState(1);
 
-    const handleContinue = () => {
+    /** Called when user picks "Build from scratch" (advanced) on Step 4 */
+    const handleAdvancedMode = () => {
         if (workflowType === 'EVENT_DRIVEN' && triggerConfig.eventName) {
             const store = useWorkflowBuilderStore.getState();
             const existingTrigger = store.nodes.find((n) => n.data.nodeType === 'TRIGGER');
@@ -456,23 +458,27 @@ function WorkflowSetupStep({ onComplete, triggerEventsCatalog, instituteId }: {
         onComplete();
     };
 
+    /** Called when use-case wizard generates nodes */
+    const handleTemplateComplete = () => {
+        onComplete();
+    };
+
     const groupedEvents = groupCatalogByCategory(triggerEventsCatalog);
 
     // Step validation
     const canGoToStep2 = workflowName.trim().length > 0;
-    const canGoToStep3 = canGoToStep2; // Step 2 is just selecting type, always valid
-    const canFinish =
+    const canGoToStep3 = canGoToStep2;
+    const canGoToStep4 =
         canGoToStep2 &&
         (workflowType === 'SCHEDULED'
             ? (scheduleConfig.scheduleType === 'CRON' ? scheduleConfig.cronExpression.trim().length > 0 : scheduleConfig.intervalMinutes > 0)
             : triggerConfig.eventName.length > 0);
 
-    const totalSteps = 3;
-
     const STEPS = [
         { num: 1, label: 'Name' },
         { num: 2, label: 'Trigger Type' },
         { num: 3, label: workflowType === 'EVENT_DRIVEN' ? 'Event Setup' : 'Schedule' },
+        { num: 4, label: 'Build Workflow' },
     ];
 
     return (
@@ -493,7 +499,7 @@ function WorkflowSetupStep({ onComplete, triggerEventsCatalog, instituteId }: {
                             <div key={step.num} className="flex items-center gap-2 flex-1">
                                 <button
                                     onClick={() => {
-                                        if (step.num === 1 || (step.num === 2 && canGoToStep2) || (step.num === 3 && canGoToStep3)) {
+                                        if (step.num === 1 || (step.num === 2 && canGoToStep2) || (step.num === 3 && canGoToStep3) || (step.num === 4 && canGoToStep4)) {
                                             setCurrentStep(step.num);
                                         }
                                     }}
@@ -680,8 +686,8 @@ function WorkflowSetupStep({ onComplete, triggerEventsCatalog, instituteId }: {
                                                 </div>
                                                 <EventEntityPicker
                                                     eventAppliedType={triggerConfig.eventAppliedType}
-                                                    value={triggerConfig.eventId}
-                                                    onChange={(id) => setTriggerConfig({ eventId: id })}
+                                                    multiValue={triggerConfig.eventIds ?? (triggerConfig.eventId ? [triggerConfig.eventId] : [])}
+                                                    onMultiChange={(ids) => setTriggerConfig({ eventIds: ids, eventId: ids.length === 1 ? ids[0] : undefined })}
                                                     instituteId={instituteId}
                                                 />
                                             </div>
@@ -716,12 +722,22 @@ function WorkflowSetupStep({ onComplete, triggerEventsCatalog, instituteId }: {
                                 <Button variant="outline" size="lg" onClick={() => setCurrentStep(2)} className="gap-2">
                                     <ArrowLeft size={16} /> Back
                                 </Button>
-                                <Button size="lg" onClick={handleContinue} disabled={!canFinish} className="gap-2 px-8">
-                                    Continue to Builder
+                                <Button size="lg" onClick={() => setCurrentStep(4)} disabled={!canGoToStep4} className="gap-2 px-8">
+                                    Next: Build Workflow
                                     <ArrowLeft size={16} className="rotate-180" />
                                 </Button>
                             </div>
                         </div>
+                    )}
+
+                    {/* ─── STEP 4: Use-case template or advanced ─── */}
+                    {currentStep === 4 && (
+                        <UseCaseWizardStep
+                            onComplete={handleTemplateComplete}
+                            onAdvanced={handleAdvancedMode}
+                            onBack={() => setCurrentStep(3)}
+                            instituteId={instituteId}
+                        />
                     )}
                 </div>
             </div>
@@ -774,10 +790,16 @@ function WorkflowConfigSummary({ triggerEventsCatalog, onEdit }: {
                                 {triggerConfig.eventAppliedType.replace(/_/g, ' ')}
                             </span>
                         )}
-                        {triggerConfig.eventId && (
+                        {(triggerConfig.eventIds?.length ?? 0) > 1 && (
+                            <span className="text-gray-400">{triggerConfig.eventIds!.length} selected</span>
+                        )}
+                        {(triggerConfig.eventIds?.length ?? 0) === 1 && (
+                            <span className="text-gray-400">1 selected</span>
+                        )}
+                        {!(triggerConfig.eventIds?.length) && triggerConfig.eventId && (
                             <span className="text-gray-400">ID: {triggerConfig.eventId}</span>
                         )}
-                        {!triggerConfig.eventId && (
+                        {!(triggerConfig.eventIds?.length) && !triggerConfig.eventId && (
                             <span className="text-gray-400">(all)</span>
                         )}
                     </div>
@@ -880,7 +902,9 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                 trigger_event_name: triggerConfig.eventName,
                 description: triggerConfig.description || undefined,
                 event_applied_type: triggerConfig.eventAppliedType || undefined,
-                event_id: triggerConfig.eventId || undefined,
+                // Send event_ids array for multi-select, event_id for backward compat
+                event_ids: triggerConfig.eventIds?.length ? triggerConfig.eventIds : undefined,
+                event_id: !triggerConfig.eventIds?.length ? triggerConfig.eventId : undefined,
             },
         }),
     });

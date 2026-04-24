@@ -166,7 +166,11 @@ export function TimelineScrubber() {
 
     // ── Position helpers ───────────────────────────────────────────────────
 
-    const timeToPercent = (t: number) => `${((t / totalDuration) * 100).toFixed(4)}%`;
+    const timeToPercent = (t: number) => {
+        if (totalDuration <= 0) return '0%';
+        const pct = clamp((t / totalDuration) * 100, 0, 100);
+        return `${pct.toFixed(4)}%`;
+    };
 
     const scrubPercent = timeToPercent(
         navigationMode === 'time_driven' ? currentTime : Math.min(currentTime, totalDuration - 1)

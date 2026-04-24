@@ -128,7 +128,7 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
         }
 
         const html = buildMediaOverlayHtml(uploadedSrc, mediaType, objectFit);
-        const newId = `user-overlay-${Date.now()}`;
+        const newId = `user-overlay-${crypto.randomUUID()}`;
 
         const newEntry = isTimeDriven
             ? {

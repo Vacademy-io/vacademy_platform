@@ -422,7 +422,7 @@ export function AudioTracksPanel() {
                 toast.error('No API key — cannot save track.');
                 return;
             }
-            const tempId = `track-${Date.now()}`;
+            const tempId = `track-${crypto.randomUUID()}`;
             const newTrack: AudioTrack = {
                 id: tempId,
                 label,

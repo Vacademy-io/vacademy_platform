@@ -39,7 +39,7 @@ public class DoubtManagementSettingDataDto {
 
     /**
      * Per-event notification preferences. {@code null} means "no explicit preference configured" →
-     * defaults apply (push ON, email OFF) at dispatch time.
+     * defaults apply (push ON, email ON) at dispatch time.
      */
     private DoubtNotificationPrefs notifications;
 
@@ -63,7 +63,11 @@ public class DoubtManagementSettingDataDto {
     public static class DoubtNotificationChannelPrefs {
         /** Default true — FCM push via notification-service. */
         private Boolean pushEnabled;
-        /** Default false — requires {@link #emailTemplateId} to be set before dispatch. */
+        /**
+         * Default true — falls back to the seeded global default template (V215) when
+         * {@link #emailTemplateId} is unset, so dispatch works out-of-the-box. Admins can opt out
+         * from the Doubt Management settings page.
+         */
         private Boolean emailEnabled;
         /**
          * Id of a {@code Template} row (type=EMAIL) owned by this institute. Admin picks from the

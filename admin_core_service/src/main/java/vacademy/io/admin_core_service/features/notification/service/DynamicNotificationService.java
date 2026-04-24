@@ -431,15 +431,22 @@ public class DynamicNotificationService {
     }
 
     /**
-     * Convert HTML-bearing values in the variables map into WhatsApp-safe
-     * plain text. Only the values are transformed; keys are preserved. Values
-     * without any HTML-looking markup are left untouched (fast path).
+     * Convert HTML-bearing values in the variables map into WATI-safe plain text.
+     * Only the values are transformed; keys are preserved. Values without any
+     * HTML or whitespace markup of interest are left untouched (fast path).
      *
-     * Transformations:
-     *   &lt;br&gt; / &lt;br/&gt; / &lt;br /&gt;  → \n
-     *   &lt;p&gt; / &lt;/p&gt;                   → \n
+     * WATI's bulk template API rejects any template-parameter value that contains
+     * new-line / tab characters or more than 4 consecutive spaces
+     * (error: "Sample Content param text cannot have new-line/tab characters…"),
+     * so we strip those before the values leave admin-core.
+     *
+     * Transformations applied per value:
+     *   &lt;br&gt; / &lt;br/&gt; / &lt;br /&gt;  → single space
+     *   &lt;p&gt;…&lt;/p&gt;                     → content + single space
      *   any other tag                            → stripped (content kept)
      *   common HTML entities                     → decoded
+     *   \r \n \t                                 → single space
+     *   runs of whitespace (2+ chars)            → single space
      */
     private Map<String, String> sanitizeVariablesForWhatsApp(Map<String, String> variables) {
         if (variables == null || variables.isEmpty()) return variables;
@@ -452,11 +459,15 @@ public class DynamicNotificationService {
 
     private static String htmlToWhatsAppText(String value) {
         if (value == null || value.isEmpty()) return value;
-        // Fast path: no markup of interest
-        if (value.indexOf('<') < 0 && value.indexOf('&') < 0) return value;
+        // Fast path: no markup, no control whitespace
+        if (value.indexOf('<') < 0 && value.indexOf('&') < 0
+                && value.indexOf('\n') < 0 && value.indexOf('\r') < 0
+                && value.indexOf('\t') < 0) {
+            return value;
+        }
         String out = value;
-        out = out.replaceAll("(?i)<br\\s*/?>", "\n");
-        out = out.replaceAll("(?i)</p\\s*>", "\n");
+        out = out.replaceAll("(?i)<br\\s*/?>", " ");
+        out = out.replaceAll("(?i)</p\\s*>", " ");
         out = out.replaceAll("(?i)<p[^>]*>", "");
         out = out.replaceAll("<[^>]+>", "");
         out = out.replace("&nbsp;", " ")
@@ -466,7 +477,10 @@ public class DynamicNotificationService {
                  .replace("&quot;", "\"")
                  .replace("&#39;", "'")
                  .replace("&#x27;", "'");
-        return out;
+        // WATI rejects \n / \t and runs of >4 spaces inside customParams
+        out = out.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ');
+        out = out.replaceAll("\\s{2,}", " ");
+        return out.trim();
     }
 
     /**

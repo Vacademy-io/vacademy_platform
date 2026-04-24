@@ -63,6 +63,30 @@ public class SendUniqueLinkService {
         return convertTemplateVariablesToMap(templateVars);
     }
 
+    /**
+     * Like {@link #buildVariablesMap(NotificationTemplateVariables)}, but additionally
+     * overlays the template's admin-configured {@code dynamic_parameters} (e.g.
+     * {@code program_name}, {@code start_day}, {@code class_schedule}) onto the result
+     * for any keys the user-specific vars don't already supply. User-supplied values
+     * always take precedence; template defaults only fill in blanks.
+     */
+    public Map<String, String> buildVariablesMap(Template template, NotificationTemplateVariables templateVars) {
+        Map<String, String> variables = convertTemplateVariablesToMap(templateVars);
+        if (template != null && StringUtils.hasText(template.getDynamicParameters())) {
+            Map<String, String> dynamicParams = parseDynamicParameters(template.getDynamicParameters());
+            for (Map.Entry<String, String> entry : dynamicParams.entrySet()) {
+                String key = entry.getKey();
+                String templateValue = entry.getValue();
+                if (!StringUtils.hasText(templateValue)) continue;
+                String existing = variables.get(key);
+                if (!StringUtils.hasText(existing)) {
+                    variables.put(key, templateValue);
+                }
+            }
+        }
+        return variables;
+    }
+
     private Map<String, String> convertTemplateVariablesToMap(NotificationTemplateVariables templateVars) {
         Map<String, String> placeholders = new HashMap<>();
 

@@ -72,6 +72,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService attendanceReportService;
     private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository liveSessionLogsRepository;
     private final vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository instituteStudentRepository;
+    private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -1598,6 +1599,16 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return Map.of("error", "Either batchId or instituteId is required");
             }
 
+            // Look up institute name once for all students (template variable {{instituteName}})
+            final String resolvedInstituteName;
+            if (instituteId != null && !instituteId.isBlank()) {
+                resolvedInstituteName = instituteRepository.findById(instituteId)
+                        .map(inst -> inst.getInstituteName())
+                        .orElse("Your Institute");
+            } else {
+                resolvedInstituteName = "Your Institute";
+            }
+
             // Aggregate reports across all batches — includes engagement/concentration data
             List<Map<String, Object>> allStudents = new ArrayList<>();
             for (String bid : batchIds) {
@@ -1669,6 +1680,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         // Include date range on each student so email templates can use {{startDate}}/{{endDate}}
                         s.put("startDate", start.toString());
                         s.put("endDate", end.toString());
+                        s.put("instituteName", resolvedInstituteName);
 
                         // Per-session attendance details
                         List<Map<String, Object>> sessionDetails = new ArrayList<>();
@@ -1721,6 +1733,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:left;color:#475569\">Date</th>");
                         tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Attendance</th>");
                         tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Duration</th>");
+                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Engagement</th>");
                         tableHtml.append("</tr>");
 
                         // Index engagement logs by sessionId for quick lookup
@@ -1739,9 +1752,48 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                             // Lookup engagement for this session
                             Map<String, Object> eng = engBySession.get(sessionId);
                             String durationStr = "-";
-                            if (eng != null && eng.get("providerTotalDurationMinutes") instanceof Number) {
-                                int mins = ((Number) eng.get("providerTotalDurationMinutes")).intValue();
-                                durationStr = mins + " min";
+                            String engagementStr = "-";
+                            String engagementColor = "#94a3b8";
+
+                            if (eng != null) {
+                                if (eng.get("providerTotalDurationMinutes") instanceof Number) {
+                                    int mins = ((Number) eng.get("providerTotalDurationMinutes")).intValue();
+                                    durationStr = mins + " min";
+                                }
+
+                                // Parse engagement JSON (chats, hand raises, concentration etc.)
+                                String engJson = eng.get("engagementData") != null ? String.valueOf(eng.get("engagementData")) : null;
+                                if (engJson != null && !engJson.isEmpty() && !"null".equals(engJson)) {
+                                    try {
+                                        var engNode = objectMapper.readTree(engJson);
+                                        int chats = engNode.path("chats").asInt(0);
+                                        int raises = engNode.path("raisehand").asInt(0);
+                                        int concentration = engNode.path("concentration").asInt(-1);
+
+                                        StringBuilder parts = new StringBuilder();
+                                        if (concentration >= 0) {
+                                            parts.append(concentration).append("% focus");
+                                            engagementColor = concentration >= 70 ? "#16a34a" : concentration >= 40 ? "#ca8a04" : "#dc2626";
+                                        }
+                                        if (chats > 0) {
+                                            if (parts.length() > 0) parts.append(" &middot; ");
+                                            parts.append(chats).append(" chat").append(chats > 1 ? "s" : "");
+                                        }
+                                        if (raises > 0) {
+                                            if (parts.length() > 0) parts.append(" &middot; ");
+                                            parts.append(raises).append(" raise").append(raises > 1 ? "s" : "");
+                                        }
+                                        if (parts.length() > 0) {
+                                            engagementStr = parts.toString();
+                                        } else if (concentration < 0 && chats == 0 && raises == 0) {
+                                            // No interactions — mark as low engagement if they attended
+                                            engagementStr = "Low";
+                                            engagementColor = "#94a3b8";
+                                        }
+                                    } catch (Exception ignored) {}
+                                } else if ("OFFLINE".equals(eng.get("statusType"))) {
+                                    engagementStr = "Offline";
+                                }
                             }
 
                             tableHtml.append("<tr>");
@@ -1754,6 +1806,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                                      .append(statusLabel).append("</span></td>");
                             tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#64748b\">")
                                      .append(durationStr).append("</td>");
+                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:")
+                                     .append(engagementColor).append(";font-size:12px\">")
+                                     .append(engagementStr).append("</td>");
                             tableHtml.append("</tr>");
                         }
                         tableHtml.append("</table>");

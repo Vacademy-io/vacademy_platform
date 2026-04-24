@@ -13,6 +13,13 @@ import { useSlidesRefresh } from "./useSlidesRefresh";
 const STORAGE_KEY = "pdf_tracking_data";
 const USER_ID_KEY = "StudentDetails";
 
+// Module-level guard: holds activity_ids currently being POSTed. Prevents
+// two concurrent callers (e.g. a remount-refire loop triggered by
+// refreshSlides) from both reading new_activity=true from Preferences
+// before either has written SYNCED back, which would race the backend's
+// concentration_score write and surface as a 511 StaleStateException.
+const inFlight = new Set<string>();
+
 export const usePDFSync = () => {
     const addUpdateDocumentActivity = useAddDocumentActivity();
     const { activeItem } = useContentStore();
@@ -50,6 +57,11 @@ export const usePDFSync = () => {
                     continue;
                 }
 
+                if (inFlight.has(activity.activity_id)) {
+                    updatedActivities.push(activity);
+                    continue;
+                }
+
                 activity = calculateAndUpdatePageViews(activity);
 
                 const apiPayload: TrackingDataType = {
@@ -77,18 +89,23 @@ export const usePDFSync = () => {
                         activity.page_views.length >= 1 &&
                         activity.new_activity
                     ) {
-                        await addUpdateDocumentActivity.mutateAsync({
-                            slideId: activity.slide_id || "",
-                            chapterId: chapterId || "",
-                            requestPayload: apiPayload,
-                            packageSessionId: packageSessionId || "",
-                            moduleId: moduleId || "",
-                            subjectId: subjectId || "",
-                        });
-                        activity.sync_status = "SYNCED";
-                        activity.new_activity = false; // Move this here, after successful API call
-                        updatedActivities.push(activity);
-                        didSync = true;
+                        inFlight.add(activity.activity_id);
+                        try {
+                            await addUpdateDocumentActivity.mutateAsync({
+                                slideId: activity.slide_id || "",
+                                chapterId: chapterId || "",
+                                requestPayload: apiPayload,
+                                packageSessionId: packageSessionId || "",
+                                moduleId: moduleId || "",
+                                subjectId: subjectId || "",
+                            });
+                            activity.sync_status = "SYNCED";
+                            activity.new_activity = false; // Move this here, after successful API call
+                            updatedActivities.push(activity);
+                            didSync = true;
+                        } finally {
+                            inFlight.delete(activity.activity_id);
+                        }
                     }
                 } catch (error) {
                     console.error("API call failed:", error);

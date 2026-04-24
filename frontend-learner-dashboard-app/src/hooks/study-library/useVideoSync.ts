@@ -14,6 +14,13 @@ import { useSlidesRefresh } from "./useSlidesRefresh";
 const STORAGE_KEY = "video_tracking_data";
 const USER_ID_KEY = "StudentDetails";
 
+// Module-level guard: holds activity_ids currently being POSTed. Prevents
+// two concurrent callers (e.g. a remount-refire loop triggered by
+// refreshSlides) from both reading new_activity=true from Preferences
+// before either has written SYNCED back, which would race the backend's
+// video_tracked delete+insert path and surface as a 511.
+const inFlight = new Set<string>();
+
 export const useVideoSync = () => {
   const addUpdateVideoActivity = useAddVideoActivity();
   const { activeItem } = useContentStore();
@@ -59,6 +66,11 @@ export const useVideoSync = () => {
           if (i === activities.length - 1) {
             updatedActivities.push(activity);
           }
+          continue;
+        }
+
+        if (inFlight.has(activity.activity_id)) {
+          updatedActivities.push(activity);
           continue;
         }
 
@@ -159,6 +171,7 @@ export const useVideoSync = () => {
               "Hitting add video activity api: ",
               activity.new_activity
             );
+            inFlight.add(activity.activity_id);
             try {
               console.log(`📡 [useVideoSync] Making API call for NEW activity: ${activity.activity_id}`);
               await addUpdateVideoActivity.mutateAsync({
@@ -176,9 +189,12 @@ export const useVideoSync = () => {
               didSync = true;
             } catch (err) {
               console.log("add api call failed: ", err);
+            } finally {
+              inFlight.delete(activity.activity_id);
             }
           } else {
             if (apiPayload.videos && apiPayload.videos.length > 0) {
+              inFlight.add(activity.activity_id);
               try {
                 console.log(`📡 [useVideoSync] Making API call for UPDATE activity: ${activity.activity_id}`);
                 await addUpdateVideoActivity.mutateAsync({
@@ -195,6 +211,8 @@ export const useVideoSync = () => {
                 didSync = true;
               } catch (err) {
                 console.log("update api call failed: ", err);
+              } finally {
+                inFlight.delete(activity.activity_id);
               }
             }
           }

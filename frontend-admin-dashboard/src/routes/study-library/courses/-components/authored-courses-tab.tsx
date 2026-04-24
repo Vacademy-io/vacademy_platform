@@ -7,12 +7,15 @@ import { Button } from '@/components/ui/button';
 import {
     PaperPlaneTilt,
     Eye,
+    EyeSlash,
     Copy,
     CircleNotch,
     TrashSimple,
     ClockCounterClockwise,
     PaperPlaneRight,
+    BookOpen,
 } from '@phosphor-icons/react';
+import { convertCapitalToTitleCase } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -134,7 +137,17 @@ interface DisplayCourse {
     course_banner_media_id: string | null;
     sessionInfo: SessionInfo;
     levelInfo: LevelInfo;
+    tags: string[] | null;
+    isCoursePublishedToCatalaouge: boolean | null;
 }
+
+const MAX_VISIBLE_TAGS = 5;
+
+const isDefaultName = (name: string | null | undefined): boolean => {
+    if (!name) return true;
+    const n = name.toLowerCase();
+    return n === 'default' || n === 'n/a' || n === 'na';
+};
 
 interface AuthoredCoursesTabProps {
     searchValue: string;
@@ -286,6 +299,8 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                 course_banner_media_id: course.course_banner_media_id,
                 sessionInfo: response.sessionInfo,
                 levelInfo: response.levelInfo,
+                tags: course.tags,
+                isCoursePublishedToCatalaouge: course.isCoursePublishedToCatalaouge,
             };
         });
 
@@ -407,31 +422,29 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
             }
         }, [mediaId, getPublicUrl]);
 
-        if (isLoading) {
-            return (
-                <div className="flex size-full w-full items-center justify-center overflow-hidden rounded-lg px-2 pb-0 pt-2 sm:px-3 sm:pt-4">
-                    <div className="flex h-32 w-full items-center justify-center rounded-lg bg-gray-100">
-                        <div className="size-8 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
-                    </div>
-                </div>
-            );
-        }
-
-        if (!mediaId || !imageUrl) {
-            return null;
-        }
+        const displayName = convertCapitalToTitleCase(course.packageName);
 
         return (
-            <div className="flex size-full w-full items-center justify-center overflow-hidden rounded-lg px-2 pb-0 pt-2 sm:px-3 sm:pt-4">
-                <img
-                    src={imageUrl}
-                    alt={course.packageName}
-                    className="rounded-lg bg-white object-cover p-1 transition-transform duration-300 group-hover:scale-105 sm:p-2"
-                    onError={(e) => {
-                        // Hide image if it fails to load
-                        (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                />
+            <div className="relative flex aspect-video w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
+                {isLoading ? (
+                    <div className="size-8 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+                ) : mediaId && imageUrl ? (
+                    <img
+                        src={imageUrl}
+                        alt={course.packageName}
+                        className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                    />
+                ) : (
+                    <div className="flex flex-col items-center justify-center gap-1.5 p-3 text-center">
+                        <BookOpen size={32} weight="duotone" className="text-primary-400" />
+                        <span className="line-clamp-2 text-xs font-medium text-primary-600/80">
+                            {displayName}
+                        </span>
+                    </div>
+                )}
             </div>
         );
     };
@@ -482,176 +495,251 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                     </CardContent>
                 </Card>
             ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
-                    {filteredCourses.map((course) => (
-                        <div
-                            key={course.id}
-                            className="animate-fade-in group relative flex h-fit flex-col rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-transform duration-500 hover:scale-[1.02] hover:shadow-md sm:hover:scale-[1.025]"
-                        >
-                            {/* Course Banner Image */}
-                            <CourseThumbnail course={course} />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+                    {filteredCourses.map((course) => {
+                        const tags = course.tags || [];
+                        const levelName = !isDefaultName(course.levelInfo.levelName)
+                            ? course.levelInfo.levelName
+                            : null;
+                        const sessionName = !isDefaultName(course.sessionInfo.sessionName)
+                            ? course.sessionInfo.sessionName
+                            : null;
+                        const description = (course.courseHtmlDescription || '')
+                            .replace(/<[^>]*>/g, '')
+                            .slice(0, 120);
 
-                            <div className="flex flex-col gap-1 p-3 sm:p-4">
-                                {/* Course Name and Level Badge */}
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0 flex-1 text-base font-extrabold text-neutral-800 sm:text-lg">
-                                        {course.packageName}
+                        return (
+                            <div
+                                key={course.id}
+                                className="animate-fade-in group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
+                                onClick={() => handleViewCourse(course)}
+                            >
+                                {/* Course Banner Image */}
+                                <CourseThumbnail course={course} />
+
+                                <div className="flex flex-1 flex-col gap-1 p-3">
+                                    {/* Course Name */}
+                                    <div className="line-clamp-2 min-w-0 text-sm font-bold text-neutral-800">
+                                        {convertCapitalToTitleCase(course.packageName)}
                                     </div>
-                                    <div className="flex-shrink-0 rounded-lg bg-gray-100 p-1 px-2 text-xs font-semibold text-gray-700">
-                                        {course.levelInfo.levelName || 'Level'}
-                                    </div>
-                                </div>
 
-                                {/* Description */}
-                                {course.courseHtmlDescription && (
-                                    <div className="mt-1 line-clamp-2 text-xs text-neutral-600 sm:mt-2 sm:text-sm">
-                                        {(course.courseHtmlDescription || '')
-                                            .replace(/<[^>]*>/g, '')
-                                            .slice(0, 120)}
-                                    </div>
-                                )}
-
-                                {/* Session Name - show if not invited */}
-                                {course.sessionInfo.sessionName &&
-                                 !course.sessionInfo.sessionName.toLowerCase().includes('invited') && (
-                                    <div className="mt-2 flex items-center gap-2">
-                                        <span className="text-xs text-neutral-600">
-                                            Session: {course.sessionInfo.sessionName}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Status and Copy Badges */}
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                    {getStatusBadge(course.status)}
-                                    {course.originalCourseId && (
-                                        <Badge className="px-2 text-xs">Copy</Badge>
-                                    )}
-                                </div>
-
-                                {/* Updated Date */}
-                                <span className="mt-2 text-xs text-gray-500">
-                                    Updated {formatDistanceToNow(new Date(course.updatedAt))} ago
-                                </span>
-
-                                {/* Action Buttons */}
-                                <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4">
-                                    {/* View Course Button */}
-                                    <MyButton
-                                        className="flex-1 text-sm"
-                                        buttonType="primary"
-                                        onClick={() => handleViewCourse(course)}
-                                    >
-                                        <Eye size={16} />
-                                        View Course
-                                    </MyButton>
-
-                                    {/* Additional Actions for Draft courses */}
-                                    {course.status === 'DRAFT' && !isAdmin && (
-                                        <>
-                                            {/* Submit for Review */}
-                                            <Button
-                                                variant="default"
-                                                size="sm"
-                                                className="bg-green-600 text-white hover:bg-green-700"
-                                                onClick={() => handleSubmitForReview(course.courseId)}
-                                                disabled={submittingCourseId === course.courseId}
-                                            >
-                                                {submittingCourseId === course.courseId ? (
-                                                    <CircleNotch size={16} className="animate-spin" />
-                                                ) : (
-                                                    <PaperPlaneRight size={16} weight="fill" />
-                                                )}
-                                                Submit for Review
-                                            </Button>
-
-                                            {/* History */}
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                className="size-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
-                                                onClick={() => setHistoryDialogCourseId(course.courseId)}
-                                                title="View History"
-                                            >
-                                                <ClockCounterClockwise size={16} weight="fill" />
-                                            </Button>
-                                        </>
-                                    )}
-
-                                    {/* Copy Button for Published courses */}
-                                    {course.status === 'ACTIVE' && !isAdmin && canCreateCopy(course) && (
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="text-blue-600 hover:bg-blue-50 hover:text-blue-700"
-                                            onClick={() => handleCopyToEdit(course)}
-                                            disabled={copyingCourseId === course.courseId}
-                                        >
-                                            {copyingCourseId === course.courseId ? (
-                                                <CircleNotch size={16} className="animate-spin" />
-                                            ) : (
-                                                <Copy size={16} />
+                                    {/* Level & Session badges */}
+                                    {(levelName || sessionName) && (
+                                        <div className="mt-1 flex flex-wrap gap-1">
+                                            {levelName && (
+                                                <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                                                    {convertCapitalToTitleCase(levelName)}
+                                                </span>
                                             )}
-                                            Copy to Edit
-                                        </Button>
+                                            {sessionName && (
+                                                <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+                                                    {sessionName}
+                                                </span>
+                                            )}
+                                        </div>
                                     )}
 
-                                    {/* Delete Button */}
-                                    <AlertDialog
-                                        open={deleteDialogOpen === course.id}
-                                        onOpenChange={(open) => {
-                                            if (open) {
-                                                setDeleteDialogOpen(course.id);
-                                            } else {
-                                                setDeleteDialogOpen(null);
-                                            }
-                                        }}
+                                    {/* Description */}
+                                    <div
+                                        className={
+                                            description.length > 0
+                                                ? 'mt-1 line-clamp-2 text-xs text-neutral-600 sm:mt-2 sm:text-sm'
+                                                : 'text-xs text-neutral-600 sm:text-sm'
+                                        }
                                     >
-                                        <AlertDialogTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                className="size-8 text-red-500 hover:bg-red-50 hover:text-red-600"
-                                            >
-                                                <TrashSimple size={16} />
-                                            </Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md">
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle>
-                                                    Are you sure you want to delete this course?
-                                                </AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    This action cannot be undone. This will permanently
-                                                    delete your course and remove your course data from
-                                                    our servers.
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
-                                            <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
-                                                <AlertDialogCancel
-                                                    disabled={deletingCourseId === course.id}
-                                                    className="w-full sm:w-auto"
+                                        {description}
+                                    </div>
+
+                                    {/* Tags */}
+                                    {tags.length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {tags.slice(0, MAX_VISIBLE_TAGS).map((tag) => (
+                                                <span
+                                                    key={tag}
+                                                    className="flex-shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
                                                 >
-                                                    Cancel
-                                                </AlertDialogCancel>
-                                                <AlertDialogAction
-                                                    onClick={() => handleDeleteCourse(course.id)}
-                                                    disabled={deletingCourseId === course.id}
-                                                    className="w-full bg-primary-500 text-white sm:w-auto"
+                                                    {tag}
+                                                </span>
+                                            ))}
+                                            {tags.length > MAX_VISIBLE_TAGS && (
+                                                <span
+                                                    className="flex-shrink-0 rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700"
+                                                    title={tags.slice(MAX_VISIBLE_TAGS).join(', ')}
                                                 >
-                                                    {deletingCourseId === course.id ? (
-                                                        <CircleNotch size={18} className="animate-spin" />
+                                                    +{tags.length - MAX_VISIBLE_TAGS} more
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Status and Copy Badges */}
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {getStatusBadge(course.status)}
+                                        {course.originalCourseId && (
+                                            <Badge className="px-2 text-xs">Copy</Badge>
+                                        )}
+                                    </div>
+
+                                    {/* In Catalog / Private indicator */}
+                                    <span className="mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
+                                        {course.isCoursePublishedToCatalaouge ? (
+                                            <>
+                                                <Eye className="size-4" /> In Catalog
+                                            </>
+                                        ) : (
+                                            <>
+                                                <EyeSlash className="size-4" /> Private
+                                            </>
+                                        )}
+                                    </span>
+
+                                    {/* Updated Date */}
+                                    <span className="text-xs text-gray-500">
+                                        Updated {formatDistanceToNow(new Date(course.updatedAt))} ago
+                                    </span>
+
+                                    {/* Action Buttons */}
+                                    <div
+                                        className="mt-auto flex flex-wrap items-center gap-2 pt-3"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        {/* View Course Button */}
+                                        <MyButton
+                                            className="flex-1 text-sm"
+                                            buttonType="primary"
+                                            onClick={() => handleViewCourse(course)}
+                                        >
+                                            <Eye size={16} />
+                                            View Course
+                                        </MyButton>
+
+                                        {/* Additional Actions for Draft courses */}
+                                        {course.status === 'DRAFT' && !isAdmin && (
+                                            <>
+                                                <Button
+                                                    variant="default"
+                                                    size="sm"
+                                                    className="bg-green-600 text-white hover:bg-green-700"
+                                                    onClick={() =>
+                                                        handleSubmitForReview(course.courseId)
+                                                    }
+                                                    disabled={
+                                                        submittingCourseId === course.courseId
+                                                    }
+                                                >
+                                                    {submittingCourseId === course.courseId ? (
+                                                        <CircleNotch
+                                                            size={16}
+                                                            className="animate-spin"
+                                                        />
                                                     ) : (
-                                                        'Delete'
+                                                        <PaperPlaneRight
+                                                            size={16}
+                                                            weight="fill"
+                                                        />
                                                     )}
-                                                </AlertDialogAction>
-                                            </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
+                                                    Submit for Review
+                                                </Button>
+
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="size-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                                    onClick={() =>
+                                                        setHistoryDialogCourseId(course.courseId)
+                                                    }
+                                                    title="View History"
+                                                >
+                                                    <ClockCounterClockwise
+                                                        size={16}
+                                                        weight="fill"
+                                                    />
+                                                </Button>
+                                            </>
+                                        )}
+
+                                        {/* Copy Button for Published courses */}
+                                        {course.status === 'ACTIVE' &&
+                                            !isAdmin &&
+                                            canCreateCopy(course) && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                                    onClick={() => handleCopyToEdit(course)}
+                                                    disabled={
+                                                        copyingCourseId === course.courseId
+                                                    }
+                                                >
+                                                    {copyingCourseId === course.courseId ? (
+                                                        <CircleNotch
+                                                            size={16}
+                                                            className="animate-spin"
+                                                        />
+                                                    ) : (
+                                                        <Copy size={16} />
+                                                    )}
+                                                    Copy to Edit
+                                                </Button>
+                                            )}
+
+                                        {/* Delete Button */}
+                                        <AlertDialog
+                                            open={deleteDialogOpen === course.id}
+                                            onOpenChange={(open) => {
+                                                if (open) {
+                                                    setDeleteDialogOpen(course.id);
+                                                } else {
+                                                    setDeleteDialogOpen(null);
+                                                }
+                                            }}
+                                        >
+                                            <AlertDialogTrigger className="flex size-9 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-500 transition-colors hover:border-red-300 hover:bg-red-100 active:scale-95">
+                                                <TrashSimple size={18} />
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md">
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>
+                                                        Are you sure you want to delete this
+                                                        course?
+                                                    </AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This action cannot be undone. This will
+                                                        permanently delete your course and remove
+                                                        your course data from our servers.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+                                                    <AlertDialogCancel
+                                                        disabled={deletingCourseId === course.id}
+                                                        className="w-full sm:w-auto"
+                                                    >
+                                                        Cancel
+                                                    </AlertDialogCancel>
+                                                    <AlertDialogAction
+                                                        onClick={() =>
+                                                            handleDeleteCourse(course.id)
+                                                        }
+                                                        disabled={deletingCourseId === course.id}
+                                                        className="w-full bg-primary-500 text-white sm:w-auto"
+                                                    >
+                                                        {deletingCourseId === course.id ? (
+                                                            <CircleNotch
+                                                                size={18}
+                                                                className="animate-spin"
+                                                            />
+                                                        ) : (
+                                                            'Delete'
+                                                        )}
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 

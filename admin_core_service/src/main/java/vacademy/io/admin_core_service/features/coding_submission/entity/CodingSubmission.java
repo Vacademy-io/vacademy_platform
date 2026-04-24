@@ -34,8 +34,7 @@ public class CodingSubmission {
     @Column(name = "language", nullable = false, length = 50)
     private String language;
 
-    @Lob
-    @Column(name = "source_code", nullable = false)
+    @Column(name = "source_code", nullable = false, columnDefinition = "TEXT")
     private String sourceCode;
 
     @Column(name = "verdict", nullable = false, length = 32)
@@ -57,8 +56,7 @@ public class CodingSubmission {
      * JSON array of per-testcase results. Stored as TEXT — the controller
      * receives it as a JSON string from the client and persists verbatim.
      */
-    @Lob
-    @Column(name = "testcase_results_json")
+    @Column(name = "testcase_results_json", columnDefinition = "TEXT")
     private String testcaseResultsJson;
 
     @Column(name = "total_time_ms", nullable = false)

@@ -102,15 +102,37 @@ const loadPyodideInstance = async (): Promise<any> => {
 };
 
 /**
- * Execute Python code using Pyodide
+ * Execute Python code using Pyodide.
+ *
+ * Optional `stdin` feeds the Python program's input() calls — without it,
+ * Pyodide raises OSError: [Errno 29] because the browser has no stdin pipe.
+ * We install a line-pumping stdin callback via setStdin before each run.
  */
-export const executePythonWithPyodide = async (code: string): Promise<CodeExecutionResult> => {
+export const executePythonWithPyodide = async (
+    code: string,
+    stdin: string = ''
+): Promise<CodeExecutionResult> => {
     try {
         // Load Pyodide if not already loaded
         const pyodideInstance = await loadPyodideInstance();
 
         // Clear previous output
         consoleOutput = [];
+
+        // Install stdin for this run. Each call returns one line; null = EOF
+        // (Python's input() then raises EOFError).
+        const stdinLines = stdin.length ? stdin.split('\n') : [];
+        let stdinIdx = 0;
+        try {
+            pyodideInstance.setStdin({
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                stdin: () =>
+                    stdinIdx < stdinLines.length ? (stdinLines[stdinIdx++] as string) : null,
+                isatty: false,
+            });
+        } catch {
+            // Older Pyodide builds without setStdin — fall through.
+        }
 
         try {
             // Execute code using the working approach from the GitHub repo
@@ -131,9 +153,14 @@ export const executePythonWithPyodide = async (code: string): Promise<CodeExecut
             console.error('[CodeEditor] Python execution error:', executionError);
             stdout(executionError instanceof Error ? executionError.stack : executionError);
         } finally {
-            stdout(
-                `\n[Editor (Pyodide: v${pyodideInstance.version}): ${new Date().toLocaleString('en-us')}]`
-            );
+            // Only append the diagnostic footer for sandbox runs (no stdin). For
+            // graded test-case runs the footer would pollute the stdout compared
+            // against the expected output and cause false failures.
+            if (!stdin.length) {
+                stdout(
+                    `\n[Editor (Pyodide: v${pyodideInstance.version}): ${new Date().toLocaleString('en-us')}]`
+                );
+            }
         }
 
         // Combine output
@@ -407,17 +434,28 @@ export const initializeLanguageStates = (codeData?: CodeEditorData): AllLanguage
 };
 
 /**
- * Initialize current data state based on language states and code data
+ * Initialize current data state based on language states and code data.
+ *
+ * IMPORTANT: preserves the full saved payload (including `mode`, `question`,
+ * and whichever `language` was last active). A previous version returned only
+ * {language, code, theme, viewMode} which silently dropped Question Mode state
+ * on every reload — a saved coding-question slide would come back as a blank
+ * Practice-Mode slide.
  */
 export const initializeCurrentData = (
     codeData: CodeEditorData | undefined,
     languageStates: AllLanguagesData
 ): CodeEditorData => {
-    const defaultLanguage = 'python';
+    const savedLanguage = (codeData?.language as SupportedLanguage | undefined) ?? 'python';
+    const activeLanguage: SupportedLanguage =
+        languageStates[savedLanguage] != null ? savedLanguage : 'python';
     return {
-        language: defaultLanguage,
-        code: languageStates[defaultLanguage].code,
+        language: activeLanguage,
+        code: languageStates[activeLanguage]?.code ?? '',
         theme: codeData?.theme || 'light',
         viewMode: codeData?.viewMode || 'edit',
+        mode: codeData?.mode,
+        question: codeData?.question,
+        allLanguagesData: languageStates,
     };
 };

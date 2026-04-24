@@ -1725,15 +1725,17 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         s.put("sessionsAttended", engagementLogs.size());
 
                         // Build pre-rendered HTML table for sessions (for email templates)
-                        // The template engine does {{key}}→value, so we need to pre-build the table
+                        // Wrap in overflow:auto so the table scrolls horizontally on mobile
+                        // instead of overflowing the email body
                         StringBuilder tableHtml = new StringBuilder();
-                        tableHtml.append("<table style=\"width:100%;border-collapse:collapse;margin:16px 0;font-size:13px\">");
+                        tableHtml.append("<div style=\"overflow-x:auto;-webkit-overflow-scrolling:touch;margin:16px 0\">");
+                        tableHtml.append("<table style=\"width:100%;min-width:480px;border-collapse:collapse;font-size:12px\">");
                         tableHtml.append("<tr style=\"background:#f1f5f9\">");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:left;color:#475569\">Session</th>");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:left;color:#475569\">Date</th>");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Attendance</th>");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Duration</th>");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Engagement Score</th>");
+                        tableHtml.append("<th style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:left;color:#475569;white-space:nowrap\">Session</th>");
+                        tableHtml.append("<th style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:left;color:#475569;white-space:nowrap\">Date</th>");
+                        tableHtml.append("<th style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:#475569;white-space:nowrap\">Attendance</th>");
+                        tableHtml.append("<th style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:#475569;white-space:nowrap\">Duration</th>");
+                        tableHtml.append("<th style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:#475569;white-space:nowrap\">Score</th>");
                         tableHtml.append("</tr>");
 
                         // Index engagement logs by sessionId for quick lookup
@@ -1829,24 +1831,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                                 double totalScore = Math.min(100.0, attendancePts + interactionPts);
                                 int scoreInt = (int) Math.round(totalScore);
 
-                                // Build display string
+                                // Build display string — just the score, no cryptic abbreviations
                                 if (hasProviderDuration || hasEngagementJson) {
-                                    StringBuilder parts = new StringBuilder();
-                                    parts.append(scoreInt).append("/100");
-
-                                    // Append interaction summary below the score
-                                    StringBuilder interactions = new StringBuilder();
-                                    if (chats > 0) interactions.append(chats).append("c");
-                                    if (raises > 0) { if (interactions.length() > 0) interactions.append(" "); interactions.append(raises).append("r"); }
-                                    if (talks > 0) { if (interactions.length() > 0) interactions.append(" "); interactions.append(talks).append("t"); }
-                                    if (emojis > 0) { if (interactions.length() > 0) interactions.append(" "); interactions.append(emojis).append("e"); }
-                                    if (pollVotes > 0) { if (interactions.length() > 0) interactions.append(" "); interactions.append(pollVotes).append("p"); }
-                                    if (interactions.length() > 0) {
-                                        parts.append("<br/><span style=\"font-size:10px;color:#94a3b8\">")
-                                             .append(interactions).append("</span>");
-                                    }
-
-                                    engagementStr = parts.toString();
+                                    engagementStr = scoreInt + "/100";
                                     // Color by score
                                     engagementColor = scoreInt >= 70 ? "#16a34a"
                                                     : scoreInt >= 40 ? "#ca8a04" : "#dc2626";
@@ -1859,21 +1846,22 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                             }
 
                             tableHtml.append("<tr>");
-                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;color:#1e293b\">")
+                            tableHtml.append("<td style=\"padding:6px 8px;border:1px solid #e2e8f0;color:#1e293b\">")
                                      .append(session.getOrDefault("title", "-")).append("</td>");
-                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;color:#64748b\">")
+                            tableHtml.append("<td style=\"padding:6px 8px;border:1px solid #e2e8f0;color:#64748b\">")
                                      .append(session.getOrDefault("meetingDate", "-")).append("</td>");
-                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center\">");
+                            tableHtml.append("<td style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center\">");
                             tableHtml.append("<span style=\"color:").append(statusColor).append(";font-weight:600\">")
                                      .append(statusLabel).append("</span></td>");
-                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#64748b\">")
+                            tableHtml.append("<td style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:#64748b\">")
                                      .append(durationStr).append("</td>");
-                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:")
+                            tableHtml.append("<td style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:")
                                      .append(engagementColor).append(";font-size:12px\">")
                                      .append(engagementStr).append("</td>");
                             tableHtml.append("</tr>");
                         }
                         tableHtml.append("</table>");
+                        tableHtml.append("</div>");
                         s.put("sessionsTableHtml", tableHtml.toString());
 
                         allStudents.add(s);

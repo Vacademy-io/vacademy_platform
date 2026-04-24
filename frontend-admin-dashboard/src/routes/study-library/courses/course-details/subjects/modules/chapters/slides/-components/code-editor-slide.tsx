@@ -448,9 +448,11 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
                     <CardTitle className="flex items-center gap-2">
                         <Code className="size-5" />
                         Code Editor
-                        <span className="ml-2 rounded-full bg-gray-100 px-2 py-1 text-xs font-normal text-gray-600">
-                            {currentData.viewMode === 'edit' ? 'Edit Mode' : 'View Mode'}
-                        </span>
+                        {!isQuestionMode && (
+                            <span className="ml-2 rounded-full bg-gray-100 px-2 py-1 text-xs font-normal text-gray-600">
+                                {currentData.viewMode === 'edit' ? 'Edit Mode' : 'View Mode'}
+                            </span>
+                        )}
                         {isQuestionMode && (
                             <span className="ml-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
                                 Question Mode
@@ -459,32 +461,44 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
                     </CardTitle>
 
                     <div className="flex items-center gap-2">
-                        <Select
-                            value={currentData.language}
-                            onValueChange={(v) => handleLanguageChange(v as LangId)}
-                            disabled={!isEditable}
-                        >
-                            <SelectTrigger className="h-8 w-[170px]">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {availableLanguages.map((l) => (
-                                    <SelectItem key={l} value={l}>
-                                        {LANGUAGE_REGISTRY[l].label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        {/* Language picker + Run are sandbox-only; in Question Mode
+                            the admin authors problems and doesn't need a top-level
+                            sandbox — per-language starter code has its own editor
+                            inside the Starter Code tab. */}
+                        {!isQuestionMode && (
+                            <>
+                                <Select
+                                    value={currentData.language}
+                                    onValueChange={(v) => handleLanguageChange(v as LangId)}
+                                    disabled={!isEditable}
+                                >
+                                    <SelectTrigger className="h-8 w-[170px]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {availableLanguages.map((l) => (
+                                            <SelectItem key={l} value={l}>
+                                                {LANGUAGE_REGISTRY[l].label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
 
-                        <Button
-                            onClick={runCode}
-                            disabled={isRunning}
-                            size="sm"
-                            className="bg-green-600 text-white hover:bg-green-700"
-                        >
-                            <Play className="mr-1 size-4" />
-                            {isRunning ? (isPyodideLoading ? 'Loading...' : 'Running...') : 'Run'}
-                        </Button>
+                                <Button
+                                    onClick={runCode}
+                                    disabled={isRunning}
+                                    size="sm"
+                                    className="bg-green-600 text-white hover:bg-green-700"
+                                >
+                                    <Play className="mr-1 size-4" />
+                                    {isRunning
+                                        ? isPyodideLoading
+                                            ? 'Loading...'
+                                            : 'Running...'
+                                        : 'Run'}
+                                </Button>
+                            </>
+                        )}
 
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -560,150 +574,157 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
                 </div>
             </CardHeader>
             <CardContent className="p-0">
-                <div className="flex h-[550px] flex-col">
-                    {/* Code Editor Section */}
-                    <div className="flex-1 border-t" style={{ height: getEditorHeight() }}>
-                        <Editor
-                            height="100%"
-                            language={currentData.language}
-                            value={currentData.code}
-                            theme={currentData.theme === 'dark' ? 'vs-dark' : 'light'}
-                            onChange={handleCodeChange}
-                            onMount={handleEditorDidMount}
-                            options={{
-                                readOnly: !isEditable || currentData.viewMode === 'view',
-                                minimap: { enabled: false },
-                                scrollBeyondLastLine: false,
-                                automaticLayout: true,
-                                fontSize: 14,
-                                lineNumbers: 'on',
-                                roundedSelection: false,
-                                scrollbar: {
-                                    verticalScrollbarSize: 8,
-                                    horizontalScrollbarSize: 8,
-                                },
-                                padding: { top: 16 },
-                                // Optimize for smooth language switching
-                                quickSuggestions: true,
-                                suggestOnTriggerCharacters: true,
-                            }}
-                        />
-                    </div>
-
-                    {/* Output Panel */}
-                    {isOutputExpanded && (
-                        <>
-                            {/* Resize Handle */}
-                            <div
-                                ref={resizeRef}
-                                className="flex h-1 cursor-ns-resize items-center justify-center bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
-                                onMouseDown={handleResizeStart}
-                            >
-                                <GripVertical className="size-4 text-gray-500" />
-                            </div>
-
-                            {/* Output Content */}
-                            <div
-                                className="flex flex-col overflow-y-scroll border-t"
-                                style={{
-                                    height: isOutputFullScreen ? '100vh' : `${outputHeight}px`,
+                {/* Sandbox editor + output panel — only rendered in Practice Mode.
+                    In Question Mode, the QuestionEditor (rendered below) owns the
+                    whole content area; the Starter Code tab has its own per-language
+                    Monaco for previewing starter code. */}
+                {!isQuestionMode && (
+                    <div className="flex h-[550px] flex-col">
+                        {/* Code Editor Section */}
+                        <div className="flex-1 border-t" style={{ height: getEditorHeight() }}>
+                            <Editor
+                                height="100%"
+                                language={currentData.language}
+                                value={currentData.code}
+                                theme={currentData.theme === 'dark' ? 'vs-dark' : 'light'}
+                                onChange={handleCodeChange}
+                                onMount={handleEditorDidMount}
+                                options={{
+                                    readOnly: !isEditable || currentData.viewMode === 'view',
+                                    minimap: { enabled: false },
+                                    scrollBeyondLastLine: false,
+                                    automaticLayout: true,
+                                    fontSize: 14,
+                                    lineNumbers: 'on',
+                                    roundedSelection: false,
+                                    scrollbar: {
+                                        verticalScrollbarSize: 8,
+                                        horizontalScrollbarSize: 8,
+                                    },
+                                    padding: { top: 16 },
+                                    // Optimize for smooth language switching
+                                    quickSuggestions: true,
+                                    suggestOnTriggerCharacters: true,
                                 }}
-                            >
-                                {/* Output Header */}
-                                <div className="flex items-center justify-between border-b bg-gray-50 px-4 py-2 dark:bg-gray-800">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium">Console</span>
-                                        {output && !isRunning && (
-                                            <span className="inline-flex size-2 rounded-full bg-green-500"></span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={toggleOutputFullScreen}
-                                            className="size-8 p-0"
-                                        >
-                                            {isOutputFullScreen ? (
-                                                <Minimize2 className="size-4" />
-                                            ) : (
-                                                <Maximize2 className="size-4" />
-                                            )}
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={toggleOutputExpanded}
-                                            className="size-8 p-0"
-                                        >
-                                            <X className="size-4" />
-                                        </Button>
-                                    </div>
+                            />
+                        </div>
+
+                        {/* Output Panel */}
+                        {isOutputExpanded && (
+                            <>
+                                {/* Resize Handle */}
+                                <div
+                                    ref={resizeRef}
+                                    className="flex h-1 cursor-ns-resize items-center justify-center bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
+                                    onMouseDown={handleResizeStart}
+                                >
+                                    <GripVertical className="size-4 text-gray-500" />
                                 </div>
 
                                 {/* Output Content */}
-                                <div className="flex-1 overflow-auto bg-gray-900 p-4 font-mono text-sm text-green-400">
-                                    <pre className="whitespace-pre-wrap">
-                                        {isPyodideLoading && isRunning
-                                            ? 'Loading Python environment (this may take a few seconds on first run)...'
-                                            : output || 'Click "Run Code" to see output here...'}
-                                    </pre>
+                                <div
+                                    className="flex flex-col overflow-y-scroll border-t"
+                                    style={{
+                                        height: isOutputFullScreen ? '100vh' : `${outputHeight}px`,
+                                    }}
+                                >
+                                    {/* Output Header */}
+                                    <div className="flex items-center justify-between border-b bg-gray-50 px-4 py-2 dark:bg-gray-800">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-medium">Console</span>
+                                            {output && !isRunning && (
+                                                <span className="inline-flex size-2 rounded-full bg-green-500"></span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={toggleOutputFullScreen}
+                                                className="size-8 p-0"
+                                            >
+                                                {isOutputFullScreen ? (
+                                                    <Minimize2 className="size-4" />
+                                                ) : (
+                                                    <Maximize2 className="size-4" />
+                                                )}
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={toggleOutputExpanded}
+                                                className="size-8 p-0"
+                                            >
+                                                <X className="size-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* Output Content */}
+                                    <div className="flex-1 overflow-auto bg-gray-900 p-4 font-mono text-sm text-green-400">
+                                        <pre className="whitespace-pre-wrap">
+                                            {isPyodideLoading && isRunning
+                                                ? 'Loading Python environment (this may take a few seconds on first run)...'
+                                                : output ||
+                                                  'Click "Run Code" to see output here...'}
+                                        </pre>
+                                        {waitingForInput && (
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <span className="text-yellow-400">{'> '}</span>
+                                                <input
+                                                    type="text"
+                                                    value={inputValue}
+                                                    onChange={(e) => setInputValue(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            handleInputSubmit();
+                                                        }
+                                                    }}
+                                                    className="flex-1 border-none bg-transparent text-green-400 outline-none"
+                                                    placeholder="Type your input and press Enter..."
+                                                    autoFocus
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Input Controls */}
                                     {waitingForInput && (
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <span className="text-yellow-400">{'> '}</span>
-                                            <input
-                                                type="text"
-                                                value={inputValue}
-                                                onChange={(e) => setInputValue(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        handleInputSubmit();
-                                                    }
-                                                }}
-                                                className="flex-1 border-none bg-transparent text-green-400 outline-none"
-                                                placeholder="Type your input and press Enter..."
-                                                autoFocus
-                                            />
+                                        <div className="border-t border-gray-700 bg-gray-800 p-2">
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={handleInputSubmit}
+                                                    className="rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-700"
+                                                >
+                                                    Submit
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setWaitingForInput(false);
+                                                        setInputValue('');
+                                                    }}
+                                                    className="rounded bg-gray-600 px-3 py-1 text-sm text-white hover:bg-gray-700"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
+                            </>
+                        )}
 
-                                {/* Input Controls */}
-                                {waitingForInput && (
-                                    <div className="border-t border-gray-700 bg-gray-800 p-2">
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={handleInputSubmit}
-                                                className="rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-700"
-                                            >
-                                                Submit
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setWaitingForInput(false);
-                                                    setInputValue('');
-                                                }}
-                                                className="rounded bg-gray-600 px-3 py-1 text-sm text-white hover:bg-gray-700"
-                                            >
-                                                Cancel
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
+                        {/* Output Toggle Button (when collapsed) */}
+                        {!isOutputExpanded && (
+                            <div className="border-t p-2">
+                                <Button variant="outline" size="sm" onClick={toggleOutputExpanded}>
+                                    <ChevronUp className="mr-1 size-4" />
+                                    Show Output
+                                </Button>
                             </div>
-                        </>
-                    )}
-
-                    {/* Output Toggle Button (when collapsed) */}
-                    {!isOutputExpanded && (
-                        <div className="border-t p-2">
-                            <Button variant="outline" size="sm" onClick={toggleOutputExpanded}>
-                                <ChevronUp className="mr-1 size-4" />
-                                Show Output
-                            </Button>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
 
                 {isQuestionMode && currentData.question && (
                     <QuestionEditor

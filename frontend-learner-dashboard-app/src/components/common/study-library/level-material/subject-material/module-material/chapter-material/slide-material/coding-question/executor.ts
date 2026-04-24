@@ -91,7 +91,8 @@ export async function runCode(
   if (def.executor === "pyodide") {
     // Existing helper returns { output, needsInput, hasError }. Treat output as
     // combined stdout — Pyodide already merges stdout and exception traces.
-    const r = await executePythonWithPyodide(code);
+    // Pass stdin so input()-using solutions work for graded test cases.
+    const r = await executePythonWithPyodide(code, options.stdin);
     return {
       stdout: r.output,
       stderr: r.hasError ? r.output : "",

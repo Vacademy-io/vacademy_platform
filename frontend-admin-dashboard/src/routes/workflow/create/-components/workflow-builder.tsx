@@ -32,6 +32,16 @@ import { UseCaseWizardStep } from './use-case-wizard-step';
 
 const nodeTypes = { workflowNode: WorkflowCustomNode };
 
+/** Convert datetime-local value (2026-04-24T16:24) to Instant-compatible string (2026-04-24T16:24:00Z) */
+function normalizeToInstant(val: string): string {
+    if (!val) return val;
+    // datetime-local gives "2026-04-24T16:24", add seconds if missing
+    let normalized = val;
+    if (normalized.length === 16) normalized += ':00';        // add :00 seconds
+    if (!normalized.endsWith('Z') && !normalized.includes('+')) normalized += 'Z'; // add UTC marker
+    return normalized;
+}
+
 // ─── Grouped trigger events for cleaner display ───
 function groupCatalogByCategory(items: Array<{ key: string; label: string; category: string; event_applied_type?: string }>) {
     const groups: Record<string, typeof items> = {};
@@ -893,8 +903,8 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                 cron_expression: scheduleConfig.scheduleType === 'CRON' ? scheduleConfig.cronExpression : undefined,
                 interval_minutes: scheduleConfig.scheduleType === 'INTERVAL' ? scheduleConfig.intervalMinutes : undefined,
                 timezone: scheduleConfig.timezone,
-                start_date: scheduleConfig.startDate || undefined,
-                end_date: scheduleConfig.endDate || undefined,
+                start_date: scheduleConfig.startDate ? normalizeToInstant(scheduleConfig.startDate) : undefined,
+                end_date: scheduleConfig.endDate ? normalizeToInstant(scheduleConfig.endDate) : undefined,
             },
         }),
         ...(workflowType === 'EVENT_DRIVEN' && triggerConfig.eventName && {

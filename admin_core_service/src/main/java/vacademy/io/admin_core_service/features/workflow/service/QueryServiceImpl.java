@@ -1712,6 +1712,53 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         s.put("totalHandRaises", totalHandRaises);
                         s.put("sessionsAttended", engagementLogs.size());
 
+                        // Build pre-rendered HTML table for sessions (for email templates)
+                        // The template engine does {{key}}→value, so we need to pre-build the table
+                        StringBuilder tableHtml = new StringBuilder();
+                        tableHtml.append("<table style=\"width:100%;border-collapse:collapse;margin:16px 0;font-size:13px\">");
+                        tableHtml.append("<tr style=\"background:#f1f5f9\">");
+                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:left;color:#475569\">Session</th>");
+                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:left;color:#475569\">Date</th>");
+                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Attendance</th>");
+                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Duration</th>");
+                        tableHtml.append("</tr>");
+
+                        // Index engagement logs by sessionId for quick lookup
+                        Map<String, Map<String, Object>> engBySession = new HashMap<>();
+                        for (var el : engagementLogs) {
+                            String sid = String.valueOf(el.get("sessionId"));
+                            engBySession.put(sid, el);
+                        }
+
+                        for (var session : sessionDetails) {
+                            String status = String.valueOf(session.getOrDefault("attendanceStatus", "UNMARKED"));
+                            String statusColor = "PRESENT".equals(status) ? "#16a34a" : "ABSENT".equals(status) ? "#dc2626" : "#94a3b8";
+                            String statusLabel = "PRESENT".equals(status) ? "Present" : "ABSENT".equals(status) ? "Absent" : "Unmarked";
+                            String sessionId = String.valueOf(session.get("sessionId"));
+
+                            // Lookup engagement for this session
+                            Map<String, Object> eng = engBySession.get(sessionId);
+                            String durationStr = "-";
+                            if (eng != null && eng.get("providerTotalDurationMinutes") instanceof Number) {
+                                int mins = ((Number) eng.get("providerTotalDurationMinutes")).intValue();
+                                durationStr = mins + " min";
+                            }
+
+                            tableHtml.append("<tr>");
+                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;color:#1e293b\">")
+                                     .append(session.getOrDefault("title", "-")).append("</td>");
+                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;color:#64748b\">")
+                                     .append(session.getOrDefault("meetingDate", "-")).append("</td>");
+                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center\">");
+                            tableHtml.append("<span style=\"color:").append(statusColor).append(";font-weight:600\">")
+                                     .append(statusLabel).append("</span></td>");
+                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#64748b\">")
+                                     .append(durationStr).append("</td>");
+                            tableHtml.append("</tr>");
+                        }
+                        tableHtml.append("</table>");
+                        s.put("sessionsTableHtml", tableHtml.toString());
+
                         allStudents.add(s);
                     }
                 } catch (Exception e) {

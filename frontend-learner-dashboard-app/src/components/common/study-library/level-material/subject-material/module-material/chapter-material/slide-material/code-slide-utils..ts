@@ -90,10 +90,17 @@ const loadPyodideInstance = async (): Promise<any> => {
 };
 
 /**
- * Execute Python code using Pyodide
+ * Execute Python code using Pyodide.
+ *
+ * Optional `stdin` feeds the Python program's input() calls. Without it,
+ * Pyodide's `input()` raises `OSError: [Errno 29] I/O error` because the
+ * browser has no stdin pipe. We install a line-pumping stdin callback via
+ * `setStdin` before each run; when the lines are exhausted, we return null
+ * so Python sees EOF (raises EOFError, which user code can handle).
  */
 export const executePythonWithPyodide = async (
-  code: string
+  code: string,
+  stdin: string = ""
 ): Promise<CodeExecutionResult> => {
   try {
     // Load Pyodide if not already loaded
@@ -101,6 +108,24 @@ export const executePythonWithPyodide = async (
 
     // Clear previous output
     consoleOutput = [];
+
+    // Install stdin for this run. Reset each call — lines are consumed in
+    // order, null signals EOF. We trim trailing '\n' on each line because
+    // Python's input() strips the terminator itself when reading from a
+    // line-mode stdin.
+    const stdinLines = stdin.length ? stdin.split("\n") : [];
+    let stdinIdx = 0;
+    try {
+      pyodideInstance.setStdin({
+         
+        stdin: () =>
+          stdinIdx < stdinLines.length ? (stdinLines[stdinIdx++] as string) : null,
+        isatty: false,
+      });
+    } catch {
+      // Older Pyodide builds may not expose setStdin; swallow so code
+      // without input() still runs.
+    }
 
     try {
       // Execute code using the working approach from the GitHub repo
@@ -123,24 +148,21 @@ export const executePythonWithPyodide = async (
         executionError instanceof Error ? executionError.stack : executionError
       );
     } finally {
-      stdout(
-        `\n[Editor (Pyodide: v${
-          pyodideInstance.version
-        }): ${new Date().toLocaleString("en-us")}]`
-      );
+      // Only append the diagnostic footer for sandbox runs (no stdin). For
+      // graded test-case runs the footer would pollute the stdout that we
+      // compare against the expected output and cause false failures.
+      if (!stdin.length) {
+        stdout(
+          `\n[Editor (Pyodide: v${
+            pyodideInstance.version
+          }): ${new Date().toLocaleString("en-us")}]`
+        );
+      }
     }
 
     // Combine output
     const output = consoleOutput.join("\n");
     const hasError = output.includes("Error:") || output.includes("Traceback");
-
-    // Check if code contains input() function
-    const needsInput = code.includes("input(");
-    if (needsInput) {
-      consoleOutput.push(
-        "\nNote: Interactive input (input()) is not supported in this environment."
-      );
-    }
 
     return {
       output: output.trim() || "Code executed successfully (no output)",

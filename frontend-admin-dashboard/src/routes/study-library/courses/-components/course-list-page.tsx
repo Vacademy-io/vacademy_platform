@@ -13,10 +13,18 @@ import { MyButton } from '@/components/design-system/button';
 import { TrashSimple, Funnel, X, Package, ListBullets, BookOpen } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { MyPagination } from '@/components/design-system/pagination';
-import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { Eye, EyeSlash } from '@phosphor-icons/react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import {
     AlertDialog,
@@ -36,6 +44,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useState, useMemo } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+
+const MAX_VISIBLE_TAGS = 5;
 
 interface CourseListPageProps {
     selectedFilters: AllCourseFilters;
@@ -106,8 +116,7 @@ const CourseListPage = ({
         [instituteDetails]
     );
 
-    const isDefaultName = (name?: string | null) =>
-        !name || name.toLowerCase() === 'default';
+    const isDefaultName = (name?: string | null) => !name || name.toLowerCase() === 'default';
 
     const packageView = selectedFilters.package_view;
 
@@ -179,7 +188,9 @@ const CourseListPage = ({
                         }
                     >
                         <SelectTrigger className="w-full">
-                            <SelectValue placeholder={`All ${getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)}`} />
+                            <SelectValue
+                                placeholder={`All ${getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)}`}
+                            />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">{`All ${getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)}`}</SelectItem>
@@ -238,7 +249,10 @@ const CourseListPage = ({
                         <AccordionTrigger className="py-2 hover:no-underline">
                             <div className="flex items-center gap-2">
                                 <span className="text-sm font-semibold">
-                                    {getTerminology(ContentTerms.PopularTag, SystemTerms.PopularTag)}
+                                    {getTerminology(
+                                        ContentTerms.PopularTag,
+                                        SystemTerms.PopularTag
+                                    )}
                                 </span>
                                 {selectedFilters.tag.length > 0 && (
                                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
@@ -294,7 +308,9 @@ const CourseListPage = ({
                                         >
                                             <input
                                                 type="checkbox"
-                                                checked={selectedFilters.faculty_ids.includes(user.id)}
+                                                checked={selectedFilters.faculty_ids.includes(
+                                                    user.id
+                                                )}
                                                 onChange={() => handleUserChange(user.id)}
                                                 className="scale-110 accent-primary-500 transition-transform"
                                             />
@@ -312,7 +328,7 @@ const CourseListPage = ({
             {activeFilterCount > 0 && (
                 <div className="mt-auto border-t border-neutral-200 pt-3">
                     <button
-                        className="hover:bg-primary-600 w-full rounded bg-primary-500 px-3 py-2 text-sm font-medium text-white transition-transform active:scale-95"
+                        className="w-full rounded bg-primary-500 px-3 py-2 text-sm font-medium text-white transition-transform hover:bg-primary-600 active:scale-95"
                         onClick={() => {
                             handleApply();
                             if (isMobile) setIsFilterOpen(false);
@@ -378,7 +394,10 @@ const CourseListPage = ({
                                 <Funnel size={16} />
                                 Filters
                                 {activeFilterCount > 0 && (
-                                    <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                                    <Badge
+                                        variant="secondary"
+                                        className="ml-1 h-5 px-1.5 text-[10px]"
+                                    >
                                         {activeFilterCount}
                                     </Badge>
                                 )}
@@ -448,8 +467,13 @@ const CourseListPage = ({
                                 <ListBullets
                                     size={20}
                                     weight={!packageView ? 'bold' : 'regular'}
-                                    className={`cursor-pointer rounded p-0.5 transition-colors ${!packageView ? 'text-primary-600 bg-primary-50' : 'text-neutral-400 hover:text-neutral-600'}`}
-                                    onClick={() => setSelectedFilters((prev) => ({ ...prev, package_view: false }))}
+                                    className={`cursor-pointer rounded p-0.5 transition-colors ${!packageView ? 'bg-primary-50 text-primary-600' : 'text-neutral-400 hover:text-neutral-600'}`}
+                                    onClick={() =>
+                                        setSelectedFilters((prev) => ({
+                                            ...prev,
+                                            package_view: false,
+                                        }))
+                                    }
                                 />
                                 <Switch
                                     checked={packageView}
@@ -463,8 +487,13 @@ const CourseListPage = ({
                                 <Package
                                     size={20}
                                     weight={packageView ? 'bold' : 'regular'}
-                                    className={`cursor-pointer rounded p-0.5 transition-colors ${packageView ? 'text-primary-600 bg-primary-50' : 'text-neutral-400 hover:text-neutral-600'}`}
-                                    onClick={() => setSelectedFilters((prev) => ({ ...prev, package_view: true }))}
+                                    className={`cursor-pointer rounded p-0.5 transition-colors ${packageView ? 'bg-primary-50 text-primary-600' : 'text-neutral-400 hover:text-neutral-600'}`}
+                                    onClick={() =>
+                                        setSelectedFilters((prev) => ({
+                                            ...prev,
+                                            package_view: true,
+                                        }))
+                                    }
                                 />
                             </div>
                             <div className="flex items-center gap-2">
@@ -497,37 +526,63 @@ const CourseListPage = ({
                                 const course = courseRows[0]!;
                                 const instructors: CourseInstructor[] = course.instructors || [];
                                 const tags: string[] = course.comma_separeted_tags
-                                    ? course.comma_separeted_tags.split(',').map((t: string) => t.trim())
+                                    ? course.comma_separeted_tags
+                                          .split(',')
+                                          .map((t: string) => t.trim())
                                     : [];
                                 const displayName = convertCapitalToTitleCase(course.package_name);
 
                                 // Collect unique non-default level names
-                                const levelNames = [...new Set(
-                                    courseRows.map((r) => r.level_name).filter((n): n is string => !isDefaultName(n))
-                                )];
+                                const levelNames = [
+                                    ...new Set(
+                                        courseRows
+                                            .map((r) => r.level_name)
+                                            .filter((n): n is string => !isDefaultName(n))
+                                    ),
+                                ];
                                 // Collect unique non-default session names
-                                const sessionNames = [...new Set(
-                                    courseRows.map((r) => r.session_name).filter((n): n is string => !isDefaultName(n))
-                                )];
+                                const sessionNames = [
+                                    ...new Set(
+                                        courseRows
+                                            .map((r) => r.session_name)
+                                            .filter((n): n is string => !isDefaultName(n))
+                                    ),
+                                ];
 
                                 return (
                                     <div
                                         key={packageId}
                                         className="animate-fade-in group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
-                                        onClick={() => navigate({ to: '/study-library/courses/course-details', search: { courseId: packageId, sessionId: course.session_id, levelId: course.level_id } })}
+                                        onClick={() =>
+                                            navigate({
+                                                to: '/study-library/courses/course-details',
+                                                search: {
+                                                    courseId: packageId,
+                                                    sessionId: course.session_id,
+                                                    levelId: course.level_id,
+                                                },
+                                            })
+                                        }
                                     >
                                         <div className="relative flex aspect-video w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
                                             {isLoadingImages ? (
                                                 <CourseImageShimmer />
                                             ) : courseImageUrls[course.id] ? (
                                                 <img
-                                                    src={courseImageUrls[course.id] || course.thumbnail_file_id}
+                                                    src={
+                                                        courseImageUrls[course.id] ||
+                                                        course.thumbnail_file_id
+                                                    }
                                                     alt={course.package_name}
                                                     className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
                                                 />
                                             ) : (
                                                 <div className="flex flex-col items-center justify-center gap-1.5 p-3 text-center">
-                                                    <BookOpen size={32} weight="duotone" className="text-primary-400" />
+                                                    <BookOpen
+                                                        size={32}
+                                                        weight="duotone"
+                                                        className="text-primary-400"
+                                                    />
                                                     <span className="line-clamp-2 text-xs font-medium text-primary-600/80">
                                                         {displayName}
                                                     </span>
@@ -535,76 +590,221 @@ const CourseListPage = ({
                                             )}
                                         </div>
                                         <div className="flex flex-1 flex-col gap-1 p-3">
-                                            <div className="min-w-0 text-sm font-bold text-neutral-800 line-clamp-2">
+                                            <div className="line-clamp-2 min-w-0 text-sm font-bold text-neutral-800">
                                                 {displayName}
                                             </div>
                                             {/* Level & Session badges */}
-                                            {(levelNames.length > 0 || sessionNames.length > 0) && (
-                                                <div className="mt-1 flex flex-wrap gap-1">
-                                                    {levelNames.map((name) => (
-                                                        <span key={name} className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-                                                            {convertCapitalToTitleCase(name)}
-                                                        </span>
-                                                    ))}
-                                                    {sessionNames.map((name) => (
-                                                        <span key={name} className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
-                                                            {name}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            <div className={
-                                                (course.course_html_description_html || '').replace(/<[^>]*>/g, '').slice(0, 120).length > 0
-                                                    ? 'mt-1 line-clamp-2 text-xs text-neutral-600 sm:mt-2 sm:text-sm'
-                                                    : 'text-xs text-neutral-600 sm:text-sm'
-                                            }>
-                                                {(course.course_html_description_html || '').replace(/<[^>]*>/g, '').slice(0, 120)}
+                                            {(() => {
+                                                const visibleLevels = levelNames.slice(
+                                                    0,
+                                                    MAX_VISIBLE_TAGS
+                                                );
+                                                const levelOverflow =
+                                                    levelNames.length - visibleLevels.length;
+                                                const remainingSlots =
+                                                    MAX_VISIBLE_TAGS - visibleLevels.length;
+                                                const visibleSessions = sessionNames.slice(
+                                                    0,
+                                                    Math.max(remainingSlots, 0)
+                                                );
+                                                const sessionOverflow =
+                                                    sessionNames.length - visibleSessions.length;
+                                                const totalOverflow =
+                                                    levelOverflow + sessionOverflow;
+                                                const overflowTitle = [
+                                                    ...levelNames
+                                                        .slice(visibleLevels.length)
+                                                        .map((n) => convertCapitalToTitleCase(n)),
+                                                    ...sessionNames.slice(visibleSessions.length),
+                                                ].join(', ');
+                                                if (
+                                                    levelNames.length === 0 &&
+                                                    sessionNames.length === 0
+                                                )
+                                                    return null;
+                                                return (
+                                                    <div className="mt-1 flex flex-wrap gap-1">
+                                                        {visibleLevels.map((name) => (
+                                                            <span
+                                                                key={name}
+                                                                className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"
+                                                            >
+                                                                {convertCapitalToTitleCase(name)}
+                                                            </span>
+                                                        ))}
+                                                        {visibleSessions.map((name) => (
+                                                            <span
+                                                                key={name}
+                                                                className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700"
+                                                            >
+                                                                {name}
+                                                            </span>
+                                                        ))}
+                                                        {totalOverflow > 0 && (
+                                                            <span
+                                                                className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700"
+                                                                title={overflowTitle}
+                                                            >
+                                                                +{totalOverflow} more
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                            <div
+                                                className={
+                                                    (course.course_html_description_html || '')
+                                                        .replace(/<[^>]*>/g, '')
+                                                        .slice(0, 120).length > 0
+                                                        ? 'mt-1 line-clamp-2 text-xs text-neutral-600 sm:mt-2 sm:text-sm'
+                                                        : 'text-xs text-neutral-600 sm:text-sm'
+                                                }
+                                            >
+                                                {(course.course_html_description_html || '')
+                                                    .replace(/<[^>]*>/g, '')
+                                                    .slice(0, 120)}
                                             </div>
                                             {instructors.length > 0 && (
                                                 <div className="mt-2 flex items-center gap-2">
                                                     {instructors.map((inst) =>
-                                                        isLoadingImages ? <InstructorAvatarShimmer key={inst.id} /> : (
-                                                            <img key={inst.id} src={instructorProfilePicUrls[inst.id] || 'https://randomuser.me/api/portraits/lego/1.jpg'} alt={inst.full_name} className="-ml-2 size-6 rounded-full border border-neutral-200 object-cover first:ml-0 sm:size-7" />
+                                                        isLoadingImages ? (
+                                                            <InstructorAvatarShimmer
+                                                                key={inst.id}
+                                                            />
+                                                        ) : (
+                                                            <img
+                                                                key={inst.id}
+                                                                src={
+                                                                    instructorProfilePicUrls[
+                                                                        inst.id
+                                                                    ] ||
+                                                                    'https://randomuser.me/api/portraits/lego/1.jpg'
+                                                                }
+                                                                alt={inst.full_name}
+                                                                className="-ml-2 size-6 rounded-full border border-neutral-200 object-cover first:ml-0 sm:size-7"
+                                                            />
                                                         )
                                                     )}
                                                     <span className="ml-1 truncate text-xs text-neutral-600 sm:ml-2">
-                                                        {instructors.map((inst) => inst.full_name).join(', ')}
+                                                        {instructors
+                                                            .map((inst) => inst.full_name)
+                                                            .join(', ')}
                                                     </span>
                                                 </div>
                                             )}
                                             {tags.length > 0 && (
-                                                <div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto">
-                                                    {tags.map((tag) => (
-                                                        <span key={tag} className="flex-shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{tag}</span>
+                                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                                    {tags.slice(0, MAX_VISIBLE_TAGS).map((tag) => (
+                                                        <span
+                                                            key={tag}
+                                                            className="flex-shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+                                                        >
+                                                            {tag}
+                                                        </span>
                                                     ))}
+                                                    {tags.length > MAX_VISIBLE_TAGS && (
+                                                        <span
+                                                            className="flex-shrink-0 rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700"
+                                                            title={tags
+                                                                .slice(MAX_VISIBLE_TAGS)
+                                                                .join(', ')}
+                                                        >
+                                                            +{tags.length - MAX_VISIBLE_TAGS} more
+                                                        </span>
+                                                    )}
                                                 </div>
                                             )}
                                             <div className="my-2 -mb-2 flex items-center gap-2">
-                                                <StarRatingComponent score={course.rating * 20} maxScore={100} />
-                                                <span className="text-neutral-500">{(course.rating || 0).toFixed(1)}</span>
+                                                <StarRatingComponent
+                                                    score={course.rating * 20}
+                                                    maxScore={100}
+                                                />
+                                                <span className="text-neutral-500">
+                                                    {(course.rating || 0).toFixed(1)}
+                                                </span>
                                             </div>
                                             <span className="-mb-3 mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
-                                                {course.is_course_published_to_catalaouge ? (<><Eye className="size-4" /> In Catalog</>) : (<><EyeSlash className="size-4" /> Private</>)}
+                                                {course.is_course_published_to_catalaouge ? (
+                                                    <>
+                                                        <Eye className="size-4" /> In Catalog
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <EyeSlash className="size-4" /> Private
+                                                    </>
+                                                )}
                                             </span>
                                             <div className="mt-auto flex gap-2 pt-3">
-                                                <MyButton className="flex-1 text-sm" buttonType="primary" onClick={(e) => { e.stopPropagation(); navigate({ to: '/study-library/courses/course-details', search: { courseId: packageId, sessionId: course.session_id, levelId: course.level_id } }); }}>
-                                                    View {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                                                <MyButton
+                                                    className="flex-1 text-sm"
+                                                    buttonType="primary"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        navigate({
+                                                            to: '/study-library/courses/course-details',
+                                                            search: {
+                                                                courseId: packageId,
+                                                                sessionId: course.session_id,
+                                                                levelId: course.level_id,
+                                                            },
+                                                        });
+                                                    }}
+                                                >
+                                                    View{' '}
+                                                    {getTerminology(
+                                                        ContentTerms.Course,
+                                                        SystemTerms.Course
+                                                    )}
                                                 </MyButton>
                                                 {showDeleteButton && (
                                                     <div onClick={(e) => e.stopPropagation()}>
-                                                        <AlertDialog open={deletingCourseId === course.id || undefined} onOpenChange={() => {}}>
+                                                        <AlertDialog
+                                                            open={
+                                                                deletingCourseId === course.id ||
+                                                                undefined
+                                                            }
+                                                            onOpenChange={() => {}}
+                                                        >
                                                             <AlertDialogTrigger className="flex size-9 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-500 transition-colors hover:border-red-300 hover:bg-red-100 active:scale-95">
                                                                 <TrashSimple size={18} />
                                                             </AlertDialogTrigger>
                                                             <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md">
                                                                 <AlertDialogHeader>
-                                                                    <AlertDialogTitle>Are you sure you want to delete this course?</AlertDialogTitle>
-                                                                    <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                                                                    <AlertDialogTitle>
+                                                                        Are you sure you want to
+                                                                        delete this course?
+                                                                    </AlertDialogTitle>
+                                                                    <AlertDialogDescription>
+                                                                        This action cannot be
+                                                                        undone.
+                                                                    </AlertDialogDescription>
                                                                 </AlertDialogHeader>
                                                                 <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
-                                                                    <AlertDialogCancel disabled={deletingCourseId === course.id} className="w-full sm:w-auto">Cancel</AlertDialogCancel>
-                                                                    <AlertDialogAction onClick={() => handleCourseDelete(course.id)} disabled={deletingCourseId === course.id} className="w-full bg-primary-500 text-white sm:w-auto">
-                                                                        {deletingCourseId === course.id ? 'Deleting...' : 'Confirm'}
+                                                                    <AlertDialogCancel
+                                                                        disabled={
+                                                                            deletingCourseId ===
+                                                                            course.id
+                                                                        }
+                                                                        className="w-full sm:w-auto"
+                                                                    >
+                                                                        Cancel
+                                                                    </AlertDialogCancel>
+                                                                    <AlertDialogAction
+                                                                        onClick={() =>
+                                                                            handleCourseDelete(
+                                                                                course.id
+                                                                            )
+                                                                        }
+                                                                        disabled={
+                                                                            deletingCourseId ===
+                                                                            course.id
+                                                                        }
+                                                                        className="w-full bg-primary-500 text-white sm:w-auto"
+                                                                    >
+                                                                        {deletingCourseId ===
+                                                                        course.id
+                                                                            ? 'Deleting...'
+                                                                            : 'Confirm'}
                                                                     </AlertDialogAction>
                                                                 </AlertDialogFooter>
                                                             </AlertDialogContent>
@@ -616,11 +816,14 @@ const CourseListPage = ({
                                     </div>
                                 );
                             })
-                        ) : Array.isArray(allCourses?.content) && (allCourses?.content?.length ?? 0) > 0 ? (
+                        ) : Array.isArray(allCourses?.content) &&
+                          (allCourses?.content?.length ?? 0) > 0 ? (
                             allCourses?.content?.map((course: CourseItem) => {
                                 const instructors: CourseInstructor[] = course.instructors || [];
                                 const tags: string[] = course.comma_separeted_tags
-                                    ? course.comma_separeted_tags.split(',').map((t: string) => t.trim())
+                                    ? course.comma_separeted_tags
+                                          .split(',')
+                                          .map((t: string) => t.trim())
                                     : [];
                                 const displayName = course.package_session_name
                                     ? `${convertCapitalToTitleCase(course.package_name)} ${convertCapitalToTitleCase(course.package_session_name)}`
@@ -630,20 +833,36 @@ const CourseListPage = ({
                                     <div
                                         key={`${course.id}-${course.package_session_id}`}
                                         className="animate-fade-in group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
-                                        onClick={() => navigate({ to: '/study-library/courses/course-details', search: { courseId: course.id, sessionId: course.session_id, levelId: course.level_id } })}
+                                        onClick={() =>
+                                            navigate({
+                                                to: '/study-library/courses/course-details',
+                                                search: {
+                                                    courseId: course.id,
+                                                    sessionId: course.session_id,
+                                                    levelId: course.level_id,
+                                                },
+                                            })
+                                        }
                                     >
                                         <div className="relative flex aspect-video w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
                                             {isLoadingImages ? (
                                                 <CourseImageShimmer />
                                             ) : courseImageUrls[course.id] ? (
                                                 <img
-                                                    src={courseImageUrls[course.id] || course.thumbnail_file_id}
+                                                    src={
+                                                        courseImageUrls[course.id] ||
+                                                        course.thumbnail_file_id
+                                                    }
                                                     alt={course.package_name}
                                                     className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
                                                 />
                                             ) : (
                                                 <div className="flex flex-col items-center justify-center gap-1.5 p-3 text-center">
-                                                    <BookOpen size={32} weight="duotone" className="text-primary-400" />
+                                                    <BookOpen
+                                                        size={32}
+                                                        weight="duotone"
+                                                        className="text-primary-400"
+                                                    />
                                                     <span className="line-clamp-2 text-xs font-medium text-primary-600/80">
                                                         {displayName}
                                                     </span>
@@ -652,10 +871,14 @@ const CourseListPage = ({
                                         </div>
                                         <div className="flex flex-1 flex-col gap-1 p-3">
                                             <div className="flex items-start justify-between gap-2">
-                                                <div className="min-w-0 flex-1 text-sm font-bold text-neutral-800 line-clamp-2">{displayName}</div>
+                                                <div className="line-clamp-2 min-w-0 flex-1 text-sm font-bold text-neutral-800">
+                                                    {displayName}
+                                                </div>
                                                 {!isDefaultName(course.level_name) && (
                                                     <div className="flex-shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700">
-                                                        {convertCapitalToTitleCase(course.level_name)}
+                                                        {convertCapitalToTitleCase(
+                                                            course.level_name
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
@@ -664,58 +887,160 @@ const CourseListPage = ({
                                                     {course.session_name}
                                                 </span>
                                             )}
-                                            <div className={
-                                                (course.course_html_description_html || '').replace(/<[^>]*>/g, '').slice(0, 120).length > 0
-                                                    ? 'mt-1 line-clamp-2 text-xs text-neutral-600 sm:mt-2 sm:text-sm'
-                                                    : 'text-xs text-neutral-600 sm:text-sm'
-                                            }>
-                                                {(course.course_html_description_html || '').replace(/<[^>]*>/g, '').slice(0, 120)}
+                                            <div
+                                                className={
+                                                    (course.course_html_description_html || '')
+                                                        .replace(/<[^>]*>/g, '')
+                                                        .slice(0, 120).length > 0
+                                                        ? 'mt-1 line-clamp-2 text-xs text-neutral-600 sm:mt-2 sm:text-sm'
+                                                        : 'text-xs text-neutral-600 sm:text-sm'
+                                                }
+                                            >
+                                                {(course.course_html_description_html || '')
+                                                    .replace(/<[^>]*>/g, '')
+                                                    .slice(0, 120)}
                                             </div>
                                             {instructors.length > 0 && (
                                                 <div className="mt-2 flex items-center gap-2">
                                                     {instructors.map((inst) =>
-                                                        isLoadingImages ? <InstructorAvatarShimmer key={inst.id} /> : (
-                                                            <img key={inst.id} src={instructorProfilePicUrls[inst.id] || 'https://randomuser.me/api/portraits/lego/1.jpg'} alt={inst.full_name} className="-ml-2 size-6 rounded-full border border-neutral-200 object-cover first:ml-0 sm:size-7" />
+                                                        isLoadingImages ? (
+                                                            <InstructorAvatarShimmer
+                                                                key={inst.id}
+                                                            />
+                                                        ) : (
+                                                            <img
+                                                                key={inst.id}
+                                                                src={
+                                                                    instructorProfilePicUrls[
+                                                                        inst.id
+                                                                    ] ||
+                                                                    'https://randomuser.me/api/portraits/lego/1.jpg'
+                                                                }
+                                                                alt={inst.full_name}
+                                                                className="-ml-2 size-6 rounded-full border border-neutral-200 object-cover first:ml-0 sm:size-7"
+                                                            />
                                                         )
                                                     )}
                                                     <span className="ml-1 truncate text-xs text-neutral-600 sm:ml-2">
-                                                        {instructors.map((inst) => inst.full_name).join(', ')}
+                                                        {instructors
+                                                            .map((inst) => inst.full_name)
+                                                            .join(', ')}
                                                     </span>
                                                 </div>
                                             )}
                                             {tags.length > 0 && (
-                                                <div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto">
-                                                    {tags.map((tag) => (
-                                                        <span key={tag} className="flex-shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{tag}</span>
+                                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                                    {tags.slice(0, MAX_VISIBLE_TAGS).map((tag) => (
+                                                        <span
+                                                            key={tag}
+                                                            className="flex-shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+                                                        >
+                                                            {tag}
+                                                        </span>
                                                     ))}
+                                                    {tags.length > MAX_VISIBLE_TAGS && (
+                                                        <span
+                                                            className="flex-shrink-0 rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700"
+                                                            title={tags
+                                                                .slice(MAX_VISIBLE_TAGS)
+                                                                .join(', ')}
+                                                        >
+                                                            +{tags.length - MAX_VISIBLE_TAGS} more
+                                                        </span>
+                                                    )}
                                                 </div>
                                             )}
                                             <div className="my-2 -mb-2 flex items-center gap-2">
-                                                <StarRatingComponent score={course.rating * 20} maxScore={100} />
-                                                <span className="text-neutral-500">{(course.rating || 0).toFixed(1)}</span>
+                                                <StarRatingComponent
+                                                    score={course.rating * 20}
+                                                    maxScore={100}
+                                                />
+                                                <span className="text-neutral-500">
+                                                    {(course.rating || 0).toFixed(1)}
+                                                </span>
                                             </div>
                                             <span className="-mb-3 mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
-                                                {course.is_course_published_to_catalaouge ? (<><Eye className="size-4" /> In Catalog</>) : (<><EyeSlash className="size-4" /> Private</>)}
+                                                {course.is_course_published_to_catalaouge ? (
+                                                    <>
+                                                        <Eye className="size-4" /> In Catalog
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <EyeSlash className="size-4" /> Private
+                                                    </>
+                                                )}
                                             </span>
                                             <div className="mt-auto flex gap-2 pt-3">
-                                                <MyButton className="flex-1 text-sm" buttonType="primary" onClick={(e) => { e.stopPropagation(); navigate({ to: '/study-library/courses/course-details', search: { courseId: course.id, sessionId: course.session_id, levelId: course.level_id } }); }}>
-                                                    View {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                                                <MyButton
+                                                    className="flex-1 text-sm"
+                                                    buttonType="primary"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        navigate({
+                                                            to: '/study-library/courses/course-details',
+                                                            search: {
+                                                                courseId: course.id,
+                                                                sessionId: course.session_id,
+                                                                levelId: course.level_id,
+                                                            },
+                                                        });
+                                                    }}
+                                                >
+                                                    View{' '}
+                                                    {getTerminology(
+                                                        ContentTerms.Course,
+                                                        SystemTerms.Course
+                                                    )}
                                                 </MyButton>
                                                 {showDeleteButton && (
                                                     <div onClick={(e) => e.stopPropagation()}>
-                                                        <AlertDialog open={deletingCourseId === course.id || undefined} onOpenChange={() => {}}>
+                                                        <AlertDialog
+                                                            open={
+                                                                deletingCourseId === course.id ||
+                                                                undefined
+                                                            }
+                                                            onOpenChange={() => {}}
+                                                        >
                                                             <AlertDialogTrigger className="flex size-9 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-500 transition-colors hover:border-red-300 hover:bg-red-100 active:scale-95">
                                                                 <TrashSimple size={18} />
                                                             </AlertDialogTrigger>
                                                             <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md">
                                                                 <AlertDialogHeader>
-                                                                    <AlertDialogTitle>Are you sure you want to delete this course?</AlertDialogTitle>
-                                                                    <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                                                                    <AlertDialogTitle>
+                                                                        Are you sure you want to
+                                                                        delete this course?
+                                                                    </AlertDialogTitle>
+                                                                    <AlertDialogDescription>
+                                                                        This action cannot be
+                                                                        undone.
+                                                                    </AlertDialogDescription>
                                                                 </AlertDialogHeader>
                                                                 <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
-                                                                    <AlertDialogCancel disabled={deletingCourseId === course.id} className="w-full sm:w-auto">Cancel</AlertDialogCancel>
-                                                                    <AlertDialogAction onClick={() => handleCourseDelete(course.id)} disabled={deletingCourseId === course.id} className="w-full bg-primary-500 text-white sm:w-auto">
-                                                                        {deletingCourseId === course.id ? 'Deleting...' : 'Confirm'}
+                                                                    <AlertDialogCancel
+                                                                        disabled={
+                                                                            deletingCourseId ===
+                                                                            course.id
+                                                                        }
+                                                                        className="w-full sm:w-auto"
+                                                                    >
+                                                                        Cancel
+                                                                    </AlertDialogCancel>
+                                                                    <AlertDialogAction
+                                                                        onClick={() =>
+                                                                            handleCourseDelete(
+                                                                                course.id
+                                                                            )
+                                                                        }
+                                                                        disabled={
+                                                                            deletingCourseId ===
+                                                                            course.id
+                                                                        }
+                                                                        className="w-full bg-primary-500 text-white sm:w-auto"
+                                                                    >
+                                                                        {deletingCourseId ===
+                                                                        course.id
+                                                                            ? 'Deleting...'
+                                                                            : 'Confirm'}
                                                                     </AlertDialogAction>
                                                                 </AlertDialogFooter>
                                                             </AlertDialogContent>

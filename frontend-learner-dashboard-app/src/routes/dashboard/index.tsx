@@ -191,28 +191,31 @@ export function DashboardComponent() {
     // resolve the matching package_session_id from the institute's batch
     // list stored in Preferences. Without this, the slide viewer opens but
     // the sidebar tree can't hydrate.
-    let sessionId = "";
-    try {
-      const instituteDetailsStr = await Preferences.get({ key: "InstituteDetails" });
-      const institute = instituteDetailsStr.value ? JSON.parse(instituteDetailsStr.value) : null;
-      const batches: BatchForSessionType[] | null = institute?.batches_for_sessions ?? null;
-      const match = batches?.find(
-        (b) => b.package_dto?.id === slide.package_id && b.level?.id === slide.level_id
-      );
-      sessionId = match?.id || "";
-      if (!sessionId) {
-        // Fall back to the currently selected batch — usually the right one
-        // for single-batch learners.
+    let sessionId = slide.package_session_id || "";
+    if (!sessionId) {
+      try {
+        const instituteDetailsStr = await Preferences.get({ key: "InstituteDetails" });
+        const institute = instituteDetailsStr.value ? JSON.parse(instituteDetailsStr.value) : null;
+        const batches: BatchForSessionType[] | null = institute?.batches_for_sessions ?? null;
+        const match = batches?.find(
+          (b) => b.package_dto?.id === slide.package_id && b.level?.id === slide.level_id
+        );
+        sessionId = match?.id || "";
+        if (!sessionId) {
+          // Fall back to the currently selected batch — usually the right one
+          // for single-batch learners.
+          sessionId = (await getPackageSessionId()) || "";
+        }
+      } catch {
         sessionId = (await getPackageSessionId()) || "";
       }
-    } catch {
-      sessionId = (await getPackageSessionId()) || "";
     }
 
     navigate({
       to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
       search: {
         courseId: slide.package_id,
+        levelId: slide.level_id,
         subjectId: slide.subject_id,
         moduleId: slide.module_id,
         chapterId: slide.chapter_id,

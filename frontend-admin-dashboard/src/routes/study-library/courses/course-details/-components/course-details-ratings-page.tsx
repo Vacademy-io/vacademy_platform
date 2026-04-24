@@ -129,7 +129,7 @@ export function CourseDetailsRatingsComponent({
     const starKeys = ['five', 'four', 'three', 'two', 'one'];
 
     return (
-        <div className="x-auto flex max-w-3xl flex-col gap-8 rounded-2xl border border-neutral-200 bg-white p-6 shadow-md">
+        <div className="x-auto flex max-w-full flex-col gap-8 rounded-md bg-white p-4 ">
             {/* Feedback Form / Summary */}
             {overallRatingData?.average_rating !== null &&
                 overallRatingData?.average_rating !== undefined && (

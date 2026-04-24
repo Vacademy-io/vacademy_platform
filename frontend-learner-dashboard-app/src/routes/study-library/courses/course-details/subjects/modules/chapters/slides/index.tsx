@@ -55,6 +55,7 @@ import {
 
 interface ChapterSearchParams {
   courseId: string;
+  levelId?: string;
   subjectId: string;
   moduleId: string;
   chapterId: string;
@@ -68,6 +69,7 @@ export const Route = createFileRoute(
   component: Slides,
   validateSearch: (search: Record<string, unknown>): ChapterSearchParams => ({
     courseId: search.courseId as string,
+    levelId: search.levelId as string | undefined,
     subjectId: search.subjectId as string,
     moduleId: search.moduleId as string,
     chapterId: search.chapterId as string,
@@ -175,11 +177,20 @@ const ModuleAccordionItem = ({
 // ────────────────────────────────────────────────────────────────────────────
 
 function Slides() {
-  const { courseId, subjectId, moduleId, chapterId, slideId, sessionId } =
+  const { courseId, levelId, subjectId, moduleId, chapterId, slideId, sessionId } =
     Route.useSearch();
 
   useSidebar();
   const navigate = useNavigate();
+
+  const { data: packageSessionIdFromStore } = useQuery({
+    queryKey: ["packageSessionId"],
+    queryFn: async () => {
+      const { getPackageSessionId } = await import("@/utils/study-library/get-list-from-stores/getPackageSessionId");
+      return getPackageSessionId();
+    },
+  });
+  const resolvedSessionId = sessionId || packageSessionIdFromStore || "";
   const { setItems, setActiveItem, activeItem, setSlideEvaluations } =
     useContentStore();
   const { slides } = useSlides(chapterId || "");
@@ -562,7 +573,7 @@ function Slides() {
   // subject so the crumb always populates.
   const courseSubjects = useMemo<Array<{ id: string; subject_name: string; subject_order?: number | null }>>(() => {
     type BreadcrumbSubject = { id: string; subject_name: string; subject_order?: number | null };
-    type LoosenedLevel = { subjects?: BreadcrumbSubject[] };
+    type LoosenedLevel = { id?: string; subjects?: BreadcrumbSubject[] };
     type LoosenedSession = { level_with_details?: LoosenedLevel[]; levelDetails?: LoosenedLevel[] };
     const sources: Array<{ sessions?: LoosenedSession[] } | null | undefined> = [
       courseInitData as { sessions?: LoosenedSession[] } | null | undefined,
@@ -574,7 +585,11 @@ function Slides() {
       for (const sess of sessions) {
         const levels = sess.level_with_details ?? sess.levelDetails ?? [];
         for (const level of levels) {
-          if (level.subjects?.some((s) => s.id === subjectId)) {
+          // If levelId matches, return its subjects immediately
+          if (levelId && level.id === levelId && level.subjects) {
+            return level.subjects;
+          }
+          if (!levelId && level.subjects?.some((s) => s.id === subjectId)) {
             return level.subjects || [];
           }
         }
@@ -594,7 +609,7 @@ function Slides() {
       return [{ id: subjectId, subject_name: subjectName }];
     }
     return [];
-  }, [courseInitData, courseDetails, subjectId, studyLibraryData, subjectName]);
+  }, [courseInitData, courseDetails, subjectId, studyLibraryData, subjectName, levelId]);
 
   // Switch to a different subject: fetch that subject's modules/chapters
   // and drop the learner on the first chapter's slides view. If the target
@@ -608,7 +623,7 @@ function Slides() {
       if (!targetSubjectId || targetSubjectId === subjectId) return;
       setSwitchingSubjectId(targetSubjectId);
       try {
-        const pkgSessionId = sessionId || "";
+        const pkgSessionId = resolvedSessionId;
         // Try authenticated fetch first; the public variant is a fallback
         // for unenrolled/public browsing contexts.
         let modules: ModulesWithChapters[] | null = null;
@@ -1121,7 +1136,7 @@ function Slides() {
           <div className="py-1">
             <CourseTreeSidebar
               courseId={courseId || ""}
-              sessionId={sessionId || ""}
+              sessionId={resolvedSessionId}
               subjects={courseSubjects}
               currentSubjectId={subjectId || ""}
               currentModuleId={moduleId || ""}
@@ -1391,7 +1406,7 @@ function Slides() {
       <InitStudyLibraryProvider>
         <ModulesWithChaptersProvider
           subjectId={subjectId}
-          packageSessionId={sessionId || undefined}
+          packageSessionId={resolvedSessionId || undefined}
         >
           <SidebarProvider defaultOpen={false}>
             {activeItem?.id === "feedback-slide" ? (

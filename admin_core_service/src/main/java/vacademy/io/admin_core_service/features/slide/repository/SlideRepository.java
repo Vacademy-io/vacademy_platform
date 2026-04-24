@@ -242,7 +242,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     ps.level_id AS levelId,
                     ch.id AS chapterId,
                     m.id AS moduleId,
-                    sub.id AS subjectId
+                    sub.id AS subjectId,
+                    ps.id AS packageSessionId
 
                 FROM slide s
                 JOIN activity_log al ON al.slide_id = s.id

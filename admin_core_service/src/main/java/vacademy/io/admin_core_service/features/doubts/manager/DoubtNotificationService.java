@@ -48,6 +48,9 @@ public class DoubtNotificationService {
     private static final String PUSH_TITLE_RESOLVED = "Your doubt was resolved";
     private static final String EMAIL_TYPE = "UTILITY_EMAIL";
 
+    /** Priority used for the bell-icon system alert. 2 = medium (matches live-session alerts). */
+    private static final int ALERT_PRIORITY_DEFAULT = 2;
+
     /** Last-resort sender when an institute has no utility email configured. */
     private static final String FALLBACK_SUPPORT_EMAIL = "support@vacademy.io";
     /** Matches the default in DynamicNotificationService's theme resolver. */
@@ -110,6 +113,16 @@ public class DoubtNotificationService {
                         buildPlaceholders(doubt, null, ctx), ctx);
             }
         }
+
+        // Bell-icon alert: always fire for the assigned teacher(s). Unlike push/email this is a
+        // cheap, dismissible in-app signal, so we don't gate it behind the channel prefs — if an
+        // admin has opted out of push/email they still see the doubt in their bell.
+        // createdByRole="ADMIN" bypasses the institute's optional announcement_approval_required gate
+        // (see AnnouncementService.createAnnouncement:94) — system-generated doubt alerts must never
+        // wait for a human to approve them. We keep createdBy=learnerId for audit traceability.
+        dispatchSystemAlert(instituteId, assigneeUserIds, PUSH_TITLE_RAISED,
+                pushBody == null || pushBody.isEmpty() ? "A learner is waiting for your reply." : pushBody,
+                doubt.getUserId(), ctx, "ADMIN");
     }
 
     public void notifyDoubtResolved(Doubts doubt, String instituteId) {
@@ -138,6 +151,44 @@ public class DoubtNotificationService {
                 safeEmail(instituteId, recipient, templateId,
                         buildPlaceholders(doubt, null, ctx), ctx);
             }
+        }
+
+        // Bell-icon alert for the learner. Same rationale as the raised path: unconditional,
+        // cheap, and dismissible — gives the learner a visible signal inside the app regardless
+        // of push/email configuration.
+        dispatchSystemAlert(instituteId, recipient, PUSH_TITLE_RESOLVED, pushBody,
+                /* createdBy = doubt system */ null, ctx, "ADMIN");
+    }
+
+    /**
+     * Creates an Announcement with modeType=SYSTEM_ALERT in notification-service so the
+     * recipients' bell lights up. {@code createdByRole="ADMIN"} bypasses the institute's
+     * optional approval gate (see AnnouncementService.createAnnouncement:94).
+     *
+     * <p>{@code createdBy} is a best-effort author tag: for the "raised" event it's the learner's
+     * userId so an admin viewing the alert knows who triggered it; for the "resolved" event we
+     * fall back to "system" since the operator is often an admin and we don't want to leak their id
+     * into the learner's alert metadata.
+     */
+    private void dispatchSystemAlert(String instituteId, List<String> userIds, String title,
+                                     String body, String createdBy, InstituteContext ctx,
+                                     String createdByRole) {
+        if (userIds == null || userIds.isEmpty()) return;
+        try {
+            Map<String, Object> settings = new HashMap<>();
+            settings.put("priority", ALERT_PRIORITY_DEFAULT);
+            settings.put("isDismissible", true);
+            settings.put("showBadge", true);
+            settings.put("isActive", true);
+            notificationService.createSystemAlertAnnouncement(
+                    instituteId, userIds, title, body,
+                    createdBy != null && !createdBy.isEmpty() ? createdBy : "system",
+                    ctx != null && ctx.instituteName != null && !ctx.instituteName.isEmpty()
+                            ? ctx.instituteName : "System",
+                    createdByRole,
+                    settings);
+        } catch (Exception e) {
+            log.warn("Doubt system alert dispatch failed (institute={}): {}", instituteId, e.getMessage());
         }
     }
 
@@ -181,18 +232,22 @@ public class DoubtNotificationService {
             Object raw = instituteSettingService.getSettingByInstituteIdAndKey(
                     instituteId, SettingKeyEnums.DOUBT_MANAGEMENT_SETTING.name());
             if (raw == null) {
-                // No setting at all → apply defaults: push ON, email OFF.
-                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(false).build();
+                // No setting at all → apply defaults: push ON, email ON.
+                // Email default flipped to true so freshly-onboarded institutes get the
+                // notifications out-of-the-box; admins who want to silence them can toggle off
+                // from the Doubt Management settings page. The seeded global default templates
+                // (V215) guarantee a working email template even without explicit institute config.
+                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(true).build();
             }
             DoubtManagementSettingDataDto setting = objectMapper.convertValue(raw, DoubtManagementSettingDataDto.class);
             if (setting.getNotifications() == null) {
-                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(false).build();
+                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(true).build();
             }
             DoubtNotificationChannelPrefs event = raised
                     ? setting.getNotifications().getOnDoubtRaised()
                     : setting.getNotifications().getOnDoubtResolved();
             if (event == null) {
-                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(false).build();
+                return DoubtNotificationChannelPrefs.builder().pushEnabled(true).emailEnabled(true).build();
             }
             return event;
         } catch (Exception e) {

@@ -225,7 +225,7 @@ public class DynamicNotificationService {
             Template template = resolveTemplate(config, instituteId);
             String templateName = template.getName();
 
-            Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(templateVars);
+            Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(template, templateVars);
 
             String channel;
             UnifiedSendRequest.SendOptions.SendOptionsBuilder optsBuilder = UnifiedSendRequest.SendOptions.builder()
@@ -243,6 +243,11 @@ public class DynamicNotificationService {
                     String phone = user.getMobileNumber();
                     if (phone != null) phone = phone.replaceAll("[^0-9]", "");
                     recipientBuilder.phone(phone);
+                    // Mirror the merged variables (user vars + template dynamic_parameters)
+                    // into WATI contact attributes so the template can resolve placeholders
+                    // like {{program_name}}, {{start_day}}, etc. whether WATI pulls them from
+                    // customParams or from contact-level attributes.
+                    pushVariablesToWatiContactAttributes(instituteId, user, variables);
                     break;
 
                 case EMAIL:
@@ -417,6 +422,36 @@ public class DynamicNotificationService {
             log.error("Error sending referral invitation notification for institute: {}",
                     instituteId, e);
             throw new VacademyException("Failed to send referral invitation notification: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Push the merged template-variables map (user vars overlaid with the
+     * template's admin-configured dynamic_parameters) into WATI as contact
+     * attributes, so the template send has every placeholder resolvable.
+     * Silently no-ops if the institute has no WATI config or phone is missing.
+     */
+    private void pushVariablesToWatiContactAttributes(String instituteId, UserDTO user,
+            Map<String, String> variables) {
+        if (user == null || user.getMobileNumber() == null || user.getMobileNumber().isBlank()) {
+            return;
+        }
+        if (variables == null || variables.isEmpty()) {
+            return;
+        }
+        try {
+            Institute institute = getInstituteFromId(instituteId);
+            WatiConfig watiConfig = watiContactAttributeService.extractWatiConfig(institute);
+            if (watiConfig == null) {
+                return;
+            }
+            Map<String, Object> attributes = new HashMap<>(variables);
+            watiContactAttributeService.updateContactAttributes(
+                    watiConfig, user.getMobileNumber(), attributes);
+        } catch (Exception e) {
+            // Never fail the send because of contact-attribute errors.
+            log.warn("Failed to push merged variables to WATI contact attributes for user {}: {}",
+                    user.getId(), e.getMessage());
         }
     }
 

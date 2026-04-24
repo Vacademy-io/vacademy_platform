@@ -198,26 +198,43 @@ public class WorkflowBuilderService {
             scheduleRepository.save(schedule);
         }
 
-        // Create trigger if applicable
+        // Create trigger(s) if applicable
         if ("EVENT_DRIVEN".equalsIgnoreCase(dto.getWorkflowType()) && dto.getTrigger() != null) {
             WorkflowBuilderDTO.TriggerDTO trig = dto.getTrigger();
-            // Default: UUID strategy — every trigger event creates a unique execution.
-            // Users can configure stricter dedup (EVENT_BASED, CONTEXT_BASED) via the API if needed.
             String defaultIdempotencySettings = "{\"strategy\":\"UUID\"}";
-
-            WorkflowTrigger trigger = WorkflowTrigger.builder()
-                    .triggerEventName(trig.getTriggerEventName())
-                    .instituteId(dto.getInstituteId())
-                    .description(trig.getDescription())
-                    .status("ACTIVE")
-                    .eventId(trig.getEventId())
-                    .eventAppliedType(trig.getEventAppliedType())
-                    .idempotencyGenerationSetting(defaultIdempotencySettings)
-                    .build();
-            // Set workflow relationship - need to fetch the managed entity
             Workflow managedWorkflow = workflowRepository.findById(workflowId).orElseThrow();
-            trigger.setWorkflow(managedWorkflow);
-            triggerRepository.save(trigger);
+
+            java.util.List<String> effectiveIds = trig.getEffectiveEventIds();
+
+            if (effectiveIds.isEmpty()) {
+                // Global trigger — no specific event ID (fires for all events of this type)
+                WorkflowTrigger trigger = WorkflowTrigger.builder()
+                        .triggerEventName(trig.getTriggerEventName())
+                        .instituteId(dto.getInstituteId())
+                        .description(trig.getDescription())
+                        .status("ACTIVE")
+                        .eventId(null)
+                        .eventAppliedType(trig.getEventAppliedType())
+                        .idempotencyGenerationSetting(defaultIdempotencySettings)
+                        .build();
+                trigger.setWorkflow(managedWorkflow);
+                triggerRepository.save(trigger);
+            } else {
+                // One trigger row per event ID — allows multi-select
+                for (String eid : effectiveIds) {
+                    WorkflowTrigger trigger = WorkflowTrigger.builder()
+                            .triggerEventName(trig.getTriggerEventName())
+                            .instituteId(dto.getInstituteId())
+                            .description(trig.getDescription())
+                            .status("ACTIVE")
+                            .eventId(eid)
+                            .eventAppliedType(trig.getEventAppliedType())
+                            .idempotencyGenerationSetting(defaultIdempotencySettings)
+                            .build();
+                    trigger.setWorkflow(managedWorkflow);
+                    triggerRepository.save(trigger);
+                }
+            }
         }
 
         // Build response
@@ -349,16 +366,22 @@ public class WorkflowBuilderService {
                     .build();
         }
 
-        // Get trigger
+        // Get trigger(s) — consolidate multiple trigger rows into one DTO with event_ids array
         WorkflowBuilderDTO.TriggerDTO triggerDto = null;
         List<WorkflowTrigger> triggers = triggerRepository.findByWorkflowId(workflowId);
         if (!triggers.isEmpty()) {
-            WorkflowTrigger trigger = triggers.get(0);
+            WorkflowTrigger firstTrigger = triggers.get(0);
+            java.util.List<String> allEventIds = triggers.stream()
+                    .map(WorkflowTrigger::getEventId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .distinct()
+                    .collect(java.util.stream.Collectors.toList());
             triggerDto = WorkflowBuilderDTO.TriggerDTO.builder()
-                    .triggerEventName(trigger.getTriggerEventName())
-                    .description(trigger.getDescription())
-                    .eventId(trigger.getEventId())
-                    .eventAppliedType(trigger.getEventAppliedType())
+                    .triggerEventName(firstTrigger.getTriggerEventName())
+                    .description(firstTrigger.getDescription())
+                    .eventId(allEventIds.isEmpty() ? null : allEventIds.get(0))
+                    .eventIds(allEventIds.isEmpty() ? null : allEventIds)
+                    .eventAppliedType(firstTrigger.getEventAppliedType())
                     .build();
         }
 

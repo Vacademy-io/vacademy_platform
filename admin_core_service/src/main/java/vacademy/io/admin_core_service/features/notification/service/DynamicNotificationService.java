@@ -223,7 +223,12 @@ public class DynamicNotificationService {
             // notification_template table is NOT a mirror of admin-core's templates, so relying
             // on cross-service name resolution there produced empty subject/body on the wire.
             Template template = resolveTemplate(config, instituteId);
-            String templateName = template.getName();
+            // Prefer the config's template_name (the WATI/Meta-approved name) for dispatch —
+            // the Template row's own name may be a one-off admin-core label (e.g. a typo copy
+            // used only to hold session-specific dynamic_parameters) that WATI does not know.
+            String templateName = (config.getTemplateName() != null && !config.getTemplateName().isBlank())
+                    ? config.getTemplateName()
+                    : template.getName();
 
             Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(template, templateVars);
 
@@ -687,14 +692,19 @@ public class DynamicNotificationService {
 
     /**
      * Resolves the Template entity referenced by a NotificationEventConfig.
-     * Tries name-based lookup first (new path) so we can still honour config.templateName,
-     * then falls back to id-based lookup (legacy). Throws if neither resolves — the caller
-     * catches VacademyException and drops to the legacy sendNotificationByType path.
+     * Tries id-based lookup first so two configs sharing the same template_name can still
+     * point at distinct rows (e.g. for session-specific dynamic_parameters while dispatching
+     * to one shared WATI-approved template name). Falls back to name-based lookup when no
+     * templateId is set on the config or when the id no longer resolves to a row.
      */
     private Template resolveTemplate(NotificationEventConfig config, String instituteId) {
+        if (config.getTemplateId() != null && !config.getTemplateId().isBlank()) {
+            Optional<Template> byId = templateRepository.findById(config.getTemplateId());
+            if (byId.isPresent()) return byId.get();
+        }
+
         String templateName = config.getTemplateName();
         String templateTypeStr = config.getTemplateType() != null ? config.getTemplateType().name() : null;
-
         if (templateName != null && !templateName.isBlank() && templateTypeStr != null) {
             Optional<Template> byName = templateRepository
                     .findByInstituteIdAndNameAndType(instituteId, templateName, templateTypeStr)
@@ -703,15 +713,8 @@ public class DynamicNotificationService {
             if (byName.isPresent()) return byName.get();
         }
 
-        if (config.getTemplateId() != null && !config.getTemplateId().isBlank()) {
-            return templateRepository.findById(config.getTemplateId())
-                    .orElseThrow(() -> new VacademyException(
-                            "Template not found: config=" + config.getId()
-                                    + ", name=" + templateName + ", id=" + config.getTemplateId()));
-        }
-
         throw new VacademyException(
                 "Template not found: config=" + config.getId() + ", name=" + templateName
-                        + " (no templateId provided)");
+                        + ", id=" + config.getTemplateId());
     }
 }

@@ -19,6 +19,12 @@ import {
 } from '@phosphor-icons/react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from '@/components/ui/accordion';
+import {
     Select,
     SelectContent,
     SelectItem,
@@ -1176,7 +1182,7 @@ export const CourseDetailsPage = () => {
             )}
 
             {/* Course Header - Title and Description on left, Banner/Video on right */}
-            <div className="w-full px-2 py-3 sm:px-4 lg:px-6 lg:py-4">
+            <div className="w-full">
                 {!form.watch('courseData')?.title ? (
                     <div className="grid grid-cols-1 items-center gap-6 lg:grid-cols-2 lg:gap-10">
                         <div className="space-y-3">
@@ -1193,145 +1199,177 @@ export const CourseDetailsPage = () => {
                     (() => {
                         const mediaId = form.watch('courseData')?.courseMediaId?.id;
                         const mediaType = form.watch('courseData')?.courseMediaId?.type;
-                        const bannerMediaId = form.watch('courseData')?.courseBannerMediaId;
-                        const hasMedia = !!mediaId || !!bannerMediaId;
+                        const bannerPreview = form.watch('courseData')?.courseBannerMediaPreview;
+                        const hasMedia = !!mediaId;
+                        const hasBannerBackdrop = !!bannerPreview;
                         return (
                             <div
-                                className={`grid grid-cols-1 items-center gap-6 ${
-                                    hasMedia ? 'lg:grid-cols-2 lg:gap-10' : ''
+                                className={`relative ${
+                                    hasBannerBackdrop
+                                        ? 'min-h-[220px] overflow-hidden sm:min-h-[280px] lg:min-h-[320px]'
+                                        : ''
                                 }`}
                             >
-                                {/* Left side - Tags, Title, Description */}
-                                <div className="space-y-3 sm:space-y-4">
-                                    {(form.getValues('courseData')?.tags?.length ?? 0) > 0 && (
-                                        <div className="flex flex-wrap gap-2">
-                                            {form
-                                                .getValues('courseData')
-                                                ?.tags?.map((tag, index) => (
-                                                    <span
-                                                        key={index}
-                                                        className="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-700 shadow-sm sm:text-xs"
-                                                    >
-                                                        {tag}
-                                                    </span>
-                                                ))}
-                                        </div>
-                                    )}
-
-                                    <h1 className="text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl lg:text-3xl">
-                                        {form.getValues('courseData')?.title}
-                                    </h1>
-
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        {form.getValues('courseData')
-                                            ?.isCoursePublishedToCatalaouge && (
-                                            <MyButton
-                                                type="button"
-                                                scale="small"
-                                                buttonType="primary"
-                                                className="rounded-md bg-success-100 font-medium !text-black hover:bg-success-100 focus:bg-success-100 active:bg-success-100"
-                                            >
-                                                Added to catalog
-                                            </MyButton>
+                                {hasBannerBackdrop && (
+                                    <>
+                                        {/* Blurred fill so the contained banner has no empty bars around it */}
+                                        <img
+                                            src={bannerPreview}
+                                            alt=""
+                                            aria-hidden
+                                            className="pointer-events-none absolute inset-0 size-full scale-110 object-cover object-center blur-2xl"
+                                        />
+                                        {/* Full banner, uncropped */}
+                                        <img
+                                            src={bannerPreview}
+                                            alt=""
+                                            aria-hidden
+                                            className="pointer-events-none absolute inset-0 size-full object-contain object-center"
+                                        />
+                                        <div
+                                            aria-hidden
+                                            className="pointer-events-none absolute inset-0 bg-black/25"
+                                        />
+                                        <div
+                                            aria-hidden
+                                            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/80 via-white/50 to-white/10"
+                                        />
+                                    </>
+                                )}
+                                <div
+                                    className={`relative grid grid-cols-1 items-center gap-6 p-4 sm:p-6 ${
+                                        hasMedia ? 'lg:grid-cols-2 lg:gap-10' : ''
+                                    }`}
+                                >
+                                    {/* Left side - Tags, Title, Description */}
+                                    <div className="space-y-3 sm:space-y-4">
+                                        {(form.getValues('courseData')?.tags?.length ?? 0) > 0 && (
+                                            <div className="flex flex-wrap gap-2">
+                                                {form
+                                                    .getValues('courseData')
+                                                    ?.tags?.map((tag, index) => (
+                                                        <span
+                                                            key={index}
+                                                            className="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-700 shadow-sm sm:text-xs"
+                                                        >
+                                                            {tag}
+                                                        </span>
+                                                    ))}
+                                            </div>
                                         )}
-                                        {canEdit && (
-                                            <AddCourseForm
-                                                isEdit={true}
-                                                initialCourseData={form.getValues()}
-                                                getParentPackageSessionId={({
-                                                    sessionId,
-                                                    levelId,
-                                                }: {
-                                                    sessionId: string;
-                                                    levelId: string;
-                                                }) =>
-                                                    parentBatchIdRef.current.get(
-                                                        `${sessionId}|${levelId}`
-                                                    ) ?? ''
-                                                }
-                                            />
+
+                                        <h1 className="text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl lg:text-3xl">
+                                            {form.getValues('courseData')?.title}
+                                        </h1>
+
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {form.getValues('courseData')
+                                                ?.isCoursePublishedToCatalaouge && (
+                                                <MyButton
+                                                    type="button"
+                                                    scale="small"
+                                                    buttonType="primary"
+                                                    className="rounded-md bg-success-100 font-medium !text-black hover:bg-success-100 focus:bg-success-100 active:bg-success-100"
+                                                >
+                                                    Added to catalog
+                                                </MyButton>
+                                            )}
+                                            {canEdit && (
+                                                <AddCourseForm
+                                                    isEdit={true}
+                                                    initialCourseData={form.getValues()}
+                                                    getParentPackageSessionId={({
+                                                        sessionId,
+                                                        levelId,
+                                                    }: {
+                                                        sessionId: string;
+                                                        levelId: string;
+                                                    }) =>
+                                                        parentBatchIdRef.current.get(
+                                                            `${sessionId}|${levelId}`
+                                                        ) ?? ''
+                                                    }
+                                                />
+                                            )}
+                                        </div>
+
+                                        {form.getValues('courseData')?.description && (
+                                            <div>
+                                                <div
+                                                    ref={descRef}
+                                                    className={`text-sm leading-relaxed text-gray-600 sm:text-base ${
+                                                        !isDescExpanded ? 'line-clamp-4' : ''
+                                                    }`}
+                                                    dangerouslySetInnerHTML={{
+                                                        __html:
+                                                            form.getValues('courseData')
+                                                                ?.description || '',
+                                                    }}
+                                                />
+                                                {(isDescClamped || isDescExpanded) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setIsDescExpanded((prev) => !prev)
+                                                        }
+                                                        className="mt-1 text-sm font-medium text-primary-500 hover:underline focus:outline-none"
+                                                    >
+                                                        {isDescExpanded ? 'View less' : 'View more'}
+                                                    </button>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
 
-                                    {form.getValues('courseData')?.description && (
-                                        <div>
-                                            <div
-                                                ref={descRef}
-                                                className={`text-sm leading-relaxed text-gray-600 sm:text-base ${
-                                                    !isDescExpanded ? 'line-clamp-4' : ''
-                                                }`}
-                                                dangerouslySetInnerHTML={{
-                                                    __html: form.getValues('courseData')?.description || '',
-                                                }}
+                                    {/* Right side - Video/Image preview */}
+                                    {mediaId &&
+                                        (mediaType === 'youtube' ? (
+                                            <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10">
+                                                <div className="relative aspect-video">
+                                                    <iframe
+                                                        width="100%"
+                                                        height="100%"
+                                                        src={`https://www.youtube.com/embed/${extractYouTubeVideoId(mediaId || '')}`}
+                                                        title="YouTube video player"
+                                                        frameBorder="0"
+                                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                        allowFullScreen
+                                                        className="size-full object-contain"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ) : mediaType === 'video' ? (
+                                            <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10">
+                                                <div className="relative aspect-video">
+                                                    <video
+                                                        src={
+                                                            form.watch('courseData')
+                                                                ?.courseMediaPreview
+                                                        }
+                                                        controls
+                                                        controlsList="nodownload noremoteplayback"
+                                                        disablePictureInPicture
+                                                        disableRemotePlayback
+                                                        className="size-full object-contain"
+                                                        onError={(e) => {
+                                                            e.currentTarget.style.display = 'none';
+                                                            e.currentTarget.parentElement?.classList.add(
+                                                                'bg-black'
+                                                            );
+                                                        }}
+                                                    >
+                                                        Your browser does not support the video tag.
+                                                    </video>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <img
+                                                src={form.watch('courseData')?.courseMediaPreview}
+                                                alt="Course Media"
+                                                className="max-h-[300px] w-full rounded-xl object-contain"
                                             />
-                                            {(isDescClamped || isDescExpanded) && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsDescExpanded((prev) => !prev)}
-                                                    className="mt-1 text-sm font-medium text-primary-500 hover:underline focus:outline-none"
-                                                >
-                                                    {isDescExpanded ? 'View less' : 'View more'}
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
+                                        ))}
                                 </div>
-
-                                {/* Right side - Video or Banner */}
-                                {mediaId &&
-                                    (mediaType === 'youtube' ? (
-                                        <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10">
-                                            <div className="relative aspect-video">
-                                                <iframe
-                                                    width="100%"
-                                                    height="100%"
-                                                    src={`https://www.youtube.com/embed/${extractYouTubeVideoId(mediaId || '')}`}
-                                                    title="YouTube video player"
-                                                    frameBorder="0"
-                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                    allowFullScreen
-                                                    className="size-full object-contain"
-                                                />
-                                            </div>
-                                        </div>
-                                    ) : mediaType === 'video' ? (
-                                        <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10">
-                                            <div className="relative aspect-video">
-                                                <video
-                                                    src={form.watch('courseData')?.courseMediaPreview}
-                                                    controls
-                                                    controlsList="nodownload noremoteplayback"
-                                                    disablePictureInPicture
-                                                    disableRemotePlayback
-                                                    className="size-full object-contain"
-                                                    onError={(e) => {
-                                                        e.currentTarget.style.display = 'none';
-                                                        e.currentTarget.parentElement?.classList.add(
-                                                            'bg-black'
-                                                        );
-                                                    }}
-                                                >
-                                                    Your browser does not support the video tag.
-                                                </video>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <img
-                                            src={form.watch('courseData')?.courseMediaPreview}
-                                            alt="Course Banner"
-                                            className="max-h-[300px] w-full rounded-xl object-contain"
-                                        />
-                                    ))}
-                                {!mediaId && bannerMediaId && (
-                                    <img
-                                        src={form.watch('courseData')?.courseBannerMediaPreview}
-                                        alt="Course Banner"
-                                        className="max-h-[300px] w-full rounded-xl object-contain"
-                                        onError={(e) => {
-                                            e.currentTarget.style.display = 'none';
-                                        }}
-                                    />
-                                )}
                             </div>
                         );
                     })()
@@ -1339,7 +1377,7 @@ export const CourseDetailsPage = () => {
             </div>
 
             {/* Main Content */}
-            <div className="w-full px-2 py-2 sm:px-4 lg:px-6 lg:py-3">
+            <div className="w-full space-y-2 px-2 py-2 sm:px-4 lg:px-6 lg:py-3">
                 <div className="flex flex-col gap-3 xl:flex-row">
                     {/* Left Column - 2/3 width */}
                     <div className="flex w-full grow flex-col xl:w-2/3">
@@ -1489,99 +1527,145 @@ export const CourseDetailsPage = () => {
                             selectedBatchId={effectiveSelectedBatchId}
                         />
 
-                        {/* What You'll Learn Section */}
-                        {extractTextFromHTML(form.getValues('courseData').whatYoullLearn) && (
-                            <div className="mb-3 mt-2 rounded-md border-l-4 border-emerald-400 bg-white p-3 shadow-sm lg:mb-4 lg:mt-3">
-                                <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
-                                    What you&apos;ll learn?
-                                </h2>
-                                <div className="rounded-md">
-                                    <p
-                                        className="text-sm leading-relaxed text-gray-700"
-                                        dangerouslySetInnerHTML={{
-                                            __html:
-                                                form.getValues('courseData').whatYoullLearn || '',
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        {/* About Content Section */}
-                        {extractTextFromHTML(form.getValues('courseData').aboutTheCourse) && (
-                            <div className="mb-3 rounded-md border-l-4 border-blue-400 bg-white p-3 shadow-sm lg:mb-4">
-                                <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
-                                    About this{' '}
-                                    {getTerminology(
-                                        ContentTerms.Course,
-                                        SystemTerms.Course
-                                    ).toLocaleLowerCase()}
-                                </h2>
-                                <div className="rounded-md">
-                                    <p
-                                        className="text-sm leading-relaxed text-gray-700"
-                                        dangerouslySetInnerHTML={{
-                                            __html:
-                                                form.getValues('courseData').aboutTheCourse || '',
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Who Should Join Section */}
-                        {extractTextFromHTML(form.getValues('courseData').whoShouldLearn) && (
-                            <div className="mb-3 rounded-md border-l-4 border-purple-400 bg-white p-3 shadow-sm lg:mb-4">
-                                <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
-                                    Who should join?
-                                </h2>
-                                <div className="rounded-md">
-                                    <p
-                                        className="text-sm leading-relaxed text-gray-700"
-                                        dangerouslySetInnerHTML={{
-                                            __html:
-                                                form.getValues('courseData').whoShouldLearn || '',
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Instructors Section - only visible for ADMIN or TEACHER roles */}
-                        {instructors && instructors.length > 0 && isAdminOrTeacher && (
-                            <div className="mb-3 flex flex-col gap-2 rounded-md border-l-4 border-orange-400 bg-white p-3 shadow-sm lg:mb-4">
-                                <h2 className="text-lg font-semibold text-gray-900">Authors</h2>
-                                {loadingInstructors ? (
-                                    <div className="text-sm text-gray-600">
-                                        Loading instructors...
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {resolvedInstructors.map((instructor, index) => (
-                                            <div
-                                                key={index}
-                                                className="flex items-center gap-2 rounded-md p-1"
-                                            >
-                                                <Avatar className="size-6">
-                                                    {instructor.profilePicUrl ? (
-                                                        <AvatarImage
-                                                            src={instructor.profilePicUrl}
-                                                            alt={instructor.email}
+                        {(extractTextFromHTML(form.getValues('courseData').whatYoullLearn) ||
+                            extractTextFromHTML(form.getValues('courseData').aboutTheCourse) ||
+                            extractTextFromHTML(form.getValues('courseData').whoShouldLearn) ||
+                            (instructors && instructors.length > 0 && isAdminOrTeacher)) && (
+                            <Accordion
+                                type="single"
+                                collapsible
+                                defaultValue="course-highlights"
+                                className="my-2 mb-3 border-none shadow-none lg:mb-4"
+                            >
+                                <AccordionItem
+                                    value="course-highlights"
+                                    className="rounded-md border border-b-0 border-neutral-200 bg-white shadow-sm"
+                                >
+                                    <AccordionTrigger className="px-3 text-sm font-medium  hover:no-underline lg:px-4">
+                                        {getTerminology(ContentTerms.Course, SystemTerms.Course)}{' '}
+                                        highlights
+                                    </AccordionTrigger>
+                                    <AccordionContent className="px-3 pb-3 lg:px-4 lg:pb-4">
+                                        <div className="space-y-3 lg:space-y-4">
+                                            {/* What You'll Learn Section */}
+                                            {extractTextFromHTML(
+                                                form.getValues('courseData').whatYoullLearn
+                                            ) && (
+                                                <div className="rounded-md border-l-4 border-emerald-400 bg-white p-3 shadow-sm">
+                                                    <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
+                                                        What you&apos;ll learn?
+                                                    </h2>
+                                                    <div className="rounded-md">
+                                                        <p
+                                                            className="text-sm leading-relaxed text-gray-700"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html:
+                                                                    form.getValues('courseData')
+                                                                        .whatYoullLearn || '',
+                                                            }}
                                                         />
-                                                    ) : (
-                                                        <AvatarFallback className="bg-primary-500 text-xs font-medium text-white">
-                                                            {getInitials(instructor.email)}
-                                                        </AvatarFallback>
-                                                    )}
-                                                </Avatar>
-                                                <h3 className="text-sm font-medium text-gray-800">
-                                                    {instructor.name}
-                                                </h3>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* About Content Section */}
+                                            {extractTextFromHTML(
+                                                form.getValues('courseData').aboutTheCourse
+                                            ) && (
+                                                <div className="rounded-md border-l-4 border-blue-400 bg-white p-3 shadow-sm">
+                                                    <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
+                                                        About this{' '}
+                                                        {getTerminology(
+                                                            ContentTerms.Course,
+                                                            SystemTerms.Course
+                                                        ).toLocaleLowerCase()}
+                                                    </h2>
+                                                    <div className="rounded-md">
+                                                        <p
+                                                            className="text-sm leading-relaxed text-gray-700"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html:
+                                                                    form.getValues('courseData')
+                                                                        .aboutTheCourse || '',
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Who Should Join Section */}
+                                            {extractTextFromHTML(
+                                                form.getValues('courseData').whoShouldLearn
+                                            ) && (
+                                                <div className="rounded-md border-l-4 border-purple-400 bg-white p-3 shadow-sm">
+                                                    <h2 className="mb-2 text-lg font-semibold text-gray-900 lg:mb-3">
+                                                        Who should join?
+                                                    </h2>
+                                                    <div className="rounded-md">
+                                                        <p
+                                                            className="text-sm leading-relaxed text-gray-700"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html:
+                                                                    form.getValues('courseData')
+                                                                        .whoShouldLearn || '',
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Instructors Section - only visible for ADMIN or TEACHER roles */}
+                                            {instructors &&
+                                                instructors.length > 0 &&
+                                                isAdminOrTeacher && (
+                                                    <div className="flex flex-col gap-2 rounded-md border-l-4 border-orange-400 bg-white p-3 shadow-sm">
+                                                        <h2 className="text-lg font-semibold text-gray-900">
+                                                            Authors
+                                                        </h2>
+                                                        {loadingInstructors ? (
+                                                            <div className="text-sm text-gray-600">
+                                                                Loading instructors...
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-2">
+                                                                {resolvedInstructors.map(
+                                                                    (instructor, index) => (
+                                                                        <div
+                                                                            key={index}
+                                                                            className="flex items-center gap-2 rounded-md p-1"
+                                                                        >
+                                                                            <Avatar className="size-6">
+                                                                                {instructor.profilePicUrl ? (
+                                                                                    <AvatarImage
+                                                                                        src={
+                                                                                            instructor.profilePicUrl
+                                                                                        }
+                                                                                        alt={
+                                                                                            instructor.email
+                                                                                        }
+                                                                                    />
+                                                                                ) : (
+                                                                                    <AvatarFallback className="bg-primary-500 text-xs font-medium text-white">
+                                                                                        {getInitials(
+                                                                                            instructor.email
+                                                                                        )}
+                                                                                    </AvatarFallback>
+                                                                                )}
+                                                                            </Avatar>
+                                                                            <h3 className="text-sm font-medium text-gray-800">
+                                                                                {instructor.name}
+                                                                            </h3>
+                                                                        </div>
+                                                                    )
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                        </div>
+                                    </AccordionContent>
+                                </AccordionItem>
+                            </Accordion>
                         )}
                     </div>
 

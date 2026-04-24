@@ -28,4 +28,6 @@ public interface LearnerRecentSlides {
     String getChapterId();
 
     String getModuleId();
+
+    String getPackageSessionId();
 }

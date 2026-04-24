@@ -1235,6 +1235,14 @@ export const CourseStructureDetails = ({
         setOpenChapters(new Set());
     };
 
+    const totalModulesCount = Object.values(subjectModulesMap).flat().length;
+    const totalChaptersCount = Object.values(subjectModulesMap)
+        .flat()
+        .reduce((sum, m) => sum + m.chapters.length, 0);
+    const totalExpandable = subjects.length + totalModulesCount + totalChaptersCount;
+    const totalOpen = openSubjects.size + openModules.size + openChapters.size;
+    const isAllExpanded = totalExpandable > 0 && totalOpen >= totalExpandable;
+
     // Navigation functions for loose view
     const handleSubjectClick = (subjectId: string, subjectName: string) => {
         setSelectedSubjectId(subjectId);
@@ -1285,25 +1293,24 @@ export const CourseStructureDetails = ({
                 <div className="sticky top-0 z-10 mb-3 border-b border-gray-200 bg-white px-6 py-3">
                     <div className="flex items-center justify-between">
                         <h3 className="text-sm font-medium text-gray-700">Course Structure</h3>
-                        {!readOnly && (
-                            <div className="flex gap-2">
-                                <MyButton
-                                    buttonType="secondary"
-                                    onClick={expandAll}
-                                    className="flex items-center gap-1.5 !px-3 !py-1 text-xs"
-                                >
-                                    <ArrowsOut size={14} weight="bold" />
-                                    Expand All
-                                </MyButton>
-                                <MyButton
-                                    buttonType="secondary"
-                                    onClick={collapseAll}
-                                    className="flex items-center gap-1.5 !px-3 !py-1 text-xs"
-                                >
-                                    <ArrowsIn size={14} weight="bold" />
-                                    Collapse All
-                                </MyButton>
-                            </div>
+                        {!readOnly && totalExpandable > 0 && (
+                            <MyButton
+                                buttonType="secondary"
+                                onClick={isAllExpanded ? collapseAll : expandAll}
+                                className="flex items-center gap-1.5 !px-3 !py-1 text-xs"
+                            >
+                                {isAllExpanded ? (
+                                    <>
+                                        <ArrowsIn size={14} weight="bold" />
+                                        Collapse All
+                                    </>
+                                ) : (
+                                    <>
+                                        <ArrowsOut size={14} weight="bold" />
+                                        Expand All
+                                    </>
+                                )}
+                            </MyButton>
                         )}
                     </div>
                 </div>
@@ -1365,7 +1372,7 @@ export const CourseStructureDetails = ({
                                                                     </span>
                                                                 )}
                                                             <span
-                                                                className="truncate"
+                                                                className="min-w-0 flex-1 truncate"
                                                                 title={subject.subject_name}
                                                             >
                                                                 {convertCapitalToTitleCase(
@@ -1414,8 +1421,8 @@ export const CourseStructureDetails = ({
                                                             </div>
                                                         )}
                                                     </CollapsibleTrigger>
-                                                    <CollapsibleContent className="py-1 pl-11">
-                                                        <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
+                                                    <CollapsibleContent className="py-1 pl-4 sm:pl-11">
+                                                        <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-2 sm:pl-6">
                                                             <div className="absolute -left-[13px] top-0 h-full">
                                                                 <div className="sticky top-0 flex h-full flex-col items-center" />
                                                             </div>
@@ -1517,7 +1524,7 @@ export const CourseStructureDetails = ({
                                                                                                     </span>
                                                                                                 )}
                                                                                             <span
-                                                                                                className="truncate"
+                                                                                                className="min-w-0 flex-1 truncate"
                                                                                                 title={
                                                                                                     mod
                                                                                                         .module
@@ -1598,8 +1605,8 @@ export const CourseStructureDetails = ({
                                                                                             </div>
                                                                                         )}
                                                                                     </CollapsibleTrigger>
-                                                                                    <CollapsibleContent className="py-1 pl-10">
-                                                                                        <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
+                                                                                    <CollapsibleContent className="py-1 pl-3 sm:pl-10">
+                                                                                        <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-2 sm:pl-6">
                                                                                             <AddChapterButton
                                                                                                 moduleId={
                                                                                                     mod
@@ -1729,7 +1736,7 @@ export const CourseStructureDetails = ({
                                                                                                                                         </span>
                                                                                                                                     )}
                                                                                                                                 <span
-                                                                                                                                    className="truncate"
+                                                                                                                                    className="min-w-0 flex-1 truncate"
                                                                                                                                     title={
                                                                                                                                         ch
                                                                                                                                             .chapter
@@ -1877,8 +1884,8 @@ export const CourseStructureDetails = ({
                                                                                                                                 </div>
                                                                                                                             )}
                                                                                                                         </CollapsibleTrigger>
-                                                                                                                        <CollapsibleContent className="py-1 pl-9">
-                                                                                                                            <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
+                                                                                                                        <CollapsibleContent className="py-1 pl-2 sm:pl-9">
+                                                                                                                            <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-2 sm:pl-6">
                                                                                                                                 {!readOnly && (
                                                                                                                                     <MyButton
                                                                                                                                         buttonType="text"
@@ -1993,7 +2000,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     '3'
                                                                                                                                                 )}
                                                                                                                                                 <span
-                                                                                                                                                    className="truncate"
+                                                                                                                                                    className="min-w-0 flex-1 truncate"
                                                                                                                                                     title={
                                                                                                                                                         slide.title
                                                                                                                                                     }
@@ -2151,7 +2158,7 @@ export const CourseStructureDetails = ({
                                                                                                     </span>
                                                                                                 )}
                                                                                             <span
-                                                                                                className="truncate"
+                                                                                                className="min-w-0 flex-1 truncate"
                                                                                                 title={
                                                                                                     mod
                                                                                                         .module
@@ -2232,8 +2239,8 @@ export const CourseStructureDetails = ({
                                                                                             </div>
                                                                                         )}
                                                                                     </CollapsibleTrigger>
-                                                                                    <CollapsibleContent className="py-1 pl-10">
-                                                                                        <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
+                                                                                    <CollapsibleContent className="py-1 pl-3 sm:pl-10">
+                                                                                        <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-2 sm:pl-6">
                                                                                             <AddChapterButton
                                                                                                 moduleId={
                                                                                                     mod
@@ -2363,7 +2370,7 @@ export const CourseStructureDetails = ({
                                                                                                                                         </span>
                                                                                                                                     )}
                                                                                                                                 <span
-                                                                                                                                    className="truncate"
+                                                                                                                                    className="min-w-0 flex-1 truncate"
                                                                                                                                     title={
                                                                                                                                         ch
                                                                                                                                             .chapter
@@ -2509,8 +2516,8 @@ export const CourseStructureDetails = ({
                                                                                                                                 </div>
                                                                                                                             )}
                                                                                                                         </CollapsibleTrigger>
-                                                                                                                        <CollapsibleContent className="py-1 pl-9">
-                                                                                                                            <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
+                                                                                                                        <CollapsibleContent className="py-1 pl-2 sm:pl-9">
+                                                                                                                            <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-2 sm:pl-6">
                                                                                                                                 {!readOnly && (
                                                                                                                                     <MyButton
                                                                                                                                         buttonType="text"
@@ -2625,7 +2632,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     '3'
                                                                                                                                                 )}
                                                                                                                                                 <span
-                                                                                                                                                    className="truncate"
+                                                                                                                                                    className="min-w-0 flex-1 truncate"
                                                                                                                                                     title={
                                                                                                                                                         slide.title
                                                                                                                                                     }
@@ -2870,7 +2877,7 @@ export const CourseStructureDetails = ({
                                                                                                                                         </span>
                                                                                                                                     )}
                                                                                                                                 <span
-                                                                                                                                    className="truncate"
+                                                                                                                                    className="min-w-0 flex-1 truncate"
                                                                                                                                     title={
                                                                                                                                         ch
                                                                                                                                             .chapter
@@ -3016,8 +3023,8 @@ export const CourseStructureDetails = ({
                                                                                                                                 </div>
                                                                                                                             )}
                                                                                                                         </CollapsibleTrigger>
-                                                                                                                        <CollapsibleContent className="py-1 pl-9">
-                                                                                                                            <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-6">
+                                                                                                                        <CollapsibleContent className="py-1 pl-2 sm:pl-9">
+                                                                                                                            <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-2 sm:pl-6">
                                                                                                                                 <MyButton
                                                                                                                                     buttonType="text"
                                                                                                                                     onClick={(
@@ -3130,7 +3137,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     '3'
                                                                                                                                                 )}
                                                                                                                                                 <span
-                                                                                                                                                    className="truncate"
+                                                                                                                                                    className="min-w-0 flex-1 truncate"
                                                                                                                                                     title={
                                                                                                                                                         slide.title
                                                                                                                                                     }
@@ -3234,7 +3241,7 @@ export const CourseStructureDetails = ({
                                                             slide
                                                         )}
                                                         <span
-                                                            className="truncate"
+                                                            className="min-w-0 flex-1 truncate"
                                                             title={slide.title}
                                                         >
                                                             {slide.title || `Slide ${sIdx + 1}`}
@@ -4350,7 +4357,7 @@ export const CourseStructureDetails = ({
     return isLoading ? (
         <DashboardLoader />
     ) : (
-        <div className="flex size-full flex-col gap-3 rounded-lg bg-white py-4 text-neutral-700">
+        <div className="flex w-full flex-col gap-3 rounded-lg bg-white py-4 text-neutral-700">
             {/* Restriction Message */}
             {!canEditStructure && (
                 <div className="mx-4 rounded-md border border-orange-200 bg-orange-50 p-3">

@@ -20,7 +20,7 @@ export const ChatbotTrigger: React.FC = () => {
     <Tooltip delayDuration={0}>
       <TooltipTrigger asChild>
         <div
-          className="p-0.5 rounded-full border border-primary-500 flex items-center justify-center"
+          className="p-0.5 rounded-full border border-primary-500 flex items-center justify-center mt-10 sm:mt-0"
           role="button"
           onClick={() => setIsOpen(!isOpen)}
         >

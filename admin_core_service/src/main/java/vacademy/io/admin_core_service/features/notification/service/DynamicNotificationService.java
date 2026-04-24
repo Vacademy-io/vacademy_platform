@@ -225,7 +225,7 @@ public class DynamicNotificationService {
             Template template = resolveTemplate(config, instituteId);
             String templateName = template.getName();
 
-            Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(templateVars);
+            Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(template, templateVars);
 
             String channel;
             UnifiedSendRequest.SendOptions.SendOptionsBuilder optsBuilder = UnifiedSendRequest.SendOptions.builder()
@@ -243,6 +243,16 @@ public class DynamicNotificationService {
                     String phone = user.getMobileNumber();
                     if (phone != null) phone = phone.replaceAll("[^0-9]", "");
                     recipientBuilder.phone(phone);
+                    // WhatsApp bodies are plain-text: convert any inline HTML
+                    // (e.g. <br>, <p>, &amp;) in values into newlines / plain
+                    // characters before they reach WATI — otherwise tags leak
+                    // through as literal text in the delivered message.
+                    Map<String, String> whatsappVariables = sanitizeVariablesForWhatsApp(variables);
+                    recipientBuilder.variables(whatsappVariables);
+                    // Mirror the sanitized, merged variables into WATI contact
+                    // attributes so the template resolves placeholders whether
+                    // WATI pulls them from customParams or contact attributes.
+                    pushVariablesToWatiContactAttributes(instituteId, user, whatsappVariables);
                     break;
 
                 case EMAIL:
@@ -417,6 +427,75 @@ public class DynamicNotificationService {
             log.error("Error sending referral invitation notification for institute: {}",
                     instituteId, e);
             throw new VacademyException("Failed to send referral invitation notification: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Convert HTML-bearing values in the variables map into WhatsApp-safe
+     * plain text. Only the values are transformed; keys are preserved. Values
+     * without any HTML-looking markup are left untouched (fast path).
+     *
+     * Transformations:
+     *   &lt;br&gt; / &lt;br/&gt; / &lt;br /&gt;  → \n
+     *   &lt;p&gt; / &lt;/p&gt;                   → \n
+     *   any other tag                            → stripped (content kept)
+     *   common HTML entities                     → decoded
+     */
+    private Map<String, String> sanitizeVariablesForWhatsApp(Map<String, String> variables) {
+        if (variables == null || variables.isEmpty()) return variables;
+        Map<String, String> sanitized = new HashMap<>(variables.size());
+        for (Map.Entry<String, String> entry : variables.entrySet()) {
+            sanitized.put(entry.getKey(), htmlToWhatsAppText(entry.getValue()));
+        }
+        return sanitized;
+    }
+
+    private static String htmlToWhatsAppText(String value) {
+        if (value == null || value.isEmpty()) return value;
+        // Fast path: no markup of interest
+        if (value.indexOf('<') < 0 && value.indexOf('&') < 0) return value;
+        String out = value;
+        out = out.replaceAll("(?i)<br\\s*/?>", "\n");
+        out = out.replaceAll("(?i)</p\\s*>", "\n");
+        out = out.replaceAll("(?i)<p[^>]*>", "");
+        out = out.replaceAll("<[^>]+>", "");
+        out = out.replace("&nbsp;", " ")
+                 .replace("&amp;", "&")
+                 .replace("&lt;", "<")
+                 .replace("&gt;", ">")
+                 .replace("&quot;", "\"")
+                 .replace("&#39;", "'")
+                 .replace("&#x27;", "'");
+        return out;
+    }
+
+    /**
+     * Push the merged template-variables map (user vars overlaid with the
+     * template's admin-configured dynamic_parameters) into WATI as contact
+     * attributes, so the template send has every placeholder resolvable.
+     * Silently no-ops if the institute has no WATI config or phone is missing.
+     */
+    private void pushVariablesToWatiContactAttributes(String instituteId, UserDTO user,
+            Map<String, String> variables) {
+        if (user == null || user.getMobileNumber() == null || user.getMobileNumber().isBlank()) {
+            return;
+        }
+        if (variables == null || variables.isEmpty()) {
+            return;
+        }
+        try {
+            Institute institute = getInstituteFromId(instituteId);
+            WatiConfig watiConfig = watiContactAttributeService.extractWatiConfig(institute);
+            if (watiConfig == null) {
+                return;
+            }
+            Map<String, Object> attributes = new HashMap<>(variables);
+            watiContactAttributeService.updateContactAttributes(
+                    watiConfig, user.getMobileNumber(), attributes);
+        } catch (Exception e) {
+            // Never fail the send because of contact-attribute errors.
+            log.warn("Failed to push merged variables to WATI contact attributes for user {}: {}",
+                    user.getId(), e.getMessage());
         }
     }
 

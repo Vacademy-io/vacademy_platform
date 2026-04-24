@@ -70,6 +70,26 @@ public class DoubtService {
                                                List<String> status,
                                                List<String> batchIds,
                                                Pageable pageable) {
+        return getAllDoubtsWithFilter(contentTypes, contentPositions, sources, sourceIds, startDate, endDate,
+                userIds, status, batchIds, null, pageable);
+    }
+
+    /**
+     * @param viewerUserId when non-null, restricts results to doubts visible to that viewer via
+     *                     direct doubt_assignee rows or FSPSSM (batch-level or subject-level).
+     *                     Pass {@code null} for admin/root callers — no visibility filter is applied.
+     */
+    public Page<Doubts> getAllDoubtsWithFilter(List<String> contentTypes,
+                                               List<String> contentPositions,
+                                               List<String> sources,
+                                               List<String> sourceIds,
+                                               Date startDate,
+                                               Date endDate,
+                                               List<String> userIds,
+                                               List<String> status,
+                                               List<String> batchIds,
+                                               String viewerUserId,
+                                               Pageable pageable) {
         List<String> filteredContentTypes = Optional.ofNullable(contentTypes).orElse(Collections.emptyList());
         List<String> filteredContentPositions = Optional.ofNullable(contentPositions).orElse(Collections.emptyList());
         List<String> filteredSources = Optional.ofNullable(sources).orElse(Collections.emptyList());
@@ -77,10 +97,26 @@ public class DoubtService {
         List<String> filteredUserIds = Optional.ofNullable(userIds).orElse(Collections.emptyList());
         List<String> filteredStatus = Optional.ofNullable(status).orElse(Collections.emptyList());
         List<String> filteredBatchIds = (batchIds == null ? Collections.emptyList() : batchIds);
-        if (batchIds == null || batchIds.isEmpty()) {
-            return Page.empty(pageable); // return empty page
+        boolean hasBatchIds = !filteredBatchIds.isEmpty();
+
+        // Admin callers (no viewer scope) MUST pass at least one batch — otherwise the admin UI
+        // would return every doubt in the entire institute via a single broad query.
+        if (viewerUserId == null) {
+            if (!hasBatchIds) {
+                return Page.empty(pageable);
+            }
+            return doubtsRepository.findDoubtsWithFilter(filteredContentPositions, filteredContentTypes, filteredSources,
+                    filteredSourceIds, filteredUserIds, filteredStatus, filteredBatchIds, startDate, endDate, pageable);
         }
-        return doubtsRepository.findDoubtsWithFilter(filteredContentPositions,filteredContentTypes,filteredSources,filteredSourceIds,filteredUserIds,filteredStatus,filteredBatchIds,startDate,endDate,pageable);
+
+        // Scoped (teacher/student) callers: the visibility predicates in the query already restrict
+        // results to doubts the user can see. An empty batch list here means "no explicit batch
+        // filter" rather than "no visible doubts" — critical for teachers who are directly assigned
+        // to a doubt on a batch they don't have FSPSSM access to.
+        List<String> batchIdsForQuery = hasBatchIds ? filteredBatchIds : List.of("");
+        return doubtsRepository.findDoubtsWithFilterForViewer(filteredContentPositions, filteredContentTypes, filteredSources,
+                filteredSourceIds, filteredUserIds, filteredStatus, batchIdsForQuery, hasBatchIds, startDate, endDate,
+                viewerUserId, pageable);
     }
 
     public List<DoubtsDto> createDtoFromDoubts(List<Doubts> allDoubts) {
@@ -94,11 +130,13 @@ public class DoubtService {
             );
 
             List<DoubtAssigneeDto> allAssigneeDto = new ArrayList<>();
+            List<String> excludedAssigneeUserIds = new ArrayList<>();
             String moduleId = null;
             String chapterId = null;
 
             if(doubt.getParentId() == null){
                 allAssigneeDto = getAssigneeDtoFromDoubt(doubt);
+                excludedAssigneeUserIds = getExcludedAssigneeUserIds(doubt);
                 Optional<Module> module = moduleService.getModuleBySlideIdAndPackageSessionIdWithStatusFilters(doubt.getSourceId(), doubt.getPackageSessionId());
                 if(module.isPresent()){
                     moduleId = module.get().getId();
@@ -140,6 +178,7 @@ public class DoubtService {
                     .resolvedTime(doubt.getResolvedTime())
                     .raisedTime(doubt.getRaisedTime())
                     .allDoubtAssignee(allAssigneeDto)
+                    .excludedAssigneeUserIds(excludedAssigneeUserIds)
                     .moduleId(moduleId)
                     .chapterId(chapterId)
                     .replies(createDtoFromDoubts(childDoubts)) // recursive call here
@@ -156,6 +195,23 @@ public class DoubtService {
         });
 
         return response;
+    }
+
+    /**
+     * Returns the USER-scoped user ids that the admin has explicitly excluded from this doubt's
+     * default (FSPSSM-implicit) assignee list. Persisted as DoubtAssignee rows with status
+     * {@code DELETED} and {@code source=USER}.
+     */
+    private List<String> getExcludedAssigneeUserIds(Doubts doubt) {
+        List<DoubtAssignee> deleted = doubtsAssigneeRepository.findByDoubtIdAndStatusNotIn(
+                doubt.getId(), List.of(DoubtAssigneeStatusEnum.ACTIVE.name()));
+        return deleted.stream()
+                .filter(a -> DoubtAssigneeStatusEnum.DELETED.name().equalsIgnoreCase(a.getStatus()))
+                .filter(a -> "USER".equalsIgnoreCase(a.getSource()))
+                .map(DoubtAssignee::getSourceId)
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .toList();
     }
 
     public void deleteAssigneeForDoubt(List<String> deleteAssigneeRequest) {

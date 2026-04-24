@@ -75,11 +75,11 @@ public class PaymentOption {
         this.unit = paymentOptionDTO.getUnit();
         this.paymentOptionMetadataJson = paymentOptionDTO.getPaymentOptionMetadataJson();
         if (paymentOptionDTO.getPaymentPlans() != null && !paymentOptionDTO.getPaymentPlans().isEmpty()) {
-            this.paymentPlans = paymentOptionDTO.getPaymentPlans()
+            this.paymentPlans.addAll(paymentOptionDTO.getPaymentPlans()
                     .stream()
                     .filter(Objects::nonNull)
                     .map(dto -> new PaymentPlan(dto, this))
-                    .toList();
+                    .toList());
         }
     }
 

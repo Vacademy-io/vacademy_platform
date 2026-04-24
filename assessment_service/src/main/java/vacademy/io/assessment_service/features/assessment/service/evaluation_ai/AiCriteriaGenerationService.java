@@ -22,6 +22,7 @@ import vacademy.io.assessment_service.core.exception.VacademyException;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -32,24 +33,27 @@ public class AiCriteriaGenerationService {
         private static final String API_URL = "https://openrouter.ai";
         private static final int RESPONSE_TIMEOUT_SECONDS = 60;
 
-        // Model priority list - fallback order
-        private static final List<String> MODEL_PRIORITY = List.of(
-                        "mistralai/devstral-2512:free",
-                        "nvidia/nemotron-3-nano-30b-a3b:free",
-                        "xiaomi/mimo-v2-flash:free");
         private static final int MAX_RETRIES_PER_MODEL = 2;
 
         private final WebClient webClient;
+        private final WebClient aiServiceWebClient;
         private final ObjectMapper objectMapper;
         private final EvaluationCriteriaService evaluationCriteriaService;
 
-        public AiCriteriaGenerationService(@Value("${openrouter.api.key}") String apiKey, ObjectMapper objectMapper,
+        public AiCriteriaGenerationService(
+                        @Value("${openrouter.api.key}") String apiKey,
+                        @Value("${ai.service.base.url:http://ai-service:8077}") String aiServiceBaseUrl,
+                        ObjectMapper objectMapper,
                         EvaluationCriteriaService evaluationCriteriaService) {
                 this.objectMapper = objectMapper;
                 this.evaluationCriteriaService = evaluationCriteriaService;
                 this.webClient = WebClient.builder()
                                 .baseUrl(API_URL)
                                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                                .build();
+                this.aiServiceWebClient = WebClient.builder()
+                                .baseUrl(aiServiceBaseUrl)
                                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                                 .build();
         }
@@ -63,7 +67,14 @@ public class AiCriteriaGenerationService {
 
                 try {
                         // Blocking call to get the result synchronously
-                        CriteriaRubricDto rubric = tryModelsWithFallback(prompt, 0).block();
+                        CriteriaRubricDto rubric = getModelPriority("evaluation")
+                                        .flatMap(models -> {
+                                            if (models.isEmpty()) {
+                                                return Mono.error(new RuntimeException("No AI models available for criteria generation."));
+                                            }
+                                            return tryModelsWithFallback(prompt, models, 0);
+                                        })
+                                        .block();
 
                         CreateCriteriaTemplateRequest templateRequest = CreateCriteriaTemplateRequest.builder()
                                         .name("AI Generated Criteria for " + request.getSubject())
@@ -85,13 +96,54 @@ public class AiCriteriaGenerationService {
                 }
         }
 
-        private Mono<CriteriaRubricDto> tryModelsWithFallback(String prompt, int modelIndex) {
-                if (modelIndex >= MODEL_PRIORITY.size()) {
+        private Mono<List<String>> getModelPriority(String useCase) {
+                return aiServiceWebClient.get()
+                        .uri("/ai-service/models/v2/use-case/" + useCase)
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .map(response -> {
+                                try {
+                                        JsonNode root = objectMapper.readTree(response);
+                                        List<String> models = new ArrayList<>();
+                                        
+                                        // Try getting recommended models first
+                                        JsonNode recommended = root.path("recommended_models");
+                                        if (recommended.isArray()) {
+                                                for (JsonNode modelNode : recommended) {
+                                                        String modelId = modelNode.path("model_id").asText("");
+                                                        if (!modelId.isBlank()) {
+                                                                models.add(modelId);
+                                                        }
+                                                }
+                                        }
+                                        
+                                        // If empty or error, fallback to free tier model
+                                        if (models.isEmpty() && !root.path("free_tier_model").isMissingNode()) {
+                                                String fallbackId = root.path("free_tier_model").path("model_id").asText("");
+                                                if (!fallbackId.isBlank()) {
+                                                        models.add(fallbackId);
+                                                }
+                                        }
+                                        
+                                        return models;
+                                } catch (Exception e) {
+                                        log.error("Failed to parse models API response", e);
+                                        return Collections.<String>emptyList();
+                                }
+                        })
+                        .onErrorResume(e -> {
+                                log.error("Failed to fetch models from ai-service", e);
+                                return Mono.just(Collections.emptyList());
+                        });
+        }
+
+        private Mono<CriteriaRubricDto> tryModelsWithFallback(String prompt, List<String> modelPriority, int modelIndex) {
+                if (modelIndex >= modelPriority.size()) {
                         log.error("[AI-Criteria-Gen] All models failed after retries");
-                        return Mono.error(new RuntimeException("All LLM models failed. Tried: " + MODEL_PRIORITY));
+                        return Mono.error(new RuntimeException("All LLM models failed. Tried: " + modelPriority));
                 }
 
-                String currentModel = MODEL_PRIORITY.get(modelIndex);
+                String currentModel = modelPriority.get(modelIndex);
                 log.info("[AI-Criteria-Gen] Attempting with model: {} (priority {})", currentModel, modelIndex + 1);
 
                 return generateWithModel(prompt, currentModel)
@@ -108,7 +160,7 @@ public class AiCriteriaGenerationService {
                                 .onErrorResume(error -> {
                                         log.error("[AI-Criteria-Gen] Model {} failed: {}. Trying next model...",
                                                         currentModel, error.getMessage());
-                                        return tryModelsWithFallback(prompt, modelIndex + 1);
+                                        return tryModelsWithFallback(prompt, modelPriority, modelIndex + 1);
                                 });
         }
 

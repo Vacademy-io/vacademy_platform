@@ -454,7 +454,7 @@ export const CourseStructureDetails = ({
     const [editDialog, setEditDialog] = useState<{
         isOpen: boolean;
         type: 'subject' | 'module' | 'chapter' | null;
-        item: (SubjectType | Module | (Chapter & { subjectId?: string; moduleId?: string })) | null;
+        item: (SubjectType | Module | (Chapter & { subjectId?: string; moduleId?: string; chapter_in_package_sessions?: string[] })) | null;
     }>({ isOpen: false, type: null, item: null });
 
     // Chapter form state for header button
@@ -820,7 +820,7 @@ export const CourseStructureDetails = ({
 
     const openEditDialog = (
         type: 'subject' | 'module' | 'chapter',
-        item: SubjectType | Module | (Chapter & { subjectId?: string; moduleId?: string })
+        item: SubjectType | Module | (Chapter & { subjectId?: string; moduleId?: string; chapter_in_package_sessions?: string[] })
     ) => {
         setEditDialog({ isOpen: true, type, item });
     };
@@ -1807,6 +1807,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                                 mod
                                                                                                                                                                     .module
                                                                                                                                                                     .id,
+                                                                                                                                                            chapter_in_package_sessions: ch.chapter_in_package_sessions,
                                                                                                                                                         }
                                                                                                                                                     );
                                                                                                                                                 }}
@@ -2438,6 +2439,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                                 mod
                                                                                                                                                                     .module
                                                                                                                                                                     .id,
+                                                                                                                                                            chapter_in_package_sessions: ch.chapter_in_package_sessions,
                                                                                                                                                         }
                                                                                                                                                     );
                                                                                                                                                 }}
@@ -2944,6 +2946,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                                 mod
                                                                                                                                                                     .module
                                                                                                                                                                     .id,
+                                                                                                                                                            chapter_in_package_sessions: ch.chapter_in_package_sessions,
                                                                                                                                                         }
                                                                                                                                                     );
                                                                                                                                                 }}
@@ -3770,6 +3773,7 @@ export const CourseStructureDetails = ({
                                                                         subjectId:
                                                                             selectedSubjectId,
                                                                         moduleId: selectedModuleId,
+                                                                        chapter_in_package_sessions: ch.chapter_in_package_sessions,
                                                                     });
                                                                 }}
                                                             >
@@ -3919,6 +3923,7 @@ export const CourseStructureDetails = ({
                                                                         subjectId:
                                                                             subjects[0]?.id || '',
                                                                         moduleId: selectedModuleId,
+                                                                        chapter_in_package_sessions: ch.chapter_in_package_sessions,
                                                                     });
                                                                 }}
                                                             >
@@ -4074,6 +4079,7 @@ export const CourseStructureDetails = ({
                                                                                     subjects[0].id
                                                                                 ]?.[0]?.module.id
                                                                                 : undefined,
+                                                                            chapter_in_package_sessions: ch.chapter_in_package_sessions,
                                                                         });
                                                                     }}
                                                                 >
@@ -4469,6 +4475,7 @@ export const CourseStructureDetails = ({
                         const chapterItem = editDialog.item as Chapter & {
                             subjectId?: string;
                             moduleId?: string;
+                            chapter_in_package_sessions?: string[];
                         };
                         // Convert Chapter to ChapterWithSlides format expected by AddChapterForm
                         const chapterWithSlides: ChapterWithSlidesStore = {
@@ -4479,7 +4486,7 @@ export const CourseStructureDetails = ({
                                 doc_count: 0,
                                 unknown_count: 0,
                             },
-                            chapter_in_package_sessions: [], // Will be populated by the form
+                            chapter_in_package_sessions: chapterItem.chapter_in_package_sessions || [],
                         };
                         return (
                             <AddChapterForm

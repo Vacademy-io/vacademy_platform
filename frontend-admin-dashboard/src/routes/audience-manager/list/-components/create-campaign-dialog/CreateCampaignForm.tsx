@@ -741,7 +741,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     fieldName: field.name || customFieldData.fieldName || `Field ${index + 1}`,
                     fieldType: mapFieldTypeToPayload(field.type || customFieldData.fieldType),
                     defaultValue: customFieldData.defaultValue || '',
-                    config: options ? options.join(',') : (customFieldData.config || ''),
+                    config: options
+                        ? JSON.stringify(options.map((v: string, i: number) => ({ id: i + 1, value: v, label: v })))
+                        : (customFieldData.config || ''),
                     formOrder: typeof field.order === 'number' ? field.order + 1 : (customFieldData.formOrder || index + 1),
                     isMandatory: Boolean(
                         typeof field.isRequired === 'boolean'

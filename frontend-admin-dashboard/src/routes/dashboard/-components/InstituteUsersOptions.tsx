@@ -31,13 +31,16 @@ interface ChangeRoleTypeComponentProps {
     student: UserRolesDataEntry;
     onClose: () => void;
     refetchData: () => void;
+    availableRoles?: { id: string; name: string }[];
 }
 
 const ChangeRoleTypeComponent: React.FC<ChangeRoleTypeComponentProps> = ({
     student,
     onClose,
     refetchData,
+    availableRoles,
 }) => {
+    const roleOptions = availableRoles || RoleType;
     const instituteId = getInstituteId();
     //need to previous already assigned roles
     const form = useForm<FormValues>({
@@ -97,7 +100,7 @@ const ChangeRoleTypeComponent: React.FC<ChangeRoleTypeComponentProps> = ({
                         form={form}
                         label="Role Type"
                         name="roleType"
-                        options={RoleType.map((option, index) => ({
+                        options={roleOptions.map((option, index) => ({
                             value: option.name,
                             label: mapRoleToCustomName(option.name),
                             _id: index,
@@ -338,9 +341,11 @@ const DeleteUserComponent: React.FC<DeleteUserComponentProps> = ({
 const InstituteUsersOptions = ({
     user,
     refetchData,
+    availableRoles,
 }: {
     user: UserRolesDataEntry;
     refetchData: () => void;
+    availableRoles?: { id: string; name: string }[];
 }) => {
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -383,6 +388,7 @@ const InstituteUsersOptions = ({
                         student={user}
                         onClose={() => setOpenDialog(false)}
                         refetchData={refetchData}
+                        availableRoles={availableRoles}
                     />
                 )}
                 {selectedOption === 'Disable user' && (

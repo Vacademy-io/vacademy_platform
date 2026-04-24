@@ -63,7 +63,8 @@ const COMMON_FILE_TYPES = [
     { value: 'txt', label: 'TXT' },
 ];
 
-const hasOptionsType = (type: CustomFieldType) => type === 'dropdown' || type === 'radio';
+const hasOptionsType = (type: CustomFieldType) =>
+    type === 'dropdown' || type === 'radio' || type === 'multi_select';
 
 export const AddCustomFieldDialog = ({
     trigger,

@@ -1,19 +1,27 @@
 package vacademy.io.admin_core_service.features.domain_routing.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.domain_routing.dto.DomainRoutingResolveResponse;
+import vacademy.io.admin_core_service.features.domain_routing.dto.NamingOverridesDto;
 import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
+import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.util.Optional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DomainRoutingService {
+
+    private static final ObjectMapper NAMING_OBJECT_MAPPER = new ObjectMapper();
 
     private final InstituteDomainRoutingRepository routingRepository;
     private final InstituteRepository instituteRepository;
@@ -75,6 +83,15 @@ public class DomainRoutingService {
                     .instituteThemeCode(institute.getInstituteThemeCode())
                     .learnerPortalUrl(institute.getLearnerPortalBaseUrl())
                     .instructorPortalUrl(institute.getAdminPortalBaseUrl());
+
+            // Opt-in per domain routing row so the JSON parse only runs for
+            // tenants that actually need custom terminology on pre-login screens.
+            if (mapping.isApplyNamingSetting()) {
+                NamingOverridesDto namingOverrides = extractNamingOverrides(institute.getSetting());
+                if (namingOverrides != null) {
+                    responseBuilder.namingOverrides(namingOverrides);
+                }
+            }
         }
 
         // If sub-org is configured, override logo, name, and theme from sub-org institute
@@ -94,5 +111,47 @@ public class DomainRoutingService {
         }
 
         return Optional.of(responseBuilder.build());
+    }
+
+    private NamingOverridesDto extractNamingOverrides(String settingJson) {
+        if (!StringUtils.hasText(settingJson)) {
+            return null;
+        }
+        try {
+            JsonNode root = NAMING_OBJECT_MAPPER.readTree(settingJson);
+            JsonNode entries = root.path("setting")
+                    .path(SettingKeyEnums.NAMING_SETTING.name())
+                    .path("data")
+                    .path("data");
+            if (!entries.isArray() || entries.isEmpty()) {
+                return null;
+            }
+
+            String course = null;
+            String coursePlural = null;
+            for (JsonNode entry : entries) {
+                String key = entry.path("key").asText(null);
+                String customValue = entry.path("customValue").asText(null);
+                if (!StringUtils.hasText(key) || !StringUtils.hasText(customValue)) {
+                    continue;
+                }
+                if ("Course".equals(key)) {
+                    course = customValue;
+                } else if ("Course_plural".equals(key)) {
+                    coursePlural = customValue;
+                }
+            }
+
+            if (course == null && coursePlural == null) {
+                return null;
+            }
+            return NamingOverridesDto.builder()
+                    .course(course)
+                    .coursePlural(coursePlural)
+                    .build();
+        } catch (Exception e) {
+            log.warn("Failed to parse NAMING_SETTING for domain routing response", e);
+            return null;
+        }
     }
 }

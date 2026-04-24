@@ -4,16 +4,21 @@ import { Doubt } from '../../-types/get-doubts-type';
 import { useState } from 'react';
 import { AddReply } from './AddReply';
 import { Reply } from './reply';
-import { getUserId, isUserAdmin } from '@/utils/userDetails';
+import { getUserId, isUserAdmin, isUserTeacher } from '@/utils/userDetails';
 
 export const ShowReplies = ({ parent, refetch }: { parent: Doubt; refetch: () => void }) => {
     const [showReplies, setShowReplies] = useState<boolean>(false);
     const userId = getUserId();
     const isAdmin = isUserAdmin();
-    const canReply =
-        isAdmin ||
-        (userId && parent.all_doubt_assignee?.some((assignee) => assignee.id === userId)) ||
-        (userId && parent.doubt_assignee_request_user_ids?.includes(userId));
+    const isTeacher = isUserTeacher();
+    const isAssignedUser =
+        !!userId &&
+        !!parent.all_doubt_assignee?.some(
+            (assignee) => assignee.source === 'USER' && assignee.source_id === userId
+        );
+    const isPendingAssignee =
+        !!userId && !!parent.doubt_assignee_request_user_ids?.includes(userId);
+    const canReply = isAdmin || isTeacher || isAssignedUser || isPendingAssignee;
 
     // Determine if the AddReply component should be shown when there are no replies
     const showAddReplyWithoutReplies = canReply && parent.replies.length === 0;

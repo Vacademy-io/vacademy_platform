@@ -137,10 +137,10 @@ export function RenderSettingsDialog({
                     <div className="space-y-2">
                         <Label className="text-xs font-medium">Frame Rate</Label>
                         <ToggleGroup<RenderFps>
-                            options={[15, 20, 25]}
+                            options={[15, 20, 25, 30, 45, 60]}
                             value={settings.fps}
                             onChange={(v) => update('fps', v)}
-                            labels={{ '15': '15 fps', '20': '20 fps', '25': '25 fps' }}
+                            labels={{ '15': '15 fps', '20': '20 fps', '25': '25 fps', '30': '30 fps', '45': '45 fps', '60': '60 fps' }}
                         />
                     </div>
 

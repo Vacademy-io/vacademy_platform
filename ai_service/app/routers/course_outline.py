@@ -93,8 +93,10 @@ async def stream_course_outline(
             raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=check.message)
 
     # Convert CourseUserPromptRequest to internal CourseOutlineRequest
-    # Use provided model or fall back to settings default
-    final_model = model or payload.model or get_settings().llm_default_model
+    from ..services.ai_models_service import AIModelsService
+    default_model = AIModelsService(db).get_models_for_use_case("outline").default_model_id
+    
+    final_model = model or payload.model or default_model
 
     internal_request = CourseOutlineRequest(
         institute_id=institute_id,

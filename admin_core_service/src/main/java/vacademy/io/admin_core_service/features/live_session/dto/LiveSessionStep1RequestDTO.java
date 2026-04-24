@@ -50,6 +50,27 @@ public class LiveSessionStep1RequestDTO {
 
     private BbbConfigDTO bbbConfig;
 
+    private FeedbackConfigDTO feedbackConfig;
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class FeedbackConfigDTO {
+        private Boolean enabled;
+        private java.util.List<FeedbackQuestionDTO> questions;
+    }
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class FeedbackQuestionDTO {
+        private String id;
+        private String type;       // "star_rating" or "free_text"
+        private String label;
+        private Boolean enabled;
+        private Boolean mandatory;
+        private Integer maxStars;  // only for star_rating
+        private Boolean allowHalf; // only for star_rating
+    }
+
     @Data
     @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class BbbConfigDTO {

@@ -16,6 +16,33 @@ export interface MediaElement {
 
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME']);
 
+/**
+ * Allow only http(s), blob: and data:image/ URLs for media src.
+ * Blocks javascript:, vbscript:, data:text/html, file:, etc.
+ * Returns the trimmed URL if safe, or `null` if it must be rejected.
+ */
+export function sanitizeMediaUrl(raw: string): string | null {
+    if (!raw) return null;
+    const url = raw.trim();
+    if (!url) return null;
+    // Relative URLs (no scheme) are fine — resolve against page origin.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(url) === false) return url;
+    const lower = url.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) return url;
+    if (lower.startsWith('blob:')) return url;
+    if (lower.startsWith('data:image/')) return url;
+    return null;
+}
+
+/** HTML-escape a value for safe interpolation into a double-quoted attribute. */
+function escapeAttr(v: string): string {
+    return v
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 function walkMedia(root: Element, results: MediaElement[], counter: { n: number }) {
     if (SKIP_TAGS.has(root.tagName)) return;
 
@@ -65,6 +92,8 @@ export function extractMediaElements(html: string): MediaElement[] {
  */
 export function replaceMediaSrc(html: string, index: number, newSrc: string): string {
     if (typeof window === 'undefined' || !html) return html;
+    const safeSrc = sanitizeMediaUrl(newSrc);
+    if (safeSrc === null) return html;
     try {
         const parser = new DOMParser();
         const doc = parser.parseFromString(
@@ -79,7 +108,7 @@ export function replaceMediaSrc(html: string, index: number, newSrc: string): st
             if (SKIP_TAGS.has(root.tagName)) return;
             if (root.tagName === 'IMG' || root.tagName === 'VIDEO') {
                 if (root.getAttribute('src') && counter.n === index) {
-                    root.setAttribute('src', newSrc);
+                    root.setAttribute('src', safeSrc);
                     found = true;
                     return;
                 }
@@ -143,6 +172,9 @@ export function buildMediaOverlayHtml(
     mediaType: 'image' | 'video',
     objectFit: 'contain' | 'cover' | 'fill' = 'contain'
 ): string {
+    const safeSrc = sanitizeMediaUrl(src);
+    if (safeSrc === null) return '';
+    const escaped = escapeAttr(safeSrc);
     const style = [
         'position:absolute',
         'inset:0',
@@ -152,7 +184,7 @@ export function buildMediaOverlayHtml(
     ].join(';');
 
     if (mediaType === 'video') {
-        return `<video src="${src}" style="${style}" autoplay loop muted playsinline></video>`;
+        return `<video src="${escaped}" style="${style}" autoplay loop muted playsinline></video>`;
     }
-    return `<img src="${src}" style="${style}" alt="media overlay" />`;
+    return `<img src="${escaped}" style="${style}" alt="media overlay" />`;
 }

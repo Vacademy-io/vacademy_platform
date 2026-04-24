@@ -925,6 +925,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   srcDoc={htmlDoc}
                   className="border-0 bg-transparent absolute"
                   sandbox="allow-scripts allow-same-origin allow-modals"
+                  allow="autoplay"
                   title={`AI Video Layer ${frame.id}`}
                   style={{
                     backgroundColor: index === 0 ? "#ffffff" : "transparent",
@@ -1033,13 +1034,32 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           <>
             {/* Progress Slider */}
             <div className="flex items-center gap-3">
-              <Slider
-                value={[currentTime]}
-                max={duration || 100}
-                step={0.1}
-                onValueChange={handleSeek}
-                className="flex-1"
-              />
+              <div className="relative flex-1">
+                {/* SOURCE_CLIP segment indicators */}
+                {duration > 0 && frames.filter(f => f.shot_type === 'SOURCE_CLIP').map((f, i) => {
+                  const inT = f.inTime ?? 0;
+                  const exitT = f.exitTime ?? 0;
+                  return (
+                    <div
+                      key={`src-seg-${i}`}
+                      className="absolute top-1/2 -translate-y-1/2 h-[6px] rounded bg-indigo-500/40 pointer-events-none"
+                      style={{
+                        left: `${(inT / duration) * 100}%`,
+                        width: `${((exitT - inT) / duration) * 100}%`,
+                        zIndex: 0,
+                      }}
+                      title="Source video audio"
+                    />
+                  );
+                })}
+                <Slider
+                  value={[currentTime]}
+                  max={duration || 100}
+                  step={0.1}
+                  onValueChange={handleSeek}
+                  className="relative z-[1]"
+                />
+              </div>
               <span className="text-white text-sm font-mono min-w-[60px] text-right">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>

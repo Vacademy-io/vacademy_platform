@@ -12,14 +12,131 @@ import { Copy, Check, ArrowSquareOut, Trash, Plus } from '@phosphor-icons/react'
 import {
     initiateMetaOAuth,
     getSessionPages,
+    getFormFields,
+    listPageForms,
     saveMetaConnector,
     saveGoogleConnector,
     listConnectors,
     deactivateConnector,
     buildGoogleWebhookUrl,
+    fetchAudienceCustomFields,
+    buildFieldMappingJson,
     type MetaPage,
     type ConnectorListItem,
+    type PlatformFormField,
+    type AudienceCustomField,
 } from '../-services/ad-platform-service';
+import { AUDIENCE_CAMPAIGNS_LIST } from '@/constants/urls';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+
+// ── Audience list hook ───────────────────────────────────────────────────────
+
+interface AudienceOption {
+    id: string;
+    name: string;
+}
+
+function useAudienceList(instituteId: string) {
+    return useQuery({
+        queryKey: ['audience-list-for-integrations', instituteId],
+        queryFn: async (): Promise<AudienceOption[]> => {
+            const res = await authenticatedAxiosInstance.post(AUDIENCE_CAMPAIGNS_LIST, {
+                institute_id: instituteId,
+                page: 0,
+                size: 200,
+            });
+            const items = res.data?.content ?? [];
+            return items.map((c: { id?: string; audience_id?: string; campaign_name: string }) => ({
+                id: c.audience_id ?? c.id ?? '',
+                name: c.campaign_name,
+            }));
+        },
+        enabled: !!instituteId,
+        staleTime: 60_000,
+    });
+}
+
+// ── Field mapping builder ─────────────────────────────────────────────────────
+
+interface MappingRow {
+    platformKey: string;
+    targetFieldName: string;
+}
+
+function FieldMappingBuilder({
+    platformFields,
+    audienceFields,
+    value,
+    onChange,
+}: {
+    platformFields: PlatformFormField[];
+    audienceFields: AudienceCustomField[];
+    value: MappingRow[];
+    onChange: (rows: MappingRow[]) => void;
+}) {
+    // Auto-populate unmapped platform fields
+    useEffect(() => {
+        if (platformFields.length > 0 && value.length === 0) {
+            const initial = platformFields.map((pf) => {
+                // Try auto-match by name similarity
+                const match = audienceFields.find(
+                    (af) => af.fieldName.toLowerCase().trim() === pf.key.toLowerCase().trim()
+                );
+                return { platformKey: pf.key, targetFieldName: match?.fieldName ?? '' };
+            });
+            onChange(initial);
+        }
+    }, [platformFields, audienceFields]);
+
+    const updateRow = (idx: number, target: string) => {
+        const updated = [...value];
+        updated[idx] = { ...updated[idx]!, targetFieldName: target };
+        onChange(updated);
+    };
+
+    if (platformFields.length === 0) return null;
+
+    return (
+        <div className="space-y-2">
+            <Label className="text-xs font-medium">Field Mapping</Label>
+            <p className="text-xs text-muted-foreground">
+                Map each platform field to an audience custom field. Unmapped fields are kept with
+                original names.
+            </p>
+            <div className="space-y-1.5 rounded-md border bg-neutral-50 p-3">
+                <div className="grid grid-cols-[1fr_24px_1fr] gap-2 text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+                    <span>Platform Field</span>
+                    <span />
+                    <span>Audience Field</span>
+                </div>
+                {value.map((row, idx) => (
+                    <div
+                        key={row.platformKey}
+                        className="grid grid-cols-[1fr_24px_1fr] items-center gap-2"
+                    >
+                        <div className="truncate rounded bg-white px-2 py-1.5 text-xs">
+                            {platformFields.find((p) => p.key === row.platformKey)?.label ??
+                                row.platformKey}
+                        </div>
+                        <span className="text-center text-xs text-neutral-300">→</span>
+                        <select
+                            className="rounded border bg-white px-2 py-1.5 text-xs"
+                            value={row.targetFieldName}
+                            onChange={(e) => updateRow(idx, e.target.value)}
+                        >
+                            <option value="">— skip —</option>
+                            {audienceFields.map((af) => (
+                                <option key={af.id} value={af.fieldName}>
+                                    {af.fieldName}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
 
 // ── Connector table ──────────────────────────────────────────────────────────
 
@@ -150,6 +267,7 @@ function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
     const [copied, setCopied] = useState(false);
     const instituteId = getCurrentInstituteId() ?? '';
     const webhookUrl = googleKey ? buildGoogleWebhookUrl(googleKey) : '';
+    const { data: audiences = [] } = useAudienceList(instituteId);
 
     const { mutate: save, isPending } = useMutation({
         mutationFn: () =>
@@ -182,12 +300,19 @@ function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
                     />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs">Audience ID</Label>
-                    <Input
-                        placeholder="Paste audience UUID"
+                    <Label className="text-xs">Audience</Label>
+                    <select
+                        className="w-full rounded-md border bg-white px-3 py-2 text-sm"
                         value={audienceId}
                         onChange={(e) => setAudienceId(e.target.value)}
-                    />
+                    >
+                        <option value="">Select audience...</option>
+                        {audiences.map((a) => (
+                            <option key={a.id} value={a.id}>
+                                {a.name}
+                            </option>
+                        ))}
+                    </select>
                 </div>
             </div>
             {webhookUrl && (
@@ -236,6 +361,8 @@ function AddMetaForm({
     const [formId, setFormId] = useState('');
     const [audienceId, setAudienceId] = useState('');
     const [sourceType, setSourceType] = useState<'FACEBOOK_ADS' | 'INSTAGRAM_ADS'>('FACEBOOK_ADS');
+    const [fieldMappings, setFieldMappings] = useState<MappingRow[]>([]);
+    const { data: audiences = [] } = useAudienceList(instituteId);
 
     useEffect(() => {
         if (sessionKeyFromUrl) setSessionKey(sessionKeyFromUrl);
@@ -251,6 +378,34 @@ function AddMetaForm({
         enabled: !!sessionKey,
         retry: false,
     });
+
+    // Fetch forms when a page is selected
+    const { data: forms = [], isLoading: loadingForms } = useQuery({
+        queryKey: ['meta-forms', sessionKey, selectedPageId],
+        queryFn: () => listPageForms(sessionKey, selectedPageId),
+        enabled: !!sessionKey && !!selectedPageId,
+        retry: false,
+    });
+
+    // Fetch form fields when a form is selected (for mapping UI)
+    const { data: platformFields = [] } = useQuery({
+        queryKey: ['meta-form-fields', sessionKey, formId, selectedPageId],
+        queryFn: () => getFormFields(sessionKey, formId, selectedPageId),
+        enabled: !!sessionKey && !!formId && !!selectedPageId,
+        retry: false,
+    });
+
+    // Fetch audience custom fields when an audience is selected (for mapping UI)
+    const { data: audienceFields = [] } = useQuery({
+        queryKey: ['audience-custom-fields', instituteId, audienceId],
+        queryFn: () => fetchAudienceCustomFields(instituteId, audienceId),
+        enabled: !!instituteId && !!audienceId,
+    });
+
+    // Reset mappings when form or audience changes
+    useEffect(() => {
+        setFieldMappings([]);
+    }, [formId, audienceId]);
 
     const { mutate: initOAuth, isPending: initiating } = useMutation({
         mutationFn: () => initiateMetaOAuth(instituteId),
@@ -271,13 +426,15 @@ function AddMetaForm({
                 platformFormId: formId,
                 producesSourceType: sourceType,
                 platformPageId: selectedPageId,
+                fieldMappingJson:
+                    fieldMappings.length > 0 ? buildFieldMappingJson(fieldMappings) : undefined,
             }),
         onSuccess: (result) => {
             toast.success(result.message);
-            // Reset for adding another connector with the same session
             setFormId('');
             setAudienceId('');
             setSelectedPageId('');
+            setFieldMappings([]);
             onSaved();
         },
         onError: () => toast.error('Failed to save Meta connector'),
@@ -339,20 +496,51 @@ function AddMetaForm({
                             </select>
                         </div>
                         <div className="space-y-1">
-                            <Label className="text-xs">Lead Gen Form ID</Label>
-                            <Input
-                                placeholder="e.g. 123456789012345"
-                                value={formId}
-                                onChange={(e) => setFormId(e.target.value)}
-                            />
+                            <Label className="text-xs">Lead Gen Form</Label>
+                            {loadingForms ? (
+                                <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                                    <div className="size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                                    Loading forms...
+                                </div>
+                            ) : forms.length > 0 ? (
+                                <select
+                                    className="w-full rounded-md border bg-white px-3 py-2 text-sm"
+                                    value={formId}
+                                    onChange={(e) => setFormId(e.target.value)}
+                                >
+                                    <option value="">Select a form...</option>
+                                    {forms.map((f) => (
+                                        <option key={f.id} value={f.id}>
+                                            {f.name} ({f.id})
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <Input
+                                    placeholder={
+                                        selectedPageId
+                                            ? 'No forms found — enter ID manually'
+                                            : 'Select a page first'
+                                    }
+                                    value={formId}
+                                    onChange={(e) => setFormId(e.target.value)}
+                                />
+                            )}
                         </div>
                         <div className="space-y-1">
-                            <Label className="text-xs">Audience ID</Label>
-                            <Input
-                                placeholder="Paste audience UUID"
+                            <Label className="text-xs">Audience</Label>
+                            <select
+                                className="w-full rounded-md border bg-white px-3 py-2 text-sm"
                                 value={audienceId}
                                 onChange={(e) => setAudienceId(e.target.value)}
-                            />
+                            >
+                                <option value="">Select audience...</option>
+                                {audiences.map((a) => (
+                                    <option key={a.id} value={a.id}>
+                                        {a.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                         <div className="space-y-1">
                             <Label className="text-xs">Source Type</Label>
@@ -374,6 +562,20 @@ function AddMetaForm({
                             </div>
                         </div>
                     </div>
+
+                    {/* Field mapping — appears once both form and audience are selected */}
+                    {formId &&
+                        audienceId &&
+                        platformFields.length > 0 &&
+                        audienceFields.length > 0 && (
+                            <FieldMappingBuilder
+                                platformFields={platformFields}
+                                audienceFields={audienceFields}
+                                value={fieldMappings}
+                                onChange={setFieldMappings}
+                            />
+                        )}
+
                     <MyButton
                         buttonType="primary"
                         scale="small"

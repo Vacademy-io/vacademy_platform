@@ -135,6 +135,8 @@ public class ActivityLogProcessorService {
                 try {
                         long llmStart = System.nanoTime();
                         // Step 1: Call LLM (no DB connection held during this)
+                        // Note: Passing null for instituteId defaults it to Free Tier model usage. 
+                        // TODO: Implement fetching instituteId to properly authorize Premium tier usage per institute
                         JsonNode insights = studentAnalyticsLLMService
                                         .generateStudentInsights(activityLog.getRawJson(), activityLog.getSourceType())
                                         .block();

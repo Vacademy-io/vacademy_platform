@@ -231,7 +231,27 @@ public class MetaOAuthController {
         return ResponseEntity.ok(pages);
     }
 
-    // ── Step 4: Form fields ───────────────────────────────────────────────────
+    // ── Step 4a: List forms for a page ──────────────────────────────────────
+
+    /**
+     * List all lead gen forms for a given Facebook Page.
+     * Returns [{id, name, status}] — no tokens exposed.
+     */
+    @GetMapping("/session/{sessionKey}/pages/{pageId}/forms")
+    public ResponseEntity<List<Map<String, String>>> listPageForms(
+            @PathVariable String sessionKey,
+            @PathVariable String pageId) {
+
+        OAuthConnectState state = stateRepository
+                .findValidById(sessionKey, LocalDateTime.now())
+                .orElseThrow(() -> new VacademyException("Session not found or expired"));
+
+        String pageToken = resolvePageToken(state, pageId);
+        List<Map<String, String>> forms = metaStrategy.listPageForms(pageId, pageToken);
+        return ResponseEntity.ok(forms);
+    }
+
+    // ── Step 4b: Form fields ─────────────────────────────────────────────────
 
     /**
      * Proxy to fetch field definitions for a lead gen form.
@@ -292,22 +312,25 @@ public class MetaOAuthController {
         String audienceId = request.getAudienceId() != null
                 ? request.getAudienceId() : state.getAudienceId();
 
-        // Build and save the connector with the encrypted page token
-        FormWebhookConnector connector = FormWebhookConnector.builder()
-                .vendor("META_LEAD_ADS")
-                .vendorId(request.getPlatformFormId())
-                .instituteId(instituteId)
-                .audienceId(audienceId)
-                .platformPageId(request.getSelectedPageId())
-                .platformFormId(request.getPlatformFormId())
-                .routingRulesJson(request.getRoutingRulesJson())
-                .fieldMappingJson(request.getFieldMappingJson())
-                .producesSourceType(request.getProducesSourceType() != null
-                        ? request.getProducesSourceType() : "FACEBOOK_ADS")
-                .connectionStatus("ACTIVE")
-                .webhookVerifyToken(metaWebhookVerifyToken)
-                .isActive(true)
-                .build();
+        // Upsert: update if connector already exists for this vendor + formId
+        FormWebhookConnector connector = connectorRepository
+                .findByVendorAndVendorId("META_LEAD_ADS", request.getPlatformFormId())
+                .orElse(FormWebhookConnector.builder()
+                        .vendor("META_LEAD_ADS")
+                        .vendorId(request.getPlatformFormId())
+                        .build());
+
+        connector.setInstituteId(instituteId);
+        connector.setAudienceId(audienceId);
+        connector.setPlatformPageId(request.getSelectedPageId());
+        connector.setPlatformFormId(request.getPlatformFormId());
+        connector.setRoutingRulesJson(request.getRoutingRulesJson());
+        connector.setFieldMappingJson(request.getFieldMappingJson());
+        connector.setProducesSourceType(request.getProducesSourceType() != null
+                ? request.getProducesSourceType() : "FACEBOOK_ADS");
+        connector.setConnectionStatus("ACTIVE");
+        connector.setWebhookVerifyToken(metaWebhookVerifyToken);
+        connector.setIsActive(true);
 
         OAuthTokenResult tokenResult = OAuthTokenResult.builder()
                 .accessToken(pageToken)
@@ -351,18 +374,22 @@ public class MetaOAuthController {
                     .body(Map.of("error", "googleKey and audienceId are required"));
         }
 
-        FormWebhookConnector connector = FormWebhookConnector.builder()
-                .vendor("GOOGLE_LEAD_ADS")
-                .vendorId(request.getGoogleKey())
-                .instituteId(request.getInstituteId())
-                .audienceId(request.getAudienceId())
-                .platformFormId(request.getPlatformFormId())
-                .routingRulesJson(request.getRoutingRulesJson())
-                .fieldMappingJson(request.getFieldMappingJson())
-                .producesSourceType("GOOGLE_ADS")
-                .connectionStatus("ACTIVE")
-                .isActive(true)
-                .build();
+        // Upsert: update if connector already exists for this vendor + key
+        FormWebhookConnector connector = connectorRepository
+                .findByVendorAndVendorId("GOOGLE_LEAD_ADS", request.getGoogleKey())
+                .orElse(FormWebhookConnector.builder()
+                        .vendor("GOOGLE_LEAD_ADS")
+                        .vendorId(request.getGoogleKey())
+                        .build());
+
+        connector.setInstituteId(request.getInstituteId());
+        connector.setAudienceId(request.getAudienceId());
+        connector.setPlatformFormId(request.getPlatformFormId());
+        connector.setRoutingRulesJson(request.getRoutingRulesJson());
+        connector.setFieldMappingJson(request.getFieldMappingJson());
+        connector.setProducesSourceType("GOOGLE_ADS");
+        connector.setConnectionStatus("ACTIVE");
+        connector.setIsActive(true);
 
         FormWebhookConnector saved = adPlatformWebhookService.saveConnector(connector, null);
 

@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, AsyncGenerator, Tuple
 
 import httpx
 import json
+import os
 
 from ..config import get_settings
 from ..ports.llm_client import OutlineLLMClient
@@ -21,13 +22,6 @@ class OpenRouterOutlineLLMClient(OutlineLLMClient):
     Supports free tier model fallback chain for cost-effective generation.
     """
     
-    # Free tier models to try in order (fallback chain)
-    FREE_MODELS = [
-        "xiaomi/mimo-v2-flash:free",
-        "mistralai/devstral-2512:free",
-        "nvidia/nemotron-3-nano-30b-a3b:free"
-    ]
-
     def __init__(
         self,
         base_url: Optional[str] = None,
@@ -38,15 +32,30 @@ class OpenRouterOutlineLLMClient(OutlineLLMClient):
         settings = get_settings()
         self._base_url = base_url or getattr(settings, "llm_base_url", "")
         self._api_key = api_key or getattr(settings, "openrouter_api_key", "")
+        self._internal_api_base = os.getenv("AI_SERVICE_BASE_URL", "http://localhost:8077/ai-service")
         self._default_model = default_model or getattr(
             settings, "llm_default_model", "xiaomi/mimo-v2-flash:free"
         )
-        # If using free models, set up fallback chain
-        if self._default_model in self.FREE_MODELS:
-            self._model_chain = self.FREE_MODELS
-        else:
-            self._model_chain = [self._default_model]
+        self._model_chain = []  # Fetched dynamically
         self._timeout_seconds = timeout_seconds
+
+    async def _fetch_models_from_registry(self) -> list[str]:
+        """Fetch model priority dynamically from the models v2 API for the 'outline' use case."""
+        models = []
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.get(f"{self._internal_api_base}/models/v2/use-case/outline")
+                if res.status_code == 200:
+                    data = res.json()
+                    for m in data.get("recommended_models", []):
+                        if m.get("model_id"):
+                            models.append(m["model_id"])
+                    if not models and data.get("free_tier_model", {}).get("model_id"):
+                        models.append(data["free_tier_model"]["model_id"])
+        except Exception as e:
+            # Silently fallback to an empty list, let the caller throw
+            pass
+        return models
 
     async def generate_outline(
         self, 
@@ -106,10 +115,15 @@ class OpenRouterOutlineLLMClient(OutlineLLMClient):
         # Determine which models to try
         if model:
             models_to_try = [model]
-        elif self._default_model in self.FREE_MODELS:
-            models_to_try = self._model_chain
         else:
-            models_to_try = [self._default_model]
+            if not self._model_chain:
+                # Fetch dynamically if not already cached
+                self._model_chain = await self._fetch_models_from_registry()
+            
+            if self._model_chain:
+                models_to_try = self._model_chain
+            else:
+                models_to_try = [self._default_model]
         
         last_error = None
         for model_to_use in models_to_try:

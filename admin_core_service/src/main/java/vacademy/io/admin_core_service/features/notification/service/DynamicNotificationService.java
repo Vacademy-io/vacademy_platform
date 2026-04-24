@@ -29,6 +29,7 @@ import vacademy.io.common.institute.entity.PackageEntity;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.List;
@@ -217,14 +218,12 @@ public class DynamicNotificationService {
             NotificationTemplateVariables templateVars) {
 
         try {
-            // Resolve template name: prefer templateName (new), fall back to templateId → Template.name (legacy)
-            String templateName = config.getTemplateName();
-            Template template = null;
-            if (templateName == null || templateName.isBlank()) {
-                template = templateRepository.findById(config.getTemplateId())
-                        .orElseThrow(() -> new VacademyException("Template not found: " + config.getTemplateId()));
-                templateName = template.getName();
-            }
+            // Always resolve the Template entity from admin-core's `templates`, regardless
+            // of whether templateName or templateId is set on the config. notification-service's
+            // notification_template table is NOT a mirror of admin-core's templates, so relying
+            // on cross-service name resolution there produced empty subject/body on the wire.
+            Template template = resolveTemplate(config, instituteId);
+            String templateName = template.getName();
 
             Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(templateVars);
 
@@ -249,21 +248,19 @@ public class DynamicNotificationService {
                 case EMAIL:
                     channel = "EMAIL";
                     recipientBuilder.email(user.getEmail());
-                    // For email: if templateName is set, notification service resolves content.
-                    // For legacy (templateId only), pass content from admin-core's Template entity.
-                    if (template != null) {
-                        optsBuilder
-                                .emailSubject(template.getSubject())
-                                .emailBody(template.getContent());
-                    }
-                    optsBuilder.emailType("UTILITY_EMAIL");
+                    optsBuilder
+                            .emailSubject(template.getSubject())
+                            .emailBody(template.getContent())
+                            .emailType("UTILITY_EMAIL");
                     break;
 
                 case PUSH:
                     channel = "PUSH";
                     recipientBuilder.userId(user.getId());
-                    String pushBody = template != null ? template.getContent() : "";
-                    optsBuilder.pushTitle("Notification").pushBody(pushBody);
+                    String pushTitle = template.getSubject() != null && !template.getSubject().isBlank()
+                            ? template.getSubject() : "Notification";
+                    String pushBody = template.getContent() != null ? template.getContent() : "";
+                    optsBuilder.pushTitle(pushTitle).pushBody(pushBody);
                     break;
 
                 default:
@@ -580,5 +577,35 @@ public class DynamicNotificationService {
         } catch (Exception e) {
             log.error("Error sending payment notification for applicant: {}", applicationId, e);
         }
+    }
+
+    /**
+     * Resolves the Template entity referenced by a NotificationEventConfig.
+     * Tries name-based lookup first (new path) so we can still honour config.templateName,
+     * then falls back to id-based lookup (legacy). Throws if neither resolves — the caller
+     * catches VacademyException and drops to the legacy sendNotificationByType path.
+     */
+    private Template resolveTemplate(NotificationEventConfig config, String instituteId) {
+        String templateName = config.getTemplateName();
+        String templateTypeStr = config.getTemplateType() != null ? config.getTemplateType().name() : null;
+
+        if (templateName != null && !templateName.isBlank() && templateTypeStr != null) {
+            Optional<Template> byName = templateRepository
+                    .findByInstituteIdAndNameAndType(instituteId, templateName, templateTypeStr)
+                    .or(() -> templateRepository
+                            .findByInstituteIdAndNameAndType(instituteId, templateName, templateTypeStr.toLowerCase()));
+            if (byName.isPresent()) return byName.get();
+        }
+
+        if (config.getTemplateId() != null && !config.getTemplateId().isBlank()) {
+            return templateRepository.findById(config.getTemplateId())
+                    .orElseThrow(() -> new VacademyException(
+                            "Template not found: config=" + config.getId()
+                                    + ", name=" + templateName + ", id=" + config.getTemplateId()));
+        }
+
+        throw new VacademyException(
+                "Template not found: config=" + config.getId() + ", name=" + templateName
+                        + " (no templateId provided)");
     }
 }

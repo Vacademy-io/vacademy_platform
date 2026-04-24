@@ -170,15 +170,21 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
             fields.put(name, value);
         }
 
-        // Apply field mapping from connector
+        // Extract email/phone/name from raw fields BEFORE mapping transforms the keys.
+        // Meta uses uppercase keys (EMAIL, FULL_NAME, PHONE_NUMBER) — do case-insensitive lookup.
+        String rawEmail = findValueCaseInsensitive(fields, "email");
+        String rawPhone = findValueCaseInsensitive(fields, "phone_number");
+        String rawName = findValueCaseInsensitive(fields, "full_name");
+
+        // Apply field mapping from connector (transforms keys for audience custom fields)
         Map<String, String> mappedFields = applyFieldMapping(fields, connector.getFieldMappingJson());
 
         return NormalizedLeadData.builder()
                 .platformLeadId(leadgenId)
                 .fields(mappedFields)
-                .email(mappedFields.getOrDefault("email", fields.get("email")))
-                .phone(mappedFields.getOrDefault("phone_number", fields.get("phone_number")))
-                .fullName(mappedFields.getOrDefault("full_name", fields.get("full_name")))
+                .email(rawEmail)
+                .phone(rawPhone)
+                .fullName(rawName)
                 .sourceType(connector.getProducesSourceType() != null
                         ? connector.getProducesSourceType() : "FACEBOOK_ADS")
                 .targetAudienceId(connector.getAudienceId())
@@ -288,6 +294,34 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         return pages;
     }
 
+    /**
+     * List all lead gen forms for a Facebook Page.
+     * Returns [{id, name, status}] — no tokens exposed.
+     */
+    public List<Map<String, String>> listPageForms(String pageId, String pageAccessToken) {
+        String url = GRAPH_API_BASE + "/" + pageId + "/leadgen_forms"
+                + "?access_token=" + pageAccessToken
+                + "&fields=id,name,status";
+
+        JsonNode response = webClientBuilder.build()
+                .get().uri(url)
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .block();
+
+        List<Map<String, String>> forms = new ArrayList<>();
+        if (response == null) return forms;
+
+        for (JsonNode form : response.path("data")) {
+            Map<String, String> f = new LinkedHashMap<>();
+            f.put("id", form.path("id").asText());
+            f.put("name", form.path("name").asText("Unnamed Form"));
+            f.put("status", form.path("status").asText("ACTIVE"));
+            forms.add(f);
+        }
+        return forms;
+    }
+
     @Override
     public List<PlatformFormField> fetchFormFields(String formId, String accessToken) {
         String url = GRAPH_API_BASE + "/" + formId + "?access_token=" + accessToken
@@ -394,6 +428,18 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
     }
 
     // ── Utilities ────────────────────────────────────────────────────────────
+
+    /** Case-insensitive lookup in a map (Meta sends EMAIL, FULL_NAME, etc.) */
+    private String findValueCaseInsensitive(Map<String, String> map, String key) {
+        // Try exact match first
+        String v = map.get(key);
+        if (v != null) return v;
+        // Try case-insensitive
+        for (Map.Entry<String, String> e : map.entrySet()) {
+            if (e.getKey().equalsIgnoreCase(key)) return e.getValue();
+        }
+        return null;
+    }
 
     private String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder(bytes.length * 2);

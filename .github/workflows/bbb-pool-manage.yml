@@ -344,11 +344,12 @@ jobs:
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$IP \
             "bash /tmp/bbb-fix-ip.sh '${{ matrix.domain }}' '$IP'"
 
-      - name: Sync Vacademy recording hook + heal service
+      - name: Sync Vacademy recording hook + heal service + health dashboard
         if: steps.check.outputs.skip != 'true'
         env:
           SSH_PRIVATE_KEY: ${{ secrets.BBB_SSH_PRIVATE_KEY }}
           VACADEMY_BACKEND_URL: ${{ vars.VACADEMY_BACKEND_URL }}
+          HEALTH_DASHBOARD_TOKEN: ${{ secrets.BBB_HEALTH_DASHBOARD_TOKEN }}
         run: |
           set -e
 
@@ -366,7 +367,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15"
 
-          echo "[${{ matrix.slug }}] Shipping recording hook + heal service files to $IP"
+          echo "[${{ matrix.slug }}] Shipping recording hook + heal service + health dashboard files to $IP"
           ssh $SSH_OPTS root@$IP "mkdir -p /tmp/vacademy-bbb"
           scp $SSH_OPTS \
             bigbluebutton-server/post-publish-s3-upload.sh \
@@ -374,6 +375,9 @@ jobs:
             bigbluebutton-server/bbb-heal-service.py \
             bigbluebutton-server/bbb-heal-service.service \
             bigbluebutton-server/vacademy-heal.nginx \
+            bigbluebutton-server/bbb-health-dashboard.py \
+            bigbluebutton-server/bbb-health-dashboard.service \
+            bigbluebutton-server/vacademy-health.nginx \
             root@$IP:/tmp/vacademy-bbb/
 
           # Read BBB secret from the running server — no need to store per-server secrets in GitHub
@@ -384,16 +388,21 @@ jobs:
             exit 1
           fi
 
-          echo "[${{ matrix.slug }}] Running install-recording-hook.sh (backend=$BACKEND_URL)"
+          echo "[${{ matrix.slug }}] Running install-recording-hook.sh (backend=$BACKEND_URL, domain=${{ matrix.domain }})"
           ssh $SSH_OPTS root@$IP \
-            "cd /tmp/vacademy-bbb && bash install-recording-hook.sh '$BACKEND_URL' '$BBB_SECRET'"
+            "cd /tmp/vacademy-bbb && bash install-recording-hook.sh '$BACKEND_URL' '$BBB_SECRET' '${{ matrix.domain }}' '$HEALTH_DASHBOARD_TOKEN'"
 
           # Smoke-test the heal service
           echo "[${{ matrix.slug }}] Smoke-testing heal service"
           ssh $SSH_OPTS root@$IP \
             "curl -sf -o /dev/null -w '%{http_code}' -H 'X-BBB-Secret: $BBB_SECRET' http://127.0.0.1:9091/health || true"
 
-          echo "[${{ matrix.slug }}] Recording hook + heal service synced successfully"
+          # Smoke-test the health dashboard
+          echo "[${{ matrix.slug }}] Smoke-testing health dashboard"
+          ssh $SSH_OPTS root@$IP \
+            "curl -sf -o /dev/null -w '%{http_code}' 'http://127.0.0.1:9092/api/metrics?token=$HEALTH_DASHBOARD_TOKEN' || true"
+
+          echo "[${{ matrix.slug }}] Recording hook + heal service + health dashboard synced successfully"
 
       - name: Summary
         if: steps.check.outputs.skip != 'true'
@@ -409,7 +418,8 @@ jobs:
           fi
           echo "- **Type:** ${{ matrix.server_type }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **DNS:** ${{ matrix.domain }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Recording hook + heal service:** synced from repo" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Recording hook + heal service + health dashboard:** synced from repo" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Health dashboard:** https://${{ matrix.domain }}/internal/health" >> "$GITHUB_STEP_SUMMARY"
 
   # ─────────────────────────────────────────────────────────────
   # Stop servers

@@ -59,6 +59,14 @@ import { LearnerButtonConfigInput } from './LearnerButtonConfigInput';
 import { ScrollArea } from '@radix-ui/react-scroll-area';
 import { LiveClassLinkField } from './LiveClassLinkField';
 
+// Default feedback questions configuration
+const DEFAULT_FEEDBACK_QUESTIONS = [
+    { id: 'rating', type: 'star_rating', label: 'How was the session?', enabled: true, mandatory: true, max_stars: 5, allow_half: true },
+    { id: 'learnings', type: 'free_text', label: 'What did you learn in the session?', enabled: true, mandatory: false },
+    { id: 'doubts', type: 'free_text', label: 'Any doubts or questions you have?', enabled: true, mandatory: false },
+    { id: 'feedback', type: 'free_text', label: 'Feedback for the session', enabled: true, mandatory: false },
+];
+
 export default function ScheduleStep1() {
     // Hooks and State
     const navigate = useNavigate();
@@ -186,6 +194,8 @@ export default function ScheduleStep1() {
             durationMinutes: '30',
             durationHours: '0',
             defaultLink: '',
+            feedbackEnabled: false,
+            feedbackQuestions: DEFAULT_FEEDBACK_QUESTIONS,
         };
     }, []);
 
@@ -505,6 +515,8 @@ export default function ScheduleStep1() {
             bbbMuteOnStart: schedule.bbb_config?.mute_on_start ?? true,
             bbbWebcamsOnlyForModerator: schedule.bbb_config?.webcams_only_for_moderator ?? false,
             bbbGuestPolicy: (schedule.bbb_config?.guest_policy as 'ALWAYS_ACCEPT' | 'ASK_MODERATOR' | 'ALWAYS_DENY') ?? 'ALWAYS_ACCEPT',
+            feedbackEnabled: schedule.feedback_config?.enabled ?? false,
+            feedbackQuestions: schedule.feedback_config?.questions ?? DEFAULT_FEEDBACK_QUESTIONS,
         });
 
         // Set existing file IDs for display
@@ -2037,6 +2049,81 @@ export default function ScheduleStep1() {
         </div>
     );
 
+    const renderFeedbackSettings = () => (
+        <div className="rounded-lg border border-primary-200 bg-primary-50/30 p-4">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h4 className="text-sm font-semibold">📋 Learner Feedback Settings</h4>
+                    <p className="mt-0.5 text-xs text-neutral-500">
+                        When enabled, learners see a feedback form after the session ends.
+                    </p>
+                </div>
+                <FormField
+                    control={control}
+                    name="feedbackEnabled"
+                    render={({ field }) => (
+                        <FormItem className="flex items-center gap-2 space-y-0">
+                            <FormControl>
+                                <Switch
+                                    checked={field.value ?? false}
+                                    onCheckedChange={field.onChange}
+                                />
+                            </FormControl>
+                        </FormItem>
+                    )}
+                />
+            </div>
+
+            {form.watch('feedbackEnabled') && (
+                <div className="mt-3 space-y-2">
+                    <div className="text-xs font-medium text-neutral-600">Questions</div>
+                    {(form.watch('feedbackQuestions') ?? DEFAULT_FEEDBACK_QUESTIONS).map((q, idx) => (
+                        <div
+                            key={q.id}
+                            className="flex flex-col gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                            <div className="flex items-center gap-2">
+                                <Controller
+                                    control={control}
+                                    name={`feedbackQuestions.${idx}.enabled`}
+                                    render={({ field }) => (
+                                        <Checkbox
+                                            checked={field.value ?? true}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                    )}
+                                />
+                                <span className="text-sm">
+                                    {q.label}
+                                    <span className="ml-1 text-xs text-neutral-400">
+                                        ({q.type === 'star_rating' ? '⭐ rating' : 'text'})
+                                    </span>
+                                </span>
+                            </div>
+                            <Controller
+                                control={control}
+                                name={`feedbackQuestions.${idx}.mandatory`}
+                                render={({ field }) => (
+                                    <button
+                                        type="button"
+                                        onClick={() => field.onChange(!field.value)}
+                                        className={`w-fit rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                                            field.value
+                                                ? 'bg-primary-100 text-primary-700'
+                                                : 'bg-neutral-100 text-neutral-500'
+                                        }`}
+                                    >
+                                        {field.value ? 'Required' : 'Optional'}
+                                    </button>
+                                )}
+                            />
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+
     const renderStreamingChoices = () => (
         <div className="flex flex-col items-start gap-8">
             <div className="flex flex-col items-start gap-4">
@@ -2825,6 +2912,7 @@ export default function ScheduleStep1() {
                             {renderTimezoneSelection()}
                             {renderSessionTiming()}
                             {renderLiveClassLink()}
+                            {renderFeedbackSettings()}
                             {renderStreamingChoices()}
                             {renderCustomButtonConfig()}
                             {renderWaitingRoomAndUpload()}

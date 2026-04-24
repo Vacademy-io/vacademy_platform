@@ -6,7 +6,7 @@ import { ModelInfo } from '../-types/ai-models';
  * Adapts the new v2 API response to the local component needs
  */
 export const useAIModels = () => {
-    const { data, isLoading, isError, error, refetch } = useAIModelsList();
+    const { data, isLoading, isError, error, refetch } = useAIModelsList({ category: 'general' });
 
     // Transform available models to include display info
     const availableModels: ModelInfo[] =

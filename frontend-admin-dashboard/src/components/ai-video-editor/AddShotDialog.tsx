@@ -83,7 +83,7 @@ export function AddShotDialog({ open, onClose }: AddShotDialogProps) {
     const handleAdd = useCallback(() => {
         if (!isValid) return;
 
-        const id = `shot-${Date.now()}`;
+        const id = `shot-${crypto.randomUUID()}`;
         const newEntry: Entry = isTimeDriven
             ? { id, html: BLANK_SHOT_HTML, z: 0, inTime, exitTime }
             : { id, html: BLANK_SHOT_HTML, z: 0 };

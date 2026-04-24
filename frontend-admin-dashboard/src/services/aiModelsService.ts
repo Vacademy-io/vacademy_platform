@@ -7,6 +7,7 @@ export const fetchAllAIModels = async (filters?: {
     provider?: string;
     is_free?: boolean;
     use_case?: string;
+    category?: string;
 }): Promise<AIModelsListResponse> => {
     const params = new URLSearchParams();
     if (filters) {
@@ -14,6 +15,7 @@ export const fetchAllAIModels = async (filters?: {
         if (filters.provider) params.append('provider', filters.provider);
         if (filters.is_free !== undefined) params.append('is_free', String(filters.is_free));
         if (filters.use_case) params.append('use_case', filters.use_case);
+        if (filters.category) params.append('category', filters.category);
     }
 
     // Convert params to string manually to handle boolean conversion if needed,

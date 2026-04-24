@@ -1,0 +1,16 @@
+[Unit]
+Description=Vacademy BBB Health Dashboard (server monitoring & quick actions)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/bigbluebutton/vacademy-recording.conf
+ExecStart=/usr/bin/python3 /usr/local/bin/bbb-health-dashboard.py
+Restart=on-failure
+RestartSec=5
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

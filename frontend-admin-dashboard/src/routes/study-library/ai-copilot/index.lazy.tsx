@@ -226,7 +226,7 @@ function RouteComponent() {
         hasGemini: false,
     });
 
-    const { data: modelsList, isLoading: isLoadingModels } = useAIModelsList();
+    const { data: modelsList, isLoading: isLoadingModels } = useAIModelsList({ category: 'general' });
     const [isScraping, setIsScraping] = useState(false);
 
     // Dialog states for bubbles

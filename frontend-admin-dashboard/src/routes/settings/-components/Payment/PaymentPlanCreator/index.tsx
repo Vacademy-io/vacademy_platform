@@ -19,6 +19,7 @@ import {
     getRequiredApprovalStatus,
     FreePlanInfo,
     getCurrencySymbol,
+    isApprovalToggleDisabled,
 } from '../utils/utils';
 import { PlanTypeSelection } from './PlanTypeSelection';
 import { ApprovalToggle } from './ApprovalToggle';
@@ -72,6 +73,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
     const previewRef = useRef<HTMLDivElement>(null);
     const onApprovalChange = (value: boolean) => {
         setRequireApproval(value);
+        setPlanData((prev) => ({ ...prev, requireApproval: value }));
     };
 
     // Initialize form data when creating new plan
@@ -111,8 +113,12 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
     // Auto-set approval status based on free plan restrictions
     useEffect(() => {
         if (planData.type === PaymentPlans.FREE && setRequireApproval) {
-            const requiredStatus = getRequiredApprovalStatus(existingFreePlans);
-            setRequireApproval(requiredStatus);
+            const isDisabled = isApprovalToggleDisabled(planData.type, existingFreePlans);
+            if (isDisabled) {
+                const requiredStatus = getRequiredApprovalStatus(existingFreePlans);
+                setRequireApproval(requiredStatus);
+                setPlanData((prev) => ({ ...prev, requireApproval: requiredStatus }));
+            }
         }
     }, [planData.type, existingFreePlans, setRequireApproval]);
 

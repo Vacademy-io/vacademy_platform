@@ -67,7 +67,7 @@ public class AIModelRegistryService {
 
         private void addDefaultModels(LinkedHashSet<String> modelIds, String useCase) {
                 Query defaultsQuery = entityManager.createNativeQuery(
-                                "SELECT default_model_id, fallback_model_id, free_tier_model_id " +
+                                "SELECT default_model_id, fallback_model_id " +
                                                 "FROM ai_model_defaults WHERE use_case = :use_case");
                 defaultsQuery.setParameter("use_case", useCase);
                 List<Object[]> rows = defaultsQuery.getResultList();
@@ -77,9 +77,9 @@ public class AIModelRegistryService {
                 }
 
                 Object[] row = rows.get(0);
-                addModelId(modelIds, row[0]);
-                addModelId(modelIds, row[1]);
-                addModelId(modelIds, row[2]);
+                
+                addModelId(modelIds, row[0]); // default_model_id
+                addModelId(modelIds, row[1]); // fallback_model_id
         }
 
         private void addRecommendedModels(LinkedHashSet<String> modelIds, String useCase) {

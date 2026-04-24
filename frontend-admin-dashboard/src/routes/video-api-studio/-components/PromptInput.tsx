@@ -41,6 +41,7 @@ import {
     Pause,
     Monitor,
     Smartphone,
+    Upload,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { useFileUpload } from '@/hooks/use-file-upload';
@@ -157,15 +158,21 @@ export function PromptInput({
     >([]);
     const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
     // Input video (indexed source video) state
-    const [indexedVideos, setIndexedVideos] = useState<
-        Array<{ id: string; name: string; mode: string; duration_seconds: number | null; status: string }>
-    >([]);
-    const [selectedInputVideoId, setSelectedInputVideoId] = useState<string | null>(null);
+    type InputVideoItem = { id: string; name: string; mode: string; duration_seconds: number | null; status: string; progress?: number };
+    const [indexedVideos, setIndexedVideos] = useState<InputVideoItem[]>([]);
+    const [processingVideos, setProcessingVideos] = useState<InputVideoItem[]>([]);
+    const [selectedInputVideoIds, setSelectedInputVideoIds] = useState<string[]>([]);
     const [inputVideoAudio, setInputVideoAudio] = useState<'original' | 'tts'>('tts');
+    const [muteTtsDuringSourceClips, setMuteTtsDuringSourceClips] = useState(false);
+    const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+    const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
+    const [pendingVideoMode, setPendingVideoMode] = useState<'podcast' | 'demo'>('demo');
+    const [pendingVideoName, setPendingVideoName] = useState('');
+    const videoFileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
     const attachmentInputRef = useRef<HTMLInputElement>(null);
-    const { data: modelsList } = useAIModelsList();
+    const { data: modelsList } = useAIModelsList({ category: 'general' });
     const { uploadFile, getPublicUrl: getFilePublicUrl } = useFileUpload();
     const { data: credits } = useAiCreditsQuery();
     const { data: costEstimate } = useCreditEstimateQuery(
@@ -184,29 +191,54 @@ export function PromptInput({
         }
     }, [prompt, showPreview]);
 
-    // Fetch indexed input videos for the source video selector
-    useEffect(() => {
+    // Fetch indexed input videos — completed + processing
+    const refreshInputVideos = useRef<() => void>();
+    refreshInputVideos.current = () => {
         if (!apiKey) return;
         import('../-services/input-video').then(({ listInputVideos }) => {
             listInputVideos(apiKey)
                 .then((videos) => {
-                    setIndexedVideos(
-                        videos
-                            .filter((v) => v.status === 'COMPLETED')
-                            .map((v) => ({
-                                id: v.id,
-                                name: v.name,
-                                mode: v.mode,
-                                duration_seconds: v.duration_seconds,
-                                status: v.status,
-                            })),
-                    );
+                    const toItem = (v: { id: string; name: string; mode: string; duration_seconds: number | null; status: string; progress: number }) => ({
+                        id: v.id, name: v.name, mode: v.mode,
+                        duration_seconds: v.duration_seconds, status: v.status,
+                        progress: v.progress,
+                    });
+                    setIndexedVideos(videos.filter((v) => v.status === 'COMPLETED').map(toItem));
+                    setProcessingVideos(videos.filter((v) =>
+                        v.status === 'QUEUED' || v.status === 'PROCESSING' || v.status === 'PENDING'
+                    ).map(toItem));
                 })
-                .catch(() => {
-                    /* non-fatal */
-                });
+                .catch(() => {});
         });
-    }, [apiKey]);
+    };
+    useEffect(() => { refreshInputVideos.current?.(); }, [apiKey]);
+
+    // Poll processing videos every 5s, auto-add when complete
+    useEffect(() => {
+        if (processingVideos.length === 0) return;
+        const timer = setInterval(() => {
+            refreshInputVideos.current?.();
+        }, 5000);
+        return () => clearInterval(timer);
+    }, [processingVideos.length]);
+
+    // Auto-add newly completed videos to selection
+    const prevCompletedIds = useRef(new Set<string>());
+    useEffect(() => {
+        const currentIds = new Set(indexedVideos.map((v) => v.id));
+        for (const id of currentIds) {
+            if (!prevCompletedIds.current.has(id) && prevCompletedIds.current.size > 0) {
+                // New completion — auto-add if under limit
+                setSelectedInputVideoIds((prev) => {
+                    if (prev.includes(id) || prev.length >= 5) return prev;
+                    const next = [...prev, id];
+                    if (next.length > 1) setInputVideoAudio('tts');
+                    return next;
+                });
+            }
+        }
+        prevCompletedIds.current = currentIds;
+    }, [indexedVideos]);
 
     // Auto-select model based on quality tier
     useEffect(() => {
@@ -303,6 +335,64 @@ export function PromptInput({
         setPlayingVoiceId(voice.id);
     };
 
+    // Step 1: Validate file and show mode selector
+    const handleVideoFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+
+        const ACCEPTED = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo'];
+        if (!ACCEPTED.includes(file.type)) {
+            toast.error('Unsupported format. Use MP4, WebM, or MOV.');
+            return;
+        }
+        if (file.size > 500 * 1024 * 1024) {
+            toast.error('File too large. Max 500MB.');
+            return;
+        }
+
+        setPendingVideoFile(file);
+        setPendingVideoName(file.name.replace(/\.[^.]+$/, ''));
+        setPendingVideoMode('demo');
+    };
+
+    // Step 2: Upload + create indexing job with user-chosen mode
+    const handleVideoUploadConfirm = async () => {
+        if (!pendingVideoFile || !apiKey || !pendingVideoName.trim()) return;
+
+        setIsUploadingVideo(true);
+        try {
+            const fileId = await uploadFile({
+                file: pendingVideoFile,
+                setIsUploading: () => {},
+                userId: getUserId(),
+                source: 'AI_INPUT_VIDEO',
+                sourceId: 'ADMIN',
+                publicUrl: true,
+            });
+            if (!fileId) throw new Error('Upload failed');
+
+            const sourceUrl = await getFilePublicUrl(fileId);
+            if (!sourceUrl) throw new Error('Failed to get URL');
+
+            const { createInputVideo } = await import('../-services/input-video');
+            await createInputVideo(apiKey, {
+                name: pendingVideoName.trim(),
+                mode: pendingVideoMode,
+                source_url: sourceUrl,
+            });
+
+            toast.success(`"${pendingVideoName}" uploaded — indexing started`);
+            setPendingVideoFile(null);
+            setPendingVideoName('');
+            refreshInputVideos.current?.();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Upload failed');
+        } finally {
+            setIsUploadingVideo(false);
+        }
+    };
+
     const handleSubmit = () => {
         if (!prompt.trim() || isGenerating || disabled) return;
         const referenceFiles: ReferenceFile[] = attachments.map((a) => ({
@@ -314,8 +404,14 @@ export function PromptInput({
             prompt: prompt.trim(),
             ...options,
             ...(referenceFiles.length > 0 ? { reference_files: referenceFiles } : {}),
-            ...(selectedInputVideoId
-                ? { input_video_id: selectedInputVideoId, input_video_audio: inputVideoAudio }
+            ...(selectedInputVideoIds.length > 0
+                ? {
+                      input_video_ids: selectedInputVideoIds,
+                      input_video_audio: inputVideoAudio,
+                      ...(inputVideoAudio === 'tts' && muteTtsDuringSourceClips
+                          ? { mute_tts_on_source_clips: true }
+                          : {}),
+                  }
                 : {}),
         });
     };
@@ -460,10 +556,12 @@ export function PromptInput({
     };
 
     const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
+        // Snapshot to array first — e.target.files is a live FileList that becomes
+        // empty as soon as e.target.value is reset.
+        const files = Array.from(e.target.files || []);
         e.target.value = '';
-        await processFiles(Array.from(files));
+        if (files.length === 0) return;
+        await processFiles(files);
     };
 
     // Drag-and-drop handlers for the prompt area
@@ -567,40 +665,164 @@ export function PromptInput({
                         </div>
                     </OptionBubble>
 
-                    {/* Source Video Selector */}
-                    {indexedVideos.length > 0 && (
-                        <OptionBubble
-                            icon={<Film className="size-3" />}
-                            label="Source Video"
-                            value={
-                                selectedInputVideoId
-                                    ? indexedVideos.find((v) => v.id === selectedInputVideoId)?.name || 'Selected'
-                                    : 'None'
-                            }
-                        >
-                            <Select
-                                value={selectedInputVideoId || '__none__'}
-                                onValueChange={(v) => setSelectedInputVideoId(v === '__none__' ? null : v)}
-                            >
-                                <SelectTrigger className="h-8 text-xs">
-                                    <SelectValue placeholder="No source video" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="__none__" className="text-xs">
-                                        None (text prompt only)
-                                    </SelectItem>
-                                    {indexedVideos.map((v) => (
-                                        <SelectItem key={v.id} value={v.id} className="text-xs">
-                                            {v.name} ({v.mode}, {v.duration_seconds ? `${Math.round(v.duration_seconds)}s` : '?'})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </OptionBubble>
-                    )}
+                    {/* Source Video — Add / Upload popover */}
+                    <OptionBubble
+                        icon={<Film className="size-3" />}
+                        label="Source Videos"
+                        value={
+                            selectedInputVideoIds.length > 0
+                                ? `${selectedInputVideoIds.length} added`
+                                : processingVideos.length > 0
+                                  ? `${processingVideos.length} processing`
+                                  : 'Add'
+                        }
+                    >
+                        {/* Processing videos — with progress bars */}
+                        {processingVideos.length > 0 && (
+                            <div className="mb-2 space-y-1.5">
+                                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Processing</p>
+                                {processingVideos.map((v) => (
+                                    <div key={v.id} className="rounded-md border bg-muted/30 px-2 py-1.5 text-xs">
+                                        <div className="flex items-center gap-2">
+                                            <Loader2 className="size-3 shrink-0 animate-spin text-indigo-500" />
+                                            <span className="flex-1 truncate">{v.name}</span>
+                                            <span className="shrink-0 text-muted-foreground">{v.progress || 0}%</span>
+                                        </div>
+                                        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted">
+                                            <div
+                                                className="h-full rounded-full bg-indigo-500 transition-all"
+                                                style={{ width: `${v.progress || 0}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
-                    {/* Audio Source Toggle (visible when source video is selected) */}
-                    {selectedInputVideoId && (
+                        {/* Ready videos — click to add */}
+                        {indexedVideos.filter((v) => !selectedInputVideoIds.includes(v.id)).length > 0 && (
+                            <div className="mb-2">
+                                {processingVideos.length > 0 && (
+                                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ready</p>
+                                )}
+                                <div className="max-h-36 space-y-0.5 overflow-y-auto">
+                                    {indexedVideos
+                                        .filter((v) => !selectedInputVideoIds.includes(v.id))
+                                        .map((v) => (
+                                            <button
+                                                key={v.id}
+                                                onClick={() => {
+                                                    if (selectedInputVideoIds.length < 5) {
+                                                        const next = [...selectedInputVideoIds, v.id];
+                                                        setSelectedInputVideoIds(next);
+                                                        if (next.length > 1) setInputVideoAudio('tts');
+                                                    }
+                                                }}
+                                                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted"
+                                            >
+                                                <span className="text-muted-foreground">+</span>
+                                                <span className="flex-1 truncate">{v.name}</span>
+                                                <span className="shrink-0 text-muted-foreground">
+                                                    {v.mode} · {v.duration_seconds ? `${Math.round(v.duration_seconds)}s` : '?'}
+                                                </span>
+                                            </button>
+                                        ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {indexedVideos.filter((v) => !selectedInputVideoIds.includes(v.id)).length === 0
+                            && processingVideos.length === 0 && indexedVideos.length > 0 && (
+                            <p className="mb-2 py-1 text-center text-xs text-muted-foreground">All videos added</p>
+                        )}
+
+                        {selectedInputVideoIds.length >= 5 && (
+                            <p className="mb-2 text-xs text-muted-foreground">Max 5 videos</p>
+                        )}
+
+                        {/* Upload new video — two-step: pick file → choose mode → confirm */}
+                        <div className="border-t pt-2">
+                            <input
+                                ref={videoFileInputRef}
+                                type="file"
+                                accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+                                className="hidden"
+                                onChange={handleVideoFilePick}
+                            />
+
+                            {pendingVideoFile ? (
+                                <div className="space-y-2">
+                                    {/* File name (editable) */}
+                                    <input
+                                        type="text"
+                                        value={pendingVideoName}
+                                        onChange={(e) => setPendingVideoName(e.target.value)}
+                                        className="w-full rounded-md border px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none"
+                                        placeholder="Video name"
+                                    />
+                                    {/* Mode selector */}
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[10px] text-muted-foreground">Type:</span>
+                                        <button
+                                            onClick={() => setPendingVideoMode('demo')}
+                                            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
+                                                pendingVideoMode === 'demo'
+                                                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
+                                                    : 'text-muted-foreground hover:bg-muted'
+                                            }`}
+                                        >
+                                            <Monitor className="size-3" />
+                                            Demo
+                                        </button>
+                                        <button
+                                            onClick={() => setPendingVideoMode('podcast')}
+                                            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
+                                                pendingVideoMode === 'podcast'
+                                                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
+                                                    : 'text-muted-foreground hover:bg-muted'
+                                            }`}
+                                        >
+                                            <Mic className="size-3" />
+                                            Podcast
+                                        </button>
+                                    </div>
+                                    {/* Confirm / Cancel */}
+                                    <div className="flex gap-1.5">
+                                        <button
+                                            onClick={handleVideoUploadConfirm}
+                                            disabled={isUploadingVideo || !pendingVideoName.trim()}
+                                            className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-indigo-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                                        >
+                                            {isUploadingVideo ? (
+                                                <Loader2 className="size-3 animate-spin" />
+                                            ) : (
+                                                <Upload className="size-3" />
+                                            )}
+                                            {isUploadingVideo ? 'Uploading...' : 'Upload & Index'}
+                                        </button>
+                                        <button
+                                            onClick={() => { setPendingVideoFile(null); setPendingVideoName(''); }}
+                                            disabled={isUploadingVideo}
+                                            className="rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => videoFileInputRef.current?.click()}
+                                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/30"
+                                >
+                                    <Upload className="size-3.5" />
+                                    Upload New Video
+                                </button>
+                            )}
+                        </div>
+                    </OptionBubble>
+
+                    {/* Audio Source Toggle (visible when source video(s) selected) */}
+                    {selectedInputVideoIds.length > 0 && (
                         <OptionBubble
                             icon={<Mic className="size-3" />}
                             label="Audio"
@@ -608,12 +830,15 @@ export function PromptInput({
                         >
                             <div className="inline-flex w-full rounded-lg border bg-muted p-0.5">
                                 <button
-                                    onClick={() => setInputVideoAudio('original')}
+                                    onClick={() => {
+                                        if (selectedInputVideoIds.length <= 1) setInputVideoAudio('original');
+                                    }}
                                     className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                                         inputVideoAudio === 'original'
                                             ? 'bg-background text-foreground shadow-sm'
                                             : 'text-muted-foreground hover:text-foreground'
-                                    }`}
+                                    } ${selectedInputVideoIds.length > 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                    title={selectedInputVideoIds.length > 1 ? 'Original audio only available with single video' : ''}
                                 >
                                     Original Audio
                                 </button>
@@ -628,6 +853,48 @@ export function PromptInput({
                                     AI Narration
                                 </button>
                             </div>
+                            {selectedInputVideoIds.length > 1 && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Multiple videos require AI narration
+                                </p>
+                            )}
+                        </OptionBubble>
+                    )}
+
+                    {/* Mute TTS on source clips toggle (only when TTS + source video) */}
+                    {selectedInputVideoIds.length > 0 && inputVideoAudio === 'tts' && (
+                        <OptionBubble
+                            icon={<Mic className="size-3" />}
+                            label="Source Clips"
+                            value={muteTtsDuringSourceClips ? 'Source audio' : 'TTS over clips'}
+                        >
+                            <div className="inline-flex w-full rounded-lg border bg-muted p-0.5">
+                                <button
+                                    onClick={() => setMuteTtsDuringSourceClips(false)}
+                                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                        !muteTtsDuringSourceClips
+                                            ? 'bg-background text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    TTS over clips
+                                </button>
+                                <button
+                                    onClick={() => setMuteTtsDuringSourceClips(true)}
+                                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                        muteTtsDuringSourceClips
+                                            ? 'bg-background text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    Source audio
+                                </button>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                {muteTtsDuringSourceClips
+                                    ? 'TTS mutes when showing source clips; source audio plays instead'
+                                    : 'TTS narration plays continuously over source footage'}
+                            </p>
                         </OptionBubble>
                     )}
 
@@ -1233,6 +1500,52 @@ export function PromptInput({
                                     </button>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Selected source videos — shown as removable chips with letter labels */}
+                {selectedInputVideoIds.length > 0 && (
+                    <div className="flex items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50/30 px-2 py-1.5 dark:border-indigo-800 dark:bg-indigo-950/20">
+                        <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-indigo-500">
+                            Sources ({selectedInputVideoIds.length})
+                        </span>
+                        <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
+                            {selectedInputVideoIds.map((id, idx) => {
+                                const video = indexedVideos.find((v) => v.id === id);
+                                const label = String.fromCharCode(65 + idx); // A, B, C...
+                                return (
+                                    <div
+                                        key={id}
+                                        className="group flex shrink-0 items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs"
+                                        title={video?.name || id}
+                                    >
+                                        <span className="flex size-4 items-center justify-center rounded-sm bg-indigo-500 text-[9px] font-bold text-white">
+                                            {label}
+                                        </span>
+                                        <span className="max-w-[120px] truncate font-medium">
+                                            {video?.name || 'Unknown'}
+                                        </span>
+                                        <span className="text-muted-foreground">
+                                            {video?.mode}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const next = selectedInputVideoIds.filter((x) => x !== id);
+                                                setSelectedInputVideoIds(next);
+                                                if (next.length <= 1 && inputVideoAudio === 'tts') {
+                                                    // Don't auto-switch back; user can choose
+                                                }
+                                            }}
+                                            className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                                            aria-label={`Remove ${video?.name}`}
+                                        >
+                                            <X className="size-3.5" />
+                                        </button>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}

@@ -159,13 +159,14 @@ export function transformApiDataToDummyStructure(data: ApiCourseData[]) {
 }
 
 /**
- * Normalize the invite form's field type (which may be "textfield") to the
- * backend's expected values: "text" | "number" | "dropdown".
+ * Normalize the invite form's field type to the backend's expected values.
+ * Multi-input revamp (2026-04): forward the actual type instead of
+ * collapsing to text/dropdown/number, so the learner form renders the
+ * correct input (date picker, file upload, checkboxes, etc.).
  */
 function normalizeFieldType(uiType: string): string {
     if (uiType === 'textfield') return 'text';
-    if (uiType === 'dropdown' || uiType === 'number') return uiType;
-    return 'text';
+    return uiType || 'text';
 }
 
 function transformCustomFields(customFields: CustomField[], instituteId: string) {
@@ -177,18 +178,19 @@ function transformCustomFields(customFields: CustomField[], instituteId: string)
             .toLowerCase();
     return customFields.map((field, index) => {
         const backendType = normalizeFieldType(field.type);
-        const isDropdown = backendType === 'dropdown';
-        const options = isDropdown ? field.options?.map((opt) => opt.value).join(',') : '';
+        const hasOptions = ['dropdown', 'radio', 'multi_select'].includes(backendType);
+        const optionValues = hasOptions ? field.options?.map((opt) => opt.value) : undefined;
+        // Serialize options as proper JSON array (same format as campaign flow)
+        const config = optionValues && optionValues.length > 0
+            ? JSON.stringify(optionValues.map((v, i) => ({ id: i + 1, value: v, label: v })))
+            : '';
 
         return {
             id: field._id ? (field.id || '') : '',
             institute_id: instituteId,
-            // `type` here is the institute_custom_fields.type (feature type),
-            // NOT the field's data type. The backend's saveInstituteCustomFields
-            // stamps ENROLL_INVITE on every DTO before persisting, so we leave
-            // this empty and let the backend control it.
             type: '',
             type_id: '',
+            individual_order: (field as any).order ?? index,
             custom_field: {
                 guestId: '',
                 id: field._id || '',
@@ -196,8 +198,8 @@ function transformCustomFields(customFields: CustomField[], instituteId: string)
                 fieldName: field.name,
                 fieldType: backendType,
                 defaultValue: '',
-                config: isDropdown ? JSON.stringify({ coommaSepartedOptions: options }) : '',
-                formOrder: index,
+                config,
+                formOrder: (field as any).order ?? index,
                 isMandatory: field.isRequired,
                 isFilter: true,
                 isSortable: true,
@@ -232,18 +234,52 @@ export function ReTransformCustomFields(inviteDetails: IndividualInviteLinkDetai
     const SEEDED_KEYS = ['full_name', 'email', 'phone_number'];
 
     return inviteDetails?.institute_custom_fields?.map((field, index) => {
-        const config = safeJsonParse<{ coommaSepartedOptions?: string }>(
-            field.custom_field.config,
-            {}
-        );
-
-        const options = config.coommaSepartedOptions
-            ? config.coommaSepartedOptions.split(',').map((option: string, optIndex: number) => ({
-                  id: String(optIndex),
-                  value: option.trim(),
-                  disabled: true,
-              }))
-            : undefined;
+        // Parse config — handles both formats:
+        //   1. New JSON array: [{id,value,label}]  (from updated save path)
+        //   2. Old object: { coommaSepartedOptions: "A,B,C" }
+        //   3. Plain comma string: "A,B,C"
+        let options: { id: string; value: string; disabled: boolean }[] | undefined;
+        const rawConfig = field.custom_field.config;
+        if (rawConfig) {
+            try {
+                const parsed = JSON.parse(rawConfig);
+                if (Array.isArray(parsed)) {
+                    // New format: [{id, value, label}]
+                    options = parsed.map((opt: any, i: number) => ({
+                        id: String(opt.id ?? i),
+                        value: (opt.value || opt.label || '').trim(),
+                        disabled: true,
+                    }));
+                } else if (parsed && typeof parsed === 'object') {
+                    // Object format with options array: { options: [...] }
+                    if (Array.isArray(parsed.options)) {
+                        options = parsed.options.map((opt: any, i: number) => ({
+                            id: String(opt.id ?? i),
+                            value: (opt.value || opt.label || '').trim(),
+                            disabled: true,
+                        }));
+                    }
+                    // Old format: { coommaSepartedOptions: "A,B,C" }
+                    const csv = parsed.coommaSepartedOptions || parsed.commaSeparatedOptions;
+                    if (!options && typeof csv === 'string') {
+                        options = csv.split(',').map((v: string, i: number) => ({
+                            id: String(i),
+                            value: v.trim(),
+                            disabled: true,
+                        }));
+                    }
+                }
+            } catch {
+                // Plain comma-separated string (not JSON)
+                if (rawConfig.includes(',')) {
+                    options = rawConfig.split(',').map((v: string, i: number) => ({
+                        id: String(i),
+                        value: v.trim(),
+                        disabled: true,
+                    }));
+                }
+            }
+        }
 
         const cfKey = (field.custom_field.fieldKey || '').toLowerCase();
         const isSeeded = SEEDED_KEYS.some((k) => cfKey.startsWith(k));
@@ -258,7 +294,7 @@ export function ReTransformCustomFields(inviteDetails: IndividualInviteLinkDetai
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, '_')
                 .replace(/^_+|_+$/g, ''),
-            order: index,
+            order: (field as any).individual_order ?? field.custom_field.formOrder ?? index,
             _id: field.custom_field.id,
             ...(options && { options }),
         };
@@ -345,6 +381,10 @@ export function convertInviteData(
                 ? data.accessDurationDays
                 : null,
         web_page_meta_data_json: JSON.stringify(jsonMetaData),
+        setting_json: JSON.stringify({
+            ...(existingInviteDetails?.setting_json ? JSON.parse(existingInviteDetails.setting_json) : {}),
+            postformfillConfiguration: data.postformfillConfiguration || { showLoginButton: true },
+        }),
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
         institute_custom_fields: transformCustomFields(data.custom_fields, instituteId || ''),
@@ -899,7 +939,7 @@ export function convertRegistrationFormData(data: CustomFieldForConversion[]) {
         comma_separated_options:
             field.type === 'dropdown'
                 ? field.options?.map((opt: DropdownOptionForConversion) => opt.value).join(',') ||
-                  ''
+                ''
                 : '',
         created_at: now,
         field_key: field.key || (field.name ?? '').toLowerCase().replace(/\s+/g, '_'),

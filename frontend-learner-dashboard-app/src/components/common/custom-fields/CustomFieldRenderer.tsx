@@ -68,7 +68,8 @@ export const CustomFieldRenderer = ({
   // "Empty or invalid config" console warnings for date/text/checkbox/etc.
   const needsOptions =
     normalizedType === FieldRenderType.DROPDOWN ||
-    normalizedType === FieldRenderType.RADIO;
+    normalizedType === FieldRenderType.RADIO ||
+    normalizedType === FieldRenderType.MULTI_SELECT;
   const resolvedOptions =
     options && options.length > 0
       ? options
@@ -318,6 +319,37 @@ export const CustomFieldRenderer = ({
           </RadioGroup>
         </div>
       );
+
+    case FieldRenderType.MULTI_SELECT: {
+      // Multi-select checkboxes: value is a JSON array like ["Option1","Option3"]
+      let selected: string[] = [];
+      try {
+        selected = value ? JSON.parse(value) : [];
+      } catch {
+        selected = value ? [value] : [];
+      }
+      const toggleOption = (optValue: string) => {
+        const next = selected.includes(optValue)
+          ? selected.filter((s) => s !== optValue)
+          : [...selected, optValue];
+        handleChange(JSON.stringify(next));
+      };
+      return (
+        <div className="flex flex-col gap-2">
+          {(resolvedOptions || []).map((opt, idx) => (
+            <div key={opt._id ?? idx} className="flex items-center space-x-2">
+              <Checkbox
+                checked={selected.includes(opt.value)}
+                onCheckedChange={() => toggleOption(opt.value)}
+                disabled={disabled}
+                id={`${name}-ms-${idx}`}
+              />
+              <Label htmlFor={`${name}-ms-${idx}`}>{opt.label}</Label>
+            </div>
+          ))}
+        </div>
+      );
+    }
 
     case FieldRenderType.FILE: {
       const acceptAttr = allowedFileTypes?.length

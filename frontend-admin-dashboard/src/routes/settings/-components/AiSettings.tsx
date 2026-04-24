@@ -190,7 +190,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
         hasGemini: false,
     });
     const [activityLogs, setActivityLogs] = useState<ActivityLogResponse | null>(null);
-    const { data: modelsList } = useAIModelsList();
+    const { data: modelsList } = useAIModelsList({ category: 'general' });
     const [isLoadingLogs, setIsLoadingLogs] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize] = useState(20);

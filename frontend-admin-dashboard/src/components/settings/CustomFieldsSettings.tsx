@@ -671,7 +671,7 @@ const CustomFieldsSettings: React.FC = () => {
             const field = createTempCustomField(
                 newField.name,
                 newField.type,
-                newField.type === 'dropdown' || newField.type === 'radio' ? newField.options : undefined,
+                newField.type === 'dropdown' || newField.type === 'radio' || newField.type === 'multi_select' ? newField.options : undefined,
                 newField.defaultValue,
                 newField.fieldConfig
             );
@@ -916,7 +916,7 @@ const CustomFieldsSettings: React.FC = () => {
             const field = createTempCustomField(
                 newField.name,
                 newField.type,
-                newField.type === 'dropdown' || newField.type === 'radio' ? newField.options : undefined,
+                newField.type === 'dropdown' || newField.type === 'radio' || newField.type === 'multi_select' ? newField.options : undefined,
                 newField.defaultValue,
                 newField.fieldConfig
             );
@@ -1776,7 +1776,7 @@ const CustomFieldsSettings: React.FC = () => {
                                                 </div>
 
                                                 {/* Dropdown / Radio Options Manager */}
-                                                {(field.type === 'dropdown' || field.type === 'radio') && (
+                                                {(field.type === 'dropdown' || field.type === 'radio' || field.type === 'multi_select') && (
                                                     <DropdownOptionsManager field={field} />
                                                 )}
                                             </div>
@@ -1965,7 +1965,7 @@ const CustomFieldsSettings: React.FC = () => {
                                                 </div>
 
                                                 {/* Dropdown / Radio Options Manager */}
-                                                {(field.type === 'dropdown' || field.type === 'radio') && (
+                                                {(field.type === 'dropdown' || field.type === 'radio' || field.type === 'multi_select') && (
                                                     <DropdownOptionsManager field={field} />
                                                 )}
                                             </div>
@@ -2287,7 +2287,7 @@ const CustomFieldsSettings: React.FC = () => {
                                                 const field = createTempCustomField(
                                                     newField.name,
                                                     newField.type,
-                                                    newField.type === 'dropdown' || newField.type === 'radio'
+                                                    newField.type === 'dropdown' || newField.type === 'radio' || newField.type === 'multi_select'
                                                         ? newField.options
                                                         : undefined,
                                                     newField.defaultValue,
@@ -2331,7 +2331,7 @@ const CustomFieldsSettings: React.FC = () => {
                                     </Button>
                                 </div>{' '}
                                 {/* Initial Options for Dropdown / Radio */}
-                                {(newField.type === 'dropdown' || newField.type === 'radio') && (
+                                {(newField.type === 'dropdown' || newField.type === 'radio' || newField.type === 'multi_select') && (
                                     <div className="space-y-2">
                                         <Label className="text-sm font-medium text-gray-700">
                                             Initial Options
@@ -2509,7 +2509,7 @@ const CustomFieldsSettings: React.FC = () => {
                             </div>
 
                             {/* Initial Options for Dropdown / Radio */}
-                            {(newField.type === 'dropdown' || newField.type === 'radio') && (
+                            {(newField.type === 'dropdown' || newField.type === 'radio' || newField.type === 'multi_select') && (
                                 <div className="space-y-2">
                                     <Label className="text-sm font-medium text-gray-700">
                                         Initial Options
@@ -2590,7 +2590,7 @@ const CustomFieldsSettings: React.FC = () => {
                                                 {newField.defaultValue === 'true' ? 'Checked' : 'Unchecked'}
                                             </span>
                                         </div>
-                                    ) : newField.type === 'dropdown' || newField.type === 'radio' ? (
+                                    ) : newField.type === 'dropdown' || newField.type === 'radio' || newField.type === 'multi_select' ? (
                                         <Select
                                             value={newField.defaultValue || ''}
                                             onValueChange={(value) =>

@@ -225,8 +225,13 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         params.put("meta_bbb-origin-server-name", instituteName);
         params.put("meta_bbb-origin", instituteName);
 
-        // Redirect students back to learner app when meeting ends (instead of BBB page)
-        if (learnerBaseUrl != null) {
+        // Redirect students to the feedback page when meeting ends.
+        // If feedback is disabled for this session, the page auto-redirects to the listing.
+        if (learnerBaseUrl != null && request.getScheduleId() != null) {
+            String feedbackUrl = learnerBaseUrl + "/study-library/live-class/feedback?scheduleId=" + request.getScheduleId();
+            params.put("logoutURL", feedbackUrl);
+            params.put("meetingEndedURL", feedbackUrl);
+        } else if (learnerBaseUrl != null) {
             params.put("logoutURL", learnerBaseUrl + "/study-library/live-class");
             params.put("meetingEndedURL", learnerBaseUrl + "/study-library/live-class");
         }

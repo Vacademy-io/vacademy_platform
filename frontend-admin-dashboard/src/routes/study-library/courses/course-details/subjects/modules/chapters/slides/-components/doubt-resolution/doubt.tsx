@@ -16,7 +16,9 @@ import { EnrollFormUploadImage } from '@/assets/svgs';
 import { getPublicUrl } from '@/services/upload_file';
 import { TeacherSelection } from './TeacherSelection';
 import { formatTime } from '@/helpers/formatYoutubeVideoTime';
-import { getUserId, isUserAdmin } from '@/utils/userDetails';
+import { getUserId, isUserAdmin, isUserTeacher } from '@/utils/userDetails';
+import { useInstituteAssignees } from '@/routes/dashboard/-hooks/useInstituteAssignees';
+import { getInstituteId } from '@/constants/helper';
 
 const StatusIndicator = ({ status }: { status: 'RESOLVED' | 'ACTIVE' | 'DELETED' }) => {
     let color = 'bg-neutral-400';
@@ -46,6 +48,7 @@ export const Doubt = ({ doubt, refetch }: { doubt: DoubtType; refetch: () => voi
     const { getPackageSessionId } = useInstituteDetailsStore();
     const userId = getUserId();
     const isAdmin = isUserAdmin();
+    const isTeacher = isUserTeacher();
     const { courseId, sessionId, levelId, subjectId } = router.state.location.search;
     const pksId = getPackageSessionId({
         courseId: courseId || '',
@@ -54,11 +57,13 @@ export const Doubt = ({ doubt, refetch }: { doubt: DoubtType; refetch: () => voi
     });
     const filters: FacultyFilterParams = {
         name: '',
-        batches: [pksId || ''],
-        subjects: [subjectId || ''],
+        batches: pksId ? [pksId] : [],
+        subjects: subjectId ? [subjectId] : [],
         status: [],
         sort_columns: { name: 'DESC' },
     };
+
+    const { assignees: instituteAssignees } = useInstituteAssignees(getInstituteId());
 
     const { data: userBasicDetails } = useGetUserBasicDetails([doubt.user_id]);
 
@@ -86,7 +91,12 @@ export const Doubt = ({ doubt, refetch }: { doubt: DoubtType; refetch: () => voi
     }, [userBasicDetails?.[0]?.face_file_id]);
 
     const canMarkAsResolved =
-        isAdmin || (userId && doubt.all_doubt_assignee?.some((assignee) => assignee.id === userId));
+        isAdmin ||
+        isTeacher ||
+        (userId &&
+            doubt.all_doubt_assignee?.some(
+                (assignee) => assignee.source === 'USER' && assignee.source_id === userId
+            ));
 
     return (
         <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
@@ -148,7 +158,12 @@ export const Doubt = ({ doubt, refetch }: { doubt: DoubtType; refetch: () => voi
 
             {/* Teacher Assignment - now more subtle and integrated */}
             <div className="pt-2">
-                <TeacherSelection doubt={doubt} filters={filters} canChange={isAdmin || false} />
+                <TeacherSelection
+                    doubt={doubt}
+                    filters={filters}
+                    canChange={isAdmin || false}
+                    teachersOverride={instituteAssignees}
+                />
             </div>
 
             {/* Replies Section */}

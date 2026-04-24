@@ -36,9 +36,11 @@ interface EditComponentProps {
     student: UserRolesDataEntry;
     onClose: () => void;
     refetchData: () => void;
+    availableRoles?: { id: string; name: string }[];
 }
 
-const EditComponent: React.FC<EditComponentProps> = ({ student, onClose, refetchData }) => {
+const EditComponent: React.FC<EditComponentProps> = ({ student, onClose, refetchData, availableRoles }) => {
+    const roleOptions = availableRoles || RoleType;
     const instituteId = getInstituteId();
     const form = useForm<FormValues>({
         resolver: zodResolver(inviteUsersSchema),
@@ -149,7 +151,7 @@ const EditComponent: React.FC<EditComponentProps> = ({ student, onClose, refetch
                         form={form}
                         label="Role Type"
                         name="roleType"
-                        options={RoleType.map((option, index) => ({
+                        options={roleOptions.map((option, index) => ({
                             value: option.name,
                             label: option.name,
                             _id: index,
@@ -309,9 +311,11 @@ const CancelInviteComponent: React.FC<CancelInviteComponentProps> = ({
 const InviteUsersOptions = ({
     user,
     refetchData,
+    availableRoles,
 }: {
     user: UserRolesDataEntry;
     refetchData: () => void;
+    availableRoles?: { id: string; name: string }[];
 }) => {
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -346,6 +350,7 @@ const InviteUsersOptions = ({
                         student={user}
                         onClose={() => setOpenDialog(false)}
                         refetchData={refetchData}
+                        availableRoles={availableRoles}
                     />
                 )}
                 {selectedOption === 'Resend Invite' && (

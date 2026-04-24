@@ -346,6 +346,83 @@ public class NotificationService {
     }
 
     /**
+     * Create a SYSTEM_ALERT announcement so the recipients' bell icon lights up. Unlike
+     * {@link #sendSystemAlertViaUnified} (which only emits an FCM push), this persists an
+     * Announcement + AnnouncementSystemAlert + RecipientMessage chain in notification-service — the
+     * exact rows that {@code /v1/user-messages/user/{userId}/system-alerts} queries.
+     *
+     * <p>Fire-and-forget from the caller's perspective: any HTTP or parse failure is logged and
+     * swallowed here so a transient notification-service blip never fails the business flow (doubt
+     * create / resolve / etc.).
+     *
+     * @param createdByRole passed as "ADMIN" to bypass the institute's optional approval gate —
+     *                      system-generated alerts (doubts, etc.) shouldn't wait for a human to
+     *                      approve them. Real user-authored announcements still flow through the
+     *                      normal approval setting.
+     */
+    public void createSystemAlertAnnouncement(
+            String instituteId, List<String> userIds, String title, String body,
+            String createdBy, String createdByName, String createdByRole,
+            Map<String, Object> alertSettings) {
+        if (instituteId == null || instituteId.isEmpty()) return;
+        if (userIds == null || userIds.isEmpty()) return;
+
+        List<Map<String, Object>> recipients = userIds.stream()
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .map(id -> {
+                    Map<String, Object> r = new java.util.HashMap<>();
+                    r.put("recipientType", "USER");
+                    r.put("recipientId", id);
+                    return r;
+                })
+                .collect(java.util.stream.Collectors.toList());
+        if (recipients.isEmpty()) return;
+
+        // CreateAnnouncementRequest applies @NotBlank to title + RichTextDataRequest.content, so
+        // a transiently-null doubt summary would cause the notification-service to 400 the whole
+        // batch. Keep the bell-alert best-effort by substituting a neutral fallback instead of
+        // letting validation fail.
+        String safeTitle = (title == null || title.isBlank()) ? "Notification" : title;
+        String safeBody = (body == null || body.isBlank()) ? "Tap to view details." : body;
+
+        Map<String, Object> content = new java.util.HashMap<>();
+        content.put("type", "text");
+        content.put("content", safeBody);
+
+        Map<String, Object> mode = new java.util.HashMap<>();
+        mode.put("modeType", "SYSTEM_ALERT");
+        // Defaults match AnnouncementSystemAlert entity defaults (priority=1, dismissible=true, badge=true).
+        mode.put("settings", alertSettings != null ? alertSettings : Map.of(
+                "priority", 2,
+                "isDismissible", true,
+                "showBadge", true,
+                "isActive", true));
+
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("title", safeTitle);
+        payload.put("content", content);
+        payload.put("instituteId", instituteId);
+        payload.put("createdBy", createdBy != null && !createdBy.isEmpty() ? createdBy : "system");
+        payload.put("createdByName", createdByName != null ? createdByName : "System");
+        payload.put("createdByRole", createdByRole != null ? createdByRole : "ADMIN");
+        payload.put("recipients", recipients);
+        payload.put("modes", List.of(mode));
+
+        try {
+            internalClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    notificationServerBaseUrl,
+                    NotificationConstant.ANNOUNCEMENT_MULTIPLE,
+                    List.of(payload));
+        } catch (Exception e) {
+            log.warn("System alert announcement dispatch failed (institute={}, users={}): {}",
+                    instituteId, recipients.size(), e.getMessage());
+        }
+    }
+
+    /**
      * Poll batch status for async sends.
      */
     public UnifiedSendResponse getUnifiedBatchStatus(String batchId) {

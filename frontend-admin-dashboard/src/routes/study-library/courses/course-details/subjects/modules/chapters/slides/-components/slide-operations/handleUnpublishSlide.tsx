@@ -93,7 +93,7 @@ export const handleUnpublishSlide = async (
                 title: activeItem.title || '',
                 image_file_id: activeItem.image_file_id || '',
                 description: activeItem.description || '',
-                slide_order: 0,
+                slide_order: activeItem.slide_order,
                 document_slide: {
                     id: activeItem.document_slide?.id || '',
                     type: activeItem.document_slide?.type || '',

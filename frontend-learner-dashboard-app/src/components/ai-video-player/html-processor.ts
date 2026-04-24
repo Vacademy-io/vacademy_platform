@@ -89,6 +89,12 @@ function getBaseStyles(palette?: { background?: string; text?: string; text_seco
 
             * { box-sizing: border-box; }
 
+            /* Fix word-smashing: LLM wraps words in inline-block without whitespace */
+            span[style*="inline-block"] + span[style*="inline-block"] { margin-left: 0.25em; }
+            div[style*="inline-block"] + div[style*="inline-block"] { margin-left: 0.25em; }
+            [class*="word"] { display: inline-block; margin-right: 0.2em; }
+            .word-wrapper, .word-wrap, .word { margin-right: 0.2em; }
+
             html, body {
                 width: 100%;
                 height: 100%;
@@ -99,11 +105,9 @@ function getBaseStyles(palette?: { background?: string; text?: string; text_seco
                 color: var(--text-color);
             }
 
-            /* Ensure content is visible even if animations fail */
-            body * {
-                opacity: 1 !important;
-                visibility: visible !important;
-            }
+            /* Fallback: if GSAP fails to load, make content visible after 2s.
+               Don't use !important on opacity — it breaks GSAP animations
+               that use opacity:0 as their starting state. */
 
             /* Cutout asset images — transparent background, subtle depth */
             .generated-image[data-cutout="true"] {
@@ -1776,15 +1780,16 @@ function getHelperScripts(): string {
                 if(window.Prism) window.highlightCode();
             });
 
-            // Fallback: Force all elements visible after a delay (in case GSAP fails to load)
+            // Fallback: Force elements visible ONLY if GSAP failed to load
             setTimeout(function() {
-                document.querySelectorAll('[style*="opacity"]').forEach(function(el) {
+                if (window.gsap) return; // GSAP loaded — let animations handle visibility
+                document.querySelectorAll('[style*="opacity: 0"]').forEach(function(el) {
                     el.style.opacity = '1';
                 });
-                document.querySelectorAll('[style*="visibility"]').forEach(function(el) {
+                document.querySelectorAll('[style*="visibility: hidden"]').forEach(function(el) {
                     el.style.visibility = 'visible';
                 });
-            }, 500);
+            }, 3000);
         </script>
     `;
 }
@@ -2377,6 +2382,12 @@ export function processHtmlContent(
 ): string {
     let processedHtml = html;
 
+    // Strip LLM-generated stage-drift camera animations — causes jitter
+    processedHtml = processedHtml.replace(
+        /gsap\.fromTo\(\s*['"]\.stage-drift['"].*?\);/gs,
+        ''
+    );
+
     // Fix any absolute file paths
     processedHtml = processedHtml.replace(/file:\/\/\/.*\/generated_images\//g, '');
 
@@ -2447,6 +2458,29 @@ export function processHtmlContent(
         );
     }
 
+    // Source clip video auto-play script — handles <video data-source-clip> elements
+    const sourceClipScript = processedHtml.includes('data-source-clip') ? `
+        <script>
+        (function() {
+            var vid = document.querySelector('video[data-source-clip]');
+            if (!vid) return;
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.loop = false;
+            var startTime = parseFloat(vid.getAttribute('data-source-start') || '0');
+            function tryPlay() {
+                vid.currentTime = startTime;
+                vid.play().catch(function(){});
+            }
+            if (vid.readyState >= 1) { tryPlay(); }
+            else { vid.addEventListener('loadedmetadata', tryPlay, {once:true}); }
+            vid.addEventListener('canplay', function() {
+                if (vid.paused) vid.play().catch(function(){});
+            }, {once:true});
+        })();
+        </script>
+    ` : '';
+
     return `
         <!DOCTYPE html>
         <html>
@@ -2461,6 +2495,7 @@ export function processHtmlContent(
         </head>
         <body>
             ${processedHtml}
+            ${sourceClipScript}
         </body>
         </html>
     `;

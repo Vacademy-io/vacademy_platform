@@ -95,6 +95,12 @@ export function AddResponsePage() {
                                 typeof opt === 'string' ? opt : opt.value || opt.label || ''
                             );
                         } else if (typeof parsed === 'object' && parsed !== null) {
+                            // Object-format config: { options, defaultValue, allowedFileTypes, ... }
+                            if (Array.isArray(parsed.options)) {
+                                options = parsed.options.map((opt: any) =>
+                                    typeof opt === 'string' ? opt : opt.value || opt.label || ''
+                                );
+                            }
                             if (Array.isArray(parsed.allowedFileTypes) || parsed.maxSizeMB) {
                                 fileConfig = {
                                     allowedFileTypes: parsed.allowedFileTypes,
@@ -104,9 +110,17 @@ export function AddResponsePage() {
                             if (parsed.defaultValue !== undefined) {
                                 defaultFromConfig = String(parsed.defaultValue);
                             }
+                            // Legacy: comma-separated options wrapped in object
+                            if (!options && (parsed.coommaSepartedOptions || parsed.commaSeparatedOptions)) {
+                                const csv = parsed.coommaSepartedOptions || parsed.commaSeparatedOptions;
+                                options = csv.split(',').map((v: string) => v.trim()).filter(Boolean);
+                            }
                         }
                     } catch {
-                        // ignore parse errors
+                        // Not JSON — treat as plain comma-separated string (legacy format)
+                        if (configStr.includes(',')) {
+                            options = configStr.split(',').map((v: string) => v.trim()).filter(Boolean);
+                        }
                     }
                 }
 

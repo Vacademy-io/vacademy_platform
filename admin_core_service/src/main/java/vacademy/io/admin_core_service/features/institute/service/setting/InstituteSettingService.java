@@ -140,6 +140,9 @@ public class InstituteSettingService {
         } catch (Exception e) {
             log.error("Error creating default invoice setting: " + e.getMessage());
         }
+        // Doubt notification templates: a single global default row lives at institute_id =
+        // 'DEFAULT' (see V215). New institutes fall back to it automatically via
+        // DoubtNotificationService.resolveTemplateId — no per-institute seeding needed.
     }
 
     /**

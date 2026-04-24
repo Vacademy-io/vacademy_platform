@@ -37,5 +37,12 @@ public class DoubtsDto {
     private List<String> doubtAssigneeRequestUserIds = new ArrayList<>();
     private List<DoubtAssigneeDto> allDoubtAssignee = new ArrayList<>();
     private List<String> deleteAssigneeRequest = new ArrayList<>();
+    /**
+     * Request: user ids that the admin has explicitly removed from the default (FSPSSM-implicit)
+     * assignee list for this doubt. Backend persists these as DoubtAssignee rows with status
+     * {@code DELETED}, and surfaces them back in this same field on the response so the UI can
+     * filter its default-pill list.
+     */
+    private List<String> excludedAssigneeUserIds = new ArrayList<>();
     private List<DoubtsDto> replies = new ArrayList<>();
 }

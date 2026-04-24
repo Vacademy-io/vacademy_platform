@@ -130,6 +130,26 @@ public interface FacultySubjectPackageSessionMappingRepository
   List<FacultySubjectPackageSessionMapping> findByPackageSessionId(
       @Param("packageSessionId") String packageSessionId);
 
+  @Query("SELECT fspm FROM FacultySubjectPackageSessionMapping fspm WHERE fspm.packageSessionId = :packageSessionId AND fspm.subjectId = :subjectId")
+  List<FacultySubjectPackageSessionMapping> findByPackageSessionIdAndSubjectId(
+      @Param("packageSessionId") String packageSessionId,
+      @Param("subjectId") String subjectId);
+
+  /**
+   * Resolve the institute that owns a package session, by walking
+   * package_session → package_institute. Returns the first match; a package may only belong to a
+   * single institute, so the limit is defensive.
+   */
+  @Query(value = """
+      SELECT pi.institute_id
+      FROM package_institute pi
+      JOIN package_session ps ON ps.package_id = pi.package_id
+      WHERE ps.id = :packageSessionId
+      LIMIT 1
+      """, nativeQuery = true)
+  Optional<String> findInstituteIdByPackageSessionId(
+      @Param("packageSessionId") String packageSessionId);
+
   /**
    * Get distinct user IDs by package session ID and active statuses - for
    * notification service

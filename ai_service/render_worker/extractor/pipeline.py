@@ -167,6 +167,39 @@ def run_index_pipeline(
         fps_original = probe["fps"]
         resolution = f"{width}x{height}"
         logger.info(f"Video: {resolution} @ {fps_original:.1f}fps, {duration_s:.1f}s")
+
+        output_urls: dict[str, Any] = {"assets": {}}
+
+        # Re-encode source video to mp4 (browser-compatible) and upload to
+        # public bucket so the FE player can show it in SOURCE_CLIP shots.
+        _src_ext = source_url.rsplit(".", 1)[-1].split("?")[0] or "mp4"
+        if _src_ext.lower() in ("mov", "avi", "mkv", "webm", "wmv"):
+            source_mp4_path = work_dir / "source_browser.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", str(video_path),
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k",
+                    "-movflags", "+faststart",
+                    str(source_mp4_path),
+                ],
+                capture_output=True, timeout=600,
+            )
+            upload_path = source_mp4_path
+            upload_key = f"{s3_base}/source.mp4"
+        else:
+            upload_path = video_path
+            upload_key = f"{s3_base}/source.{_src_ext}"
+        source_public_url = s3.upload(
+            upload_path,
+            upload_key,
+            content_type="video/mp4",
+        )
+        # Store INSIDE assets dict — the poller saves output_urls["assets"]
+        # to the DB's assets_urls column, so top-level keys get lost.
+        output_urls["assets"]["source_video"] = source_public_url
+        logger.info(f"Source video copied to public bucket: {source_public_url}")
+
         on_progress(5)
 
         # ── STAGE 1: CHEAP PASS (5-30%) ───────────────────────────────
@@ -209,7 +242,6 @@ def run_index_pipeline(
         logger.info(f"=== STAGE 3: Visual Extraction ({mode}) ===")
 
         matter = SelfieSegMatter()
-        output_urls: dict[str, Any] = {"assets": {}}
         spatial_db_path = work_dir / "video_spatial.sqlite"
         conn = create_spatial_db(spatial_db_path)
 

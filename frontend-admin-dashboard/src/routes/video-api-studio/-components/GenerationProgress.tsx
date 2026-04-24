@@ -15,6 +15,8 @@ import {
     Check,
     Clock,
     Volume2,
+    Zap,
+    AlertTriangle,
 } from 'lucide-react';
 
 interface GenerationProgressProps {
@@ -25,6 +27,16 @@ interface GenerationProgressProps {
     scriptUrl?: string;
     audioUrl?: string;
     wordsUrl?: string;
+    shotsCompleted?: number;
+    shotsTotal?: number;
+    cumulativeTokens?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+        estimated_cost_usd?: number | null;
+    };
+    recentErrors?: Array<{ shot_index: number; shot_type?: string; error: string; retrying: boolean }>;
+    shotPlan?: Array<{ shot_index: number; shot_type: string; start_time: number; end_time: number; duration_s: number; narration_excerpt?: string }>;
 }
 
 const STAGES: {
@@ -276,6 +288,138 @@ function StagePanel({
     );
 }
 
+// ── Shot progress panel (shown during HTML stage) ─────────────────────────────
+function ShotProgress({
+    shotsCompleted,
+    shotsTotal,
+    cumulativeTokens,
+    recentErrors,
+    shotPlan,
+}: {
+    shotsCompleted?: number;
+    shotsTotal?: number;
+    cumulativeTokens?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; estimated_cost_usd?: number | null };
+    recentErrors?: Array<{ shot_index: number; shot_type?: string; error: string; retrying: boolean }>;
+    shotPlan?: Array<{ shot_index: number; shot_type: string; start_time: number; end_time: number; duration_s: number; narration_excerpt?: string }>;
+}) {
+    const [errorsOpen, setErrorsOpen] = useState(false);
+    const [planOpen, setPlanOpen] = useState(false);
+    const shotPct = shotsTotal && shotsCompleted != null ? Math.round((shotsCompleted / shotsTotal) * 100) : 0;
+    const hasErrors = (recentErrors?.length ?? 0) > 0;
+    const hasPlan = (shotPlan?.length ?? 0) > 0;
+
+    return (
+        <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+            {/* Shot progress bar */}
+            {shotsTotal != null && (
+                <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium text-blue-700">
+                            {shotsCompleted != null ? `Shot ${shotsCompleted} / ${shotsTotal}` : `Planning ${shotsTotal} shots…`}
+                        </span>
+                        <span className="tabular-nums text-blue-500">{shotPct}%</span>
+                    </div>
+                    <Progress value={shotPct} className="h-1" />
+                </div>
+            )}
+
+            {/* Shot plan pills — done / current / pending */}
+            {hasPlan && (
+                <div>
+                    <button
+                        onClick={() => setPlanOpen((o) => !o)}
+                        className="flex items-center gap-1.5 text-[11px] text-blue-600 hover:text-blue-700"
+                    >
+                        <Code className="size-3" />
+                        Shot plan ({shotPlan!.length} shots)
+                        {planOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                    </button>
+                    {planOpen && (
+                        <div className="mt-2 space-y-1">
+                            {shotPlan!.map((s) => {
+                                const done = shotsCompleted != null && s.shot_index < shotsCompleted;
+                                const current = shotsCompleted != null && s.shot_index === shotsCompleted;
+                                return (
+                                    <div
+                                        key={s.shot_index}
+                                        className={`flex items-start gap-2 rounded px-2 py-1 text-[11px] ${
+                                            done ? 'bg-green-50 text-green-800' :
+                                            current ? 'bg-blue-100 text-blue-800' :
+                                            'bg-white/60 text-muted-foreground'
+                                        }`}
+                                    >
+                                        <span className="mt-0.5 shrink-0">
+                                            {done ? <CheckCircle2 className="size-3 text-green-500" /> :
+                                             current ? <Loader2 className="size-3 animate-spin text-blue-500" /> :
+                                             <Clock className="size-3 opacity-40" />}
+                                        </span>
+                                        <span className="shrink-0 font-medium">{s.shot_index + 1}.</span>
+                                        <span className={`shrink-0 rounded px-1 text-[10px] font-medium ${
+                                            done ? 'bg-green-100 text-green-700' :
+                                            current ? 'bg-blue-200 text-blue-700' :
+                                            'bg-muted text-muted-foreground'
+                                        }`}>{s.shot_type.replace(/_/g, ' ')}</span>
+                                        <span className="text-muted-foreground/70">{s.duration_s.toFixed(1)}s</span>
+                                        {s.narration_excerpt && (
+                                            <span className="min-w-0 truncate italic opacity-60">
+                                                "{s.narration_excerpt.slice(0, 60)}{s.narration_excerpt.length > 60 ? '…' : ''}"
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Token / cost strip */}
+            {cumulativeTokens && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                        <Zap className="size-3 text-amber-500" />
+                        {cumulativeTokens.total_tokens.toLocaleString()} tokens
+                    </span>
+                    {cumulativeTokens.estimated_cost_usd != null && (
+                        <span className="font-mono text-[11px]">
+                            ≈ ${cumulativeTokens.estimated_cost_usd.toFixed(3)} USD
+                        </span>
+                    )}
+                    <span className="text-muted-foreground/60">
+                        {cumulativeTokens.prompt_tokens.toLocaleString()} in / {cumulativeTokens.completion_tokens.toLocaleString()} out
+                    </span>
+                </div>
+            )}
+
+            {/* Recent errors */}
+            {hasErrors && (
+                <div>
+                    <button
+                        onClick={() => setErrorsOpen((o) => !o)}
+                        className="flex items-center gap-1.5 text-[11px] text-amber-600 hover:text-amber-700"
+                    >
+                        <AlertTriangle className="size-3" />
+                        {recentErrors!.length} shot {recentErrors!.length === 1 ? 'issue' : 'issues'}
+                        {errorsOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                    </button>
+                    {errorsOpen && (
+                        <ul className="mt-1.5 space-y-1">
+                            {recentErrors!.map((e, i) => (
+                                <li key={i} className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                                    <span className="font-medium">Shot {e.shot_index + 1}</span>
+                                    {e.shot_type && <span className="ml-1 text-amber-600">({e.shot_type})</span>}
+                                    {e.retrying && <span className="ml-1 text-blue-500">retrying…</span>}
+                                    <span className="ml-1 text-amber-700">— {e.error.slice(0, 120)}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export function GenerationProgress({
     currentStage,
@@ -285,15 +429,21 @@ export function GenerationProgress({
     scriptUrl,
     audioUrl,
     wordsUrl,
+    shotsCompleted,
+    shotsTotal,
+    cumulativeTokens,
+    recentErrors,
+    shotPlan,
 }: GenerationProgressProps) {
     const currentIndex = getStageIndex(currentStage);
     const contentLabel = getContentTypeLabel(contentType);
 
-    // Auto-expand the most recently completed stage's panel
-    // (tracked by whichever URL just appeared)
     const scriptReady = !!scriptUrl;
     const audioReady = !!audioUrl;
     const wordsReady = !!wordsUrl;
+    const showShotProgress =
+        currentStage === 'HTML' &&
+        (shotsTotal != null || cumulativeTokens != null || (shotPlan?.length ?? 0) > 0);
 
     return (
         <div className="w-full space-y-5">
@@ -371,6 +521,17 @@ export function GenerationProgress({
                 <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-center text-xs text-blue-700">
                     {message}
                 </div>
+            )}
+
+            {/* ── Shot progress + token usage (HTML phase only) ── */}
+            {showShotProgress && (
+                <ShotProgress
+                    shotsCompleted={shotsCompleted}
+                    shotsTotal={shotsTotal}
+                    cumulativeTokens={cumulativeTokens}
+                    recentErrors={recentErrors}
+                    shotPlan={shotPlan}
+                />
             )}
 
             {/* ── Stage result panels (appear progressively as each stage finishes) ── */}

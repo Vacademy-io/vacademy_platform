@@ -7,13 +7,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import queue as _queue
 import re
 import shutil
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, AsyncIterator
+from typing import Optional, Dict, Any, AsyncIterator, List
 from uuid import uuid4
 
 from ..repositories.ai_video_repository import AiVideoRepository
@@ -100,7 +101,9 @@ class VideoGenerationService:
         visual_style: str = "standard",
         sound_effects_enabled: bool = True,
         input_video_id: Optional[str] = None,
+        input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
+        mute_tts_on_source_clips: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -162,8 +165,15 @@ class VideoGenerationService:
                 gen_metadata["visual_style"] = visual_style
             if quality_tier and quality_tier != "ultra":
                 gen_metadata["quality_tier"] = quality_tier
-            if input_video_id:
-                gen_metadata["input_video_id"] = input_video_id
+            # Normalize: singular → list (backward compat)
+            if input_video_id and not input_video_ids:
+                input_video_ids = [input_video_id]
+            if input_video_ids:
+                gen_metadata["input_video_ids"] = input_video_ids
+                gen_metadata["input_video_id"] = input_video_ids[0]  # compat
+            if input_video_audio:
+                gen_metadata["input_video_audio"] = input_video_audio
+            gen_metadata["mute_tts_on_source_clips"] = bool(mute_tts_on_source_clips)
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -233,8 +243,9 @@ class VideoGenerationService:
                     orientation=orientation,
                     visual_style=visual_style,
                     sound_effects_enabled=sound_effects_enabled,
-                    input_video_id=input_video_id,
+                    input_video_ids=input_video_ids,
                     input_video_audio=input_video_audio,
+                    mute_tts_on_source_clips=mute_tts_on_source_clips,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -315,8 +326,9 @@ class VideoGenerationService:
         orientation: str = "landscape",
         visual_style: str = "standard",
         sound_effects_enabled: bool = True,
-        input_video_id: Optional[str] = None,
+        input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
+        mute_tts_on_source_clips: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -342,43 +354,32 @@ class VideoGenerationService:
         from ..config import get_settings
         settings = get_settings()
         openrouter_key = settings.openrouter_api_key
-        gemini_key = settings.gemini_api_key
-        
-        # API keys loaded from environment (not logging to avoid exposing key status)
-        
+
         if not openrouter_key:
             error_msg = "OPENROUTER_API_KEY not set in environment. Please add it to your .env.stage file."
             logger.error(f"[VideoGenService] {error_msg}")
             raise ValueError(error_msg)
-        
-        # Prepare pipeline arguments
+
+        # Prepare pipeline arguments. Image generation now runs through OpenRouter
+        # (bytedance-seed/seedream-4.5); stock photos/videos come from Pexels and Pixabay.
         pipeline_args = {
             "openrouter_key": openrouter_key,
-            "gemini_image_key": gemini_key or "",  # Pass Gemini key for image generation
-            "pexels_api_keys": settings.pexels_api_keys or "",  # Pexels stock photos/videos
+            "pexels_api_keys": settings.pexels_api_keys or "",
+            "pixabay_api_keys": settings.pixabay_api_keys or "",
             "runs_dir": work_dir.parent,
             "quality_tier": quality_tier,
         }
 
-        # Resolve model: use explicit model, or pick from DB based on quality_tier
+        # Resolve model: use explicit model, or pick from DB based on defaults
         resolved_model = model
         if not resolved_model:
             try:
-                from ..constants.models import get_models_by_tier, get_default_model
-                tier_models = get_models_by_tier(quality_tier)
-                if tier_models:
-                    # Prefer the default model for this tier
-                    default_for_tier = next((m for m in tier_models if m.is_default), tier_models[0])
-                    resolved_model = default_for_tier.id
-                    logger.info(f"[VideoGenService] Auto-selected model '{resolved_model}' for tier '{quality_tier}'")
-                else:
-                    # Fallback to global default
-                    default_model = get_default_model()
-                    if default_model:
-                        resolved_model = default_model.id
-                        logger.info(f"[VideoGenService] No models for tier '{quality_tier}', using global default '{resolved_model}'")
+                from ..services.ai_models_service import AIModelsService
+                if db_session:
+                    resolved_model = AIModelsService(db_session).get_models_for_use_case("video").default_model_id
+                    logger.info(f"[VideoGenService] Auto-selected default model '{resolved_model}' for video generation")
             except Exception as e:
-                logger.warning(f"[VideoGenService] Failed to auto-select model for tier '{quality_tier}': {e}")
+                logger.warning(f"[VideoGenService] Failed to auto-select model from defaults: {e}")
 
         if resolved_model:
             pipeline_args["script_model"] = resolved_model
@@ -519,7 +520,43 @@ class VideoGenerationService:
                         logger.info(f"[VideoGenService] Downloading narration.words.json from S3...")
                         if self.s3_service.download_file(words_url, words_path):
                             logger.info(f"[VideoGenService] Successfully downloaded narration.words.json")
-            
+
+                # Download shot checkpoints for intra-HTML-stage resume (director plan + per-shot cache)
+                try:
+                    from ..config import get_settings as _get_settings_ckpt
+                    _ckpt_settings = _get_settings_ckpt()
+                    _ckpt_bucket = _ckpt_settings.aws_bucket_name or _ckpt_settings.aws_s3_public_bucket
+                    _ckpt_prefix = f"ai-videos/{video_id}/checkpoints"
+                    _ckpt_base_url = f"https://{_ckpt_bucket}.s3.amazonaws.com/{_ckpt_prefix}"
+
+                    # style_guide.json
+                    _sg_local = run_dir / "style_guide.json"
+                    if not _sg_local.exists():
+                        self.s3_service.download_file(f"{_ckpt_base_url}/style_guide.json", _sg_local)
+
+                    # director_plan.json
+                    _dp_local = run_dir / "director_plan.json"
+                    if not _dp_local.exists():
+                        self.s3_service.download_file(f"{_ckpt_base_url}/director_plan.json", _dp_local)
+
+                    # Per-shot cache files (shot_000.json … shot_NNN.json)
+                    _shot_cache_local = run_dir / "shot_cache"
+                    _shot_cache_local.mkdir(exist_ok=True)
+                    _downloaded_shots = 0
+                    for _shot_idx in range(200):  # max 200 shots
+                        _sc_key = f"{_ckpt_base_url}/shot_cache/shot_{_shot_idx:03d}.json"
+                        _sc_local = _shot_cache_local / f"shot_{_shot_idx:03d}.json"
+                        if _sc_local.exists():
+                            _downloaded_shots += 1
+                            continue
+                        if not self.s3_service.download_file(_sc_key, _sc_local):
+                            break  # No more shot cache files
+                        _downloaded_shots += 1
+                    if _downloaded_shots:
+                        logger.info(f"[VideoGenService] Downloaded {_downloaded_shots} shot checkpoints for {video_id}")
+                except Exception as _ckpt_dl_err:
+                    logger.info(f"[VideoGenService] No shot checkpoints found or download failed (new run): {_ckpt_dl_err}")
+
             # Need branding_meta.json for render stage (audio delay)
             if start_stage_idx >= 5:  # RENDER
                 branding_meta_url = video_record.s3_urls.get("branding_meta")
@@ -555,58 +592,93 @@ class VideoGenerationService:
                 logger.warning(f"[VideoGenService] Reference file processing failed (non-fatal): {e}")
                 reference_context = None
 
-        # ── Load indexed input video context (if provided) ──
-        input_video_context = None
-        if input_video_id:
+        # ── Load indexed input video contexts (if provided) ──
+        input_video_contexts = None
+        logger.info(f"[VideoGenService] input_video_ids={input_video_ids}, input_video_audio={input_video_audio}")
+        if input_video_ids:
             try:
+                import json as _json
                 from ..repositories.ai_input_video_repository import AiInputVideoRepository
                 iv_repo = AiInputVideoRepository(session=db_session)
-                iv_record = iv_repo.get_by_id(input_video_id)
-                if iv_record and iv_record.status == "COMPLETED" and iv_record.context_json_url:
+                iv_records = iv_repo.get_by_ids(input_video_ids)
+                logger.info(f"[VideoGenService] Found {len(iv_records)}/{len(input_video_ids)} input videos")
+
+                loaded_contexts = []
+                source_video_urls = []
+                for idx, iv_record in enumerate(iv_records):
+                    if iv_record.status != "COMPLETED" or not iv_record.context_json_url:
+                        logger.warning(f"[VideoGenService] Input video {iv_record.id} skipped "
+                                       f"(status={iv_record.status})")
+                        continue
+
                     # Download video_context.json
-                    import httpx
-                    context_path = run_dir / "input_video_context.json"
+                    context_path = run_dir / f"input_video_context_{idx}.json"
                     if not context_path.exists():
-                        resp = httpx.get(iv_record.context_json_url, timeout=60)
-                        resp.raise_for_status()
-                        context_path.write_bytes(resp.content)
-                    import json as _json
-                    # Resolve audio preference: explicit > mode default
+                        context_path.parent.mkdir(parents=True, exist_ok=True)
+                        _ctx_url = iv_record.context_json_url
+                        _downloaded = False
+                        for _bkt in ["vacademy-media-storage", "vacademy-media-storage-public"]:
+                            if _bkt in _ctx_url:
+                                try:
+                                    _parts = _ctx_url.split(f"{_bkt}.s3.amazonaws.com/")
+                                    if len(_parts) == 2:
+                                        self.s3_service.s3_client.download_file(
+                                            _bkt, _parts[1], str(context_path)
+                                        )
+                                        _downloaded = True
+                                        break
+                                except Exception:
+                                    continue
+                        if not _downloaded:
+                            import httpx
+                            resp = httpx.get(_ctx_url, timeout=60)
+                            resp.raise_for_status()
+                            context_path.write_bytes(resp.content)
+
+                    # Resolve audio preference
                     _audio_pref = input_video_audio
                     if not _audio_pref:
-                        _audio_pref = "original" if iv_record.mode == "podcast" else "tts"
+                        if len(input_video_ids) > 1:
+                            _audio_pref = "tts"  # multi-source always TTS
+                        else:
+                            _audio_pref = "original" if iv_record.mode == "podcast" else "tts"
 
-                    input_video_context = {
+                    _iv_assets = iv_record.assets_urls or {}
+                    ctx = {
+                        "index": idx,
                         "context": _json.loads(context_path.read_text()),
                         "source_url": iv_record.source_url,
+                        "source_public_url": _iv_assets.get("source_video", ""),
+                        "assets_urls": _iv_assets,
                         "input_video_id": str(iv_record.id),
+                        "name": iv_record.name or f"Video {idx}",
                         "duration_seconds": iv_record.duration_seconds,
                         "mode": iv_record.mode,
                         "audio_preference": _audio_pref,
                     }
-                    logger.info(
-                        f"[VideoGenService] Loaded input video context: "
-                        f"{iv_record.name} ({iv_record.duration_seconds:.1f}s, mode={iv_record.mode})"
-                    )
-                    # Store source_video_url in video metadata so the render
-                    # endpoint can pass it to the render worker for compositing.
-                    # MERGE with existing metadata — don't overwrite.
+                    loaded_contexts.append(ctx)
+                    source_video_urls.append(iv_record.source_url)
+                    logger.info(f"[VideoGenService] Loaded input video [{idx}]: "
+                                f"{iv_record.name} ({iv_record.duration_seconds:.1f}s, mode={iv_record.mode})")
+
+                if loaded_contexts:
+                    input_video_contexts = loaded_contexts
+                    # Store in metadata for render endpoint
                     try:
                         video_record = self.repository.get_by_video_id(video_id)
                         if video_record:
                             existing_meta = video_record.extra_metadata or {}
-                            existing_meta["source_video_url"] = iv_record.source_url
-                            existing_meta["input_video_id"] = input_video_id
+                            existing_meta["source_video_urls"] = source_video_urls
+                            existing_meta["input_video_ids"] = input_video_ids
+                            # Backward compat: keep singular for old render path
+                            existing_meta["source_video_url"] = source_video_urls[0]
+                            existing_meta["input_video_id"] = input_video_ids[0]
                             self.repository.update_metadata(video_id, existing_meta)
                     except Exception:
                         pass  # non-fatal
-                elif iv_record:
-                    logger.warning(f"[VideoGenService] Input video {input_video_id} not COMPLETED (status={iv_record.status})")
-                else:
-                    logger.warning(f"[VideoGenService] Input video {input_video_id} not found")
             except Exception as e:
                 logger.warning(f"[VideoGenService] Input video context loading failed (non-fatal): {e}")
-                input_video_context = None
+                input_video_contexts = None
 
         # Calculate percentage per stage
         total_stages = target_stage_idx - start_stage_idx + 1
@@ -649,7 +721,9 @@ class VideoGenerationService:
             "html": [
                 (None, "generated_images", "generated_images"),  # Directory - process FIRST to build image mapping
                 (None, "branding_meta", "branding_meta.json"),  # Branding metadata for audio delay
-                ("timeline_json", "timeline", "time_based_frame.json")  # Process AFTER images to update URLs
+                ("timeline_json", "timeline", "time_based_frame.json"),  # Process AFTER images to update URLs
+                ("audio_path", "audio", "narration.mp3"),  # Re-upload if audio was mixed with source clips
+                ("words_json", "words", "narration.words.json"),  # Re-upload if words were filtered
             ],
             "avatar": [("avatar_video_path", "avatar", "avatar_video.mp4")],
             "render": [("video_path", "video", "output.mp4")]
@@ -708,6 +782,12 @@ class VideoGenerationService:
                 _vid_width = 1080 if orientation == "portrait" else 1920
                 _vid_height = 1920 if orientation == "portrait" else 1080
 
+                # Thread-safe queue: pipeline thread puts events; async loop drains them
+                _prog_queue: _queue.Queue = _queue.Queue()
+
+                def _progress_cb(event: Dict[str, Any]) -> None:
+                    _prog_queue.put_nowait(event)
+
                 pipeline_run = functools.partial(
                     pipeline.run,
                     base_prompt=prompt,
@@ -733,40 +813,89 @@ class VideoGenerationService:
                     video_height=_vid_height,
                     visual_style=visual_style,
                     sound_effects_enabled=sound_effects_enabled,
-                    input_video_context=input_video_context,
+                    input_video_contexts=input_video_contexts,
+                    mute_tts_on_source_clips=mute_tts_on_source_clips,
+                    progress_callback=_progress_cb,
                 )
 
+                # Run pipeline in thread while draining the progress queue in the
+                # async event loop so sub-stage events reach the SSE client in real time.
                 with ThreadPoolExecutor() as executor:
-                    outputs = await loop.run_in_executor(executor, pipeline_run)
+                    _pipeline_future = loop.run_in_executor(executor, pipeline_run)
+                    while not _pipeline_future.done():
+                        # Drain all queued events without blocking the event loop
+                        _drained: List[Dict[str, Any]] = []
+                        while not _prog_queue.empty():
+                            try:
+                                _drained.append(_prog_queue.get_nowait())
+                            except _queue.Empty:
+                                break
+                        for _ev in _drained:
+                            # Attach video_id so the FE can correlate without extra state
+                            _ev.setdefault("video_id", video_id)
+                            # Persist latest generation_progress to DB metadata so
+                            # GET /status also reflects sub-stage detail
+                            if _ev.get("type") in (
+                                "sub_stage", "shot_done", "shot_error"
+                            ):
+                                try:
+                                    self.repository.update_generation_progress(video_id, _ev)
+                                except Exception:
+                                    pass
+                            yield _ev
+                        await asyncio.sleep(0.25)
+                    # Drain any remaining events after the future completes
+                    while not _prog_queue.empty():
+                        try:
+                            _ev = _prog_queue.get_nowait()
+                            _ev.setdefault("video_id", video_id)
+                            if _ev.get("type") in (
+                                "sub_stage", "shot_done", "shot_error"
+                            ):
+                                try:
+                                    self.repository.update_generation_progress(video_id, _ev)
+                                except Exception:
+                                    pass
+                            yield _ev
+                        except _queue.Empty:
+                            break
+                    outputs = await _pipeline_future
                 
                 # Record token usage per stage
                 if outputs and "token_usage" in outputs and db_session:
                     try:
                         from .token_usage_service import TokenUsageService
                         usage = outputs["token_usage"]
-                        if usage.get("total_tokens", 0) > 0 or usage.get("image_count", 0) > 0:
+                        has_tokens = usage.get("total_tokens", 0) > 0
+                        has_images = usage.get("image_count", 0) > 0
+                        has_tts = usage.get("tts_character_count", 0) > 0
+                        has_stock = usage.get("stock_count", 0) > 0
+                        
+                        if has_tokens or has_images or has_tts or has_stock:
                             token_service = TokenUsageService(db_session)
                             provider = ApiProvider.OPENAI
                             if resolved_model and "gemini" in resolved_model.lower():
                                 provider = ApiProvider.GEMINI
+                                
                             # Deduct for LLM tokens (video request type)
-                            token_service.record_usage_and_deduct_credits(
-                                api_provider=provider,
-                                prompt_tokens=usage.get("prompt_tokens", 0),
-                                completion_tokens=usage.get("completion_tokens", 0),
-                                total_tokens=usage.get("total_tokens", 0),
-                                request_type=RequestType.VIDEO,
-                                institute_id=institute_id,
-                                user_id=user_id,
-                                model=resolved_model or "video-gen-pipeline",
-                                metadata={
-                                    "video_id": video_id,
-                                    "image_count": usage.get("image_count", 0),
-                                    "stage": stage_pipeline_name
-                                },
-                                batch_id=video_id,
-                            )
-                            logger.info(f"[VideoGenService] Recorded token usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
+                            if has_tokens:
+                                token_service.record_usage_and_deduct_credits(
+                                    api_provider=provider,
+                                    prompt_tokens=usage.get("prompt_tokens", 0),
+                                    completion_tokens=usage.get("completion_tokens", 0),
+                                    total_tokens=usage.get("total_tokens", 0),
+                                    request_type=RequestType.VIDEO,
+                                    institute_id=institute_id,
+                                    user_id=user_id,
+                                    model=resolved_model or "video-gen-pipeline",
+                                    metadata={
+                                        "video_id": video_id,
+                                        "image_count": usage.get("image_count", 0),
+                                        "stage": stage_pipeline_name
+                                    },
+                                    batch_id=video_id,
+                                )
+                                logger.info(f"[VideoGenService] Recorded token usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
 
                             # Deduct separately for images generated in this stage
                             _image_count = usage.get("image_count", 0)
@@ -785,6 +914,24 @@ class VideoGenerationService:
                                         batch_id=video_id,
                                     )
                                 logger.info(f"[VideoGenService] Deducted credits for {_image_count} images in stage {stage_pipeline_name}")
+
+                            # Deduct separately for stock images & videos
+                            _stock_count = usage.get("stock_count", 0)
+                            if _stock_count > 0:
+                                for _ in range(_stock_count):
+                                    token_service.record_usage_and_deduct_credits(
+                                        api_provider=ApiProvider.OPENAI,
+                                        prompt_tokens=0,
+                                        completion_tokens=0,
+                                        total_tokens=0,
+                                        request_type=RequestType.STOCK,
+                                        institute_id=institute_id,
+                                        user_id=user_id,
+                                        model="pexels-stock-api",
+                                        metadata={"video_id": video_id, "stage": stage_pipeline_name},
+                                        batch_id=video_id,
+                                    )
+                                logger.info(f"[VideoGenService] Deducted credits for {_stock_count} stock media insertions in stage {stage_pipeline_name}")
 
                             # Deduct separately for TTS characters
                             # Use premium pricing (2x) for premium/google/sarvam providers
@@ -816,7 +963,33 @@ class VideoGenerationService:
                                 logger.info(f"[VideoGenService] Deducted {'premium ' if _is_premium_tts else ''}TTS credits for {_tts_chars} chars in stage {stage_pipeline_name}")
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
-                
+
+                # Persist full token/cost breakdown into video metadata so it's
+                # queryable without joining ai_token_usage (used by FE cost display)
+                if outputs and "token_usage" in outputs and db_session:
+                    try:
+                        _usage = outputs["token_usage"]
+                        if _usage.get("total_tokens", 0) > 0 or _usage.get("estimated_cost_usd") is not None:
+                            from datetime import datetime as _dt
+                            _video_rec = self.repository.get_by_video_id(video_id)
+                            _existing_meta = (_video_rec.extra_metadata or {}) if _video_rec else {}
+                            _existing_meta["token_usage"] = {
+                                "prompt_tokens": _usage.get("prompt_tokens", 0),
+                                "completion_tokens": _usage.get("completion_tokens", 0),
+                                "total_tokens": _usage.get("total_tokens", 0),
+                                "image_count": _usage.get("image_count", 0),
+                                "tts_character_count": _usage.get("tts_character_count", 0),
+                                "stock_count": _usage.get("stock_count", 0),
+                                "estimated_cost_usd": _usage.get("estimated_cost_usd"),
+                                "model": _usage.get("model"),
+                                "recorded_at": _dt.utcnow().isoformat(),
+                            }
+                            self.repository.update_metadata(video_id, _existing_meta)
+                            logger.info(f"[VideoGenService] Saved token_usage to metadata for {video_id}: "
+                                        f"est. ${_usage.get('estimated_cost_usd', 0):.4f}")
+                    except Exception as _me:
+                        logger.warning(f"[VideoGenService] Failed to save token_usage to metadata: {_me}")
+
                 if outputs and "run_dir" in outputs:
                     run_dir = outputs["run_dir"]
 
@@ -1245,6 +1418,28 @@ class VideoGenerationService:
                         logger.warning(f"[VideoGenService] Could not process file path {file_path}: {e}")
             
             if stage_has_files:
+                # After HTML stage: upload shot checkpoints to S3 so a retry can resume
+                # from the last saved shot without re-running Director or completed shots.
+                if stage_pipeline_name == "html":
+                    try:
+                        _ckpt_files = []
+                        _dir_plan = run_dir / "director_plan.json"
+                        if _dir_plan.exists():
+                            _ckpt_files.append((_dir_plan, f"ai-videos/{video_id}/checkpoints/director_plan.json"))
+                        _shot_cache_dir = run_dir / "shot_cache"
+                        if _shot_cache_dir.exists():
+                            for _sc_file in sorted(_shot_cache_dir.glob("shot_*.json")):
+                                _ckpt_files.append((_sc_file, f"ai-videos/{video_id}/checkpoints/shot_cache/{_sc_file.name}"))
+                        _sg_file = run_dir / "style_guide.json"
+                        if _sg_file.exists():
+                            _ckpt_files.append((_sg_file, f"ai-videos/{video_id}/checkpoints/style_guide.json"))
+                        for _f, _key in _ckpt_files:
+                            self.s3_service.upload_file(_f, s3_key=_key, content_type="application/json")
+                        if _ckpt_files:
+                            logger.info(f"[VideoGenService] Uploaded {len(_ckpt_files)} checkpoint files to S3 for {video_id}")
+                    except Exception as _ckpt_err:
+                        logger.warning(f"[VideoGenService] Failed to upload checkpoints to S3: {_ckpt_err}")
+
                 # Update stage status — wrap in try/except so a stale-session error
                 # doesn't abort the entire pipeline after files were already uploaded.
                 try:

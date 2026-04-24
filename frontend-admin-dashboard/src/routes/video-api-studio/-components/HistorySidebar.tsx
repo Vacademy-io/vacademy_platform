@@ -10,6 +10,7 @@ import {
     ChevronRight,
     ChevronLeft,
     Plus,
+    RefreshCw,
 } from 'lucide-react';
 import { HistoryItem } from '../-services/video-generation';
 import {
@@ -30,6 +31,7 @@ interface HistorySidebarProps {
     selectedId: string | null;
     onSelect: (item: HistoryItem) => void;
     onDelete: (videoId: string) => void;
+    onRetry?: (videoId: string) => void;
     onNewVideo: () => void;
     isCollapsed: boolean;
     onToggleCollapse: () => void;
@@ -44,6 +46,7 @@ export function HistorySidebar({
     selectedId,
     onSelect,
     onDelete,
+    onRetry,
     onNewVideo,
     isCollapsed,
     onToggleCollapse,
@@ -192,7 +195,7 @@ export function HistorySidebar({
                                         >
                                             {item.prompt}
                                         </p>
-                                        <div className="mt-1.5 flex items-center gap-2">
+                                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                                             <span className="flex items-center gap-1 rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                                                 <Clock className="size-3" />
                                                 {formatDate(item.created_at)}
@@ -202,7 +205,26 @@ export function HistorySidebar({
                                                     {item.options.model.split('-')[0]}
                                                 </span>
                                             )}
+                                            {item.status === 'completed' && item.token_usage?.estimated_cost_usd != null && (
+                                                <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
+                                                    ${item.token_usage.estimated_cost_usd.toFixed(2)}
+                                                </span>
+                                            )}
                                         </div>
+                                        {item.status === 'failed' && onRetry && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="mt-2 h-6 gap-1 px-2 text-[10px] text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onRetry(item.video_id);
+                                                }}
+                                            >
+                                                <RefreshCw className="size-3" />
+                                                Retry
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
 

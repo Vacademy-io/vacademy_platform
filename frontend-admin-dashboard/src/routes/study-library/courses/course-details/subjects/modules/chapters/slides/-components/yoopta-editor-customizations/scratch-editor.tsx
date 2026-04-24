@@ -9,6 +9,12 @@ export function ScratchEditor({ element, attributes, children, blockId }: Plugin
     );
     const isFirstRender = useRef(true);
 
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propId = element?.props?.scratchId || '';
+        if (propId !== scratchId) setScratchId(propId);
+    }, [element?.props?.scratchId]);
+
     // Persist state to Yoopta/Slate store
     // NOTE: Do NOT include Date.now() — it causes infinite re-render loops.
     useEffect(() => {

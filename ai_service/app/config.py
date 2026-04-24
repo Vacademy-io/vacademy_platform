@@ -117,6 +117,9 @@ class Settings(BaseSettings):
     # Pexels API Configuration (comma-separated keys for round-robin rotation)
     pexels_api_keys: str = ""
 
+    # Pixabay API Configuration (comma-separated keys for round-robin rotation)
+    pixabay_api_keys: str = ""
+
     # Render Worker (dedicated Hetzner server for video rendering)
     render_server_url: str = os.getenv("RENDER_SERVER_URL", "")
     render_server_key: str = os.getenv("RENDER_SERVER_KEY", "")

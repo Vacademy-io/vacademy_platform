@@ -7,6 +7,7 @@ export interface CustomFieldType {
     is_mandatory: boolean;
     comma_separated_options: string;
     status: string;
+    form_order?: number;
 }
 
 export interface InviteLevelType {

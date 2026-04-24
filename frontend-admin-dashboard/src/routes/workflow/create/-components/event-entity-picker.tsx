@@ -7,6 +7,7 @@ import {
     AUDIENCE_CAMPAIGNS_LIST,
     GET_LIVE_SESSIONS,
     GET_INVITE_LIST,
+    INIT_INSTITUTE,
 } from '@/constants/urls';
 
 interface EventEntityPickerProps {
@@ -20,6 +21,30 @@ interface EntityOption {
     id: string;
     label: string;
     subtitle?: string;
+}
+
+async function fetchPackageSessions(instituteId: string): Promise<EntityOption[]> {
+    try {
+        // Use the institute details endpoint which returns batches_for_sessions
+        const response = await authenticatedAxiosInstance.get(`${INIT_INSTITUTE}/${instituteId}`);
+        const batches = response.data?.batches_for_sessions ?? [];
+        if (!Array.isArray(batches)) return [];
+        return batches.map((batch: Record<string, unknown>) => {
+            const pkg = (batch.package_dto ?? {}) as Record<string, string>;
+            const level = (batch.level ?? {}) as Record<string, string>;
+            const session = (batch.session ?? {}) as Record<string, string>;
+            const packageName = pkg.package_name ?? 'Unknown';
+            const levelName = level.level_name ?? '';
+            const sessionName = session.session_name ?? '';
+            return {
+                id: (batch.id as string) ?? '',
+                label: `${packageName} — ${levelName} / ${sessionName}`.trim().replace(/— \/ $/, '').replace(/ \/ $/, ''),
+                subtitle: (batch.status as string) ?? undefined,
+            };
+        });
+    } catch {
+        return [];
+    }
 }
 
 async function fetchAudiences(instituteId: string): Promise<EntityOption[]> {
@@ -96,6 +121,8 @@ function useEntityOptions(eventAppliedType: string, instituteId: string) {
         queryKey: ['workflow-entity-picker', eventAppliedType, instituteId],
         queryFn: async (): Promise<EntityOption[]> => {
             switch (eventAppliedType) {
+                case 'PACKAGE_SESSION':
+                    return fetchPackageSessions(instituteId);
                 case 'AUDIENCE':
                     return fetchAudiences(instituteId);
                 case 'LIVE_SESSION':
@@ -107,7 +134,7 @@ function useEntityOptions(eventAppliedType: string, instituteId: string) {
             }
         },
         staleTime: 5 * 60 * 1000,
-        enabled: !!instituteId && ['AUDIENCE', 'LIVE_SESSION', 'ENROLL_INVITE'].includes(eventAppliedType),
+        enabled: !!instituteId && ['PACKAGE_SESSION', 'AUDIENCE', 'LIVE_SESSION', 'ENROLL_INVITE'].includes(eventAppliedType),
         retry: false,
     });
 }
@@ -125,7 +152,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 export function EventEntityPicker({ eventAppliedType, value, onChange, instituteId }: EventEntityPickerProps) {
     const [showManual, setShowManual] = useState(false);
-    const hasDropdownSupport = ['AUDIENCE', 'LIVE_SESSION', 'ENROLL_INVITE'].includes(eventAppliedType);
+    const hasDropdownSupport = ['PACKAGE_SESSION', 'AUDIENCE', 'LIVE_SESSION', 'ENROLL_INVITE'].includes(eventAppliedType);
     const { data: options = [], isLoading, isError } = useEntityOptions(eventAppliedType, instituteId);
 
     const typeLabel = TYPE_LABELS[eventAppliedType] ?? eventAppliedType.replace(/_/g, ' ').toLowerCase();

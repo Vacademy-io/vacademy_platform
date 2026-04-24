@@ -63,4 +63,19 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
         @Param("startTime") Timestamp startTime,
         @Param("endTime") Timestamp endTime
     );
+
+    @Query("""
+            SELECT l FROM LiveSessionLogs l
+            WHERE l.scheduleId = :scheduleId
+              AND l.userSourceId = :userId
+              AND l.logType = 'FEEDBACK_SUBMITTED'
+            ORDER BY l.createdAt ASC
+        """)
+    List<LiveSessionLogs> findFeedbackByScheduleAndUser(
+            @Param("scheduleId") String scheduleId,
+            @Param("userId") String userId);
+
+    default boolean hasFeedbackBeenSubmitted(String scheduleId, String userId) {
+        return !findFeedbackByScheduleAndUser(scheduleId, userId).isEmpty();
+    }
 }

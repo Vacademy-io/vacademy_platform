@@ -16,6 +16,7 @@ mkdir -p "$BUILD_DIR"
 # Copy render worker files
 cp "$SCRIPT_DIR/main.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/worker.py" "$BUILD_DIR/"
+cp "$SCRIPT_DIR/transcribe_worker.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/requirements.txt" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/Dockerfile" "$BUILD_DIR/"
 

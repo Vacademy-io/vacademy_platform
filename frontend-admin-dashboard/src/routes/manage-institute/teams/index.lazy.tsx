@@ -2,21 +2,17 @@ import { createLazyFileRoute } from '@tanstack/react-router';
 import { SearchInput } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/search-input';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
-import { useEffect, useState, useRef } from 'react';
-import { DashboardLoader } from '@/components/core/dashboard-loader';
+import { useEffect, useState, useMemo } from 'react';
 import { fetchInstituteDashboardUsers } from '@/routes/dashboard/-services/dashboard-services';
 import { useRefetchUsersStore } from '@/routes/dashboard/-global-states/refetch-store-users';
 import { getInstituteId } from '@/constants/helper';
-import { RolesDummyDataType } from '@/types/dashboard/user-roles';
-import { MyFilterOption } from '@/types/assessments/my-filter';
+import { UserRolesDataEntry } from '@/types/dashboard/user-roles';
 import { useMutation } from '@tanstack/react-query';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ScheduleTestFilters } from '@/routes/assessment/assessment-list/-components/ScheduleTestFilters';
-import RoleTypeFilterButtons from '@/routes/dashboard/-components/RoleTypeFilterButtons';
 import InviteUsersComponent from '@/routes/dashboard/-components/InviteUsersComponent';
-import InstituteUsersComponent from '@/routes/dashboard/-components/InstituteUsersTab';
-import InviteUsersTab from '@/routes/dashboard/-components/InviteUsersTab';
+import InstituteUsersOptions from '@/routes/dashboard/-components/InstituteUsersOptions';
+import InviteUsersOptions from '@/routes/dashboard/-components/InviteUsersOptions';
 import { RoleType, RoleTypeUserStatus } from '@/constants/dummy-data';
 import { mapRoleToCustomName } from '@/utils/roleUtils';
 import { MyTable } from '@/components/design-system/table';
@@ -26,6 +22,7 @@ import { FilterChips } from '@/components/design-system/chips';
 import { MyButton } from '@/components/design-system/button';
 import { Funnel, X, Users } from '@phosphor-icons/react';
 import { CornerDownLeft } from 'lucide-react';
+import { getAllRoles, type CustomRole } from '@/routes/manage-custom-teams/-services/custom-team-services';
 
 export interface RoleTypeSelectedFilter {
   roles: { id: string; name: string }[];
@@ -81,6 +78,7 @@ function RouteComponent() {
   const pageSize = 10;
   const [searchInput, setSearchInput] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
 
   const [selectedFilter, setSelectedFilter] = useState<RoleTypeSelectedFilter>({
     roles: [],
@@ -95,8 +93,23 @@ function RouteComponent() {
     invites: null,
   });
 
+  // All roles from the API for filters and dropdowns (exclude STUDENT)
+  const allRoles = useMemo(() => {
+    return customRoles
+      .filter((cr) => cr.name !== 'STUDENT')
+      .map((cr) => ({
+        id: cr.id,
+        name: cr.name,
+      }));
+  }, [customRoles]);
+
+  // Default filter with all roles (used in API calls when no filter selected)
+  const allRolesFilter = useMemo(() => {
+    return allRoles.map((r) => ({ id: r.id, name: r.name }));
+  }, [allRoles]);
+
   // Transform RoleType data to show custom names while preserving backend values
-  const roleTypeWithCustomNames = RoleType.map((role) => ({
+  const roleTypeWithCustomNames = allRoles.map((role) => ({
     ...role,
     name: mapRoleToCustomName(role.name),
     label: mapRoleToCustomName(role.name),
@@ -153,13 +166,7 @@ function RouteComponent() {
     getDashboardUsersData.mutate({
       instituteId,
       selectedFilter: {
-        roles: [
-          { id: '1', name: 'ADMIN' },
-          { id: '2', name: 'COURSE CREATOR' },
-          { id: '3', name: 'ASSESSMENT CREATOR' },
-          { id: '4', name: 'EVALUATOR' },
-          { id: '5', name: 'TEACHER' },
-        ],
+        roles: allRolesFilter,
         status:
           selectedTab === 'instituteUsers'
             ? [
@@ -182,13 +189,7 @@ function RouteComponent() {
         selectedFilter: selectedFilter.roles.length > 0 || selectedFilter.status.length > 0
           ? selectedFilter
           : {
-            roles: [
-              { id: '1', name: 'ADMIN' },
-              { id: '2', name: 'COURSE CREATOR' },
-              { id: '3', name: 'ASSESSMENT CREATOR' },
-              { id: '4', name: 'EVALUATOR' },
-              { id: '5', name: 'TEACHER' },
-            ],
+            roles: allRolesFilter,
             status:
               selectedTab === 'instituteUsers'
                 ? [
@@ -210,13 +211,7 @@ function RouteComponent() {
       getDashboardUsersData.mutate({
         instituteId,
         selectedFilter: {
-          roles: [
-            { id: '1', name: 'ADMIN' },
-            { id: '2', name: 'COURSE CREATOR' },
-            { id: '3', name: 'ASSESSMENT CREATOR' },
-            { id: '4', name: 'EVALUATOR' },
-            { id: '5', name: 'TEACHER' },
-          ],
+          roles: allRolesFilter,
           status:
             value === 'instituteUsers'
               ? [
@@ -238,13 +233,7 @@ function RouteComponent() {
       selectedFilter: selectedFilter.roles.length > 0 || selectedFilter.status.length > 0
         ? selectedFilter
         : {
-          roles: [
-            { id: '1', name: 'ADMIN' },
-            { id: '2', name: 'COURSE CREATOR' },
-            { id: '3', name: 'ASSESSMENT CREATOR' },
-            { id: '4', name: 'EVALUATOR' },
-            { id: '5', name: 'TEACHER' },
-          ],
+          roles: allRolesFilter,
           status:
             selectedTab === 'instituteUsers'
               ? [
@@ -264,13 +253,7 @@ function RouteComponent() {
       selectedFilter: selectedFilter.roles.length > 0 || selectedFilter.status.length > 0
         ? selectedFilter
         : {
-          roles: [
-            { id: '1', name: 'ADMIN' },
-            { id: '2', name: 'COURSE CREATOR' },
-            { id: '3', name: 'ASSESSMENT CREATOR' },
-            { id: '4', name: 'EVALUATOR' },
-            { id: '5', name: 'TEACHER' },
-          ],
+          roles: allRolesFilter,
           status:
             selectedTab === 'instituteUsers'
               ? [
@@ -286,18 +269,24 @@ function RouteComponent() {
 
   useEffect(() => {
     setHandleRefetchUsersData(handleRefetchData);
-  }, [setHandleRefetchUsersData, page, selectedFilter, selectedTab]);
+  }, [setHandleRefetchUsersData, page, selectedFilter, selectedTab, allRolesFilter]);
 
+  // Fetch custom roles on mount
+  useEffect(() => {
+    getAllRoles()
+      .then((roles: CustomRole[]) => {
+        setCustomRoles(roles || []);
+      })
+      .catch((error) => {
+        console.error('Failed to fetch custom roles:', error);
+      });
+  }, []);
+
+  // Fetch initial data once custom roles are loaded
   useEffect(() => {
     setIsLoading(true);
     fetchInstituteDashboardUsers(instituteId, {
-      roles: [
-        { id: '1', name: 'ADMIN' },
-        { id: '2', name: 'COURSE CREATOR' },
-        { id: '3', name: 'ASSESSMENT CREATOR' },
-        { id: '4', name: 'EVALUATOR' },
-        { id: '5', name: 'TEACHER' },
-      ],
+      roles: allRolesFilter,
       status: [
         { id: '1', name: 'ACTIVE' },
         { id: '2', name: 'DISABLED' },
@@ -315,11 +304,35 @@ function RouteComponent() {
       .finally(() => {
         setIsLoading(false);
       });
-  }, []);
+  }, [allRolesFilter]);
 
   useEffect(() => {
     setNavHeading('Teams');
   }, []);
+
+  // Convert TeamMember to UserRolesDataEntry for the options components
+  const toUserRolesDataEntry = (member: TeamMember): UserRolesDataEntry => ({
+    id: member.id,
+    username: member.username,
+    email: member.email,
+    full_name: member.full_name,
+    address_line: null,
+    city: null,
+    region: null,
+    pin_code: null,
+    mobile_number: member.mobile_number,
+    date_of_birth: null,
+    gender: null,
+    password: null,
+    profile_pic_file_id: member.profile_pic_file_id,
+    roles: member.roles.map((r) => ({
+      role_name: r.role_name,
+      status: r.status,
+      role_id: r.role_id,
+    })),
+    root_user: member.root_user,
+    status: member.status || '',
+  });
 
   // Define table columns
   const columns: ColumnDef<TeamMember>[] = [
@@ -385,6 +398,31 @@ function RouteComponent() {
         );
       },
     },
+    {
+      id: 'actions',
+      header: 'Actions',
+      size: 80,
+      cell: ({ row }) => {
+        const member = row.original;
+        const userEntry = toUserRolesDataEntry(member);
+        if (selectedTab === 'instituteUsers') {
+          return (
+            <InstituteUsersOptions
+              user={userEntry}
+              refetchData={handleRefetchData}
+              availableRoles={allRoles}
+            />
+          );
+        }
+        return (
+          <InviteUsersOptions
+            user={userEntry}
+            refetchData={handleRefetchData}
+            availableRoles={allRoles}
+          />
+        );
+      },
+    },
   ];
 
 
@@ -433,7 +471,7 @@ function RouteComponent() {
               </Badge>
             </TabsTrigger>
           </TabsList>
-          <InviteUsersComponent refetchData={handleRefetchData} />
+          <InviteUsersComponent refetchData={handleRefetchData} availableRoles={allRoles} />
         </div>
 
         <div className="mb-4 flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
@@ -458,13 +496,7 @@ function RouteComponent() {
                       selectedFilter: selectedFilter.roles.length > 0 || selectedFilter.status.length > 0
                         ? selectedFilter
                         : {
-                          roles: [
-                            { id: '1', name: 'ADMIN' },
-                            { id: '2', name: 'COURSE CREATOR' },
-                            { id: '3', name: 'ASSESSMENT CREATOR' },
-                            { id: '4', name: 'EVALUATOR' },
-                            { id: '5', name: 'TEACHER' },
-                          ],
+                          roles: allRolesFilter,
                           status:
                             selectedTab === 'instituteUsers'
                               ? [
@@ -505,7 +537,7 @@ function RouteComponent() {
                   }));
                 } else {
                   // Add the option
-                  const originalRole = RoleType.find((role) => role.id === option.id);
+                  const originalRole = allRoles.find((role) => role.id === option.id);
                   setSelectedFilter(prev => ({
                     ...prev,
                     roles: [...prev.roles, {

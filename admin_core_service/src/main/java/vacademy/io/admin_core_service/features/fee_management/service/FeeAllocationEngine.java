@@ -39,6 +39,9 @@ public class FeeAllocationEngine {
     @Autowired
     private InstituteFeeTypePriorityRepository priorityRepository;
 
+    @Autowired
+    private AdjustmentResolver adjustmentResolver;
+
     /**
      * Core allocation entry point.
      *
@@ -204,15 +207,7 @@ public class FeeAllocationEngine {
     private BigDecimal computeAmountDue(StudentFeePayment bill) {
         BigDecimal expected = bill.getAmountExpected() != null ? bill.getAmountExpected() : BigDecimal.ZERO;
         BigDecimal paid = bill.getAmountPaid() != null ? bill.getAmountPaid() : BigDecimal.ZERO;
-        BigDecimal adjustment = BigDecimal.ZERO;
-        if ("APPROVED".equals(bill.getAdjustmentStatus())) {
-            BigDecimal amt = bill.getAdjustmentAmount() != null ? bill.getAdjustmentAmount() : BigDecimal.ZERO;
-            if ("PENALTY".equals(bill.getAdjustmentType())) {
-                adjustment = amt;
-            } else if ("CONCESSION".equals(bill.getAdjustmentType())) {
-                adjustment = amt.negate();
-            }
-        }
+        BigDecimal adjustment = adjustmentResolver.computeAdjustmentEffect(bill);
         return expected.add(adjustment).subtract(paid);
     }
 

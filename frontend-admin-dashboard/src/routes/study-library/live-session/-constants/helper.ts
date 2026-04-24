@@ -44,6 +44,7 @@ export interface LiveSessionStep1RequestDTO {
     learner_button_config?: LearnerButtonConfig | null;
     update_recurrence_scope?: 'ONLY_THIS' | 'ALL_FUTURE' | 'CURRENT_DAY_ALL_SESSIONS' | 'ALL_FUTURE_ALL_SESSIONS' | null;
     bbb_config?: BbbMeetingConfig | null;
+    feedback_config?: FeedbackConfig | null;
 }
 
 export interface BbbMeetingConfig {
@@ -52,6 +53,21 @@ export interface BbbMeetingConfig {
     mute_on_start?: boolean;
     webcams_only_for_moderator?: boolean;
     guest_policy?: string;
+}
+
+export interface FeedbackQuestionConfig {
+    id: string;
+    type: string;
+    label: string;
+    enabled: boolean;
+    mandatory: boolean;
+    max_stars?: number;
+    allow_half?: boolean;
+}
+
+export interface FeedbackConfig {
+    enabled: boolean;
+    questions: FeedbackQuestionConfig[];
 }
 
 export interface LearnerButtonConfig {
@@ -117,6 +133,7 @@ export interface CustomFieldDTO {
     is_default: boolean;
     type: string;
     options?: FieldOptionDTO[];
+    form_order?: number;
 }
 
 export interface FieldOptionDTO {
@@ -271,6 +288,8 @@ export function transformFormToDTOStep1(
         bbbMuteOnStart,
         bbbWebcamsOnlyForModerator,
         bbbGuestPolicy,
+        feedbackEnabled,
+        feedbackQuestions,
     } = form;
 
     // Convert hours and minutes to total duration in hours
@@ -350,6 +369,10 @@ export function transformFormToDTOStep1(
             webcams_only_for_moderator: bbbWebcamsOnlyForModerator ?? false,
             guest_policy: bbbGuestPolicy ?? 'ALWAYS_ACCEPT',
         } : null,
+        feedback_config: feedbackEnabled ? {
+            enabled: true,
+            questions: feedbackQuestions ?? [],
+        } : { enabled: false, questions: [] },
     };
 }
 
@@ -431,7 +454,7 @@ export function transformFormToDTOStep2(
         });
     }
     const { added_fields, update_fields } = fields.reduce(
-        (acc, field) => {
+        (acc, field, index) => {
             const fieldData: CustomFieldDTO = {
                 id: field.id ?? null,
                 label: field.label,
@@ -439,6 +462,7 @@ export function transformFormToDTOStep2(
                 is_default: field.isDefault,
                 type: field.type,
                 options: field.options,
+                form_order: index,
             };
 
             if (field.id) {

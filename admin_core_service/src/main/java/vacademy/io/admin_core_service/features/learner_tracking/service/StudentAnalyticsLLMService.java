@@ -30,11 +30,6 @@ public class StudentAnalyticsLLMService {
         private static final String API_URL = "https://openrouter.ai";
         private static final int RESPONSE_TIMEOUT_SECONDS = 120;
 
-        // Model priority list - fallback order
-        private static final List<String> FALLBACK_MODEL_PRIORITY = List.of(
-                        "nvidia/nemotron-3-nano-30b-a3b:free",
-                        "arcee-ai/trinity-large-preview:free",
-                        "z-ai/glm-4.5-air:free");
         private static final int MAX_RETRIES_PER_MODEL = 2;
 
         private final WebClient webClient;
@@ -70,8 +65,9 @@ public class StudentAnalyticsLLMService {
                 String prompt = createStudentAnalysisPrompt(rawJson, activityType);
 
                 List<String> modelPriority = aiModelRegistryService.getModelPriority("analytics");
-                if (modelPriority.isEmpty()) {
-                        modelPriority = FALLBACK_MODEL_PRIORITY;
+                if (modelPriority == null || modelPriority.isEmpty()) {
+                        log.error("[LLM-Analytics] No AI models available for the analytics use case.");
+                        return Mono.error(new RuntimeException("No AI models available for generating student insights."));
                 }
 
                 log.debug("[LLM-Analytics] Model priority size: {}, ActivityType: {}, PromptChars: {}",

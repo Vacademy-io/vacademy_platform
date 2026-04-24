@@ -18,6 +18,13 @@ const formatCustomFieldValue = (value: string, fieldType?: string): string => {
             } catch {
                 return value;
             }
+        case 'multi_select':
+            try {
+                const arr = JSON.parse(value);
+                return Array.isArray(arr) ? arr.join(', ') : value;
+            } catch {
+                return value;
+            }
         default:
             return value;
     }

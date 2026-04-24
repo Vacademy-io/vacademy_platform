@@ -8,6 +8,11 @@ interface SuccessStepProps {
     approvalRequired: boolean;
     email: string;
     isAutoLoggingIn?: boolean;
+    config?: {
+        redirectPath?: string;
+        showLoginButton?: boolean;
+        content?: string;
+    };
 }
 
 const SuccessStep = ({
@@ -15,6 +20,7 @@ const SuccessStep = ({
     approvalRequired,
     email,
     isAutoLoggingIn,
+    config,
 }: SuccessStepProps) => {
     const navigate = useNavigate();
     return (
@@ -30,13 +36,17 @@ const SuccessStep = ({
                     <h2 className="text-2xl font-bold text-gray-900 mb-4">
                         Enrollment Request Submitted!
                     </h2>
-                    <p className="text-gray-600 text-lg mb-6">
-                        Thank you for your interest in {courseName}. Your
-                        enrollment request has been submitted successfully. Your
-                        login credentials has been sent to your registered email
-                        address <span className="text-blue-500">{email}</span>.
-                        Please log in using the provided email and password
-                    </p>
+                    {config?.content ? (
+                        <div dangerouslySetInnerHTML={{ __html: config.content }} className="text-gray-600 text-lg mb-6" />
+                    ) : (
+                        <p className="text-gray-600 text-lg mb-6">
+                            Thank you for your interest in {courseName}. Your
+                            enrollment request has been submitted successfully. Your
+                            login credentials has been sent to your registered email
+                            address <span className="text-blue-500">{email}</span>.
+                            Please log in using the provided email and password
+                        </p>
+                    )}
                     {/* Approval Required Sub-card */}
                     {approvalRequired && (
                         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-6">
@@ -65,7 +75,7 @@ const SuccessStep = ({
                                 <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
                                 <p className="text-primary-600 font-medium italic">Redirecting to Dashboard...</p>
                             </div>
-                        ) : (
+                        ) : config?.showLoginButton !== false ? (
                             <MyButton
                                 type="button"
                                 buttonType="primary"
@@ -73,12 +83,20 @@ const SuccessStep = ({
                                 layoutVariant="default"
                                 className="w-full sm:w-auto text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
                                 onClick={() => {
-                                    navigate({ to: "/login" });
+                                    if (config?.redirectPath) {
+                                        if (config.redirectPath.startsWith('http')) {
+                                            window.location.href = config.redirectPath;
+                                        } else {
+                                            navigate({ to: config.redirectPath });
+                                        }
+                                    } else {
+                                        navigate({ to: "/login" });
+                                    }
                                 }}
                             >
-                                Login Now
+                                {config?.redirectPath ? "Continue" : "Login Now"}
                             </MyButton>
-                        )}
+                        ) : null}
                     </div>
                 </CardContent>
             </Card>

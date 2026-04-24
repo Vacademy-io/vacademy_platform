@@ -283,6 +283,37 @@ export const CustomFieldRenderer = ({
                 </div>
             );
 
+        case 'multi_select': {
+            // Multi-select checkboxes: value is a JSON array like ["Option1","Option3"]
+            let selected: string[] = [];
+            try {
+                selected = value ? JSON.parse(value) : [];
+            } catch {
+                selected = value ? [value] : [];
+            }
+            const toggleOption = (opt: string) => {
+                const next = selected.includes(opt)
+                    ? selected.filter((s) => s !== opt)
+                    : [...selected, opt];
+                handleChange(JSON.stringify(next));
+            };
+            return (
+                <div className="flex flex-col gap-2">
+                    {options.map((opt, idx) => (
+                        <div key={idx} className="flex items-center space-x-2">
+                            <Checkbox
+                                checked={selected.includes(opt)}
+                                onCheckedChange={() => toggleOption(opt)}
+                                disabled={disabled}
+                                id={`${name}-ms-${idx}`}
+                            />
+                            <Label htmlFor={`${name}-ms-${idx}`}>{opt}</Label>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
         case 'file': {
             const acceptAttr = config?.allowedFileTypes?.length
                 ? config.allowedFileTypes.map((t) => `.${t}`).join(',')

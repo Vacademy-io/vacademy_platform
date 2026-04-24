@@ -3,9 +3,9 @@ import {
     YooptaPlugin,
     useYooptaEditor,
     useYooptaReadOnly,
-    Elements,
     PluginElementRenderProps,
 } from '@yoopta/editor';
+import { commitBlockProps } from './commitBlockProps';
 
 interface TabItem {
     label: string;
@@ -25,35 +25,72 @@ export function TabsBlock({
 }: PluginElementRenderProps) {
     const editor = useYooptaEditor();
     const isReadOnly = useYooptaReadOnly();
+    const hasStoredTabs = Array.isArray(element?.props?.tabs) && element.props.tabs.length > 0;
     const [tabs, setTabs] = useState<TabItem[]>(
-        element?.props?.tabs || DEFAULT_TABS.map((t) => ({ ...t }))
+        hasStoredTabs ? element!.props!.tabs : DEFAULT_TABS.map((t) => ({ ...t }))
     );
     const [activeTab, setActiveTab] = useState(0);
     // In read-only mode (learner view) we never enter Edit mode — learners
     // only switch between tabs and read content, never rename labels or
     // toggle chrome. Force preview regardless of the default-on-empty check.
-    const [isEditing, setIsEditing] = useState(
-        !isReadOnly && !element?.props?.tabs?.length
-    );
+    const [isEditing, setIsEditing] = useState(!isReadOnly && !hasStoredTabs);
     const [renamingIndex, setRenamingIndex] = useState<number | null>(null);
-    const isFirstRender = useRef(true);
     const renameInputRef = useRef<HTMLInputElement | null>(null);
+    // Mirror tabs in a ref so rapid handlers in the same render tick
+    // can compute off the freshest value (original used functional
+    // setState; we preserve that guarantee via the ref).
+    const tabsRef = useRef<TabItem[]>(tabs);
 
-    // Persist state
-    useEffect(() => {
-        if (isFirstRender.current) {
-            isFirstRender.current = false;
-            return;
-        }
-        Elements.updateElement(editor, blockId, {
-            type: 'tabbedContent',
-            props: {
-                ...element.props,
-                tabs,
-                editorType: 'tabsEditor',
-            },
+    // Push tabs to Yoopta synchronously on every edit.
+    //
+    // Two issues we're working around:
+    // 1. useEffect-based push races with Save Draft — clicking Save
+    //    right after typing runs the serializer before the effect
+    //    fires, so the last keystroke never makes it into the payload.
+    // 2. Elements.updateElement (what Yoopta docs recommend) only
+    //    updates the block's internal Slate tree; it does NOT sync
+    //    back to editor.children[blockId].value, which is what
+    //    html.serialize actually reads. So the textarea displays new
+    //    content (from Slate) but the payload ships stale/empty
+    //    content (from block.value).
+    //
+    // Fix: issue a set_block_value transform with forceSlate:true,
+    // which updates the Slate tree AND block.value in one step.
+    const commitTabs = (nextTabs: TabItem[]) => {
+        tabsRef.current = nextTabs;
+        setTabs(nextTabs);
+        if (isReadOnly) return;
+        commitBlockProps(editor, blockId, element, {
+            tabs: nextTabs,
+            editorType: 'tabsEditor',
         });
-    }, [tabs]);
+    };
+
+    // Seed Yoopta with DEFAULT_TABS on first mount if the block has no
+    // stored tabs. Without this, a freshly inserted block keeps
+    // element.props.tabs undefined — the serializer falls back to `[]`
+    // and Save Draft persists data-tabs="[]", so every tab the user
+    // types into gets wiped on reload. Skipped in read-only mode so
+    // learners never mutate published content.
+    useEffect(() => {
+        if (!isReadOnly && !hasStoredTabs) {
+            commitTabs(tabs);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        const propTabs = element?.props?.tabs;
+        if (
+            Array.isArray(propTabs) &&
+            propTabs.length > 0 &&
+            JSON.stringify(propTabs) !== JSON.stringify(tabs)
+        ) {
+            tabsRef.current = propTabs;
+            setTabs(propTabs);
+        }
+    }, [element?.props?.tabs]);
 
     // Autofocus the rename input when it appears
     useEffect(() => {
@@ -81,23 +118,27 @@ export function TabsBlock({
     };
 
     const updateTabLabel = (index: number, label: string) => {
-        setTabs((prev) => prev.map((t, i) => (i === index ? { ...t, label } : t)));
+        commitTabs(tabsRef.current.map((t, i) => (i === index ? { ...t, label } : t)));
     };
 
     const updateTabContent = (index: number, content: string) => {
-        setTabs((prev) => prev.map((t, i) => (i === index ? { ...t, content } : t)));
+        commitTabs(
+            tabsRef.current.map((t, i) => (i === index ? { ...t, content } : t))
+        );
     };
 
     const addTab = () => {
-        setTabs((prev) => [...prev, { label: `Tab ${prev.length + 1}`, content: '' }]);
-        setActiveTab(tabs.length);
+        const current = tabsRef.current;
+        commitTabs([...current, { label: `Tab ${current.length + 1}`, content: '' }]);
+        setActiveTab(current.length);
     };
 
     const removeTab = (index: number) => {
-        if (tabs.length <= 1) return;
-        setTabs((prev) => prev.filter((_, i) => i !== index));
-        if (activeTab >= tabs.length - 1) {
-            setActiveTab(Math.max(0, tabs.length - 2));
+        const current = tabsRef.current;
+        if (current.length <= 1) return;
+        commitTabs(current.filter((_, i) => i !== index));
+        if (activeTab >= current.length - 1) {
+            setActiveTab(Math.max(0, current.length - 2));
         }
         if (renamingIndex === index) setRenamingIndex(null);
     };
@@ -436,6 +477,9 @@ export const TabsPlugin = new YooptaPlugin<{ tabbedContent: any }>({
                             tabs = JSON.parse(tabsJson);
                         }
                     } catch {
+                        tabs = [];
+                    }
+                    if (!Array.isArray(tabs) || tabs.length === 0) {
                         tabs = DEFAULT_TABS.map((t) => ({ ...t }));
                     }
                     return {
@@ -448,7 +492,13 @@ export const TabsPlugin = new YooptaPlugin<{ tabbedContent: any }>({
             },
             serialize: (element, _children) => {
                 const props = element.props || {};
-                const tabs: TabItem[] = props.tabs || [];
+                // Fall back to defaults when Yoopta hasn't received a
+                // commitTabs yet (e.g. block inserted and immediately
+                // saved) — otherwise data-tabs="[]" ships and the tabs
+                // render as an empty shell on reload.
+                const rawTabs: TabItem[] = Array.isArray(props.tabs) ? props.tabs : [];
+                const tabs: TabItem[] =
+                    rawTabs.length > 0 ? rawTabs : DEFAULT_TABS.map((t) => ({ ...t }));
                 const tabsJson = JSON.stringify(tabs).replace(/"/g, '&quot;');
 
                 const tabHeaders = tabs

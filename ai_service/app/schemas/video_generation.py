@@ -3,8 +3,11 @@ Schemas for AI Video Generation API.
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional, Dict, Any, List, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+_log = logging.getLogger(__name__)
 
 
 class ReferenceFileItem(BaseModel):
@@ -121,19 +124,58 @@ class VideoGenerationRequest(BaseModel):
         description=(
             "ID of a COMPLETED indexed video (from ai_input_videos table). "
             "When provided, the Director can plan SOURCE_CLIP shots that play "
-            "clips from the source video with HTML overlays on top."
+            "clips from the source video with HTML overlays on top. "
+            "Deprecated — use input_video_ids instead. Kept for backward compat."
+        )
+    )
+    input_video_ids: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "List of COMPLETED indexed video IDs (max 5). The Director can plan "
+            "SOURCE_CLIP shots referencing any of these via source_video_index. "
+            "Supersedes input_video_id when both are provided."
         )
     )
     input_video_audio: Optional[str] = Field(
         default=None,
         description=(
-            "Audio source when input_video_id is set. "
-            "'original' = use source video audio as narration (skip script+TTS). "
-            "'tts' = generate AI narration from scratch (script+TTS run normally, "
-            "video context feeds into the script prompt). "
-            "Default: 'original' for podcast mode, 'tts' for demo mode."
+            "Audio source when input videos are set. "
+            "'original' = use source video audio as narration (single video only). "
+            "'tts' = generate AI narration (script+TTS run normally). "
+            "Forced to 'tts' when multiple input videos are provided."
         )
     )
+    mute_tts_on_source_clips: bool = Field(
+        default=False,
+        description=(
+            "When True and audio is 'tts', source video audio is mixed INTO the "
+            "TTS narration during SOURCE_CLIP shots (muting TTS during those clips). "
+            "Default False: TTS narration plays continuously throughout the video; "
+            "source video clips are visual-only. Use True for podcast-style videos "
+            "where you want to hear the speaker. Use False for marketing/explainer "
+            "videos where the TTS script is the main content."
+        )
+    )
+
+    @model_validator(mode="after")
+    def _normalize_input_videos(self):
+        """Normalize input_video_id → input_video_ids and enforce multi-source rules."""
+        # Backward compat: wrap singular into list
+        if self.input_video_id and not self.input_video_ids:
+            self.input_video_ids = [self.input_video_id]
+        # If both set, list takes precedence
+        if self.input_video_ids:
+            self.input_video_ids = self.input_video_ids[:5]  # cap at 5
+            # Set singular to first for backward compat downstream
+            self.input_video_id = self.input_video_ids[0]
+            # Multi-source forces TTS (can't splice different audio tracks)
+            if len(self.input_video_ids) > 1 and self.input_video_audio == "original":
+                _log.warning(
+                    "Multi-source input videos force TTS audio "
+                    "(cannot splice multiple source audio tracks)"
+                )
+                self.input_video_audio = "tts"
+        return self
 
     class Config:
         json_schema_extra = {
@@ -183,7 +225,7 @@ class VideoGenerationResumeRequest(BaseModel):
 
 class VideoStatusResponse(BaseModel):
     """Response for video/content generation status."""
-    
+
     id: str
     video_id: str
     current_stage: str
@@ -195,6 +237,29 @@ class VideoStatusResponse(BaseModel):
     language: str
     error_message: Optional[str]
     metadata: Dict[str, Any]
+    token_usage: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Token/cost breakdown for this generation (prompt_tokens, completion_tokens, estimated_cost_usd, model, etc.)"
+    )
+    generation_progress: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Real-time sub-stage progress, updated every ~250ms during generation and persisted to DB. "
+            "Fields: "
+            "sub_stage (str — current label e.g. 'Shot 4/18 ready (VIDEO_HERO)'), "
+            "shots_completed (int), shots_total (int), "
+            "shot_plan (list[{shot_index, shot_type, duration_s, start_time, end_time, narration_excerpt}] "
+            "— full Director plan, set once when planning completes), "
+            "shots_history (list[{shot_index, shot_type, duration_s, start_time, end_time, "
+            "model, token_delta:{prompt_tokens,completion_tokens,estimated_cost_usd}, "
+            "cumulative_tokens}] — every completed shot, capped at 200, for post-run analysis), "
+            "cumulative_tokens ({prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd} "
+            "— running total updated after every shot), "
+            "last_shot ({shot_index, shot_type, duration_s} — quick access to last completed shot), "
+            "errors (list[{shot_index, shot_type, error, retrying, attempt, timestamp}] — shot errors, capped at 50), "
+            "last_event (raw last pipeline event dict)."
+        )
+    )
     created_at: Optional[str]
     updated_at: Optional[str]
     completed_at: Optional[str]

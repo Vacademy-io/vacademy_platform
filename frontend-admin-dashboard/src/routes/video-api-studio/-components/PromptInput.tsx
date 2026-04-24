@@ -990,30 +990,28 @@ export function PromptInput({
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="max-h-60">
-                                <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">
-                                    English
-                                </div>
-                                {LANGUAGES.filter((l) => l.group === 'English').map((lang) => (
-                                    <SelectItem
-                                        key={lang.value}
-                                        value={lang.value}
-                                        className="text-xs"
-                                    >
-                                        {lang.label}
-                                    </SelectItem>
-                                ))}
-                                <div className="mt-2 px-2 py-1 text-xs font-semibold text-muted-foreground">
-                                    Indian
-                                </div>
-                                {LANGUAGES.filter((l) => l.group === 'Indian').map((lang) => (
-                                    <SelectItem
-                                        key={lang.value}
-                                        value={lang.value}
-                                        className="text-xs"
-                                    >
-                                        {lang.label}
-                                    </SelectItem>
-                                ))}
+                                {Array.from(new Set(LANGUAGES.map((l) => l.group))).map(
+                                    (group, idx) => (
+                                        <div key={group}>
+                                            <div
+                                                className={`${idx === 0 ? '' : 'mt-2 '}px-2 py-1 text-xs font-semibold text-muted-foreground`}
+                                            >
+                                                {group}
+                                            </div>
+                                            {LANGUAGES.filter((l) => l.group === group).map(
+                                                (lang) => (
+                                                    <SelectItem
+                                                        key={lang.value}
+                                                        value={lang.value}
+                                                        className="text-xs"
+                                                    >
+                                                        {lang.label}
+                                                    </SelectItem>
+                                                )
+                                            )}
+                                        </div>
+                                    )
+                                )}
                             </SelectContent>
                         </Select>
                     </OptionBubble>

@@ -229,6 +229,8 @@ async def generate_video_external(
                         input_video_ids=p.input_video_ids,
                         input_video_audio=p.input_video_audio,
                         mute_tts_on_source_clips=p.mute_tts_on_source_clips,
+                        background_music_enabled=p.background_music_enabled,
+                        background_music_volume=p.background_music_volume,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -391,6 +393,8 @@ async def resume_video_external(
                         input_video_ids=_meta.get("input_video_ids"),
                         input_video_audio=_meta.get("input_video_audio"),
                         mute_tts_on_source_clips=_meta.get("mute_tts_on_source_clips", False),
+                        background_music_enabled=_meta.get("background_music_enabled"),
+                        background_music_volume=_meta.get("background_music_volume"),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -514,6 +518,8 @@ async def retry_video_external(
                     input_video_ids=_meta.get("input_video_ids"),
                     input_video_audio=_meta.get("input_video_audio"),
                     mute_tts_on_source_clips=_meta.get("mute_tts_on_source_clips", False),
+                    background_music_enabled=_meta.get("background_music_enabled"),
+                    background_music_volume=_meta.get("background_music_volume"),
                 ):
                     await q.put(json.dumps(event))
         except Exception as exc:

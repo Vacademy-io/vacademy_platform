@@ -104,6 +104,8 @@ class VideoGenerationService:
         input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
         mute_tts_on_source_clips: bool = False,
+        background_music_enabled: Optional[bool] = None,
+        background_music_volume: Optional[float] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -174,6 +176,10 @@ class VideoGenerationService:
             if input_video_audio:
                 gen_metadata["input_video_audio"] = input_video_audio
             gen_metadata["mute_tts_on_source_clips"] = bool(mute_tts_on_source_clips)
+            if background_music_enabled is not None:
+                gen_metadata["background_music_enabled"] = bool(background_music_enabled)
+            if background_music_volume is not None:
+                gen_metadata["background_music_volume"] = float(background_music_volume)
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -246,6 +252,8 @@ class VideoGenerationService:
                     input_video_ids=input_video_ids,
                     input_video_audio=input_video_audio,
                     mute_tts_on_source_clips=mute_tts_on_source_clips,
+                    background_music_enabled=background_music_enabled,
+                    background_music_volume=background_music_volume,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -329,6 +337,8 @@ class VideoGenerationService:
         input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
         mute_tts_on_source_clips: bool = False,
+        background_music_enabled: Optional[bool] = None,
+        background_music_volume: Optional[float] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -815,6 +825,8 @@ class VideoGenerationService:
                     sound_effects_enabled=sound_effects_enabled,
                     input_video_contexts=input_video_contexts,
                     mute_tts_on_source_clips=mute_tts_on_source_clips,
+                    background_music_enabled=background_music_enabled,
+                    background_music_volume=background_music_volume,
                     progress_callback=_progress_cb,
                 )
 

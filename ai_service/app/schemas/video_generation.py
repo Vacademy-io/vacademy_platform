@@ -145,6 +145,24 @@ class VideoGenerationRequest(BaseModel):
             "Forced to 'tts' when multiple input videos are provided."
         )
     )
+    background_music_enabled: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Enable auto-generated background music (Google Lyria). "
+            "None = use tier default (on for ultra/super_ultra, off otherwise). "
+            "True/False overrides. Requires ultra+ tier — ignored on lower tiers. "
+            "The generated score appears as a single 'Background Music' entry in "
+            "meta.audio_tracks[] and is editable/deletable via the audio tracks UI."
+        )
+    )
+    background_music_volume: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description=(
+            "Initial volume multiplier (0.0-1.0) for the generated background music "
+            "track. If omitted, uses the tier default (0.20). Users can adjust post-"
+            "generation via the audio-tracks UI."
+        )
+    )
     mute_tts_on_source_clips: bool = Field(
         default=False,
         description=(

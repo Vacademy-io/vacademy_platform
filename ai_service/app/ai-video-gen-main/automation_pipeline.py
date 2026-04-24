@@ -503,6 +503,8 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_enabled": True,
         "sound_max_cues_per_shot": 2,
         "sound_max_cues_per_video": 20,
+        "background_music_enabled": True,
+        "background_music_default_volume": 0.20,
     },
     "super_ultra": {
         "script_temperature": 0.6,
@@ -533,6 +535,8 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_enabled": True,
         "sound_max_cues_per_shot": 3,
         "sound_max_cues_per_video": 40,
+        "background_music_enabled": True,
+        "background_music_default_volume": 0.20,
     },
 }
 
@@ -1414,6 +1418,19 @@ class VideoGenerationPipeline:
         else:
             return "education"
 
+    def _is_background_music_enabled(self) -> bool:
+        """Resolve the final on/off state for Lyria background music.
+
+        Request override (True/False) always wins. When None, falls back to
+        the tier config. Only ultra / super_ultra set the flag, so lower tiers
+        stay off by default unless a client explicitly forces True (in which
+        case we still honor it — the tier only controls the DEFAULT).
+        """
+        override = getattr(self, "_background_music_enabled_override", None)
+        if override is not None:
+            return bool(override)
+        return bool(self._tier_config.get("background_music_enabled", False))
+
     def run(
         self,
         base_prompt: Optional[str],
@@ -1444,6 +1461,8 @@ class VideoGenerationPipeline:
         input_video_context: Optional[Dict[str, Any]] = None,
         input_video_contexts: Optional[list] = None,
         mute_tts_on_source_clips: bool = False,
+        background_music_enabled: Optional[bool] = None,
+        background_music_volume: Optional[float] = None,
         progress_callback: Optional[Any] = None,
     ) -> Dict[str, Any]:
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
@@ -1473,6 +1492,15 @@ class VideoGenerationPipeline:
         # If True, audio mixing replaces TTS with source audio during SOURCE_CLIP
         # shots. Default False: TTS plays continuously (marketing/explainer mode).
         self._mute_tts_on_source_clips = bool(mute_tts_on_source_clips)
+        # Background music (Lyria) knobs — threaded through from the request.
+        # None for enabled = "use tier default"; explicit True/False overrides.
+        # Volume is only used when a track is actually generated.
+        self._background_music_enabled_override: Optional[bool] = background_music_enabled
+        self._background_music_volume_override: Optional[float] = background_music_volume
+        # Populated by the music stage once segments are generated + merged.
+        # Read by _write_timeline to insert a "Background Music" entry into
+        # meta.audio_tracks so the player + renderer see it automatically.
+        self._background_music_track: Optional[Dict[str, Any]] = None
         # Caller-provided callback for real-time progress events (SSE bridge).
         # Called as progress_callback(event_dict) from any pipeline thread.
         # Must be thread-safe (the caller is responsible for queue/lock).
@@ -2326,6 +2354,52 @@ class VideoGenerationPipeline:
                 accumulate_usage(image_usage)
                 html_segments, stock_usage = self._process_stock_videos(html_segments)
                 accumulate_usage(stock_usage)
+
+            # ── Background music (Lyria) ──
+            # Runs before _write_timeline so the generated track can land in
+            # meta.audio_tracks alongside any user-added tracks. Gated by
+            # tier + request override; never fatal — music failures log and
+            # let the video ship without a score.
+            if (
+                self._is_background_music_enabled()
+                and content_type == "VIDEO"
+                and _director_plan
+                and _director_plan.get("music_plan")
+                and _seg_audio_dur > 0
+            ):
+                try:
+                    from music_generator import generate_background_music
+                    _music_result = generate_background_music(
+                        music_plan=_director_plan["music_plan"],
+                        audio_duration=float(_seg_audio_dur),
+                        video_id=run_name or run_dir.name,
+                        run_dir=run_dir,
+                        progress_callback=self._progress_callback,
+                    )
+                    if _music_result and _music_result.get("url"):
+                        _music_vol = (
+                            self._background_music_volume_override
+                            if self._background_music_volume_override is not None
+                            else float(self._tier_config.get("background_music_default_volume", 0.20))
+                        )
+                        self._background_music_track = {
+                            "id": "background-music",
+                            "label": "Background Music",
+                            "url": _music_result["url"],
+                            "volume": _music_vol,
+                            "delay": 0.0,
+                            "fadeIn": 2.0,
+                            "fadeOut": 3.0,
+                        }
+                        print(f"🎼 Background music ready: {_music_result['url']}")
+                except Exception as _mus_err:
+                    print(f"⚠️ Background music generation failed — video will ship without score: {_mus_err}")
+            elif self._is_background_music_enabled():
+                print(
+                    f"ℹ️ Background music skipped "
+                    f"(content_type={content_type}, has_music_plan="
+                    f"{bool(_director_plan and _director_plan.get('music_plan'))})"
+                )
 
             print("🧾 Writing timeline JSON ...")
             timeline_path = self._write_timeline(
@@ -4357,6 +4431,7 @@ class VideoGenerationPipeline:
         from director_prompts import (
             DIRECTOR_SYSTEM_PROMPT,
             SUPER_ULTRA_DIRECTOR_EXTENSION,
+            MUSIC_PLAN_EXTENSION,
             ACT_PLANNER_SYSTEM_PROMPT,
             build_director_user_prompt,
             build_act_planner_user_prompt,
@@ -4431,6 +4506,7 @@ class VideoGenerationPipeline:
             target_shot_duration_s=getattr(self, '_target_shot_duration_s', None),
             quality_tier=self._quality_tier,
             target_audience=target_audience,
+            include_music_plan=self._is_background_music_enabled(),
         )
 
         # ── Input video context for Director ──────────────────────────
@@ -4578,6 +4654,8 @@ class VideoGenerationPipeline:
         director_system = DIRECTOR_SYSTEM_PROMPT
         if self._tier_config.get("director_few_shot"):
             director_system = director_system + SUPER_ULTRA_DIRECTOR_EXTENSION
+        if self._is_background_music_enabled():
+            director_system = director_system + MUSIC_PLAN_EXTENSION
         if self._tier_config.get("director_motion_bias"):
             _is_portrait = _h > _w
             _target_shot_dur = "2-3.5 seconds" if _is_portrait else "2-4 seconds"
@@ -8738,6 +8816,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             ]
             # Backward compat: keep singular for old code paths
             meta_dict["source_video"] = meta_dict["source_videos"][0]
+
+        # Background music (Lyria) — auto-generated earlier in run() and
+        # stashed on self. Injecting here means it flows through the same
+        # meta.audio_tracks[] path as user-added tracks, so the Web Audio
+        # mixer and render worker pick it up without any extra wiring.
+        _bg_music_track = getattr(self, "_background_music_track", None)
+        if _bg_music_track:
+            meta_dict.setdefault("audio_tracks", []).append(_bg_music_track)
 
         if chapter_markers:
             meta_dict["chapters"] = chapter_markers

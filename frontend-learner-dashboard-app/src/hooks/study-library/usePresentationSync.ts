@@ -10,6 +10,13 @@ import { useSlidesRefresh } from "./useSlidesRefresh";
 const STORAGE_KEY = "presentation_tracking_data";
 const USER_ID_KEY = "StudentDetails";
 
+// Module-level guard: holds activity_ids currently being POSTed. Prevents
+// two concurrent callers (e.g. a remount-refire loop triggered by
+// refreshSlides) from both reading new_activity=true from Preferences
+// before either has written SYNCED back, which would race the backend's
+// concentration_score write and surface as a 511 StaleStateException.
+const inFlight = new Set<string>();
+
 export const usePresentationSync = () => {
     const addUpdateDocumentActivity = useAddDocumentActivity();
     const { activeItem } = useContentStore();
@@ -64,6 +71,14 @@ export const usePresentationSync = () => {
                 if (activity.sync_status === "SYNCED") {
                     console.log(
                         `✅ [usePresentationSync] Activity ${activity.activity_id} already synced, skipping`
+                    );
+                    updatedActivities.push(activity);
+                    continue;
+                }
+
+                if (inFlight.has(activity.activity_id)) {
+                    console.log(
+                        `⏳ [usePresentationSync] Activity ${activity.activity_id} already in flight, skipping`
                     );
                     updatedActivities.push(activity);
                     continue;
@@ -125,23 +140,28 @@ export const usePresentationSync = () => {
                             new_activity: apiPayload.new_activity,
                         });
 
-                        await addUpdateDocumentActivity.mutateAsync({
-                            slideId: activity.slide_id || "",
-                            chapterId: chapterId || "",
-                            requestPayload: apiPayload,
-                            packageSessionId: packageSessionId || "",
-                            moduleId: moduleId || "",
-                            subjectId: subjectId || "",
-                        });
+                        inFlight.add(activity.activity_id);
+                        try {
+                            await addUpdateDocumentActivity.mutateAsync({
+                                slideId: activity.slide_id || "",
+                                chapterId: chapterId || "",
+                                requestPayload: apiPayload,
+                                packageSessionId: packageSessionId || "",
+                                moduleId: moduleId || "",
+                                subjectId: subjectId || "",
+                            });
 
-                        console.log(
-                            `✅ [usePresentationSync] API call successful for activity: ${activity.activity_id}`
-                        );
+                            console.log(
+                                `✅ [usePresentationSync] API call successful for activity: ${activity.activity_id}`
+                            );
 
-                        activity.sync_status = "SYNCED";
-                        activity.new_activity = false;
-                        updatedActivities.push(activity);
-                        didSync = true;
+                            activity.sync_status = "SYNCED";
+                            activity.new_activity = false;
+                            updatedActivities.push(activity);
+                            didSync = true;
+                        } finally {
+                            inFlight.delete(activity.activity_id);
+                        }
                     } else {
                         console.log(
                             `⏭️ [usePresentationSync] Skipping activity ${activity.activity_id}: view_sessions=${activity.view_sessions.length}, new_activity=${activity.new_activity}, sync_status=${activity.sync_status}`

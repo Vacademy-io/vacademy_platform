@@ -11,6 +11,7 @@ export type DashboardSlide = {
   subject_id: string;
   source_type: string;
   status: string;
+  package_session_id?: string;
 };
 
 

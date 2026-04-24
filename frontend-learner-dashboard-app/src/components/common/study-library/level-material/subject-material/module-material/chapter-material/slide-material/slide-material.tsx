@@ -998,7 +998,44 @@ export const SlideMaterial = () => {
         </div>
       </div>
 
-      <div className="w-full flex-1 min-h-0 relative pb-16 sm:pb-0">
+      {/* Play-theme mobile: inline slide nav right below the compact header.
+          Sits in flex flow so it pushes the content down (no fixed-overlap). */}
+      <div className="hidden sm:hidden [.ui-play_&]:flex flex-shrink-0 items-center gap-2 border-b border-neutral-100 bg-white px-3 py-2">
+        <MyButton
+          scale="large"
+          layoutVariant="icon"
+          buttonType="secondary"
+          onClick={goToPrev}
+          disabled={!canGoPrev}
+          aria-label="Previous slide"
+          className="flex items-center justify-center font-medium transition-all duration-200 bg-white border border-neutral-200 hover:border-primary-300 rounded-lg hover:bg-primary-50/50 disabled:opacity-50"
+        >
+          <CaretLeft size={18} />
+        </MyButton>
+
+        <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+          {slidesList.length > 0 && currentIndex > -1 && (
+            <span className="text-[11px] font-semibold text-neutral-400 shrink-0 tabular-nums">
+              {currentIndex + 1} / {slidesList.length}
+            </span>
+          )}
+          <AskDoubtButton />
+        </div>
+
+        <MyButton
+          scale="large"
+          layoutVariant="icon"
+          buttonType="secondary"
+          onClick={goToNext}
+          disabled={!canGoNext}
+          aria-label="Next slide"
+          className="flex items-center justify-center font-medium transition-all duration-200 bg-white border border-neutral-200 hover:border-primary-300 rounded-lg hover:bg-primary-50/50 disabled:opacity-50"
+        >
+          <CaretRight size={18} />
+        </MyButton>
+      </div>
+
+      <div className="w-full flex-1 min-h-0 relative pb-16 sm:pb-0 [.ui-play_&]:pb-0">
         <div className="h-full w-full transition-all duration-500">
           {content}
         </div>
@@ -1046,8 +1083,9 @@ export const SlideMaterial = () => {
         </div>
       )}
 
-      {/* Mobile bottom navigation */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40">
+      {/* Mobile bottom navigation — default theme only. In play theme the app
+          bottom tab bar hides this, so we render the inline top version above. */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 [.ui-play_&]:hidden">
         <div className="pointer-events-none absolute -top-3 left-0 right-0 h-3 bg-gradient-to-t from-white to-transparent"></div>
         <div className="bg-white border-t border-neutral-100 shadow-[0_-2px_8px_-2px_rgba(0,0,0,0.08)] px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+10px)]">
           {/* Context strip: slide title + position */}

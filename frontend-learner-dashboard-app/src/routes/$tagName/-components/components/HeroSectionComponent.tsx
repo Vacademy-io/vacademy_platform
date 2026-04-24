@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
@@ -34,8 +34,75 @@ interface HeroSectionProps {
     bannerImage?: string;
     duration?: string;
     instructor?: string;
+    tags?: string[];
   };
 }
+
+// Small pill row rendered above the hero title. Kept as a local helper so
+// both the placeholder and image-backed hero variants style tags identically.
+const HeroTags: React.FC<{ tags?: string[]; textAlign: "left" | "center" | "right" }> = ({
+  tags,
+  textAlign,
+}) => {
+  if (!tags || tags.length === 0) return null;
+  const justify =
+    textAlign === "center"
+      ? "justify-center"
+      : textAlign === "right"
+      ? "justify-end"
+      : "justify-start";
+  return (
+    <div className={`flex flex-wrap gap-2 ${justify}`}>
+      {tags.map((tag, i) => (
+        <span
+          key={`${tag}-${i}`}
+          className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-700"
+        >
+          {tag}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+// Hero description with a built-in "View more / View less" toggle. The
+// description can be long HTML; we clamp at 4 lines by default and only
+// surface the toggle once the content is tall enough to actually be cut off
+// (measured via scrollHeight vs clientHeight). Used by both the placeholder
+// and state-backed hero variants so behavior stays consistent.
+const HeroDescription: React.FC<{ html: string }> = ({ html }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setClamped(el.scrollHeight > el.clientHeight + 1);
+  }, [html, expanded]);
+
+  if (!html) return null;
+  return (
+    <div>
+      <div
+        ref={ref}
+        className={`text-lg sm:text-xl text-gray-600 leading-relaxed ${
+          expanded ? "" : "line-clamp-4"
+        }`}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {(clamped || expanded) && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-2 text-sm font-semibold text-primary-600 hover:underline focus:outline-none"
+        >
+          {expanded ? "View less" : "View more"}
+        </button>
+      )}
+    </div>
+  );
+};
 
 // Centralized enabled check - defaults to false if not provided
 const isHeroButtonEnabled = (button?: { enabled?: boolean | string | number }) => {
@@ -186,17 +253,13 @@ const HeroSectionPlaceholder: React.FC<{
             {/* Left Content */}
             {(left || courseData) && (
               <div className="space-y-5">
+                <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
                   <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
                     {heroTitle}
                   </h1>
                 )}
-                {heroDescription && (
-                  <div
-                    className="text-lg sm:text-xl text-gray-600 leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: heroDescription }}
-                  />
-                )}
+                <HeroDescription html={heroDescription} />
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
@@ -214,17 +277,13 @@ const HeroSectionPlaceholder: React.FC<{
           <div className="text-center space-y-5 max-w-3xl mx-auto">
             {(left || courseData) && (
               <>
+                <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
                   <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
                     {heroTitle}
                   </h1>
                 )}
-                {heroDescription && (
-                  <div
-                    className="text-lg sm:text-xl text-gray-600 leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: heroDescription }}
-                  />
-                )}
+                <HeroDescription html={heroDescription} />
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
@@ -341,17 +400,13 @@ const HeroSectionWithState: React.FC<{
             {/* Left Content */}
             {(left || courseData) && (
               <div className="space-y-5">
+                <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
                   <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
                     {heroTitle}
                   </h1>
                 )}
-                {heroDescription && (
-                  <div
-                    className="text-lg sm:text-xl text-gray-600 leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: heroDescription }}
-                  />
-                )}
+                <HeroDescription html={heroDescription} />
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
@@ -383,17 +438,13 @@ const HeroSectionWithState: React.FC<{
           <div className="text-center space-y-5 max-w-3xl mx-auto">
             {(left || courseData) && (
               <>
+                <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
                   <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
                     {heroTitle}
                   </h1>
                 )}
-                {heroDescription && (
-                  <div
-                    className="text-lg sm:text-xl text-gray-600 leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: heroDescription }}
-                  />
-                )}
+                <HeroDescription html={heroDescription} />
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}

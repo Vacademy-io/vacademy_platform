@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { BASE_URL } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "@tanstack/react-router";
@@ -17,7 +17,16 @@ import {
   getTerminology,
   getTerminologyPlural,
 } from "@/components/common/layout-container/sidebar/utils";
-import { RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { cn } from "@/lib/utils";
+import {
+  BookOpen,
+  CaretDown,
+  ChalkboardTeacher,
+  File as FileIcon,
+  GraduationCap,
+  Info,
+} from "@phosphor-icons/react";
 
 // Helper function to check if HTML content has actual visible text
 // Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
@@ -30,6 +39,232 @@ const hasContent = (htmlString: string | undefined | null): boolean => {
     .replace(/\s+/g, " ") // Normalize whitespace
     .trim();
   return textContent.length > 0;
+};
+
+// HTML content block with a line-clamp + "View more / View less" toggle.
+// The clamped flag is measured against scrollHeight so the toggle only
+// appears when the content is actually tall enough to be cut off.
+const HtmlWithViewMore: React.FC<{
+  html: string;
+  className?: string;
+  clampLines?: number;
+}> = ({ html, className, clampLines = 4 }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const clampClass =
+    clampLines === 3
+      ? "line-clamp-3"
+      : clampLines === 5
+      ? "line-clamp-5"
+      : clampLines === 6
+      ? "line-clamp-6"
+      : "line-clamp-4";
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setClamped(el.scrollHeight > el.clientHeight + 1);
+  }, [html]);
+
+  return (
+    <div>
+      <div
+        ref={ref}
+        className={cn(className, !expanded && clampClass)}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {(clamped || expanded) && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 text-sm font-medium text-primary-600 hover:underline focus:outline-none"
+        >
+          {expanded ? "View less" : "View more"}
+        </button>
+      )}
+    </div>
+  );
+};
+
+// Reusable card for each highlights section. Keeps the gradient-accent
+// icon chip + hover overlay from the original scattered-card design so
+// moving the sections into the accordion doesn't strip visual hierarchy.
+const HighlightSectionCard: React.FC<{
+  icon: React.ReactNode;
+  iconBgClass: string;
+  overlayClass: string;
+  title: string;
+  children: React.ReactNode;
+}> = ({ icon, iconBgClass, overlayClass, title, children }) => (
+  <div className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group">
+    <div
+      className={cn(
+        "absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md",
+        overlayClass
+      )}
+    />
+    <div className="relative">
+      <div className="flex items-center space-x-2 mb-3">
+        <div
+          className={cn(
+            "p-1.5 rounded-lg shadow-sm bg-gradient-to-br",
+            iconBgClass
+          )}
+        >
+          {icon}
+        </div>
+        <h2 className="text-base font-bold text-gray-900">{title}</h2>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+// Course highlights panel — collapsible accordion that wraps the
+// "What you'll learn / About / Who should learn / Instructors" sections
+// so they appear compactly at the top of the course page instead of
+// stacking as separate cards below.
+const CourseHighlightsAccordion: React.FC<{
+  whyLearn: string;
+  aboutCourse: string | null;
+  whoShouldLearn: string;
+  instructors: Array<{ name: string; email: string }>;
+}> = ({ whyLearn, aboutCourse, whoShouldLearn, instructors }) => {
+  const [open, setOpen] = useState(false);
+  const hasWhy = hasContent(whyLearn);
+  const hasAbout = hasContent(aboutCourse);
+  const hasWho = hasContent(whoShouldLearn);
+  const hasInstructors = instructors && instructors.length > 0;
+  if (!hasWhy && !hasAbout && !hasWho && !hasInstructors) return null;
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <Info className="w-4 h-4 text-primary-600 flex-shrink-0" weight="bold" />
+          <span className="text-sm font-semibold truncate text-gray-900">
+            {getTerminology(ContentTerms.Course, SystemTerms.Course)} highlights
+          </span>
+        </span>
+        <CaretDown
+          className={cn(
+            "w-4 h-4 text-gray-500 flex-shrink-0 transition-transform duration-200",
+            open ? "rotate-180" : "rotate-0"
+          )}
+          weight="bold"
+        />
+      </button>
+      {open && (
+        <div className="px-3 sm:px-4 pb-4 pt-2 space-y-4 bg-gray-50/40">
+          {hasWhy && (
+            <HighlightSectionCard
+              title="What you'll learn"
+              icon={
+                <BookOpen
+                  size={18}
+                  className="text-success-600"
+                  weight="duotone"
+                />
+              }
+              iconBgClass="from-success-100 to-success-200"
+              overlayClass="from-success-500/5 to-transparent"
+            >
+              <HtmlWithViewMore
+                html={whyLearn}
+                className="text-sm text-gray-600 leading-relaxed"
+              />
+            </HighlightSectionCard>
+          )}
+          {hasAbout && (
+            <HighlightSectionCard
+              title={`About this ${getTerminology(
+                ContentTerms.Course,
+                SystemTerms.Course
+              ).toLowerCase()}`}
+              icon={
+                <FileIcon
+                  size={18}
+                  className="text-blue-600"
+                  weight="duotone"
+                />
+              }
+              iconBgClass="from-blue-100 to-blue-200"
+              overlayClass="from-blue-500/5 to-transparent"
+            >
+              <HtmlWithViewMore
+                html={aboutCourse || ""}
+                className="text-sm text-gray-600 leading-relaxed"
+              />
+            </HighlightSectionCard>
+          )}
+          {hasWho && (
+            <HighlightSectionCard
+              title="Who should join"
+              icon={
+                <GraduationCap
+                  size={18}
+                  className="text-purple-600"
+                  weight="duotone"
+                />
+              }
+              iconBgClass="from-purple-100 to-purple-200"
+              overlayClass="from-purple-500/5 to-transparent"
+            >
+              <HtmlWithViewMore
+                html={whoShouldLearn}
+                className="text-sm text-gray-600 leading-relaxed"
+              />
+            </HighlightSectionCard>
+          )}
+          {hasInstructors && (
+            <HighlightSectionCard
+              title={getTerminologyPlural(
+                RoleTerms.Teacher,
+                SystemTerms.Teacher
+              )}
+              icon={
+                <ChalkboardTeacher
+                  size={18}
+                  className="text-orange-600"
+                  weight="duotone"
+                />
+              }
+              iconBgClass="from-orange-100 to-orange-200"
+              overlayClass="from-orange-500/5 to-transparent"
+            >
+              <div className="space-y-2">
+                {instructors.map((inst, idx) => (
+                  <div
+                    key={`${inst.email}-${idx}`}
+                    className="flex items-center gap-3 p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300"
+                  >
+                    <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-semibold rounded-full flex items-center justify-center">
+                      {inst.name ? inst.name.charAt(0).toUpperCase() : "I"}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900">
+                        {inst.name ||
+                          getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
+                      </h4>
+                      <p className="text-xs text-gray-600">
+                        {inst.email || "No email provided"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </HighlightSectionCard>
+          )}
+        </div>
+      )}
+    </section>
+  );
 };
 
 interface CourseDetailsPageProps {
@@ -667,6 +902,21 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
               {/* Main Content */}
               <div className="lg:col-span-2 space-y-4">
+                {/* Tags+title are rendered by the JSON catalogue hero
+                    (HeroSectionComponent) above; we don't repeat them here.
+                    If no hero is configured, no header shows. */}
+
+                {/* Course highlights accordion — collapsed by default,
+                    wraps the what-you'll-learn / about / who-should-learn /
+                    instructors sections that used to stack as separate cards
+                    below the structure. */}
+                <CourseHighlightsAccordion
+                  whyLearn={courseData.whyLearn}
+                  aboutCourse={courseData.aboutCourse}
+                  whoShouldLearn={courseData.whoShouldLearn}
+                  instructors={courseData.instructors || []}
+                />
+
                 {/* Course Overview Card - Mobile First */}
                 <div className="lg:hidden">
                   <div
@@ -865,204 +1115,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                   levelId={courseData.levelId}
                 />
 
-                {/* Content Sections in Card Layout */}
-                <div className="space-y-4">
-                  {/* What You'll Learn Section */}
-                  {hasContent(courseData.whyLearn) && (
-                    <div
-                      className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                      style={{ animationDelay: "0.3s" }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                      <div className="relative">
-                        <div className="flex items-center space-x-2 mb-3">
-                          <div className="p-1.5 bg-gradient-to-br from-success-100 to-success-200 rounded-lg shadow-sm">
-                            <svg
-                              className="w-4 h-4 text-success-600"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </div>
-                          <h2 className="text-base font-bold text-gray-900">
-                            What you'll learn
-                          </h2>
-                        </div>
-                        <div
-                          className="text-sm text-gray-600 leading-relaxed"
-                          dangerouslySetInnerHTML={{
-                            __html: courseData.whyLearn || "",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* About Course Section */}
-                  {hasContent(courseData.aboutCourse) && (
-                    <div
-                      className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                      style={{ animationDelay: "0.4s" }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                      <div className="relative">
-                        <div className="flex items-center space-x-2 mb-3">
-                          <div className="p-1.5 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg shadow-sm">
-                            <svg
-                              className="w-4 h-4 text-blue-600"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          </div>
-                          <h2 className="text-base font-bold text-gray-900">
-                            About this course
-                          </h2>
-                        </div>
-                        <div
-                          className="text-sm text-gray-600 leading-relaxed"
-                          dangerouslySetInnerHTML={{
-                            __html: courseData.aboutCourse || "",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Who Should Learn Section */}
-                  {hasContent(courseData.whoShouldLearn) && (
-                    <div
-                      className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                      style={{ animationDelay: "0.5s" }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                      <div className="relative">
-                        <div className="flex items-center space-x-2 mb-3">
-                          <div className="p-1.5 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg shadow-sm">
-                            <svg
-                              className="w-4 h-4 text-purple-600"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" />
-                            </svg>
-                          </div>
-                          <h2 className="text-base font-bold text-gray-900">
-                            Who should learn
-                          </h2>
-                        </div>
-                        <div
-                          className="text-sm text-gray-600 leading-relaxed"
-                          dangerouslySetInnerHTML={{
-                            __html: courseData.whoShouldLearn || "",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Instructors Section */}
-                  {courseData.instructors &&
-                    courseData.instructors.length > 0 && (
-                      <div
-                        className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                        style={{ animationDelay: "0.6s" }}
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                        <div className="relative">
-                          <div className="flex items-center space-x-2 mb-3">
-                            <div className="p-1.5 bg-gradient-to-br from-orange-100 to-orange-200 rounded-lg shadow-sm">
-                              <svg
-                                className="w-4 h-4 text-orange-600"
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                              >
-                                <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z" />
-                              </svg>
-                            </div>
-                            <h2 className="text-base font-bold text-gray-900">
-                              {getTerminologyPlural(
-                                RoleTerms.Teacher,
-                                SystemTerms.Teacher,
-                              )}
-                            </h2>
-                          </div>
-                          <div className="space-y-2">
-                            {courseData.instructors.map((instructor, index) => (
-                              <div
-                                key={index}
-                                className="flex items-center gap-3 p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300"
-                              >
-                                <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-semibold rounded-full flex items-center justify-center">
-                                  {instructor.name
-                                    ? instructor.name.charAt(0).toUpperCase()
-                                    : "I"}
-                                </div>
-                                <div>
-                                  <h3 className="text-sm font-semibold text-gray-900">
-                                    {instructor.name ||
-                                      getTerminology(
-                                        RoleTerms.Teacher,
-                                        SystemTerms.Teacher,
-                                      )}
-                                  </h3>
-                                  <p className="text-xs text-gray-600">
-                                    {instructor.email || "No email provided"}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                  {/* Tags Section */}
-                  {courseData.tags && courseData.tags.length > 0 && (
-                    <div
-                      className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                      style={{ animationDelay: "0.7s" }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                      <div className="relative">
-                        <div className="flex items-center space-x-2 mb-3">
-                          <div className="p-1.5 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-lg shadow-sm">
-                            <svg
-                              className="w-4 h-4 text-indigo-600"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          </div>
-                          <h2 className="text-base font-bold text-gray-900">
-                            Course Tags
-                          </h2>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {courseData.tags.map((tag, index) => (
-                            <span
-                              key={index}
-                              className="px-3 py-1 bg-primary-100 text-primary-800 text-sm rounded-full"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                {/* Content sections (what-you'll-learn / about /
+                    who-should-learn / instructors / tags) moved into the
+                    CourseHeroHeader + CourseHighlightsAccordion above the
+                    course structure. */}
               </div>
 
               {/* Sidebar */}

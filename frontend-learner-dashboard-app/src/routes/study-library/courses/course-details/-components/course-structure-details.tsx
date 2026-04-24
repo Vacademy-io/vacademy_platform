@@ -1091,8 +1091,7 @@ export const CourseStructureDetails = ({
             courseStructure === 5 &&
             studyLibraryData?.map((subject: SubjectType, idx: number) => {
               const isSubjectOpen = openSubjects.has(subject.id);
-              const baseIndent = "pl-[calc(18px+0.5rem+18px+0.5rem)]";
-              const subjectContentIndent = `${baseIndent} pl-[1.5rem]`;
+              const subjectContentIndent = "pl-1 sm:pl-[calc(18px+0.5rem+18px+0.5rem+1.5rem)]";
               return (
                 <Collapsible
                   key={subject.id}
@@ -1160,12 +1159,12 @@ export const CourseStructureDetails = ({
                   <CollapsibleContent
                     className={`pb-1 pt-2 ${subjectContentIndent}`}
                   >
-                    <div className="space-y-1 border-l-2 border-primary-200/60 pl-3 relative">
+                    <div className="space-y-1 border-l-2 border-primary-200/60 pl-1 sm:pl-3 relative">
                       <div className="absolute left-0 top-0 w-0.5 h-full bg-primary-300/50"></div>
                       {(subjectModulesMap[subject.id] ?? []).map(
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
-                          const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
+                          const moduleContentIndent = `pl-1 sm:pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
                           return (
                             <Collapsible
                               key={mod.module.id}
@@ -1247,7 +1246,7 @@ export const CourseStructureDetails = ({
                               <CollapsibleContent
                                 className={`py-1 ${moduleContentIndent}`}
                               >
-                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
+                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-1 sm:pl-2.5 relative">
                                   <div className="absolute left-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
                                   {(mod.chapters ?? []).map((ch, chIdx) => {
                                     const isChapterOpen = openChapters.has(
@@ -1737,7 +1736,7 @@ export const CourseStructureDetails = ({
                                 </div>
                               </CollapsibleTrigger>
                               <CollapsibleContent>
-                                <div className="space-y-px ml-3 sm:ml-5 border-l border-border/50 py-1 pl-2 relative">
+                                <div className="space-y-px ml-1 sm:ml-5 border-l border-border/50 py-1 pl-1 sm:pl-2 relative">
                                   <div className="absolute left-0 top-0 w-0.5 h-full bg-border"></div>
                                   {(() => {
                                     const status = slidesLoadingStatus[ch.id] || "idle";

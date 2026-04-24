@@ -78,6 +78,28 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
   // Add ref for PDF viewer component
   const pdfViewerRef = useRef<PdfViewerComponentRef>(null);
 
+  // Tap-to-activate PDF on mobile/tablet so the outer page stays scrollable
+  // until the user explicitly opts into interacting with the PDF viewer.
+  const [isTouchViewport, setIsTouchViewport] = useState(false);
+  const [pdfActive, setPdfActive] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("matchMedia" in window)) return;
+    // Phone + tablet screens — Tailwind's `lg` breakpoint is 1024px.
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const update = () => {
+      setIsTouchViewport(mq.matches);
+      if (!mq.matches) setPdfActive(false);
+    };
+    update();
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", update);
+      return () => mq.removeEventListener("change", update);
+    }
+    mq.addListener(update);
+    return () => mq.removeListener(update);
+  }, []);
+
   // Prevent page scroll bounce on mobile (but allow PDF container to scroll)
   useEffect(() => {
     const isMobile = window.matchMedia("(max-width: 768px)").matches;
@@ -639,6 +661,51 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
         handleDocumentLoad={handleDocumentLoad}
         initialPage={activeItem?.progress_marker}
       />
+
+      {/* Tap-to-interact overlay — keeps the outer page scrollable on phones
+          and tablets until the user explicitly taps to engage with the PDF. */}
+      {isTouchViewport && !pdfActive && (
+        <div
+          className="absolute inset-0 z-20 flex cursor-pointer items-end justify-center pb-6"
+          style={{ touchAction: "pan-y" }}
+          onClick={() => setPdfActive(true)}
+          role="button"
+          tabIndex={0}
+          aria-label="Tap to enable PDF scroll"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") setPdfActive(true);
+          }}
+        >
+          <div className="pointer-events-none rounded-full bg-black/75 px-4 py-2 text-xs font-medium text-white shadow-lg">
+            Tap to enable PDF scroll
+          </div>
+        </div>
+      )}
+
+      {/* Floating exit chip at the viewport's bottom-left — always in view
+          regardless of where the user has scrolled. */}
+      {isTouchViewport && pdfActive && (
+        <button
+          type="button"
+          onClick={() => setPdfActive(false)}
+          className="fixed bottom-24 left-2 z-[9999] flex items-center gap-1 rounded-md bg-red-500 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg active:scale-95"
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M6 6l12 12M6 18L18 6" />
+          </svg>
+          Exit PDF Scroll
+        </button>
+      )}
     </div>
   );
 };

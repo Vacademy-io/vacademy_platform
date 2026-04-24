@@ -1,5 +1,5 @@
 ext {
-    minSdkVersion = 22
+    minSdkVersion = 23
     compileSdkVersion = 36
     targetSdkVersion = 36
     androidxActivityVersion = '1.8.0'
@@ -9,6 +9,9 @@ ext {
     androidxFragmentVersion = '1.6.2'
     coreSplashScreenVersion = '1.0.1'
     androidxWebkitVersion = '1.9.0'
+    // Pinned to 1.8.0 — androidx.browser 1.9.0 requires AGP 8.9.1+ and this
+    // project is on AGP 8.7.3. Revisit after AGP upgrade.
+    androidxBrowserVersion = '1.8.0'
     junitVersion = '4.13.2'
     androidxJunitVersion = '1.1.5'
     androidxEspressoCoreVersion = '3.5.1'

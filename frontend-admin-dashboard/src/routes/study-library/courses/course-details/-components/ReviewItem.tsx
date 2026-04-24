@@ -281,7 +281,7 @@ export function ReviewItem({ review, courseId, currentLevel, currentSession }: R
     };
 
     return (
-        <div className="flex flex-col rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition-shadow duration-200 hover:shadow-md md:items-start md:gap-4">
+        <div className="flex flex-col gap-4 rounded-md border bg-card p-4 text-card-foreground md:items-start">
             {/* Top row: Avatar/User Info and Star Rating */}
             <div className="flex w-full items-start justify-between">
                 <div className="flex shrink-0 items-center justify-center gap-2">

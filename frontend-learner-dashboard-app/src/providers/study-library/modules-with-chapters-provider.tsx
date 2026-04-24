@@ -21,7 +21,7 @@ export const ModulesWithChaptersProvider = ({
   });
 
   const packageSessionId =
-    packageSessionIdFromUrl ?? packageSessionIdFromStore ?? undefined;
+    packageSessionIdFromUrl || packageSessionIdFromStore || undefined;
 
   // Main query for modules with chapters
   const { isLoading: isLoadingModules } = useQuery({

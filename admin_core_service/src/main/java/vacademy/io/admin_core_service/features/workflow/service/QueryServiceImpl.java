@@ -1733,14 +1733,34 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:left;color:#475569\">Date</th>");
                         tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Attendance</th>");
                         tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Duration</th>");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Engagement</th>");
+                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Engagement Score</th>");
                         tableHtml.append("</tr>");
 
                         // Index engagement logs by sessionId for quick lookup
                         Map<String, Map<String, Object>> engBySession = new HashMap<>();
+                        // Collect schedule IDs so we can fetch meeting durations in one go
+                        java.util.Set<String> scheduleIds = new java.util.HashSet<>();
                         for (var el : engagementLogs) {
                             String sid = String.valueOf(el.get("sessionId"));
                             engBySession.put(sid, el);
+                            Object schId = el.get("scheduleId");
+                            if (schId != null) scheduleIds.add(String.valueOf(schId));
+                        }
+
+                        // Batch-fetch meeting duration for each schedule (startTime → lastEntryTime)
+                        Map<String, Integer> scheduleDurationMins = new HashMap<>();
+                        if (!scheduleIds.isEmpty()) {
+                            try {
+                                var schedules = sessionScheduleRepository.findAllById(scheduleIds);
+                                for (var sch : schedules) {
+                                    if (sch.getStartTime() != null && sch.getLastEntryTime() != null) {
+                                        long startMs = sch.getStartTime().getTime();
+                                        long endMs = sch.getLastEntryTime().getTime();
+                                        int mins = (int) ((endMs - startMs) / 60000L);
+                                        if (mins > 0) scheduleDurationMins.put(sch.getId(), mins);
+                                    }
+                                }
+                            } catch (Exception ignored) {}
                         }
 
                         for (var session : sessionDetails) {
@@ -1756,41 +1776,83 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                             String engagementColor = "#94a3b8";
 
                             if (eng != null) {
-                                if (eng.get("providerTotalDurationMinutes") instanceof Number) {
-                                    int mins = ((Number) eng.get("providerTotalDurationMinutes")).intValue();
-                                    durationStr = mins + " min";
+                                int providerMinutes = 0;
+                                boolean hasProviderDuration = eng.get("providerTotalDurationMinutes") instanceof Number;
+                                if (hasProviderDuration) {
+                                    providerMinutes = ((Number) eng.get("providerTotalDurationMinutes")).intValue();
+                                    durationStr = providerMinutes + " min";
                                 }
 
-                                // Parse engagement JSON (chats, hand raises, concentration etc.)
+                                // Compute engagement score (0-100):
+                                //   80 pts from attendance duration: (providerMinutes / meetingMinutes) * 80
+                                //   20 pts from interactions (chats, talks, talkTime, raisehand, emojis, pollVotes)
+                                String scheduleId = eng.get("scheduleId") != null ? String.valueOf(eng.get("scheduleId")) : null;
+                                Integer meetingMinutes = scheduleId != null ? scheduleDurationMins.get(scheduleId) : null;
+
+                                double attendancePts = 0.0;
+                                if (hasProviderDuration && meetingMinutes != null && meetingMinutes > 0) {
+                                    attendancePts = Math.min(80.0, ((double) providerMinutes / meetingMinutes) * 80.0);
+                                } else if (hasProviderDuration && providerMinutes > 0) {
+                                    // No schedule duration known — award partial based on raw minutes (cap at 80)
+                                    attendancePts = Math.min(80.0, providerMinutes * 1.5);
+                                }
+
+                                // Parse engagement JSON — BBB reports: chats, talks, talkTime, raisehand, emojis, pollVotes
                                 String engJson = eng.get("engagementData") != null ? String.valueOf(eng.get("engagementData")) : null;
+                                int chats = 0, raises = 0, talks = 0, talkTime = 0, emojis = 0, pollVotes = 0;
+                                boolean hasEngagementJson = false;
+
                                 if (engJson != null && !engJson.isEmpty() && !"null".equals(engJson)) {
                                     try {
                                         var engNode = objectMapper.readTree(engJson);
-                                        int chats = engNode.path("chats").asInt(0);
-                                        int raises = engNode.path("raisehand").asInt(0);
-                                        int concentration = engNode.path("concentration").asInt(-1);
-
-                                        StringBuilder parts = new StringBuilder();
-                                        if (concentration >= 0) {
-                                            parts.append(concentration).append("% focus");
-                                            engagementColor = concentration >= 70 ? "#16a34a" : concentration >= 40 ? "#ca8a04" : "#dc2626";
-                                        }
-                                        if (chats > 0) {
-                                            if (parts.length() > 0) parts.append(" &middot; ");
-                                            parts.append(chats).append(" chat").append(chats > 1 ? "s" : "");
-                                        }
-                                        if (raises > 0) {
-                                            if (parts.length() > 0) parts.append(" &middot; ");
-                                            parts.append(raises).append(" raise").append(raises > 1 ? "s" : "");
-                                        }
-                                        if (parts.length() > 0) {
-                                            engagementStr = parts.toString();
-                                        } else if (concentration < 0 && chats == 0 && raises == 0) {
-                                            // No interactions — mark as low engagement if they attended
-                                            engagementStr = "Low";
-                                            engagementColor = "#94a3b8";
-                                        }
+                                        chats = engNode.path("chats").asInt(0);
+                                        raises = engNode.path("raisehand").asInt(0);
+                                        talks = engNode.path("talks").asInt(0);
+                                        talkTime = engNode.path("talkTime").asInt(0);
+                                        emojis = engNode.path("emojis").asInt(0);
+                                        pollVotes = engNode.path("pollVotes").asInt(0);
+                                        hasEngagementJson = true;
                                     } catch (Exception ignored) {}
+                                }
+
+                                // Interaction score out of 20:
+                                //   chats up to 4, raises up to 4, talks up to 5, talkTime up to 3, emojis up to 2, polls up to 2
+                                double interactionPts = 0.0;
+                                interactionPts += Math.min(4.0, chats * 0.4);        // 10+ chats = 4pts
+                                interactionPts += Math.min(4.0, raises * 0.8);       // 5+ raises = 4pts
+                                interactionPts += Math.min(5.0, talks * 0.25);       // 20+ talks = 5pts
+                                interactionPts += Math.min(3.0, talkTime / 60.0 * 0.6); // 5+ min talk = 3pts
+                                interactionPts += Math.min(2.0, emojis * 0.2);       // 10+ emojis = 2pts
+                                interactionPts += Math.min(2.0, pollVotes * 0.4);    // 5+ polls = 2pts
+                                interactionPts = Math.min(20.0, interactionPts);
+
+                                double totalScore = Math.min(100.0, attendancePts + interactionPts);
+                                int scoreInt = (int) Math.round(totalScore);
+
+                                // Build display string
+                                if (hasProviderDuration || hasEngagementJson) {
+                                    StringBuilder parts = new StringBuilder();
+                                    parts.append(scoreInt).append("/100");
+
+                                    // Append interaction summary below the score
+                                    StringBuilder interactions = new StringBuilder();
+                                    if (chats > 0) interactions.append(chats).append("c");
+                                    if (raises > 0) { if (interactions.length() > 0) interactions.append(" "); interactions.append(raises).append("r"); }
+                                    if (talks > 0) { if (interactions.length() > 0) interactions.append(" "); interactions.append(talks).append("t"); }
+                                    if (emojis > 0) { if (interactions.length() > 0) interactions.append(" "); interactions.append(emojis).append("e"); }
+                                    if (pollVotes > 0) { if (interactions.length() > 0) interactions.append(" "); interactions.append(pollVotes).append("p"); }
+                                    if (interactions.length() > 0) {
+                                        parts.append("<br/><span style=\"font-size:10px;color:#94a3b8\">")
+                                             .append(interactions).append("</span>");
+                                    }
+
+                                    engagementStr = parts.toString();
+                                    // Color by score
+                                    engagementColor = scoreInt >= 70 ? "#16a34a"
+                                                    : scoreInt >= 40 ? "#ca8a04" : "#dc2626";
+                                } else if ("ONLINE".equals(eng.get("statusType"))) {
+                                    engagementStr = "Joined";
+                                    engagementColor = "#64748b";
                                 } else if ("OFFLINE".equals(eng.get("statusType"))) {
                                     engagementStr = "Offline";
                                 }

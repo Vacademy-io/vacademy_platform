@@ -1,10 +1,25 @@
-import { SupportedLanguage, DEFAULT_CODE } from '../constants/code-editor';
+import {
+    SupportedLanguage,
+    DEFAULT_CODE,
+    LangId,
+    LANGUAGE_REGISTRY,
+    getLanguageDef,
+} from '../constants/code-editor';
 import { CodeEditorData, AllLanguagesData } from './code-editor-types';
+import { executeOnJudge0, judge0OutputToConsoleText } from './judge0-client';
 
 export interface CodeExecutionResult {
     output: string;
     needsInput: boolean;
     hasError?: boolean;
+    timeMs?: number;
+    memoryKb?: number;
+}
+
+export interface CodeExecutionOptions {
+    stdin?: string;
+    cpuSeconds?: number;
+    memoryKb?: number;
 }
 
 // Pyodide instance - will be loaded lazily
@@ -192,7 +207,7 @@ export const copyCodeToClipboard = (code: string): void => {
  * Download code as a file
  */
 export const downloadCodeAsFile = (code: string, language: SupportedLanguage): void => {
-    const extension = language === 'python' ? 'py' : 'js';
+    const extension = getLanguageDef(language).fileExt;
     const blob = new Blob([code], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -205,11 +220,62 @@ export const downloadCodeAsFile = (code: string, language: SupportedLanguage): v
 };
 
 /**
- * Execute code using Pyodide for Python or fallback for other languages
+ * Execute JavaScript in the browser. Captures console.log and the final
+ * expression value. No isolation — fine for sandbox/practice, NOT for grading
+ * untrusted code (use Judge0 path for that).
+ */
+export const executeJavaScriptInBrowser = (
+    code: string,
+    stdin: string = ''
+): CodeExecutionResult => {
+    const logs: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    let hasError = false;
+    try {
+        console.log = (...args: unknown[]) => {
+            logs.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+        };
+        console.error = (...args: unknown[]) => {
+            hasError = true;
+            logs.push(
+                'ERROR: ' +
+                    args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')
+            );
+        };
+        // Provide a minimal stdin shim so problems that read input have something
+        // to consume. Splits on newlines.
+        const stdinLines = stdin.split('\n');
+        let stdinIdx = 0;
+        const readline = () => stdinLines[stdinIdx++] ?? '';
+        // eslint-disable-next-line @typescript-eslint/no-implied-eval
+        const fn = new Function('readline', '"use strict";\n' + code);
+        const result = fn(readline);
+        if (result !== undefined) logs.push(String(result));
+    } catch (err) {
+        hasError = true;
+        logs.push('Error: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+        console.log = originalLog;
+        console.error = originalError;
+    }
+    return {
+        output: logs.join('\n') || '(no output)',
+        needsInput: false,
+        hasError,
+    };
+};
+
+/**
+ * Execute code using the executor declared in LANGUAGE_REGISTRY.
+ *  - python   → Pyodide (in-browser)
+ *  - js       → new Function() (in-browser)
+ *  - others   → Judge0 (https://ce.judge0.com)
  */
 export const executeCode = async (
     code: string,
-    language: SupportedLanguage
+    language: SupportedLanguage,
+    options: CodeExecutionOptions = {}
 ): Promise<CodeExecutionResult> => {
     if (!code.trim()) {
         return {
@@ -218,13 +284,39 @@ export const executeCode = async (
         };
     }
 
-    // Only support Python execution with Pyodide for now
-    if (language === 'python') {
+    const def = LANGUAGE_REGISTRY[language as LangId] ?? LANGUAGE_REGISTRY.python;
+
+    if (def.executor === 'pyodide') {
         return await executePythonWithPyodide(code);
-    } else {
+    }
+
+    if (def.executor === 'browser') {
+        return executeJavaScriptInBrowser(code, options.stdin);
+    }
+
+    // Judge0 path (C / C++ / Java / Go / future)
+    try {
+        const result = await executeOnJudge0({
+            sourceCode: code,
+            language: language as LangId,
+            stdin: options.stdin,
+            cpuSeconds: options.cpuSeconds,
+            memoryKb: options.memoryKb,
+        });
+        const output = judge0OutputToConsoleText(result);
+        const hasError = !!result.compileOutput || !!result.stderr || result.statusId >= 6;
         return {
-            output: `Language '${language}' is not supported yet. Only Python execution is available.`,
+            output,
             needsInput: false,
+            hasError,
+            timeMs: result.timeMs,
+            memoryKb: result.memoryKb,
+        };
+    } catch (err) {
+        return {
+            output: `Judge0 error: ${err instanceof Error ? err.message : String(err)}\n\nNote: ce.judge0.com is rate-limited; if you hit a 429, wait and retry.`,
+            needsInput: false,
+            hasError: true,
         };
     }
 };

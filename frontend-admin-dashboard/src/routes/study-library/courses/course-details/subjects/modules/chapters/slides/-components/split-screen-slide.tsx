@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { JupyterNotebookSlide } from './jupyter-notebook-slide';
 import { ScratchProjectSlide } from './scratch-project-slide';
 import { CodeEditorSlide } from './code-editor-slide';
+import type { CodeEditorData as CanonicalCodeEditorData } from './utils/code-editor-types';
 import VideoSlidePreview from './video-slide-preview';
 import { Slide } from '../-hooks/use-slides';
 
@@ -27,17 +28,7 @@ interface ScratchData {
     timestamp?: number;
 }
 
-interface CodeEditorData {
-    language: 'python' | 'javascript';
-    code: string;
-    theme: 'light' | 'dark';
-    viewMode: 'view' | 'edit';
-    // Add support for both languages' data
-    allLanguagesData?: {
-        python: { code: string; lastEdited?: number };
-        javascript: { code: string; lastEdited?: number };
-    };
-}
+type CodeEditorData = CanonicalCodeEditorData;
 
 interface SplitScreenData {
     splitScreen: boolean;

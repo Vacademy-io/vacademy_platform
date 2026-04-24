@@ -29,7 +29,13 @@ import Editor from '@monaco-editor/react';
 import { toast } from 'sonner';
 
 // Import constants, types, and utilities
-import { CodeEditorData, CodeEditorSlideProps, AllLanguagesData } from './utils/code-editor-types';
+import {
+    CodeEditorData,
+    CodeEditorSlideProps,
+    AllLanguagesData,
+    CodingQuestionConfig,
+    makeEmptyQuestion,
+} from './utils/code-editor-types';
 import {
     copyCodeToClipboard,
     downloadCodeAsFile,
@@ -38,12 +44,22 @@ import {
     initializeLanguageStates,
     initializeCurrentData,
 } from './utils/code-editor-utils';
+import { LANGUAGE_REGISTRY, ALL_LANG_IDS, type LangId } from './constants/code-editor';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { QuestionEditor } from './coding-question/QuestionEditor';
 import { X } from '@phosphor-icons/react';
 
 export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
     codeData,
     isEditable,
     onDataChange,
+    slideId,
 }) => {
     const editorRef = useRef<unknown>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -176,6 +192,64 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
         [updateDataImmediate]
     );
 
+    // Switch the active language. Seeds language state with the registry's
+    // starter code if we've never typed in this language before.
+    const handleLanguageChange = useCallback(
+        (lang: LangId) => {
+            const existing = languageStates[lang];
+            const seed = existing?.code ?? LANGUAGE_REGISTRY[lang].starter;
+            const nextStates = {
+                ...languageStates,
+                [lang]: { code: seed, lastEdited: existing?.lastEdited ?? Date.now() },
+            } as AllLanguagesData;
+            setLanguageStates(nextStates);
+            const next = {
+                ...currentData,
+                language: lang,
+                code: seed,
+                allLanguagesData: nextStates,
+            };
+            setCurrentData(next);
+            forceSave(next);
+        },
+        [languageStates, currentData, forceSave]
+    );
+
+    // Question Mode toggle + question config updates
+    const isQuestionMode = currentData.mode === 'question';
+    const handleModeToggle = useCallback(
+        (enabled: boolean) => {
+            const next: CodeEditorData = {
+                ...currentData,
+                mode: enabled ? 'question' : 'practice',
+                question: enabled
+                    ? currentData.question ?? makeEmptyQuestion()
+                    : currentData.question,
+            };
+            setCurrentData(next);
+            forceSave(next);
+        },
+        [currentData, forceSave]
+    );
+
+    const handleQuestionChange = useCallback(
+        (question: CodingQuestionConfig) => {
+            const next: CodeEditorData = { ...currentData, question, mode: 'question' };
+            setCurrentData(next);
+            // Question content can change rapidly (TipTap, test case typing) — debounce.
+            debouncedSave(next);
+        },
+        [currentData, debouncedSave]
+    );
+
+    // Languages available for the picker. In Question Mode it's restricted to
+    // the admin's allowed list so the editor doesn't drift from the question.
+    const availableLanguages: LangId[] = isQuestionMode
+        ? currentData.question?.allowedLanguages?.length
+            ? currentData.question.allowedLanguages
+            : (['python'] as LangId[])
+        : (ALL_LANG_IDS as LangId[]);
+
     const handleCodeChange = useCallback(
         (value: string | undefined) => {
             if (value !== undefined) {
@@ -251,7 +325,7 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
             return (editorRef.current as any).getValue() || '';
         }
         // Fallback to current data or language state
-        return currentData.code || languageStates[currentData.language].code;
+        return currentData.code || languageStates[currentData.language]?.code || '';
     }, [currentData.code, currentData.language, languageStates]);
 
     const runCode = useCallback(async () => {
@@ -377,9 +451,31 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
                         <span className="ml-2 rounded-full bg-gray-100 px-2 py-1 text-xs font-normal text-gray-600">
                             {currentData.viewMode === 'edit' ? 'Edit Mode' : 'View Mode'}
                         </span>
+                        {isQuestionMode && (
+                            <span className="ml-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                                Question Mode
+                            </span>
+                        )}
                     </CardTitle>
 
                     <div className="flex items-center gap-2">
+                        <Select
+                            value={currentData.language}
+                            onValueChange={(v) => handleLanguageChange(v as LangId)}
+                            disabled={!isEditable}
+                        >
+                            <SelectTrigger className="h-8 w-[170px]">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {availableLanguages.map((l) => (
+                                    <SelectItem key={l} value={l}>
+                                        {LANGUAGE_REGISTRY[l].label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+
                         <Button
                             onClick={runCode}
                             disabled={isRunning}
@@ -398,7 +494,21 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
                                     <ChevronDown className="ml-1 size-3" />
                                 </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuContent align="end" className="w-60">
+                                <DropdownMenuItem
+                                    className="flex items-center justify-between"
+                                    onSelect={(e) => e.preventDefault()}
+                                >
+                                    <span>Question Mode</span>
+                                    <Switch
+                                        checked={isQuestionMode}
+                                        onCheckedChange={handleModeToggle}
+                                        disabled={!isEditable}
+                                    />
+                                </DropdownMenuItem>
+
+                                <DropdownMenuSeparator />
+
                                 <DropdownMenuItem className="flex items-center justify-between">
                                     <span>View/Edit Mode</span>
                                     <div className="flex items-center gap-1">
@@ -594,6 +704,15 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
                         </div>
                     )}
                 </div>
+
+                {isQuestionMode && currentData.question && (
+                    <QuestionEditor
+                        question={currentData.question}
+                        onChange={handleQuestionChange}
+                        disabled={!isEditable}
+                        slideId={slideId}
+                    />
+                )}
             </CardContent>
         </Card>
     );

@@ -39,6 +39,10 @@ import {
   DEFAULT_CODE_SAMPLES,
   SupportedLanguage,
 } from "./constants/code-slide";
+import { QuestionModeView } from "./coding-question/QuestionModeView";
+import type {
+  CodeEditorData as CodingCodeEditorData,
+} from "./coding-question/types";
 
 export interface CodeEditorData {
   language: string;
@@ -81,7 +85,9 @@ export interface EditorState {
   };
 }
 
-export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
+// Practice-mode (sandbox) implementation. The exported `CodeEditorSlide` below
+// dispatches between this and Question Mode based on the published_data JSON.
+const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
   published_data,
   documentId,
 }) => {
@@ -1036,4 +1042,28 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
       </Card>
     </div>
   );
+};
+
+/**
+ * Top-level dispatcher: picks Question Mode vs Practice Mode based on the
+ * published_data JSON. Practice Mode keeps the existing concentration-tracking
+ * editor untouched; Question Mode renders the LeetCode-style 3-pane view.
+ */
+export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = (props) => {
+  let parsed: CodingCodeEditorData | null = null;
+  if (props.published_data) {
+    try {
+      parsed = JSON.parse(props.published_data) as CodingCodeEditorData;
+    } catch {
+      parsed = null;
+    }
+  }
+
+  if (parsed?.mode === "question" && parsed.question) {
+    return (
+      <QuestionModeView question={parsed.question} slideId={props.documentId} />
+    );
+  }
+
+  return <PracticeModeView {...props} />;
 };

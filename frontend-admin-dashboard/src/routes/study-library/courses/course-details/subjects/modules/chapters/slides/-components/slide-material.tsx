@@ -1645,6 +1645,7 @@ export const SlideMaterial = ({
                         <CodeEditorSlide
                             key={`code-editor-${activeItem.id}`}
                             codeData={codeData}
+                            slideId={activeItem.id}
                             // Allow editing even in PUBLISHED when non-admin flow hides publish buttons
                             isEditable={!isLearnerView && (hidePublishButtons || true)}
                             onDataChange={async (updatedCodeData) => {

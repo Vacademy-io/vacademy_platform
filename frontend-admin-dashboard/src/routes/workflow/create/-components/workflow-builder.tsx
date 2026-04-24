@@ -893,8 +893,8 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                 cron_expression: scheduleConfig.scheduleType === 'CRON' ? scheduleConfig.cronExpression : undefined,
                 interval_minutes: scheduleConfig.scheduleType === 'INTERVAL' ? scheduleConfig.intervalMinutes : undefined,
                 timezone: scheduleConfig.timezone,
-                start_date: scheduleConfig.startDate || undefined,
-                end_date: scheduleConfig.endDate || undefined,
+                start_date: scheduleConfig.startDate ? (scheduleConfig.startDate.length === 16 ? scheduleConfig.startDate + ':00' : scheduleConfig.startDate) : undefined,
+                end_date: scheduleConfig.endDate ? (scheduleConfig.endDate.length === 16 ? scheduleConfig.endDate + ':00' : scheduleConfig.endDate) : undefined,
             },
         }),
         ...(workflowType === 'EVENT_DRIVEN' && triggerConfig.eventName && {

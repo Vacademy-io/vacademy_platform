@@ -31,7 +31,7 @@ interface DoubtManagementSettingsData {
 
 const DEFAULT_CHANNEL_PREFS: NotificationChannelPrefs = {
     push_enabled: true,
-    email_enabled: false,
+    email_enabled: true,
     email_template_id: null,
 };
 
@@ -218,9 +218,10 @@ export default function DoubtManagementSettings() {
 
     const showFallbackToggle = settings.default_assignee_source === 'SUBJECT_TEACHER';
 
-    // Email can be turned on without explicitly picking a template — the backend falls back to the
-    // institute's seeded default (doubt-raised-tpl-<instituteId> / doubt-resolved-tpl-<instituteId>)
-    // from migration V214.
+    // Email can be turned on without explicitly picking a template — the backend resolves through
+    // three layers: admin-configured id → institute-specific override row → global DEFAULT row
+    // seeded by V215 (see DoubtNotificationService.resolveTemplateId). Email defaults to ON;
+    // admins can turn it off per-event below.
     const handleSave = () => {
         save(settings);
     };
@@ -458,8 +459,8 @@ function NotificationEventCard({
                             Email notification
                         </Label>
                         <p className="mt-0.5 text-xs text-neutral-600">
-                            Off by default. Pick an email template to send alongside (or instead of)
-                            the push.
+                            On by default. Sent alongside the push — turn off to suppress.
+                            Uses the seeded default template unless you pick a custom one below.
                         </p>
 
                         {prefs.email_enabled && (

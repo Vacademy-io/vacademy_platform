@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { X, Plus } from '@phosphor-icons/react';
 import { useInstituteTags } from '../-hooks/useInstituteTags';
+import { formatTagForDisplay } from '@/lib/utils';
 
 interface TagSelectorDialogProps {
     open: boolean;
@@ -93,12 +94,12 @@ export function TagSelectorDialog({
                                         variant="outline"
                                         className="flex items-center gap-1 rounded-full border-primary-300 bg-primary-50 text-xs text-primary-700"
                                     >
-                                        {tag}
+                                        {formatTagForDisplay(tag)}
                                         <button
                                             type="button"
                                             onClick={() => handleRemove(tag)}
                                             className="hover:text-red-500"
-                                            aria-label={`Remove ${tag}`}
+                                            aria-label={`Remove ${formatTagForDisplay(tag)}`}
                                         >
                                             <X className="size-3" />
                                         </button>
@@ -164,7 +165,7 @@ export function TagSelectorDialog({
                                             onClick={() => handleSelect(tag)}
                                             className="rounded-full border border-neutral-300 bg-white px-2.5 py-1 text-xs text-neutral-700 transition-colors hover:border-primary-400 hover:bg-primary-50 hover:text-primary-700"
                                         >
-                                            {tag}
+                                            {formatTagForDisplay(tag)}
                                         </button>
                                     ))}
                                 </div>

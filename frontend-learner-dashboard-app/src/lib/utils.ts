@@ -371,3 +371,25 @@ export function toTitleCase(text: string): string {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(" ");
 }
+
+/**
+ * Title-cases a package/genre tag while preserving separators.
+ * Bulk-create stores tags as trim().toLowerCase(), keeping spaces and
+ * hyphens intact. This helper capitalizes each word without flattening
+ * hyphens into spaces (which toTitleCase does).
+ *
+ * Examples:
+ *   "sci-fi"           -> "Sci-Fi"
+ *   "science fiction"  -> "Science Fiction"
+ *   "rom-com thriller" -> "Rom-Com Thriller"
+ */
+export function formatTagForDisplay(tag: string): string {
+  if (!tag) return "";
+  const cap = (s: string) =>
+    s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
+  return tag
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.split("-").map(cap).join("-"))
+    .join(" ");
+}

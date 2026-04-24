@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/tooltip';
 import { BatchSelectorDialog } from './batch-selector-dialog';
 import { TagSelectorDialog } from './tag-selector-dialog';
+import { formatTagForDisplay } from '@/lib/utils';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -263,12 +264,12 @@ export function GlobalDefaultsSection({
                                     variant="outline"
                                     className="flex items-center gap-1 rounded-full text-xs"
                                 >
-                                    {tag}
+                                    {formatTagForDisplay(tag)}
                                     <button
                                         type="button"
                                         onClick={() => handleRemoveTag(tag)}
                                         className="hover:text-red-500"
-                                        aria-label={`Remove ${tag}`}
+                                        aria-label={`Remove ${formatTagForDisplay(tag)}`}
                                     >
                                         <X className="size-3" />
                                     </button>

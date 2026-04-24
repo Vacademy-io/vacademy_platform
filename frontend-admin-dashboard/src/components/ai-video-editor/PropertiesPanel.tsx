@@ -43,6 +43,11 @@ import {
     newImageOverlay,
     newVideoOverlay,
 } from './utils/html-overlay-editor';
+import {
+    TRANSITION_OPTIONS,
+    Transition,
+    TransitionType,
+} from './utils/transitions';
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -100,17 +105,83 @@ function TransformTab({ entryId, canvasW, canvasH }: TransformTabProps) {
     const {
         entryTransforms,
         entryBackgrounds,
+        entryTransitions,
         updateEntryTransform,
         resetEntryTransform,
         updateEntryBackground,
+        updateEntryTransition,
     } = useVideoEditorStore();
     const transform = entryTransforms[entryId] ?? DEFAULT_TRANSFORM;
     const background = entryBackgrounds[entryId] ?? '';
     // Only feed a valid 7-char hex into <input type="color"> (it can't render gradients/named colors).
     const pickerValue = /^#[0-9a-fA-F]{6}$/.test(background) ? background : '#ffffff';
+    const transitions = entryTransitions[entryId];
+
+    const setTransition = (which: 'in' | 'out', type: TransitionType | '') => {
+        if (!type) {
+            updateEntryTransition(entryId, which, null);
+            return;
+        }
+        const existing = transitions?.[which];
+        updateEntryTransition(entryId, which, {
+            type,
+            duration: existing?.duration ?? 0.4,
+            easing: existing?.easing,
+        });
+    };
+    const setDuration = (which: 'in' | 'out', duration: number) => {
+        const existing = transitions?.[which];
+        if (!existing) return;
+        updateEntryTransition(entryId, which, { ...existing, duration });
+    };
+
+    const renderTransitionRow = (which: 'in' | 'out', label: string) => {
+        const current: Transition | undefined = transitions?.[which];
+        return (
+            <div className="flex items-center gap-1.5">
+                <label className="w-8 text-[10px] font-medium text-gray-600">{label}</label>
+                <select
+                    value={current?.type ?? ''}
+                    onChange={(e) =>
+                        setTransition(which, e.target.value as TransitionType | '')
+                    }
+                    className="h-7 flex-1 rounded border border-gray-200 bg-white px-1 text-[11px] focus:border-indigo-400 focus:outline-none"
+                >
+                    <option value="">None</option>
+                    {TRANSITION_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                            {o.label}
+                        </option>
+                    ))}
+                </select>
+                <input
+                    type="number"
+                    step={0.05}
+                    min={0.05}
+                    max={3}
+                    value={current?.duration ?? ''}
+                    disabled={!current}
+                    placeholder="0.4s"
+                    onChange={(e) =>
+                        setDuration(which, parseFloat(e.target.value) || 0.4)
+                    }
+                    className="h-7 w-14 rounded border border-gray-200 bg-white px-1 text-center font-mono text-[11px] disabled:bg-gray-50 disabled:text-gray-300"
+                />
+            </div>
+        );
+    };
 
     return (
         <div className="space-y-3 p-3">
+            {/* Transitions */}
+            <div className="space-y-1.5 rounded-md border border-gray-200 bg-gray-50 p-2">
+                <div className="text-[11px] font-medium text-gray-600">Transitions</div>
+                {renderTransitionRow('in', 'In')}
+                {renderTransitionRow('out', 'Out')}
+                <div className="text-[10px] text-gray-400">
+                    Plays at the shot's start / end. Duration in seconds.
+                </div>
+            </div>
             <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
                 <div className="flex items-center justify-between">
                     <span className="text-[11px] font-medium text-gray-600">Background</span>
@@ -282,21 +353,99 @@ function TextItem({ el, canvasW, canvasH, onPatch, onDelete }: TextItemProps) {
                         />
                     </div>
 
-                    {/* Font size */}
+                    {/* Font size — preset dropdown + freeform numeric input */}
                     <div className="space-y-1">
                         <label className="text-[10px] font-medium text-gray-500">Font Size</label>
-                        <select
-                            value={el.fontSize || ''}
-                            onChange={(e) => onPatch(el.index, { fontSize: e.target.value })}
-                            className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:border-indigo-400 focus:outline-none"
-                        >
-                            <option value="">— inherited —</option>
-                            {FONT_SIZES.map((s) => (
-                                <option key={s} value={s}>
-                                    {s}
-                                </option>
+                        <div className="flex gap-1">
+                            <select
+                                value={
+                                    FONT_SIZES.includes(el.fontSize) ? el.fontSize : ''
+                                }
+                                onChange={(e) => onPatch(el.index, { fontSize: e.target.value })}
+                                className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:border-indigo-400 focus:outline-none"
+                            >
+                                <option value="">preset…</option>
+                                {FONT_SIZES.map((s) => (
+                                    <option key={s} value={s}>
+                                        {s}
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                type="number"
+                                min={4}
+                                max={400}
+                                value={parseFloat(el.fontSize) || ''}
+                                placeholder="px"
+                                onChange={(e) => {
+                                    const v = e.target.value;
+                                    onPatch(el.index, { fontSize: v ? `${v}px` : '' });
+                                }}
+                                className="w-16 rounded border border-gray-200 bg-white px-2 py-1 font-mono text-xs text-gray-800 focus:border-indigo-400 focus:outline-none"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Wrap & line height — fixes the "ZER / O" word-break issue */}
+                    <div className="flex items-center gap-2">
+                        <label className="text-[10px] font-medium text-gray-500">Wrap</label>
+                        <div className="flex gap-1">
+                            {(
+                                [
+                                    { label: 'Wrap', value: '' },
+                                    { label: 'Nowrap', value: 'nowrap' },
+                                    { label: 'Pre', value: 'pre' },
+                                ] as const
+                            ).map((w) => (
+                                <button
+                                    key={w.value || 'default'}
+                                    onClick={() =>
+                                        onPatch(el.index, { whiteSpace: w.value })
+                                    }
+                                    className={[
+                                        'h-6 rounded border px-2 text-[10px] transition-colors',
+                                        (el.whiteSpace || '') === w.value
+                                            ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
+                                    ].join(' ')}
+                                >
+                                    {w.label}
+                                </button>
                             ))}
-                        </select>
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-medium text-gray-500">
+                            Line Height
+                        </label>
+                        <div className="flex gap-1">
+                            <input
+                                type="number"
+                                step={0.05}
+                                min={0.5}
+                                max={3}
+                                value={
+                                    el.lineHeight && !isNaN(parseFloat(el.lineHeight))
+                                        ? parseFloat(el.lineHeight)
+                                        : ''
+                                }
+                                placeholder="1.2"
+                                onChange={(e) =>
+                                    onPatch(el.index, {
+                                        lineHeight: e.target.value || '',
+                                    })
+                                }
+                                className="w-20 rounded border border-gray-200 bg-white px-2 py-1 font-mono text-xs text-gray-800 focus:border-indigo-400 focus:outline-none"
+                            />
+                            {el.lineHeight && (
+                                <button
+                                    onClick={() => onPatch(el.index, { lineHeight: '' })}
+                                    className="text-[10px] text-gray-400 hover:text-gray-700"
+                                >
+                                    reset
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* Color */}

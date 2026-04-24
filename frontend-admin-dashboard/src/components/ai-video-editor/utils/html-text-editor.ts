@@ -18,6 +18,8 @@ export interface TextElement {
     fontWeight: string;
     textAlign: string;
     fontFamily: string;
+    whiteSpace: string;
+    lineHeight: string;
     /** Translate offset parsed from element's CSS transform (canvas px). */
     translateX: number;
     translateY: number;
@@ -78,6 +80,8 @@ function walkElements(root: Element, results: TextElement[], counter: { n: numbe
             fontWeight: style.fontWeight || '',
             textAlign: style.textAlign || '',
             fontFamily: style.fontFamily || '',
+            whiteSpace: style.whiteSpace || '',
+            lineHeight: style.lineHeight || '',
             translateX: translate.x,
             translateY: translate.y,
         });
@@ -118,6 +122,8 @@ export interface TextPatch {
     fontWeight?: string;
     textAlign?: string;
     fontFamily?: string;
+    whiteSpace?: string;
+    lineHeight?: string;
     /** Canvas-space pixel offsets applied via CSS transform: translate(). */
     translateX?: number;
     translateY?: number;
@@ -204,11 +210,21 @@ export function applyTextPatch(html: string, index: number, patch: TextPatch): s
             el.textContent = patch.text;
         }
 
-        if (patch.fontSize !== undefined) el.style.fontSize = patch.fontSize;
-        if (patch.color !== undefined) el.style.color = patch.color;
-        if (patch.fontWeight !== undefined) el.style.fontWeight = patch.fontWeight;
-        if (patch.textAlign !== undefined) el.style.textAlign = patch.textAlign;
-        if (patch.fontFamily !== undefined) el.style.fontFamily = patch.fontFamily;
+        // Apply user overrides with `!important` so they win over <style> rules
+        // or clamp()/viewport-based values baked into the source HTML. Passing
+        // an empty string clears the property (and its !important flag).
+        const setForced = (prop: string, value: string | undefined) => {
+            if (value === undefined) return;
+            if (value === '') el.style.removeProperty(prop);
+            else el.style.setProperty(prop, value, 'important');
+        };
+        setForced('font-size', patch.fontSize);
+        setForced('color', patch.color);
+        setForced('font-weight', patch.fontWeight);
+        setForced('text-align', patch.textAlign);
+        setForced('font-family', patch.fontFamily);
+        setForced('white-space', patch.whiteSpace);
+        setForced('line-height', patch.lineHeight);
 
         // Position via translate — merge with any existing non-translate transforms
         if (patch.translateX !== undefined || patch.translateY !== undefined) {

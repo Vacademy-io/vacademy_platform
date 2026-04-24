@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { processHtmlContent } from '@/components/ai-video-player/html-processor';
 import { useVideoEditorStore } from './stores/video-editor-store';
+import { computePreviewStyle } from './utils/transitions';
 
 interface EditorCanvasProps {
     /** Called whenever the scale factor changes (used by overlay renderers) */
@@ -23,6 +24,7 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
         seek,
         entryTransforms,
         entryBackgrounds,
+        entryTransitions,
         deleteEntry,
     } = useVideoEditorStore();
 
@@ -180,7 +182,26 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
                                 ? `translate(${t.x}px, ${t.y}px) scale(${t.scale}) rotate(${t.rotation}deg)`
                                 : undefined;
                             const bg = entryBackgrounds[entry.id];
+                            const tr = entryTransitions[entry.id];
                             const isSelected = entry.id === selectedEntryId;
+
+                            // Transition preview — interpolate at the current scrub position.
+                            const inTime = entry.inTime ?? entry.start ?? 0;
+                            const outTime = entry.exitTime ?? entry.end ?? inTime + 1;
+                            const localT = currentTime - inTime;
+                            const shotDur = outTime - inTime;
+                            const transitionStyle = computePreviewStyle(localT, shotDur, tr);
+
+                            // Merge transition transform with the editor transform — the
+                            // editor-space transform applies on top of the entrance/exit.
+                            const composedTransform = [
+                                cssTransform,
+                                typeof transitionStyle.transform === 'string'
+                                    ? transitionStyle.transform
+                                    : null,
+                            ]
+                                .filter(Boolean)
+                                .join(' ');
 
                             return (
                                 <div
@@ -188,10 +209,11 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
                                     style={{
                                         position: 'absolute',
                                         inset: 0,
-                                        transform: cssTransform,
+                                        transform: composedTransform || undefined,
                                         transformOrigin: 'center center',
                                         zIndex: entry.z ?? i,
                                         background: bg,
+                                        opacity: transitionStyle.opacity,
                                     }}
                                 >
                                     <iframe

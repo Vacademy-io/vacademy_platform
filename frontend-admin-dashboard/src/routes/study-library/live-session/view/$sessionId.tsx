@@ -393,6 +393,7 @@ function ViewLiveSession() {
             let totalFail = 0;
             let anySucceeded = false;
             let anyRecovering = false;
+            let anyReprocessing = false;
             let anyNotFound = false;
 
             await Promise.all(
@@ -401,10 +402,11 @@ function ViewLiveSession() {
                         const result = await syncRecordingsFromBbb(scheduleId, instituteId);
                         results[scheduleId] = result.recordings;
                         anySucceeded = true;
-                        // Severity ladder: BBB_OFFLINE > PARTIAL > RECOVERING > NOT_FOUND > OK
+                        // Severity ladder: BBB_OFFLINE > PARTIAL > REPROCESSING > RECOVERING > NOT_FOUND > OK
                         if (result.status === 'BBB_OFFLINE') overallStatus = 'BBB_OFFLINE';
                         else if (result.status === 'PARTIAL' && overallStatus !== 'BBB_OFFLINE')
                             overallStatus = 'PARTIAL';
+                        if (result.status === 'REPROCESSING') anyReprocessing = true;
                         if (result.status === 'RECOVERING') anyRecovering = true;
                         if (result.status === 'NOT_FOUND') anyNotFound = true;
                         // Parse counts from the structured message to aggregate across schedules
@@ -428,6 +430,11 @@ function ViewLiveSession() {
             } else if (overallStatus === 'PARTIAL') {
                 const msg = `Partially synced — ${totalNew} recording(s) synced, ${totalFail} could not be retrieved.`;
                 toast.warning(msg);
+            } else if (anyReprocessing) {
+                toast.info(
+                    'Recording is being re-uploaded from the meeting server. It should appear in 2–5 minutes — click Refresh to check.',
+                    { duration: 8000 }
+                );
             } else if (anyRecovering) {
                 toast.info(
                     'Recording is being rebuilt on the meeting server. It should appear in about 10 minutes — click Refresh to check.',

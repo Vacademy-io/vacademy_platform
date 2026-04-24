@@ -6,6 +6,8 @@ import {
     getDefaultMeta,
 } from '@/components/ai-video-player/types';
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
+import { clamp } from '../utils/coord-convert';
+import { buildTransitionCss, TransitionPair, Transition } from '../utils/transitions';
 
 export interface InitParams {
     videoId: string;
@@ -25,6 +27,44 @@ export interface EntryTransform {
 }
 
 export const DEFAULT_TRANSFORM: EntryTransform = { x: 0, y: 0, scale: 1, rotation: 0 };
+
+/** Minimum shot duration (seconds) — edges clamp against this so we can't crush a shot to zero. */
+export const MIN_SHOT_DURATION = 0.2;
+
+/**
+ * Find the adjacent entry that shares `edge` with `entry` within the same
+ * z-channel (base 0–499, overlay 500–8999, ui ≥9000). Returns `null` when no
+ * neighbour shares the boundary within `tolerance` seconds — in that case a
+ * roll-mode drag should gracefully fall back to slip.
+ */
+export function findRollNeighbour(
+    entries: Entry[],
+    entry: Entry,
+    edge: 'in' | 'out',
+    tolerance = 0.05
+): Entry | null {
+    const entryZ = entry.z ?? 0;
+    const channelBucket = (z: number): 'base' | 'overlay' | 'ui' =>
+        z >= 9000 ? 'ui' : z >= 500 ? 'overlay' : 'base';
+    const myBucket = channelBucket(entryZ);
+    const myEdgeTime = edge === 'in' ? entry.inTime : entry.exitTime;
+    if (myEdgeTime == null) return null;
+
+    let best: Entry | null = null;
+    let bestDelta = tolerance;
+    for (const other of entries) {
+        if (other.id === entry.id) continue;
+        if (channelBucket(other.z ?? 0) !== myBucket) continue;
+        const otherEdgeTime = edge === 'in' ? other.exitTime : other.inTime;
+        if (otherEdgeTime == null) continue;
+        const delta = Math.abs(otherEdgeTime - myEdgeTime);
+        if (delta <= bestDelta) {
+            best = other;
+            bestDelta = delta;
+        }
+    }
+    return best;
+}
 
 function isIdentity(t: EntryTransform): boolean {
     return t.x === 0 && t.y === 0 && t.scale === 1 && t.rotation === 0;
@@ -51,12 +91,18 @@ function stripShotWrapper(html: string): string {
 function injectShotWrapper(
     html: string,
     t: EntryTransform | undefined,
-    background: string | undefined
+    background: string | undefined,
+    transitions: TransitionPair | undefined,
+    shotDuration: number | undefined
 ): string {
     const inner = stripShotWrapper(html);
     const hasTransform = t && !isIdentity(t);
     const hasBackground = !!background && background.trim() !== '';
-    if (!hasTransform && !hasBackground) return inner;
+    const tcss =
+        transitions && shotDuration != null
+            ? buildTransitionCss(transitions, shotDuration)
+            : null;
+    if (!hasTransform && !hasBackground && !tcss) return inner;
 
     const styles: string[] = [
         'position:absolute',
@@ -70,13 +116,17 @@ function injectShotWrapper(
         );
     }
     if (hasBackground) styles.push(`background:${background}`);
-    return `<div data-vx-shot="1" style="${styles.join(';')}">${inner}</div>`;
+    if (tcss) styles.push(`animation:${tcss.animation}`);
+
+    const keyframeBlock = tcss ? `<style>${tcss.keyframes}</style>` : '';
+    return `<div data-vx-shot="1" style="${styles.join(';')}">${keyframeBlock}${inner}</div>`;
 }
 
 interface HistorySnapshot {
     entries: Entry[];
     entryTransforms: Record<string, EntryTransform>;
     entryBackgrounds: Record<string, string>;
+    entryTransitions: Record<string, TransitionPair>;
     dirtyEntryIds: string[];
     newEntryIds: string[];
 }
@@ -120,6 +170,9 @@ export interface VideoEditorState {
     // Per-entry background color / CSS value (client-side; baked into HTML on save)
     entryBackgrounds: Record<string, string>;
 
+    // Per-entry transition pair (in/out); baked into the shot wrapper on save.
+    entryTransitions: Record<string, TransitionPair>;
+
     // Undo/Redo history
     past: HistorySnapshot[];
     future: HistorySnapshot[];
@@ -147,6 +200,34 @@ export interface VideoEditorState {
     resetEntryTransform: (entryId: string) => void;
     /** Set or clear an entry's background CSS value (empty string / undefined clears it). */
     updateEntryBackground: (entryId: string, background: string | undefined) => void;
+    /**
+     * Set or clear the in/out transition for an entry. Pass `null` to remove
+     * that side of the pair. Transitions are session state and get baked into
+     * the shot wrapper's `animation` property + `<style>` keyframes on save.
+     */
+    updateEntryTransition: (
+        entryId: string,
+        which: 'in' | 'out',
+        transition: Transition | null
+    ) => void;
+    /**
+     * Resize one edge of a time_driven entry.
+     *
+     *  - `slip`   : move just this edge; may open gaps / create overlaps with neighbours.
+     *  - `roll`   : move this edge AND the matching edge of the adjacent entry in the
+     *               same channel, keeping them glued together (no downstream shift).
+     *  - `ripple` : move this edge AND shift every later entry by the same delta
+     *               (changes total_duration; breaks audio sync — power-user only).
+     *
+     * Clamps to a minimum shot duration of MIN_SHOT_DURATION so edges never
+     * cross. For roll, the adjacent entry is also clamped.
+     */
+    resizeEntryEdge: (
+        entryId: string,
+        edge: 'in' | 'out',
+        newTime: number,
+        mode: 'slip' | 'roll' | 'ripple'
+    ) => void;
     undo: () => void;
     redo: () => void;
     saveChanges: () => Promise<void>;
@@ -157,6 +238,7 @@ function snapshot(s: VideoEditorState): HistorySnapshot {
         entries: s.entries,
         entryTransforms: s.entryTransforms,
         entryBackgrounds: s.entryBackgrounds,
+        entryTransitions: s.entryTransitions,
         dirtyEntryIds: s.dirtyEntryIds,
         newEntryIds: s.newEntryIds,
     };
@@ -189,6 +271,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     audioTracks: [],
     entryTransforms: {},
     entryBackgrounds: {},
+    entryTransitions: {},
     past: [],
     future: [],
     isSaving: false,
@@ -214,6 +297,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             audioTracks: [],
             entryTransforms: {},
             entryBackgrounds: {},
+            entryTransitions: {},
             past: [],
             future: [],
             isSaving: false,
@@ -307,6 +391,8 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             delete nextT[entryId];
             const nextB = { ...s.entryBackgrounds };
             delete nextB[entryId];
+            const nextX = { ...s.entryTransitions };
+            delete nextX[entryId];
             return {
                 ...pushPast(s),
                 entries: s.entries.filter((e) => e.id !== entryId),
@@ -315,6 +401,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 newEntryIds: s.newEntryIds.filter((id) => id !== entryId),
                 entryTransforms: nextT,
                 entryBackgrounds: nextB,
+                entryTransitions: nextX,
             };
         });
     },
@@ -352,6 +439,142 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         });
     },
 
+    resizeEntryEdge: (entryId, edge, newTime, mode) => {
+        set((s) => {
+            if (s.meta.navigation !== 'time_driven') return {};
+            const idx = s.entries.findIndex((e) => e.id === entryId);
+            if (idx < 0) return {};
+            const entry = s.entries[idx]!;
+            const inT = entry.inTime ?? entry.start ?? 0;
+            const outT = entry.exitTime ?? entry.end ?? inT + 1;
+
+            // Normalize: quantize to 0.1s, clamp to non-negative
+            const snap = (t: number) => Math.max(0, Math.round(t * 10) / 10);
+
+            const dirty = new Set(s.dirtyEntryIds);
+            let newEntries = [...s.entries];
+            let newTotal = s.meta.total_duration;
+
+            if (mode === 'slip') {
+                const proposed = snap(newTime);
+                const finalTime =
+                    edge === 'in'
+                        ? Math.min(proposed, outT - MIN_SHOT_DURATION)
+                        : Math.max(proposed, inT + MIN_SHOT_DURATION);
+                newEntries[idx] = {
+                    ...entry,
+                    ...(edge === 'in' ? { inTime: finalTime } : { exitTime: finalTime }),
+                };
+                dirty.add(entryId);
+            } else if (mode === 'roll') {
+                const neighbour = findRollNeighbour(s.entries, entry, edge);
+                if (!neighbour) {
+                    // Fall back to slip — caller's UI should have detected this already.
+                    const proposed = snap(newTime);
+                    const finalTime =
+                        edge === 'in'
+                            ? Math.min(proposed, outT - MIN_SHOT_DURATION)
+                            : Math.max(proposed, inT + MIN_SHOT_DURATION);
+                    newEntries[idx] = {
+                        ...entry,
+                        ...(edge === 'in' ? { inTime: finalTime } : { exitTime: finalTime }),
+                    };
+                    dirty.add(entryId);
+                } else {
+                    const nInT = neighbour.inTime ?? neighbour.start ?? 0;
+                    const nOutT = neighbour.exitTime ?? neighbour.end ?? nInT + 1;
+                    // For roll, newTime becomes the shared boundary. Clamp so neither
+                    // side shrinks below MIN_SHOT_DURATION.
+                    let t = snap(newTime);
+                    if (edge === 'out') {
+                        // this.exitTime = neighbour.inTime = t
+                        t = clamp(
+                            t,
+                            inT + MIN_SHOT_DURATION,
+                            nOutT - MIN_SHOT_DURATION
+                        );
+                    } else {
+                        // this.inTime = neighbour.exitTime = t
+                        t = clamp(
+                            t,
+                            nInT + MIN_SHOT_DURATION,
+                            outT - MIN_SHOT_DURATION
+                        );
+                    }
+                    const nIdx = newEntries.findIndex((e) => e.id === neighbour.id);
+                    newEntries[idx] = {
+                        ...entry,
+                        ...(edge === 'in' ? { inTime: t } : { exitTime: t }),
+                    };
+                    newEntries[nIdx] = {
+                        ...neighbour,
+                        ...(edge === 'in' ? { exitTime: t } : { inTime: t }),
+                    };
+                    dirty.add(entryId);
+                    dirty.add(neighbour.id);
+                }
+            } else {
+                // ripple
+                const original = edge === 'in' ? inT : outT;
+                const proposed = snap(newTime);
+                // Clamp so this shot keeps MIN_SHOT_DURATION
+                const finalTime =
+                    edge === 'in'
+                        ? Math.min(proposed, outT - MIN_SHOT_DURATION)
+                        : Math.max(proposed, inT + MIN_SHOT_DURATION);
+                const delta = finalTime - original;
+                if (delta === 0) return {};
+
+                newEntries = s.entries.map((e) => {
+                    if (e.id === entryId) {
+                        return {
+                            ...e,
+                            ...(edge === 'in' ? { inTime: finalTime } : { exitTime: finalTime }),
+                        };
+                    }
+                    const eStart = e.inTime ?? e.start;
+                    // Shift any entry whose start is >= the original boundary
+                    if (eStart != null && eStart >= original) {
+                        return {
+                            ...e,
+                            inTime: (e.inTime ?? 0) + delta,
+                            exitTime: (e.exitTime ?? 0) + delta,
+                        };
+                    }
+                    return e;
+                });
+                newEntries.forEach((e) => dirty.add(e.id));
+                if (newTotal != null) newTotal = Math.max(0, newTotal + delta);
+            }
+
+            return {
+                ...pushPast(s),
+                entries: newEntries,
+                dirtyEntryIds: Array.from(dirty),
+                meta: newTotal !== s.meta.total_duration ? { ...s.meta, total_duration: newTotal } : s.meta,
+            };
+        });
+    },
+
+    updateEntryTransition: (entryId, which, transition) => {
+        set((s) => {
+            const next = { ...s.entryTransitions };
+            const current = next[entryId] ?? {};
+            const updated: TransitionPair = { ...current };
+            if (transition == null) delete updated[which];
+            else updated[which] = transition;
+            if (!updated.in && !updated.out) delete next[entryId];
+            else next[entryId] = updated;
+            return {
+                ...pushPast(s),
+                entryTransitions: next,
+                dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
+                    ? s.dirtyEntryIds
+                    : [...s.dirtyEntryIds, entryId],
+            };
+        });
+    },
+
     updateEntryBackground: (entryId, background) => {
         set((s) => {
             const next = { ...s.entryBackgrounds };
@@ -381,6 +604,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entries: prev.entries,
                 entryTransforms: prev.entryTransforms,
                 entryBackgrounds: prev.entryBackgrounds,
+                entryTransitions: prev.entryTransitions,
                 dirtyEntryIds: prev.dirtyEntryIds,
                 newEntryIds: prev.newEntryIds,
             };
@@ -397,6 +621,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entries: next.entries,
                 entryTransforms: next.entryTransforms,
                 entryBackgrounds: next.entryBackgrounds,
+                entryTransitions: next.entryTransitions,
                 dirtyEntryIds: next.dirtyEntryIds,
                 newEntryIds: next.newEntryIds,
             };
@@ -421,6 +646,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             newEntryIds,
             entryTransforms,
             entryBackgrounds,
+            entryTransitions,
         } = get();
 
         // Collect entries that need saving
@@ -428,7 +654,8 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             (e) =>
                 dirtyEntryIds.includes(e.id) ||
                 (entryTransforms[e.id] != null && !isIdentity(entryTransforms[e.id]!)) ||
-                !!entryBackgrounds[e.id]
+                !!entryBackgrounds[e.id] ||
+                !!entryTransitions[e.id]
         );
 
         if (toSave.length === 0) return;
@@ -446,7 +673,12 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             for (const entry of toSave) {
                 const t = entryTransforms[entry.id];
                 const bg = entryBackgrounds[entry.id];
-                const newHtml = injectShotWrapper(entry.html, t, bg);
+                const tr = entryTransitions[entry.id];
+                const dur =
+                    entry.inTime != null && entry.exitTime != null
+                        ? entry.exitTime - entry.inTime
+                        : undefined;
+                const newHtml = injectShotWrapper(entry.html, t, bg, tr, dur);
                 const isNew = newEntryIds.includes(entry.id);
 
                 if (isNew) {
@@ -493,17 +725,23 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 }
             }
 
-            // Bake transforms + backgrounds into local entry HTML so canvas re-renders correctly
+            // Bake transforms + backgrounds + transitions into local entry HTML
             set((s) => ({
                 entries: s.entries.map((e) => {
                     const t = s.entryTransforms[e.id];
                     const bg = s.entryBackgrounds[e.id];
+                    const tr = s.entryTransitions[e.id];
                     const hasT = t && !isIdentity(t);
-                    if (!hasT && !bg) return e;
-                    return { ...e, html: injectShotWrapper(e.html, t, bg) };
+                    if (!hasT && !bg && !tr) return e;
+                    const dur =
+                        e.inTime != null && e.exitTime != null
+                            ? e.exitTime - e.inTime
+                            : undefined;
+                    return { ...e, html: injectShotWrapper(e.html, t, bg, tr, dur) };
                 }),
                 entryTransforms: {},
                 entryBackgrounds: {},
+                entryTransitions: {},
                 dirtyEntryIds: [],
                 newEntryIds: [], // all new entries are now persisted
                 past: [],

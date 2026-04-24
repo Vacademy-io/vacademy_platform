@@ -1,5 +1,9 @@
-import { useRef, useCallback, useMemo, Fragment } from 'react';
-import { useVideoEditorStore } from './stores/video-editor-store';
+import { useRef, useCallback, useMemo, useState, Fragment } from 'react';
+import {
+    useVideoEditorStore,
+    MIN_SHOT_DURATION,
+    findRollNeighbour,
+} from './stores/video-editor-store';
 import {
     assignChannelGroups,
     getEntryColor,
@@ -8,6 +12,7 @@ import {
 } from './utils/track-layout';
 import { clamp } from './utils/coord-convert';
 import { useAudioWaveform } from './utils/use-audio-waveform';
+import type { Entry } from '@/components/ai-video-player/types';
 
 // ── Layout constants ────────────────────────────────────────────────────────
 
@@ -85,11 +90,30 @@ function WaveformBars({ peaks, height }: WaveformProps) {
  * user_driven  – entries are equal-width sequential blocks, scrubs by index.
  */
 export function TimelineScrubber() {
-    const { entries, meta, currentTime, selectedEntryId, seek, selectEntry, audioUrl } =
-        useVideoEditorStore();
+    const {
+        entries,
+        meta,
+        currentTime,
+        selectedEntryId,
+        seek,
+        selectEntry,
+        audioUrl,
+        resizeEntryEdge,
+    } = useVideoEditorStore();
 
     const barRef = useRef<HTMLDivElement>(null);
     const isDragging = useRef(false);
+
+    // Active edge-resize operation — drives the floating tooltip + live preview.
+    const [resizeDrag, setResizeDrag] = useState<{
+        entryId: string;
+        edge: 'in' | 'out';
+        mode: 'slip' | 'roll' | 'ripple';
+        time: number;
+        blocked: 'min' | null;
+        /** Roll-mode: the entry whose opposing edge follows this one. */
+        neighbourId: string | null;
+    } | null>(null);
 
     const navigationMode = meta.navigation;
     const totalDuration = useMemo(
@@ -162,6 +186,102 @@ export function TimelineScrubber() {
             window.addEventListener('touchend', onUp);
         },
         [seek, xToTime]
+    );
+
+    // ── Edge drag (resize shots) ───────────────────────────────────────────
+
+    const startEdgeResize = useCallback(
+        (entry: Entry, edge: 'in' | 'out', e: React.MouseEvent) => {
+            if (navigationMode !== 'time_driven') return;
+            e.stopPropagation();
+            e.preventDefault();
+            const bar = barRef.current;
+            if (!bar) return;
+
+            const inT = entry.inTime ?? entry.start ?? 0;
+            const outT = entry.exitTime ?? entry.end ?? inT + 1;
+            const neighbour = findRollNeighbour(entries, entry, edge);
+            const baseMode: 'slip' | 'roll' = neighbour ? 'roll' : 'slip';
+            selectEntry(entry.id);
+
+            const clientToTime = (cx: number): number => {
+                const { left, width } = bar.getBoundingClientRect();
+                const ratio = clamp((cx - left) / width, 0, 1);
+                return ratio * totalDuration;
+            };
+
+            const apply = (cx: number, shiftHeld: boolean) => {
+                const raw = clientToTime(cx);
+                const snapped = Math.round(raw * 10) / 10;
+                const mode: 'slip' | 'roll' | 'ripple' = shiftHeld ? 'ripple' : baseMode;
+                // Clamp for preview so the tooltip reflects what will actually commit.
+                let preview = snapped;
+                let blocked: 'min' | null = null;
+                if (mode === 'slip' || mode === 'ripple') {
+                    if (edge === 'in' && preview > outT - MIN_SHOT_DURATION) {
+                        preview = outT - MIN_SHOT_DURATION;
+                        blocked = 'min';
+                    }
+                    if (edge === 'out' && preview < inT + MIN_SHOT_DURATION) {
+                        preview = inT + MIN_SHOT_DURATION;
+                        blocked = 'min';
+                    }
+                } else if (mode === 'roll' && neighbour) {
+                    const nIn = neighbour.inTime ?? 0;
+                    const nOut = neighbour.exitTime ?? 0;
+                    if (edge === 'out') {
+                        const lo = inT + MIN_SHOT_DURATION;
+                        const hi = nOut - MIN_SHOT_DURATION;
+                        if (preview < lo) {
+                            preview = lo;
+                            blocked = 'min';
+                        } else if (preview > hi) {
+                            preview = hi;
+                            blocked = 'min';
+                        }
+                    } else {
+                        const lo = nIn + MIN_SHOT_DURATION;
+                        const hi = outT - MIN_SHOT_DURATION;
+                        if (preview < lo) {
+                            preview = lo;
+                            blocked = 'min';
+                        } else if (preview > hi) {
+                            preview = hi;
+                            blocked = 'min';
+                        }
+                    }
+                }
+
+                // Preview only — the block's render below reads resizeDrag and
+                // overrides its own geometry for the dragged entry (and its roll
+                // neighbour) without touching the store. Committed once on mouseup.
+                setResizeDrag({
+                    entryId: entry.id,
+                    edge,
+                    mode,
+                    time: preview,
+                    blocked,
+                    neighbourId: mode === 'roll' && neighbour ? neighbour.id : null,
+                });
+                return { time: preview, mode };
+            };
+
+            let last: { time: number; mode: 'slip' | 'roll' | 'ripple' } | null = null;
+            const onMove = (ev: MouseEvent) => {
+                last = apply(ev.clientX, ev.shiftKey);
+            };
+            const onUp = (ev: MouseEvent) => {
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+                const committed = last ?? apply(ev.clientX, ev.shiftKey);
+                resizeEntryEdge(entry.id, edge, committed.time, committed.mode);
+                setResizeDrag(null);
+            };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+            last = apply(e.clientX, e.shiftKey);
+        },
+        [navigationMode, entries, totalDuration, resizeEntryEdge, selectEntry]
     );
 
     // ── Position helpers ───────────────────────────────────────────────────
@@ -329,8 +449,21 @@ export function TimelineScrubber() {
                                     let width: string;
 
                                     if (navigationMode === 'time_driven') {
-                                        const start = entry.inTime ?? entry.start ?? 0;
-                                        const end = entry.exitTime ?? entry.end ?? totalDuration;
+                                        let start = entry.inTime ?? entry.start ?? 0;
+                                        let end = entry.exitTime ?? entry.end ?? totalDuration;
+
+                                        // Live drag preview: override edges without mutating the store.
+                                        if (resizeDrag) {
+                                            if (resizeDrag.entryId === entry.id) {
+                                                if (resizeDrag.edge === 'in') start = resizeDrag.time;
+                                                else end = resizeDrag.time;
+                                            } else if (resizeDrag.neighbourId === entry.id) {
+                                                // Roll neighbour: its opposite edge follows.
+                                                if (resizeDrag.edge === 'in') end = resizeDrag.time;
+                                                else start = resizeDrag.time;
+                                            }
+                                        }
+
                                         const safeEnd = Math.min(end, totalDuration);
                                         left = timeToPercent(start);
                                         width = `${(((safeEnd - start) / totalDuration) * 100).toFixed(4)}%`;
@@ -343,8 +476,13 @@ export function TimelineScrubber() {
                                     const top =
                                         channelY + CHANNEL_SEP_H + channelTrack * TRACK_H + 2;
 
+                                    const canResize = navigationMode === 'time_driven';
+                                    const isBeingDragged =
+                                        resizeDrag?.entryId === entry.id ||
+                                        resizeDrag?.neighbourId === entry.id;
+
                                     return (
-                                        <button
+                                        <div
                                             key={entry.id}
                                             className="absolute rounded-sm transition-opacity hover:opacity-90"
                                             style={{
@@ -353,42 +491,104 @@ export function TimelineScrubber() {
                                                 top,
                                                 height: TRACK_H - 4,
                                                 background: color,
-                                                opacity: isSelected ? 1 : 0.75,
-                                                outline: isSelected
-                                                    ? '2px solid #818cf8'
-                                                    : 'none',
+                                                opacity:
+                                                    isSelected || isBeingDragged ? 1 : 0.75,
+                                                outline:
+                                                    isSelected || isBeingDragged
+                                                        ? '2px solid #818cf8'
+                                                        : 'none',
                                                 outlineOffset: 1,
                                                 overflow: 'hidden',
-                                                padding: '0 3px',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                             }}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                selectEntry(entry.id);
-                                                if (navigationMode === 'time_driven') {
-                                                    seek(entry.inTime ?? entry.start ?? 0);
-                                                } else {
-                                                    seek(entries.indexOf(entry));
-                                                }
-                                            }}
                                         >
-                                            <span
-                                                className="truncate text-white"
-                                                style={{
-                                                    fontSize: 9,
-                                                    lineHeight: 1,
-                                                    fontFamily: 'monospace',
+                                            {/* Left edge resize handle */}
+                                            {canResize && (
+                                                <div
+                                                    onMouseDown={(e) =>
+                                                        startEdgeResize(entry, 'in', e)
+                                                    }
+                                                    className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize hover:bg-white/50"
+                                                    title="Drag to resize start (Shift = ripple)"
+                                                    style={{ zIndex: 2 }}
+                                                />
+                                            )}
+                                            {/* Body — click to select */}
+                                            <button
+                                                className="absolute inset-0 flex items-center px-2"
+                                                style={{ cursor: 'pointer' }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (resizeDrag) return;
+                                                    selectEntry(entry.id);
+                                                    if (navigationMode === 'time_driven') {
+                                                        seek(
+                                                            entry.inTime ?? entry.start ?? 0
+                                                        );
+                                                    } else {
+                                                        seek(entries.indexOf(entry));
+                                                    }
                                                 }}
                                             >
-                                                {entry.id}
-                                            </span>
-                                        </button>
+                                                <span
+                                                    className="truncate text-white"
+                                                    style={{
+                                                        fontSize: 9,
+                                                        lineHeight: 1,
+                                                        fontFamily: 'monospace',
+                                                    }}
+                                                >
+                                                    {entry.id}
+                                                </span>
+                                            </button>
+                                            {/* Right edge resize handle */}
+                                            {canResize && (
+                                                <div
+                                                    onMouseDown={(e) =>
+                                                        startEdgeResize(entry, 'out', e)
+                                                    }
+                                                    className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize hover:bg-white/50"
+                                                    title="Drag to resize end (Shift = ripple)"
+                                                    style={{ zIndex: 2 }}
+                                                />
+                                            )}
+                                        </div>
                                     );
                                 })}
                             </Fragment>
                         );
                     })}
+
+                    {/* Floating resize tooltip */}
+                    {resizeDrag && (
+                        <div
+                            className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded px-2 py-0.5 font-mono text-[10px] shadow-md"
+                            style={{
+                                left: timeToPercent(resizeDrag.time),
+                                top: 2,
+                                background:
+                                    resizeDrag.mode === 'ripple'
+                                        ? '#b45309'
+                                        : resizeDrag.blocked
+                                          ? '#6b7280'
+                                          : '#4338ca',
+                                color: 'white',
+                            }}
+                        >
+                            {resizeDrag.time.toFixed(1)}s
+                            <span className="ml-1 opacity-80">
+                                {resizeDrag.mode === 'ripple'
+                                    ? '⚠ ripple (downstream shifts)'
+                                    : resizeDrag.mode === 'roll'
+                                      ? 'roll'
+                                      : 'slip'}
+                            </span>
+                            {resizeDrag.blocked === 'min' && (
+                                <span className="ml-1 opacity-80">· min {MIN_SHOT_DURATION}s</span>
+                            )}
+                        </div>
+                    )}
 
                     {/* Scrub head (on top of everything) */}
                     <div

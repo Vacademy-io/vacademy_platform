@@ -107,19 +107,22 @@ public class AuthService {
         }
 
         String userIdentifier = instituteSettingsService.getUserIdentifier(instituteId);
+        boolean phoneIsIdentifier = "PHONE".equalsIgnoreCase(userIdentifier);
 
-        if ("PHONE".equalsIgnoreCase(userIdentifier) && StringUtils.hasText(registerRequest.getMobileNumber())) {
-            if (!registerRequest.getMobileNumber().isEmpty()) {
+        if (phoneIsIdentifier) {
+            // Phone is the unique identifier for this institute — look up ONLY by phone.
+            // Falling back to email/username would match a different person and then
+            // overwrite their mobile number below.
+            if (StringUtils.hasText(registerRequest.getMobileNumber())) {
                 optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
             }
-        }
-
-        if (optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {
-            optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
-        }
-
-        if (optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
-            optionalUser = userRepository.findByUsername(registerRequest.getUsername());
+        } else {
+            if (StringUtils.hasText(normalizedEmail)) {
+                optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
+            }
+            if (optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
+                optionalUser = userRepository.findByUsername(registerRequest.getUsername());
+            }
         }
 
         boolean isAlreadyPresent = optionalUser.isPresent();
@@ -383,19 +386,22 @@ public class AuthService {
         }
 
         String userIdentifier = instituteSettingsService.getUserIdentifier(instituteId);
+        boolean phoneIsIdentifier = "PHONE".equalsIgnoreCase(userIdentifier);
 
-        if ("PHONE".equalsIgnoreCase(userIdentifier) && StringUtils.hasText(registerRequest.getMobileNumber())) {
-            if (!registerRequest.getMobileNumber().isEmpty()) {
+        if (phoneIsIdentifier) {
+            // Phone is the unique identifier for this institute — look up ONLY by phone.
+            // Falling back to email/username would match a different person and then
+            // overwrite their mobile number below.
+            if (StringUtils.hasText(registerRequest.getMobileNumber())) {
                 optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
             }
-        }
-
-        if (optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {
-            optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
-        }
-
-        if (optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
-            optionalUser = userRepository.findByUsername(registerRequest.getUsername());
+        } else {
+            if (StringUtils.hasText(normalizedEmail)) {
+                optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
+            }
+            if (optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
+                optionalUser = userRepository.findByUsername(registerRequest.getUsername());
+            }
         }
 
         boolean isAlreadyPresent = optionalUser.isPresent();

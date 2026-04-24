@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
 import vacademy.io.auth_service.feature.institute.InstituteInternalService;
+import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
 import vacademy.io.auth_service.feature.user.util.RandomCredentialGenerator;
@@ -30,10 +31,14 @@ public class InviteUserService {
     @Autowired
     private InstituteInternalService instituteInternalService;
 
+    @Autowired
+    private InstituteSettingsService instituteSettingsService;
+
     public UserDTO inviteUser(UserDTO userDTO, String instituteId) {
         setRandomCredentials(userDTO);
         userDTO.setRootUser(true);
-        User user = userService.createUserFromUserDto(userDTO);
+        String userIdentifier = instituteSettingsService.getUserIdentifier(instituteId);
+        User user = userService.createUserFromUserDto(userDTO, userIdentifier);
         userDTO.setId(user.getId());
         userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.INVITED.name());
         sendInvitationEmail(userDTO, instituteId);

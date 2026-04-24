@@ -206,8 +206,25 @@ public class UserService {
     }
 
     public User createUserFromUserDto(UserDTO userDTO) {
+        return createUserFromUserDto(userDTO, null);
+    }
+
+    public User createUserFromUserDto(UserDTO userDTO, String userIdentifier) {
         String normalizedEmail = userDTO.getEmail() != null ? userDTO.getEmail().toLowerCase() : null;
-        Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
+        if (StringUtils.hasText(userDTO.getMobileNumber())) {
+            userDTO.setMobileNumber(userDTO.getMobileNumber().replaceAll("[^0-9]", ""));
+        }
+
+        Optional<User> optionalUser = Optional.empty();
+        if ("PHONE".equalsIgnoreCase(userIdentifier)) {
+            // Phone is the unique identifier for this institute — look up ONLY by phone.
+            if (StringUtils.hasText(userDTO.getMobileNumber())) {
+                optionalUser = userRepository.findLatestUserByMobileNumber(userDTO.getMobileNumber());
+            }
+        } else if (StringUtils.hasText(normalizedEmail)) {
+            optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
+        }
+
         if (optionalUser.isPresent()) {
             User user = optionalUser.get();
             userDTO.setFullName(user.getFullName());

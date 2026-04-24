@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.core.util.CsvUtil;
+import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
 import vacademy.io.auth_service.feature.user.service.UserDetailService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.entity.User;
@@ -25,17 +26,21 @@ public class UserInternalController {
     @Autowired
     private UserDetailService userDetailService;
 
+    @Autowired
+    private InstituteSettingsService instituteSettingsService;
+
     @PostMapping("/create-or-get-existing-by-id")
     @Transactional
     public ResponseEntity<UserDTO> createUserOrGetExisting(@RequestBody UserDTO userDTO,
             @RequestParam(name = "instituteId", required = false) String instituteId) {
         try {
+            String userIdentifier = instituteSettingsService.getUserIdentifier(instituteId);
             User user = null;
             if (!StringUtils.hasText(userDTO.getId())) {
-                user = userService.createUserFromUserDto(userDTO);
+                user = userService.createUserFromUserDto(userDTO, userIdentifier);
             } else {
                 user = userService.getOptionalUserById(userDTO.getId())
-                        .orElse(userService.createUserFromUserDto(userDTO));
+                        .orElseGet(() -> userService.createUserFromUserDto(userDTO, userIdentifier));
             }
             userService.addUserRoles(instituteId, userDTO.getRoles(), user, UserRoleStatus.ACTIVE.name());
             return ResponseEntity.ok(new UserDTO(user));

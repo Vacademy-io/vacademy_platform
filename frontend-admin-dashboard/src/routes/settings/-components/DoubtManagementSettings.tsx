@@ -15,6 +15,7 @@ type DoubtAssigneeSource = 'SUBJECT_TEACHER' | 'BATCH_TEACHER' | 'BOTH' | 'NONE'
 interface NotificationChannelPrefs {
     push_enabled: boolean;
     email_enabled: boolean;
+    system_alert_enabled: boolean;
     email_template_id: string | null;
 }
 
@@ -32,6 +33,7 @@ interface DoubtManagementSettingsData {
 const DEFAULT_CHANNEL_PREFS: NotificationChannelPrefs = {
     push_enabled: true,
     email_enabled: true,
+    system_alert_enabled: true,
     email_template_id: null,
 };
 
@@ -414,6 +416,7 @@ function NotificationEventCard({
 }) {
     const pushId = `${idPrefix}-push`;
     const emailId = `${idPrefix}-email`;
+    const systemAlertId = `${idPrefix}-system-alert`;
     const templateId = `${idPrefix}-template`;
 
     return (
@@ -439,6 +442,27 @@ function NotificationEventCard({
                         <p className="mt-0.5 text-xs text-neutral-600">
                             Default on. Uses FCM — recipients must have granted notification
                             permission and registered a device token.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                    <Switch
+                        id={systemAlertId}
+                        checked={prefs.system_alert_enabled}
+                        onCheckedChange={(v) => onChange({ system_alert_enabled: v })}
+                    />
+                    <div>
+                        <Label
+                            htmlFor={systemAlertId}
+                            className="cursor-pointer text-sm font-medium text-neutral-800"
+                        >
+                            In-app bell alert
+                        </Label>
+                        <p className="mt-0.5 text-xs text-neutral-600">
+                            Default on. Shows a persistent entry in the recipient's bell icon —
+                            stays visible when the user returns to the app even if they missed
+                            the push.
                         </p>
                     </div>
                 </div>

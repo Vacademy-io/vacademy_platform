@@ -154,6 +154,31 @@ public class AnnouncementProcessingService {
         var activeMediums = announcementMediumRepository.findByAnnouncementIdAndIsActive(announcement.getId(), true);
         for (String userId : userIds) {
             for (ModeType modeType : modeTypes) {
+                if (activeMediums.isEmpty()) {
+                    // In-app-only delivery (SYSTEM_ALERT, DASHBOARD_PIN, etc.): the user sees this
+                    // inside the app (bell / pinned widget) with no external send channel. Without
+                    // this branch the triple-loop below produces zero rows, so the bell endpoint
+                    // returns empty even though Announcement + mode entity exist. medium_type is
+                    // nullable on recipient_message for exactly this case.
+                    boolean exists = recipientMessageRepository
+                            .findByAnnouncementIdAndStatus(announcement.getId(), MessageStatus.PENDING)
+                            .stream()
+                            .anyMatch(rm -> rm.getUserId().equals(userId)
+                                    && rm.getModeType().equals(modeType)
+                                    && rm.getMediumType() == null);
+                    if (!exists) {
+                        RecipientMessage recipientMessage = new RecipientMessage();
+                        recipientMessage.setAnnouncementId(announcement.getId());
+                        recipientMessage.setUserId(userId);
+                        recipientMessage.setModeType(modeType);
+                        recipientMessage.setMediumType(null);
+                        recipientMessage.setStatus(MessageStatus.PENDING);
+                        recipientMessage.setCreatedAt(LocalDateTime.now());
+                        recipientMessage.setUpdatedAt(LocalDateTime.now());
+                        recipientMessageRepository.save(recipientMessage);
+                    }
+                    continue;
+                }
                 for (var medium : activeMediums) {
                     // Avoid duplicates: check any pending existing for same user+mode+medium
                     boolean exists = recipientMessageRepository
@@ -176,7 +201,7 @@ public class AnnouncementProcessingService {
                 }
             }
         }
-        
+
         log.debug("Created recipient messages for {} users and {} modes", userIds.size(), modeTypes.size());
     }
 

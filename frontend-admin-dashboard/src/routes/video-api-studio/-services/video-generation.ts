@@ -413,16 +413,53 @@ export interface HistoryItem {
 const HISTORY_STORAGE_KEY = 'vacademy_video_generation_history';
 
 export const LANGUAGES = [
-    // Global
-    { value: 'English (US)', label: 'English (US)', group: 'Global' },
-    { value: 'English (UK)', label: 'English (UK)', group: 'Global' },
-    { value: 'Spanish', label: 'Spanish', group: 'Global' },
-    { value: 'French', label: 'French', group: 'Global' },
-    { value: 'German', label: 'German', group: 'Global' },
-    { value: 'Japanese', label: 'Japanese', group: 'Global' },
-    { value: 'Chinese', label: 'Chinese', group: 'Global' },
+    // English variants
+    { value: 'English (US)', label: 'English (US)', group: 'English' },
+    { value: 'English (UK)', label: 'English (UK)', group: 'English' },
+    { value: 'English (Australia)', label: 'English (Australia)', group: 'English' },
+    { value: 'English (India)', label: 'English (India)', group: 'English' },
+    // European
+    { value: 'Spanish', label: 'Spanish', group: 'European' },
+    { value: 'Spanish (US)', label: 'Spanish (US)', group: 'European' },
+    { value: 'Portuguese (Brazil)', label: 'Portuguese (Brazil)', group: 'European' },
+    { value: 'Portuguese (Portugal)', label: 'Portuguese (Portugal)', group: 'European' },
+    { value: 'French', label: 'French', group: 'European' },
+    { value: 'French (Canada)', label: 'French (Canada)', group: 'European' },
+    { value: 'German', label: 'German', group: 'European' },
+    { value: 'Italian', label: 'Italian', group: 'European' },
+    { value: 'Dutch', label: 'Dutch', group: 'European' },
+    { value: 'Dutch (Belgium)', label: 'Dutch (Belgium)', group: 'European' },
+    { value: 'Danish', label: 'Danish', group: 'European' },
+    { value: 'Finnish', label: 'Finnish', group: 'European' },
+    { value: 'Norwegian', label: 'Norwegian', group: 'European' },
+    { value: 'Swedish', label: 'Swedish', group: 'European' },
+    { value: 'Icelandic', label: 'Icelandic', group: 'European' },
+    { value: 'Polish', label: 'Polish', group: 'European' },
+    { value: 'Russian', label: 'Russian', group: 'European' },
+    { value: 'Ukrainian', label: 'Ukrainian', group: 'European' },
+    { value: 'Czech', label: 'Czech', group: 'European' },
+    { value: 'Slovak', label: 'Slovak', group: 'European' },
+    { value: 'Hungarian', label: 'Hungarian', group: 'European' },
+    { value: 'Romanian', label: 'Romanian', group: 'European' },
+    { value: 'Bulgarian', label: 'Bulgarian', group: 'European' },
+    { value: 'Greek', label: 'Greek', group: 'European' },
+    { value: 'Catalan', label: 'Catalan', group: 'European' },
+    // Middle East / Africa
+    { value: 'Arabic', label: 'Arabic', group: 'Middle East / Africa' },
+    { value: 'Hebrew', label: 'Hebrew', group: 'Middle East / Africa' },
+    { value: 'Turkish', label: 'Turkish', group: 'Middle East / Africa' },
+    { value: 'Afrikaans', label: 'Afrikaans', group: 'Middle East / Africa' },
+    // Asian
+    { value: 'Japanese', label: 'Japanese', group: 'Asian' },
+    { value: 'Korean', label: 'Korean', group: 'Asian' },
+    { value: 'Chinese', label: 'Chinese (Mandarin)', group: 'Asian' },
+    { value: 'Chinese (Taiwan)', label: 'Chinese (Taiwan)', group: 'Asian' },
+    { value: 'Thai', label: 'Thai', group: 'Asian' },
+    { value: 'Vietnamese', label: 'Vietnamese', group: 'Asian' },
+    { value: 'Indonesian', label: 'Indonesian', group: 'Asian' },
+    { value: 'Malay', label: 'Malay', group: 'Asian' },
+    { value: 'Filipino', label: 'Filipino', group: 'Asian' },
     // Indian
-    { value: 'English (India)', label: 'English (India)', group: 'Indian' },
     { value: 'Hindi', label: 'Hindi', group: 'Indian' },
     { value: 'Bengali', label: 'Bengali', group: 'Indian' },
     { value: 'Tamil', label: 'Tamil', group: 'Indian' },
@@ -431,6 +468,7 @@ export const LANGUAGES = [
     { value: 'Kannada', label: 'Kannada', group: 'Indian' },
     { value: 'Gujarati', label: 'Gujarati', group: 'Indian' },
     { value: 'Malayalam', label: 'Malayalam', group: 'Indian' },
+    { value: 'Urdu', label: 'Urdu', group: 'Indian' },
 ] as const;
 
 export const VOICE_GENDERS = [

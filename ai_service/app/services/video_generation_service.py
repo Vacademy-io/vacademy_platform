@@ -354,20 +354,18 @@ class VideoGenerationService:
         from ..config import get_settings
         settings = get_settings()
         openrouter_key = settings.openrouter_api_key
-        gemini_key = settings.gemini_api_key
-        
-        # API keys loaded from environment (not logging to avoid exposing key status)
-        
+
         if not openrouter_key:
             error_msg = "OPENROUTER_API_KEY not set in environment. Please add it to your .env.stage file."
             logger.error(f"[VideoGenService] {error_msg}")
             raise ValueError(error_msg)
-        
-        # Prepare pipeline arguments
+
+        # Prepare pipeline arguments. Image generation now runs through OpenRouter
+        # (bytedance-seed/seedream-4.5); stock photos/videos come from Pexels and Pixabay.
         pipeline_args = {
             "openrouter_key": openrouter_key,
-            "gemini_image_key": gemini_key or "",  # Pass Gemini key for image generation
-            "pexels_api_keys": settings.pexels_api_keys or "",  # Pexels stock photos/videos
+            "pexels_api_keys": settings.pexels_api_keys or "",
+            "pixabay_api_keys": settings.pixabay_api_keys or "",
             "runs_dir": work_dir.parent,
             "quality_tier": quality_tier,
         }

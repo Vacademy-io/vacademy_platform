@@ -126,8 +126,8 @@ except ImportError:
         return None
 
 DEFAULT_OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-DEFAULT_GEMINI_IMAGE_KEY = os.environ.get("GEMINI_API_KEY", "")
 DEFAULT_PEXELS_API_KEYS = os.environ.get("PEXELS_API_KEYS", "")
+DEFAULT_PIXABAY_API_KEYS = os.environ.get("PIXABAY_API_KEYS", "")
 
 VOICE_MAPPING = {
     # format: "lowercase language": {"edge": {"male": "...", "female": "..."}, "google": {"male": "...", "female": "..."}}
@@ -183,21 +183,161 @@ VOICE_MAPPING = {
         "edge": {"female": "es-ES-ElviraNeural", "male": "es-ES-AlvaroNeural"},
         "google": {"female": "es-ES-Neural2-A", "male": "es-ES-Neural2-B"}
     },
+    "spanish (us)": {
+        "edge": {"female": "es-US-PalomaNeural", "male": "es-US-AlonsoNeural"},
+        "google": {"female": "es-US-Neural2-A", "male": "es-US-Neural2-B"}
+    },
     "french": {
         "edge": {"female": "fr-FR-DeniseNeural", "male": "fr-FR-HenriNeural"},
         "google": {"female": "fr-FR-Neural2-A", "male": "fr-FR-Neural2-B"}
+    },
+    "french (canada)": {
+        "edge": {"female": "fr-CA-SylvieNeural", "male": "fr-CA-AntoineNeural"},
+        "google": {"female": "fr-CA-Neural2-A", "male": "fr-CA-Neural2-B"}
     },
     "german": {
         "edge": {"female": "de-DE-KatjaNeural", "male": "de-DE-ConradNeural"},
         "google": {"female": "de-DE-Neural2-A", "male": "de-DE-Neural2-B"}
     },
+    "italian": {
+        "edge": {"female": "it-IT-ElsaNeural", "male": "it-IT-DiegoNeural"},
+        "google": {"female": "it-IT-Neural2-A", "male": "it-IT-Neural2-C"}
+    },
+    "portuguese (brazil)": {
+        "edge": {"female": "pt-BR-FranciscaNeural", "male": "pt-BR-AntonioNeural"},
+        "google": {"female": "pt-BR-Neural2-A", "male": "pt-BR-Neural2-B"}
+    },
+    "portuguese (portugal)": {
+        "edge": {"female": "pt-PT-RaquelNeural", "male": "pt-PT-DuarteNeural"},
+
+    },
+    "dutch": {
+        "edge": {"female": "nl-NL-ColetteNeural", "male": "nl-NL-MaartenNeural"},
+        "google": {"female": "nl-NL-Wavenet-A", "male": "nl-NL-Wavenet-B"}
+    },
+    "dutch (belgium)": {
+        "edge": {"female": "nl-BE-DenaNeural", "male": "nl-BE-ArnaudNeural"},
+
+    },
+    "danish": {
+        "edge": {"female": "da-DK-ChristelNeural", "male": "da-DK-JeppeNeural"},
+        "google": {"female": "da-DK-Neural2-D", "male": "da-DK-Wavenet-C"}
+    },
+    "finnish": {
+        "edge": {"female": "fi-FI-SelmaNeural", "male": "fi-FI-HarriNeural"},
+
+    },
+    "norwegian": {
+        "edge": {"female": "nb-NO-PernilleNeural", "male": "nb-NO-FinnNeural"},
+
+    },
+    "swedish": {
+        "edge": {"female": "sv-SE-SofieNeural", "male": "sv-SE-MattiasNeural"},
+        "google": {"female": "sv-SE-Wavenet-A", "male": "sv-SE-Wavenet-C"}
+    },
+    "icelandic": {
+        "edge": {"female": "is-IS-GudrunNeural", "male": "is-IS-GunnarNeural"},
+
+    },
+    "polish": {
+        "edge": {"female": "pl-PL-ZofiaNeural", "male": "pl-PL-MarekNeural"},
+        "google": {"female": "pl-PL-Wavenet-A", "male": "pl-PL-Wavenet-B"}
+    },
+    "russian": {
+        "edge": {"female": "ru-RU-SvetlanaNeural", "male": "ru-RU-DmitryNeural"},
+        "google": {"female": "ru-RU-Wavenet-A", "male": "ru-RU-Wavenet-B"}
+    },
+    "ukrainian": {
+        "edge": {"female": "uk-UA-PolinaNeural", "male": "uk-UA-OstapNeural"},
+        "google": {"female": "uk-UA-Wavenet-A", "male": "uk-UA-Chirp3-HD-Charon"}
+    },
+    "czech": {
+        "edge": {"female": "cs-CZ-VlastaNeural", "male": "cs-CZ-AntoninNeural"},
+
+    },
+    "slovak": {
+        "edge": {"female": "sk-SK-ViktoriaNeural", "male": "sk-SK-LukasNeural"},
+
+    },
+    "hungarian": {
+        "edge": {"female": "hu-HU-NoemiNeural", "male": "hu-HU-TamasNeural"},
+
+    },
+    "romanian": {
+        "edge": {"female": "ro-RO-AlinaNeural", "male": "ro-RO-EmilNeural"},
+
+    },
+    "bulgarian": {
+        "edge": {"female": "bg-BG-KalinaNeural", "male": "bg-BG-BorislavNeural"},
+
+    },
+    "greek": {
+        "edge": {"female": "el-GR-AthinaNeural", "male": "el-GR-NestorasNeural"},
+
+    },
+    "arabic": {
+        "edge": {"female": "ar-SA-ZariyahNeural", "male": "ar-SA-HamedNeural"},
+        "google": {"female": "ar-XA-Wavenet-A", "male": "ar-XA-Wavenet-B"}
+    },
+    "hebrew": {
+        "edge": {"female": "he-IL-HilaNeural", "male": "he-IL-AvriNeural"},
+        "google": {"female": "he-IL-Wavenet-A", "male": "he-IL-Wavenet-B"}
+    },
+    "turkish": {
+        "edge": {"female": "tr-TR-EmelNeural", "male": "tr-TR-AhmetNeural"},
+        "google": {"female": "tr-TR-Wavenet-A", "male": "tr-TR-Wavenet-B"}
+    },
+    "afrikaans": {
+        "edge": {"female": "af-ZA-AdriNeural", "male": "af-ZA-WillemNeural"},
+        "google": {"female": "af-ZA-Standard-A", "male": "af-ZA-Standard-A"}
+    },
+    "catalan": {
+        "edge": {"female": "ca-ES-JoanaNeural", "male": "ca-ES-EnricNeural"},
+
+    },
+    "indonesian": {
+        "edge": {"female": "id-ID-GadisNeural", "male": "id-ID-ArdiNeural"},
+        "google": {"female": "id-ID-Wavenet-A", "male": "id-ID-Wavenet-B"}
+    },
+    "malay": {
+        "edge": {"female": "ms-MY-YasminNeural", "male": "ms-MY-OsmanNeural"},
+        "google": {"female": "ms-MY-Wavenet-A", "male": "ms-MY-Wavenet-B"}
+    },
+    "filipino": {
+        "edge": {"female": "fil-PH-BlessicaNeural", "male": "fil-PH-AngeloNeural"},
+        "google": {"female": "fil-PH-Wavenet-A", "male": "fil-PH-Wavenet-C"}
+    },
+    "vietnamese": {
+        "edge": {"female": "vi-VN-HoaiMyNeural", "male": "vi-VN-NamMinhNeural"},
+        "google": {"female": "vi-VN-Wavenet-A", "male": "vi-VN-Wavenet-B"}
+    },
+    "thai": {
+        "edge": {"female": "th-TH-PremwadeeNeural", "male": "th-TH-NiwatNeural"},
+        "google": {"female": "th-TH-Neural2-C", "male": "th-TH-Chirp3-HD-Charon"}
+    },
+    "urdu": {
+        "edge": {"female": "ur-PK-UzmaNeural", "male": "ur-PK-AsadNeural"},
+        "google": {"female": "ur-IN-Wavenet-A", "male": "ur-IN-Wavenet-B"}
+    },
+    "english (australia)": {
+        "edge": {"female": "en-AU-NatashaNeural", "male": "en-AU-WilliamNeural"},
+        "google": {"female": "en-AU-Neural2-A", "male": "en-AU-Neural2-B"}
+    },
     "japanese": {
         "edge": {"female": "ja-JP-NanamiNeural", "male": "ja-JP-KeitaNeural"},
         "google": {"female": "ja-JP-Neural2-B", "male": "ja-JP-Neural2-C"}
     },
+    "korean": {
+        "edge": {"female": "ko-KR-SunHiNeural", "male": "ko-KR-InJoonNeural"},
+        "google": {"female": "ko-KR-Neural2-A", "male": "ko-KR-Neural2-C"}
+    },
     "chinese": {
         "edge": {"female": "zh-CN-XiaoxiaoNeural", "male": "zh-CN-YunxiNeural"},
-        "google": {"female": "zh-CN-Neural2-C", "male": "zh-CN-Neural2-D"}
+        "google": {"female": "cmn-CN-Wavenet-A", "male": "cmn-CN-Wavenet-B"}
+    },
+    "chinese (taiwan)": {
+        "edge": {"female": "zh-TW-HsiaoChenNeural", "male": "zh-TW-YunJheNeural"},
+        "google": {"female": "cmn-TW-Wavenet-A", "male": "cmn-TW-Wavenet-B"}
     }
 }
 
@@ -234,15 +374,42 @@ INDIAN_LANGUAGES = {
     "gujarati", "malayalam", "punjabi", "odia", "english (india)",
 }
 
+# Global languages for which Google Cloud TTS currently offers NO voices.
+# Premium requests for these degrade to Edge TTS to avoid synth failures.
+# Source: scripts/generate_google_tts_samples.py --prune-catalog output (2026-04).
+GOOGLE_UNSUPPORTED_LANGUAGES = {
+    "bulgarian", "catalan", "czech", "dutch (belgium)", "finnish", "greek",
+    "hungarian", "icelandic", "norwegian", "portuguese (portugal)",
+    "romanian", "slovak",
+}
+
 
 # Whisper ISO-639-1 language codes for forced alignment
 WHISPER_LANG_MAP = {
+    # English
     "english": "en", "english (us)": "en", "english (uk)": "en",
-    "english (india)": "en", "hindi": "hi", "bengali": "bn",
-    "tamil": "ta", "telugu": "te", "marathi": "mr", "kannada": "kn",
-    "gujarati": "gu", "malayalam": "ml", "punjabi": "pa", "odia": "or",
-    "spanish": "es", "french": "fr",
-    "german": "de", "japanese": "ja", "chinese": "zh",
+    "english (india)": "en", "english (australia)": "en",
+    # Indian
+    "hindi": "hi", "bengali": "bn", "tamil": "ta", "telugu": "te",
+    "marathi": "mr", "kannada": "kn", "gujarati": "gu", "malayalam": "ml",
+    "punjabi": "pa", "odia": "or", "urdu": "ur",
+    # European
+    "spanish": "es", "spanish (us)": "es",
+    "portuguese (brazil)": "pt", "portuguese (portugal)": "pt",
+    "french": "fr", "french (canada)": "fr",
+    "german": "de", "italian": "it",
+    "dutch": "nl", "dutch (belgium)": "nl",
+    "danish": "da", "finnish": "fi", "norwegian": "no", "swedish": "sv",
+    "icelandic": "is", "polish": "pl", "russian": "ru", "ukrainian": "uk",
+    "czech": "cs", "slovak": "sk", "hungarian": "hu", "romanian": "ro",
+    "bulgarian": "bg", "greek": "el", "catalan": "ca",
+    # Middle East / Africa
+    "arabic": "ar", "hebrew": "he", "turkish": "tr", "afrikaans": "af",
+    # Asian
+    "japanese": "ja", "korean": "ko",
+    "chinese": "zh", "chinese (taiwan)": "zh",
+    "thai": "th", "vietnamese": "vi",
+    "indonesian": "id", "malay": "ms", "filipino": "tl",
 }
 
 # Unicode script ranges for validating Whisper output matches expected language
@@ -257,8 +424,17 @@ _SCRIPT_RANGES: dict[str, tuple[int, int]] = {
     "pa": (0x0A00, 0x0A7F),   # Gurmukhi (Punjabi)
     "ml": (0x0D00, 0x0D7F),   # Malayalam
     "or": (0x0B00, 0x0B7F),   # Odia
+    "ur": (0x0600, 0x06FF),   # Arabic (Urdu shares script)
     "ja": (0x3040, 0x30FF),   # Hiragana/Katakana
     "zh": (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+    "ko": (0xAC00, 0xD7AF),   # Hangul Syllables
+    "th": (0x0E00, 0x0E7F),   # Thai
+    "ar": (0x0600, 0x06FF),   # Arabic
+    "he": (0x0590, 0x05FF),   # Hebrew
+    "el": (0x0370, 0x03FF),   # Greek
+    "ru": (0x0400, 0x04FF),   # Cyrillic
+    "uk": (0x0400, 0x04FF),   # Cyrillic
+    "bg": (0x0400, 0x04FF),   # Cyrillic
 }
 
 
@@ -464,12 +640,12 @@ def _whisper_align(audio_path: Path, language: str = "English") -> list:
         return []
 
 
-class _GeminiRateLimitError(Exception):
+class _ImageGenRateLimitError(Exception):
     """Raised by _call_image_generation_llm on HTTP 429 so the executor thread
     is freed immediately and the sleep/requeue happens in the main thread."""
     def __init__(self, retry_after: float = 15.0):
         self.retry_after = retry_after
-        super().__init__(f"Gemini rate limited (retry after {retry_after:.0f}s)")
+        super().__init__(f"Image gen rate limited (retry after {retry_after:.0f}s)")
 
 
 def retry_with_backoff(max_retries=3, initial_delay=2.0, backoff_factor=2.0, exceptions=(Exception,)):
@@ -1080,8 +1256,8 @@ class VideoGenerationPipeline:
         html_model: str = "xiaomi/mimo-v2-flash:free",  # Free tier model for HTML generation
         voice_id: str = "Qggl4b0xRMiqOwhPtVWT",
         voice_model: str = "eleven_multilingual_v2",
-        gemini_image_key: str = DEFAULT_GEMINI_IMAGE_KEY,
         pexels_api_keys: str = DEFAULT_PEXELS_API_KEYS,
+        pixabay_api_keys: str = DEFAULT_PIXABAY_API_KEYS,
         runs_dir: Path = DEFAULT_RUNS_DIR,
         quality_tier: str = "ultra",
     ) -> None:
@@ -1091,7 +1267,6 @@ class VideoGenerationPipeline:
         self.html_client = OpenRouterClient(openrouter_key, html_model)
         self.voice_id = voice_id
         self.voice_model = voice_model
-        self.gemini_image_api_key = gemini_image_key
         self.runs_dir = runs_dir
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         # Quality tier configuration
@@ -1107,7 +1282,52 @@ class VideoGenerationPipeline:
                 self._pexels_service = PexelsService(pexels_api_keys)
                 print(f"📷 Pexels: {len(self._pexels_service._keys)} API key(s) configured")
             except ImportError:
-                print("⚠️ pexels_service.py not found — stock photos disabled")
+                print("⚠️ pexels_service.py not found — Pexels disabled")
+
+        # Pixabay stock photo/video service (optional — graceful if not configured)
+        self._pixabay_service = None
+        if pixabay_api_keys:
+            try:
+                from pixabay_service import PixabayService
+                self._pixabay_service = PixabayService(pixabay_api_keys)
+                print(f"🖼️ Pixabay: {len(self._pixabay_service._keys)} API key(s) configured")
+            except ImportError:
+                print("⚠️ pixabay_service.py not found — Pixabay disabled")
+
+    # Keywords that hint the asset is illustration-y / educational — route
+    # Pixabay first when no explicit provider hint is given.
+    _PIXABAY_FIRST_KEYWORDS = (
+        "diagram", "illustration", "illustrated", "cartoon", "vector",
+        "icon", "educational", "anatomy", "history", "infographic",
+        "schematic", "clipart", "hand-drawn", "flat design",
+    )
+
+    def _resolve_stock_provider_chain(self, provider_hint: str, query: str) -> List[Any]:
+        """Return an ordered list of available stock services to try.
+
+        `provider_hint` is the value of `data-stock-provider` from the HTML (may be
+        "pexels", "pixabay", "auto", or "" for unset). Providers that aren't
+        configured are filtered out. The second provider is always the fallback.
+        """
+        hint = (provider_hint or "").strip().lower()
+        services: List[Any] = []
+
+        pexels = self._pexels_service if (self._pexels_service and self._pexels_service.is_available) else None
+        pixabay = self._pixabay_service if (self._pixabay_service and self._pixabay_service.is_available) else None
+
+        if hint == "pexels":
+            ordered = [pexels, pixabay]
+        elif hint == "pixabay":
+            ordered = [pixabay, pexels]
+        else:
+            q_lower = (query or "").lower()
+            pixabay_first = any(kw in q_lower for kw in self._PIXABAY_FIRST_KEYWORDS)
+            ordered = [pixabay, pexels] if pixabay_first else [pexels, pixabay]
+
+        for svc in ordered:
+            if svc is not None and svc not in services:
+                services.append(svc)
+        return services
 
     @staticmethod
     def _get_default_branding() -> Dict[str, Any]:
@@ -1889,7 +2109,7 @@ class VideoGenerationPipeline:
 
                 def _on_html_segment_done(entries: List[Dict[str, Any]]) -> None:
                     """Callback: called from HTML gen pool as each segment finishes."""
-                    if not self.gemini_image_api_key:
+                    if not getattr(self.script_client, "api_key", None):
                         return
                     for entry in entries:
                         html_e = entry.get("html", "")
@@ -1912,12 +2132,15 @@ class VideoGenerationPipeline:
                             source_match_e = re.search(r'data-img-source=["\'](\w+)["\']', full_tag)
                             if source_match_e:
                                 img_source_e = source_match_e.group(1).lower()
+                            provider_match_e = re.search(r'data-stock-provider=["\'](\w+)["\']', full_tag)
+                            stock_provider_e = provider_match_e.group(1).lower() if provider_match_e else ""
                             task_e = {
                                 "entry": entry,
                                 "full_tag": full_tag,
                                 "prompt": prompt_e,
                                 "seg_idx": id(entry),
                                 "img_source": img_source_e,
+                                "stock_provider": stock_provider_e,
                                 "timestamp": datetime.now().strftime("%f"),
                             }
                             with _early_image_lock:
@@ -2043,7 +2266,7 @@ class VideoGenerationPipeline:
                 for _fut in concurrent.futures.as_completed(_early_futures):
                     try:
                         _res = _fut.result()
-                    except _GeminiRateLimitError as _rl:
+                    except _ImageGenRateLimitError as _rl:
                         # requeue after delay — handled below
                         _img_requeue.append({"fut": _fut, "rl": _rl})
                         continue
@@ -2745,9 +2968,15 @@ class VideoGenerationPipeline:
 
         tier = tts_provider.lower().strip()
         if tier == "premium":
-            # Route Indian languages → Sarvam, global → Google
+            # Route Indian languages → Sarvam, global → Google.
+            # Languages Google doesn't support (see GOOGLE_UNSUPPORTED_LANGUAGES)
+            # degrade to Edge to avoid synth failures — the endpoint's
+            # /tts/voices response also reflects this fallback.
             if lang_key in INDIAN_LANGUAGES:
                 provider_key = "sarvam"
+            elif lang_key in GOOGLE_UNSUPPORTED_LANGUAGES:
+                print(f"    ℹ️  Premium requested for '{language}', but Google TTS has no voices for it. Falling back to Edge TTS.")
+                provider_key = "edge"
             else:
                 provider_key = "google"
         elif tier in ("standard", "edge"):
@@ -7246,7 +7475,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         """
         Thin wrapper used by the pipelined image generation in run().
         Generates one image and returns a result dict (or None on failure).
-        May raise _GeminiRateLimitError so the caller can handle requeue.
+        May raise _ImageGenRateLimitError so the caller can handle requeue.
         """
         prompt   = task.get("prompt", "")
         seg_idx  = task.get("seg_idx", 0)
@@ -7255,24 +7484,27 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not prompt:
             return None
 
-        # Stock photo path: use Pexels CDN URL directly (no download/base64)
+        # Stock photo path: try configured providers in order (hint + fallback) before
+        # falling through to AI generation.
         img_source = task.get("img_source", "generate")
-        if img_source == "stock" and self._pexels_service and self._pexels_service.is_available:
+        if img_source == "stock":
             orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
-            result = self._pexels_service.search_photos(prompt, orientation=orientation)
-            if result:
-                print(f"    📷 [pipeline] Stock photo (Pexels): {prompt[:60]}...")
-                return {
-                    "entry":       entry,
-                    "full_tag":    full_tag,
-                    "stock_url":   result.get("url", ""),
-                    "image_bytes": None,
-                    "filename":    None,
-                    "usage":       {},
-                }
-            else:
-                print(f"    ⚠️  [pipeline] Pexels search failed, falling back to Gemini: {prompt[:50]}...")
-                # Fall through to Gemini generation
+            services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), prompt)
+            for svc in services:
+                provider_name = type(svc).__name__.replace("Service", "")
+                result = svc.search_photos(prompt, orientation=orientation)
+                if result:
+                    print(f"    📷 [pipeline] Stock photo ({provider_name}): {prompt[:60]}...")
+                    return {
+                        "entry":       entry,
+                        "full_tag":    full_tag,
+                        "stock_url":   result.get("url", ""),
+                        "image_bytes": None,
+                        "filename":    None,
+                        "usage":       {},
+                    }
+            if services:
+                print(f"    ⚠️  [pipeline] All stock providers failed, falling back to Seedream: {prompt[:50]}...")
 
         is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
         print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {prompt[:60]}...")
@@ -7490,7 +7722,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                           "_skill_audio_events"):
                     entry.pop(k, None)
 
-        if not self._pexels_service or not self._pexels_service.is_available:
+        pexels_ok = self._pexels_service and self._pexels_service.is_available
+        pixabay_ok = self._pixabay_service and self._pixabay_service.is_available
+        if not pexels_ok and not pixabay_ok:
             _strip_internal_fields()
             return html_segments, total_usage
 
@@ -7512,33 +7746,43 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 full_tag = match.group(1)
                 query = match.group(3)
 
+                provider_match = re.search(r'data-stock-provider=["\'](\w+)["\']', full_tag)
+                provider_hint = provider_match.group(1).lower() if provider_match else ""
+                services = self._resolve_stock_provider_chain(provider_hint, query)
+
                 picked: Optional[Dict[str, Any]] = None
-                if use_ranking:
-                    candidates = self._pexels_service.search_video_candidates(
-                        query, orientation=orientation, per_page=6
-                    )
-                    # Dedup against videos already placed in this run
-                    fresh = [c for c in candidates if c.get("id") not in used_ids]
-                    pool = fresh if fresh else candidates
-                    if pool:
-                        picked, stock_usage = self._rank_pexels_candidates_with_llm(
-                            candidates=pool,
-                            query=query,
-                            narration_excerpt=shot_narration,
-                            visual_description=shot_visual,
+                picked_provider = ""
+                for svc in services:
+                    provider_name = type(svc).__name__.replace("Service", "")
+                    if use_ranking:
+                        candidates = svc.search_video_candidates(
+                            query, orientation=orientation, per_page=6
                         )
-                        total_usage["prompt_tokens"] += stock_usage.get("prompt_tokens", 0)
-                        total_usage["completion_tokens"] += stock_usage.get("completion_tokens", 0)
-                        total_usage["total_tokens"] += stock_usage.get("total_tokens", 0)
-                        
-                        if picked and picked.get("id") is not None:
-                            used_ids.add(picked["id"])
-                else:
-                    picked = self._pexels_service.search_videos(query, orientation=orientation)
+                        fresh = [c for c in candidates if c.get("id") not in used_ids]
+                        pool = fresh if fresh else candidates
+                        if pool:
+                            picked, stock_usage = self._rank_pexels_candidates_with_llm(
+                                candidates=pool,
+                                query=query,
+                                narration_excerpt=shot_narration,
+                                visual_description=shot_visual,
+                            )
+                            total_usage["prompt_tokens"] += stock_usage.get("prompt_tokens", 0)
+                            total_usage["completion_tokens"] += stock_usage.get("completion_tokens", 0)
+                            total_usage["total_tokens"] += stock_usage.get("total_tokens", 0)
+                            if picked and picked.get("id") is not None:
+                                used_ids.add(picked["id"])
+                    else:
+                        picked = svc.search_videos(query, orientation=orientation)
+
+                    if picked:
+                        picked_provider = provider_name
+                        break
 
                 if not picked:
-                    print(f"    ⚠️ No Pexels video for: {query[:50]}")
+                    print(f"    ⚠️ No stock video for: {query[:50]}")
                     continue
+                print(f"    🎬 Stock video ({picked_provider}): {query[:60]}...")
 
                 video_url = picked.get("url", "")
                 if not video_url:
@@ -7585,9 +7829,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         images_dir = run_dir / "generated_images"
         images_dir.mkdir(parents=True, exist_ok=True)
 
-        # Check if Gemini API key is available
-        if not self.gemini_image_api_key:
-            print("    ⚠️  No Gemini API key configured. Skipping image generation.")
+        # Image generation runs through OpenRouter — requires the same key the rest
+        # of the pipeline already uses.
+        if not getattr(self.script_client, "api_key", None):
+            print("    ⚠️  No OpenRouter API key configured. Skipping image generation.")
             return html_segments, {}
         
         # We'll use a ThreadPoolExecutor to generate images in parallel
@@ -7624,6 +7869,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 source_match = re.search(r'data-img-source=["\'](\w+)["\']', full_tag)
                 if source_match:
                     img_source = source_match.group(1).lower()
+                provider_match = re.search(r'data-stock-provider=["\'](\w+)["\']', full_tag)
+                stock_provider = provider_match.group(1).lower() if provider_match else ""
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
@@ -7631,6 +7878,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     "seg_idx": seg_idx,
                     "is_cutout": is_cutout,
                     "img_source": img_source,
+                    "stock_provider": stock_provider,
                     "timestamp": datetime.now().strftime("%f")  # basic uniqueness
                 })
 
@@ -7650,28 +7898,31 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         def process_image_task(task):
             """
             Generate one image and return a result dict.
-            Raises _GeminiRateLimitError on 429 so the executor thread is freed
+            Raises _ImageGenRateLimitError on 429 so the executor thread is freed
             immediately — the caller handles sleep + requeue in the main thread.
             """
             img_source = task.get("img_source", "generate")
-            # Stock photo path: use Pexels CDN URL directly (no download/base64)
-            if img_source == "stock" and self._pexels_service and self._pexels_service.is_available:
+            # Stock photo path: try configured providers in order (hint + fallback)
+            # before falling through to AI generation.
+            if img_source == "stock":
                 orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
-                result = self._pexels_service.search_photos(task["prompt"], orientation=orientation)
-                if result:
-                    print(f"    📷 Stock photo (Pexels) for seg={task.get('seg_idx', '?')}: {task['prompt'][:60]}...")
-                    return {
-                        "entry": task.get("entry"),
-                        "entry_id": id(task.get("entry")),
-                        "full_tag": task.get("full_tag", ""),
-                        "stock_url": result.get("url", ""),
-                        "image_bytes": None,
-                        "filename": None,
-                        "usage": {},
-                    }
-                else:
-                    print(f"    ⚠️  Pexels search failed, falling back to Gemini: {task['prompt'][:50]}...")
-                    # Fall through to Gemini generation
+                services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), task["prompt"])
+                for svc in services:
+                    provider_name = type(svc).__name__.replace("Service", "")
+                    result = svc.search_photos(task["prompt"], orientation=orientation)
+                    if result:
+                        print(f"    📷 Stock photo ({provider_name}) for seg={task.get('seg_idx', '?')}: {task['prompt'][:60]}...")
+                        return {
+                            "entry": task.get("entry"),
+                            "entry_id": id(task.get("entry")),
+                            "full_tag": task.get("full_tag", ""),
+                            "stock_url": result.get("url", ""),
+                            "image_bytes": None,
+                            "filename": None,
+                            "usage": {},
+                        }
+                if services:
+                    print(f"    ⚠️  All stock providers failed, falling back to Seedream: {task['prompt'][:50]}...")
 
             prompt     = task["prompt"]
             idx        = task["seg_idx"]
@@ -7693,7 +7944,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
             label = f"seg={idx}" + (" (cutout)" if is_cutout else "")
             print(f"    🎨 Generating image {label}: {prompt[:60]}...")
-            # May raise _GeminiRateLimitError — propagates to as_completed caller
+            # May raise _ImageGenRateLimitError — propagates to as_completed caller
             image_bytes, usage_meta = self._call_image_generation_llm(prompt)
             if not usage_meta: usage_meta = {}
             for k, v in enhance_usage.items():
@@ -7748,7 +7999,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     task, task_idx = pending.pop(future)
                     try:
                         res = future.result()
-                    except _GeminiRateLimitError as rl_err:
+                    except _ImageGenRateLimitError as rl_err:
                         # 429 — thread was freed immediately; sleep in main thread
                         if requeue_counts[task_idx] < MAX_REQUEUE:
                             requeue_counts[task_idx] += 1
@@ -7836,36 +8087,43 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         return html_segments, total_image_usage
 
     def _call_image_generation_llm(self, prompt: str, width: Optional[int] = None, height: Optional[int] = None) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
-        width = width or getattr(self, 'video_width', 1920)
-        height = height or getattr(self, 'video_height', 1080)
-        """
-        Generate image using Google Generative AI (Gemini). Returns (image_bytes, usage_metadata).
+        """Generate image via OpenRouter (bytedance-seed/seedream-4.5).
 
-        429 rate-limit errors raise _GeminiRateLimitError immediately so the
-        executor thread is freed. The caller (_process_generated_images) handles
-        the sleep + requeue in the main thread, keeping the pool unblocked.
-
-        500 / network errors are retried up to 3 times with short jittered delays.
+        Returns (image_bytes, usage_metadata). 429 raises _ImageGenRateLimitError
+        so the executor thread is freed and the main thread handles requeue.
+        5xx/network errors retry with jittered backoff.
         """
         import random as _random
         import traceback as _tb
 
-        if not self.gemini_image_api_key:
-            print(f"    ⚠️ No Gemini API key for images. Cannot generate: {prompt[:50]}...")
+        width = width or getattr(self, 'video_width', 1920)
+        height = height or getattr(self, 'video_height', 1080)
+
+        api_key = getattr(self.script_client, "api_key", None)
+        if not api_key:
+            print(f"    ⚠️ No OpenRouter API key for image gen. Cannot generate: {prompt[:50]}...")
             return None, None
 
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-3.1-flash-image-preview:generateContent"
-            f"?key={self.gemini_image_api_key}"
-        )
-        headers = {"Content-Type": "application/json"}
+        # Seedream doesn't accept a structured aspect-ratio param — hint textually.
+        if width < height:
+            aspect_hint = "9:16 vertical framing"
+        elif width > height:
+            aspect_hint = "16:9 widescreen framing"
+        else:
+            aspect_hint = "1:1 square framing"
+        full_prompt = f"{prompt}\n\n({aspect_hint})"
+
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://stilllift-automation.local",
+            "X-Title": "StillLift Automation",
+        }
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "imageConfig": {"aspectRatio": "16:9"},
-                "responseModalities": ["IMAGE"],
-            },
+            "model": "bytedance-seed/seedream-4.5",
+            "messages": [{"role": "user", "content": full_prompt}],
+            "modalities": ["image"],
         }
 
         max_retries = 3
@@ -7877,34 +8135,34 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=120) as response:
-                    raw  = response.read().decode("utf-8")
-                    data = json.loads(raw)
+                with urllib.request.urlopen(req, timeout=180) as response:
+                    data = json.loads(response.read().decode("utf-8"))
 
-                usage_metadata = data.get("usageMetadata", {})
+                usage_metadata = data.get("usage", {}) or {}
 
-                # 1. Direct inlineData
-                if "inlineData" in data:
-                    b64 = data["inlineData"].get("data")
-                    if b64:
-                        return base64.b64decode(b64), usage_metadata
+                choices = data.get("choices") or []
+                if choices:
+                    message = choices[0].get("message", {}) or {}
+                    for image in message.get("images", []) or []:
+                        image_url = (image.get("image_url") or {}).get("url", "")
+                        if not image_url:
+                            continue
+                        # Data URL form: "data:image/png;base64,<payload>"
+                        if "," in image_url:
+                            b64 = image_url.split(",", 1)[1]
+                        else:
+                            b64 = image_url
+                        try:
+                            return base64.b64decode(b64), usage_metadata
+                        except (ValueError, base64.binascii.Error) as e:
+                            print(f"    ⚠️  Could not decode image from Seedream response: {e}")
+                            return None, None
 
-                # 2. Candidates
-                if "candidates" in data and data["candidates"]:
-                    candidate = data["candidates"][0]
-                    if "content" in candidate and "parts" in candidate["content"]:
-                        for part in candidate["content"]["parts"]:
-                            if "inlineData" in part:
-                                b64 = part["inlineData"].get("data")
-                                if b64:
-                                    return base64.b64decode(b64), usage_metadata
-
+                print(f"    ⚠️  Seedream response had no image payload for '{prompt[:50]}...'")
                 return None, None
 
             except urllib.error.HTTPError as e:
                 if e.code == 429:
-                    # Raise immediately — do NOT sleep inside the executor thread.
-                    # The main thread will handle the delay and requeue.
                     retry_after = 15.0
                     raw_hdr = e.headers.get("Retry-After")
                     if raw_hdr:
@@ -7912,30 +8170,29 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             retry_after = float(raw_hdr) + 1
                         except ValueError:
                             pass
-                    print(f"    ⚠️  Gemini 429 for '{prompt[:40]}...' — signalling rate-limit "
+                    print(f"    ⚠️  Seedream 429 for '{prompt[:40]}...' — signalling rate-limit "
                           f"(retry-after {retry_after:.0f}s)")
-                    raise _GeminiRateLimitError(retry_after)
+                    raise _ImageGenRateLimitError(retry_after)
 
                 if e.code >= 500:
-                    # Server-side error (overload, etc.) — short jittered retry
                     if attempt < max_retries - 1:
-                        wait = (2.0 ** attempt) * _random.uniform(0.8, 1.4)  # ~0.8-2.8s jitter
-                        print(f"    ⚠️  Gemini HTTP {e.code} (attempt {attempt+1}/{max_retries}) "
+                        wait = (2.0 ** attempt) * _random.uniform(0.8, 1.4)
+                        print(f"    ⚠️  Seedream HTTP {e.code} (attempt {attempt+1}/{max_retries}) "
                               f"for '{prompt[:40]}...'. Retrying in {wait:.1f}s...")
                         time.sleep(wait)
                         continue
-                print(f"    ❌ Gemini image HTTP {e.code} for '{prompt[:50]}...': {e}")
+                print(f"    ❌ Seedream image HTTP {e.code} for '{prompt[:50]}...': {e}")
                 return None, None
 
             except Exception as e:
                 if attempt < max_retries - 1:
                     wait = (1.5 ** attempt) * _random.uniform(0.5, 1.5)
-                    print(f"    ⚠️  Gemini image attempt {attempt+1}/{max_retries} failed "
+                    print(f"    ⚠️  Seedream image attempt {attempt+1}/{max_retries} failed "
                           f"for '{prompt[:40]}...': {e}. Retrying in {wait:.1f}s...")
                     print(f"    📋 {_tb.format_exc()[:200]}")
                     time.sleep(wait)
                     continue
-                print(f"    ❌ Gemini image failed after {max_retries} attempts: "
+                print(f"    ❌ Seedream image failed after {max_retries} attempts: "
                       f"{_tb.format_exc()[:400]}")
                 return None, None
 

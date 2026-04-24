@@ -204,7 +204,7 @@ export function TemplateListPage() {
                                         <span className="text-[10px] px-1 py-0.5 bg-blue-50 text-blue-500 rounded">Vacademy</span>
                                     )}
                                 </div>
-                                <p className="text-xs text-gray-500 mt-1 truncate max-w-xl">{t.bodyText}</p>
+                                <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{t.bodyText}</p>
                                 {t.rejectionReason && (
                                     <p className="text-xs text-red-500 mt-1">Rejection: {t.rejectionReason}</p>
                                 )}

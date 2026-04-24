@@ -370,6 +370,147 @@ async def get_index_job_status(job_id: str, x_render_key: str = Header("")):
 
 
 # ---------------------------------------------------------------------------
+# Concat Audio — merge Lyria-generated background-music segments
+# ---------------------------------------------------------------------------
+
+class ConcatAudioSegment(BaseModel):
+    url: str = Field(..., description="Public S3 URL of the segment MP3")
+    fade_in: float = Field(default=0.0, ge=0.0, description="Fade-in seconds for this segment")
+    fade_out: float = Field(default=0.0, ge=0.0, description="Fade-out seconds for this segment")
+
+
+class ConcatAudioRequest(BaseModel):
+    segments: List[ConcatAudioSegment] = Field(..., description="Ordered list of audio segments")
+    crossfade_seconds: float = Field(default=2.0, ge=0.0, le=10.0, description="Crossfade duration between adjacent segments")
+    output_key: str = Field(..., description="Destination S3 key for the merged MP3")
+    bucket: Optional[str] = Field(default=None, description="S3 bucket (defaults to AWS_BUCKET_NAME env)")
+
+
+class ConcatAudioResponse(BaseModel):
+    url: str
+    duration: float
+
+
+@app.post("/concat_audio", response_model=ConcatAudioResponse)
+async def concat_audio(request: ConcatAudioRequest, x_render_key: str = Header("")):
+    """Download segment MP3s, crossfade them via ffmpeg, upload the merged track.
+
+    Used by the AI-video-gen pipeline when Lyria generates multiple music
+    segments (video duration > ~170s). Single-segment videos skip this call
+    entirely on the caller side.
+    """
+    _verify_key(x_render_key)
+
+    if not request.segments:
+        raise HTTPException(status_code=400, detail="segments is required")
+
+    import shutil
+    import subprocess
+    import tempfile
+    from pathlib import Path
+    from urllib.request import Request as _UrlReq, urlopen
+
+    if shutil.which("ffmpeg") is None:
+        raise HTTPException(status_code=500, detail="ffmpeg not installed on render worker")
+
+    bucket = request.bucket or os.environ.get("AWS_BUCKET_NAME", "vacademy-media-storage")
+    try:
+        import boto3  # type: ignore
+    except ImportError:
+        raise HTTPException(status_code=500, detail="boto3 not installed on render worker")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        local_files: List[Path] = []
+        for i, seg in enumerate(request.segments):
+            dst = tmp / f"seg_{i:02d}.mp3"
+            try:
+                req = _UrlReq(seg.url, headers={"User-Agent": "VacademyRenderWorker/1.0"})
+                with urlopen(req, timeout=120) as resp:
+                    dst.write_bytes(resp.read())
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"Failed to fetch segment {i}: {exc}")
+            local_files.append(dst)
+
+        output = tmp / "music.mp3"
+        if len(local_files) == 1:
+            # Still apply fades to the single clip so intro/outro are not abrupt.
+            seg = request.segments[0]
+            afilter = []
+            if seg.fade_in > 0:
+                afilter.append(f"afade=t=in:st=0:d={seg.fade_in}")
+            if seg.fade_out > 0:
+                # Apply at the end — requires knowing duration; use areverse trick via ffprobe
+                duration = _probe_duration(local_files[0])
+                start = max(0.0, duration - seg.fade_out)
+                afilter.append(f"afade=t=out:st={start}:d={seg.fade_out}")
+            afilter_str = ",".join(afilter) if afilter else "anull"
+            cmd = [
+                "ffmpeg", "-y", "-i", str(local_files[0]),
+                "-af", afilter_str, "-b:a", "192k", str(output),
+            ]
+        else:
+            # Build acrossfade filter graph for N segments.
+            inputs: List[str] = []
+            for f in local_files:
+                inputs.extend(["-i", str(f)])
+            filter_parts: List[str] = []
+            prev = "[0:a]"
+            for i in range(1, len(local_files)):
+                out_label = f"[a{i}]"
+                filter_parts.append(
+                    f"{prev}[{i}:a]acrossfade=d={request.crossfade_seconds}"
+                    f":c1=tri:c2=tri{out_label}"
+                )
+                prev = out_label
+            filter_graph = ";".join(filter_parts)
+            cmd = [
+                "ffmpeg", "-y", *inputs,
+                "-filter_complex", filter_graph,
+                "-map", prev, "-b:a", "192k", str(output),
+            ]
+
+        result = subprocess.run(cmd, capture_output=True, timeout=600)
+        if result.returncode != 0 or not output.exists():
+            stderr = result.stderr.decode("utf-8", errors="replace")[-1000:]
+            raise HTTPException(status_code=500, detail=f"ffmpeg concat failed: {stderr}")
+
+        merged_duration = _probe_duration(output)
+        audio_bytes = output.read_bytes()
+
+        s3 = boto3.client(
+            "s3",
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+            region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+        )
+        try:
+            s3.put_object(
+                Bucket=bucket, Key=request.output_key,
+                Body=audio_bytes, ContentType="audio/mpeg",
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"S3 upload failed: {exc}")
+
+        merged_url = f"https://{bucket}.s3.amazonaws.com/{request.output_key}"
+        return ConcatAudioResponse(url=merged_url, duration=merged_duration)
+
+
+def _probe_duration(path) -> float:
+    """Best-effort MP3 duration via ffprobe; returns 0.0 on failure."""
+    import subprocess
+    try:
+        out = subprocess.check_output(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            timeout=30,
+        )
+        return float(out.strip())
+    except Exception:
+        return 0.0
+
+
+# ---------------------------------------------------------------------------
 # Transcribe Jobs — Speech-to-text for long recordings
 # ---------------------------------------------------------------------------
 

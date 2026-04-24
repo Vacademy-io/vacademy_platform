@@ -133,6 +133,7 @@ export interface CustomFieldDTO {
     is_default: boolean;
     type: string;
     options?: FieldOptionDTO[];
+    form_order?: number;
 }
 
 export interface FieldOptionDTO {
@@ -453,7 +454,7 @@ export function transformFormToDTOStep2(
         });
     }
     const { added_fields, update_fields } = fields.reduce(
-        (acc, field) => {
+        (acc, field, index) => {
             const fieldData: CustomFieldDTO = {
                 id: field.id ?? null,
                 label: field.label,
@@ -461,6 +462,7 @@ export function transformFormToDTOStep2(
                 is_default: field.isDefault,
                 type: field.type,
                 options: field.options,
+                form_order: index,
             };
 
             if (field.id) {

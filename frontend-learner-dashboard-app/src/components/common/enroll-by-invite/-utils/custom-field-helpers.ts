@@ -51,6 +51,7 @@ export enum FieldRenderType {
   CHECKBOX = "CHECKBOX",
   RADIO = "RADIO",
   FILE = "FILE",
+  MULTI_SELECT = "MULTI_SELECT",
 }
 
 /**
@@ -92,6 +93,8 @@ export const getFieldRenderType = (
       return FieldRenderType.CHECKBOX;
     case "file":
       return FieldRenderType.FILE;
+    case "multi_select":
+      return FieldRenderType.MULTI_SELECT;
   }
 
   // Fallback: auto-detect phone/email from field key for legacy generic-text fields
@@ -295,7 +298,7 @@ export const transformCustomFieldsToFormValues = (
       render_type: getFieldRenderType(fieldKey, fieldType),
       config: custom_field.config,
       comma_separated_options:
-        fieldType === "dropdown" || fieldType === "radio"
+        fieldType === "dropdown" || fieldType === "radio" || fieldType === "multi_select"
           ? parseDropdownOptions(custom_field.config)
           : undefined,
     };

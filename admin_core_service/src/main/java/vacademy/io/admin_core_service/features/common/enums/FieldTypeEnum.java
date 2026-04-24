@@ -11,5 +11,6 @@ public enum FieldTypeEnum {
     TEXTAREA,
     CHECKBOX,
     RADIO,
-    FILE
+    FILE,
+    MULTI_SELECT
 }

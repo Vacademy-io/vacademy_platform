@@ -9,13 +9,15 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Wrench, Lightning, CheckCircle, ArrowRight } from '@phosphor-icons/react';
+import { ArrowLeft, Wrench, Lightning, CheckCircle, ArrowRight, Sparkle } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { INIT_INSTITUTE, AUDIENCE_CAMPAIGNS_LIST } from '@/constants/urls';
 import { getMessageTemplates } from '@/services/message-template-service';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
 import { getTemplatesForTrigger, type UseCaseTemplate, type WizardQuestion } from './use-case-templates';
+import { SAMPLE_TEMPLATES } from './sample-email-templates';
+import { getInstituteId } from '@/constants/helper';
 
 // ─── Hooks for fetching dropdown options ───
 
@@ -83,15 +85,18 @@ function QuestionField({
     value,
     onChange,
     instituteId,
+    useCaseId,
 }: {
     question: WizardQuestion;
     value: string | number | undefined;
     onChange: (val: string | number) => void;
     instituteId: string;
+    useCaseId?: string;
 }) {
     const { data: batchOptions = [], isLoading: batchLoading } = useBatchOptions(instituteId);
     const { data: audienceOptions = [], isLoading: audienceLoading } = useAudienceOptions(instituteId);
     const { data: templateOptions = [], isLoading: templateLoading } = useEmailTemplateOptions();
+    const [creatingSample, setCreatingSample] = useState(false);
 
     const renderDropdown = (
         options: Array<{ value: string; label: string }>,
@@ -124,7 +129,63 @@ function QuestionField({
 
             {question.type === 'batch_select' && renderDropdown(batchOptions, batchLoading, '-- Select a batch --', !question.required)}
             {question.type === 'audience_select' && renderDropdown(audienceOptions, audienceLoading, '-- Select an audience --', !question.required)}
-            {question.type === 'template_select' && renderDropdown(templateOptions, templateLoading, '-- Select an email template --')}
+            {question.type === 'template_select' && (
+                <div className="space-y-2">
+                    {renderDropdown(templateOptions, templateLoading, '-- Select an email template --')}
+                    {/* Sample template option */}
+                    {useCaseId && SAMPLE_TEMPLATES[useCaseId] && (
+                        <button
+                            type="button"
+                            disabled={creatingSample}
+                            className="flex items-center gap-2 w-full rounded-lg border-2 border-dashed border-primary-200 bg-primary-50/50 px-3 py-2.5 text-left transition-all hover:border-primary-400 hover:bg-primary-50 disabled:opacity-50"
+                            onClick={async () => {
+                                const sample = SAMPLE_TEMPLATES[useCaseId!];
+                                if (!sample) return;
+                                setCreatingSample(true);
+                                try {
+                                    const instId = getInstituteId();
+                                    await authenticatedAxiosInstance.post(
+                                        '/admin-core-service/institute/template/v1/create',
+                                        {
+                                            type: 'EMAIL',
+                                            instituteId: instId,
+                                            name: sample.name,
+                                            subject: sample.subject,
+                                            content: sample.html,
+                                            contentType: 'text/html',
+                                            settingJson: {
+                                                variables: sample.variables,
+                                                isDefault: false,
+                                                templateType: 'utility',
+                                            },
+                                            dynamicParameters: {},
+                                            canDelete: true,
+                                            status: 'ACTIVE',
+                                        }
+                                    );
+                                    onChange(sample.name);
+                                } catch (err) {
+                                    console.error('Failed to create sample template:', err);
+                                    // Fallback: use the name anyway — it may already exist
+                                    onChange(sample.name);
+                                } finally {
+                                    setCreatingSample(false);
+                                }
+                            }}
+                        >
+                            <Sparkle size={16} weight="fill" className="text-primary-500 shrink-0" />
+                            <div className="flex-1">
+                                <div className="text-xs font-semibold text-primary-700">
+                                    {creatingSample ? 'Creating...' : `Use sample: "${SAMPLE_TEMPLATES[useCaseId!]!.name}"`}
+                                </div>
+                                <div className="text-[10px] text-primary-400 mt-0.5">
+                                    Pre-built template with the right variables — added to your template library
+                                </div>
+                            </div>
+                        </button>
+                    )}
+                </div>
+            )}
             {question.type === 'live_session_select' && renderDropdown([], false, '-- Select a live session --', !question.required)}
             {question.type === 'invite_select' && renderDropdown([], false, '-- Select an invite --', !question.required)}
 
@@ -357,6 +418,7 @@ export function UseCaseWizardStep({
                         value={answers[q.id]}
                         onChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
                         instituteId={instituteId}
+                        useCaseId={selectedTemplate.id}
                     />
                 ))}
             </div>

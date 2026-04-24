@@ -32,6 +32,7 @@ public class WorkflowBuilderService {
     private final WorkflowScheduleRepository scheduleRepository;
     private final WorkflowTriggerRepository triggerRepository;
     private final WorkflowValidationService validationService;
+    private final WorkflowScheduleService workflowScheduleService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -195,6 +196,18 @@ public class WorkflowBuilderService {
             schedule.setStatus("ACTIVE");
             schedule.setCreatedAt(Instant.now());
             schedule.setUpdatedAt(Instant.now());
+
+            // Compute next_run_at so the poller can find this schedule
+            if (schedule.getCronExpression() != null && !schedule.getCronExpression().isBlank()) {
+                Instant nextRun = workflowScheduleService.calculateNextRunTime(
+                        schedule.getCronExpression(), schedule.getTimezone());
+                schedule.setNextRunAt(nextRun);
+                log.info("Computed next_run_at for new schedule: {}", nextRun);
+            } else {
+                // Interval-based: run immediately
+                schedule.setNextRunAt(Instant.now());
+            }
+
             scheduleRepository.save(schedule);
         }
 

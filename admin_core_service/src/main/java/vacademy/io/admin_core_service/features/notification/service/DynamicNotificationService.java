@@ -227,6 +227,19 @@ public class DynamicNotificationService {
 
             Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(template, templateVars);
 
+            // Alias: if the template leaves program_name blank (or the admin cleared it),
+            // fall back to the learner's actually-enrolled package_name. Lets {{program_name}}
+            // in WhatsApp/email templates always render the real package — admins don't need
+            // to hardcode (and keep syncing) a program_name per template per program.
+            if (!org.springframework.util.StringUtils.hasText(variables.get("program_name"))) {
+                String pkgName = variables.getOrDefault("package_name",
+                                   variables.getOrDefault("packageName", ""));
+                if (org.springframework.util.StringUtils.hasText(pkgName)) {
+                    variables.put("program_name", pkgName);
+                    variables.put("programName", pkgName);
+                }
+            }
+
             String channel;
             UnifiedSendRequest.SendOptions.SendOptionsBuilder optsBuilder = UnifiedSendRequest.SendOptions.builder()
                     .source("event:" + config.getEventName())

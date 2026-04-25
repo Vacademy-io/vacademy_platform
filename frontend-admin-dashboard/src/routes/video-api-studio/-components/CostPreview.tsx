@@ -193,11 +193,12 @@ export function CostPreviewModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="flex max-h-[85vh] w-[92vw] max-w-3xl flex-col overflow-hidden sm:max-w-4xl">
                 <DialogHeader>
                     <DialogTitle>Confirm generation</DialogTitle>
                 </DialogHeader>
 
+                <div className="-mx-6 flex-1 overflow-y-auto px-6">
                 {loading && !data && (
                     <div className="flex items-center justify-center py-10 text-muted-foreground">
                         <Loader2 className="mr-2 size-4 animate-spin" />
@@ -336,6 +337,7 @@ export function CostPreviewModal({
                         )}
                     </div>
                 )}
+                </div>
 
                 <DialogFooter className="gap-2">
                     <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -1456,35 +1456,39 @@ class VideoGenerationPipeline:
 
     def _build_default_music_plan(self, audio_duration: float) -> Optional[Dict[str, Any]]:
         """Synthesize a generic cinematic-ambient music plan for tiers that don't
-        run the Director (free / standard). Tiles segments under Lyria's 170 s cap.
+        run the Director (free / standard). Emits the new `chunks[]` shape with
+        Lyria-style timestamped prompts, tiled under the per-call ~180 s cap.
         Returns None if duration is unusable.
         """
         if audio_duration <= 1.0:
             return None
-        seg_max = 170.0
-        prompt = (
-            "Soft warm cinematic ambient, gentle piano with slow string pads, "
-            "subtle, contemplative, 72 bpm, educational background score, no vocals"
-        )
-        segments: list[Dict[str, Any]] = []
+        chunk_max = 180.0
+        chunks: list[Dict[str, Any]] = []
         cursor = 0.0
+        chunk_idx = 0
         while cursor < audio_duration - 1.0:
-            seg_end = min(cursor + seg_max, audio_duration)
-            segments.append({
+            chunk_end = min(cursor + chunk_max, audio_duration)
+            chunk_dur = chunk_end - cursor
+            mid = chunk_dur / 2
+            late = max(0.0, chunk_dur - 20.0)
+            timestamped_prompt = (
+                f"[00:00] {'Begin with a soft warm cinematic instrumental — gentle solo piano melody, contemplative and curious mood, sparse arrangement, no vocals, no lyrics.' if chunk_idx == 0 else 'Continue from previous section — soft warm piano and string pads sustain, instrumental, no vocals, no lyrics.'} "
+                f"[{int(mid)//60:02d}:{int(mid)%60:02d}] Slow warm string pads layer underneath, adding depth and a sense of attentive focus, gentle pulse around 72 bpm. "
+                f"[{int(late)//60:02d}:{int(late)%60:02d}] Subtle resolution — strings soften, piano returns to a gentle reflective melody, no vocals throughout."
+            )
+            chunks.append({
                 "start_time": round(cursor, 2),
-                "end_time": round(seg_end, 2),
-                "mood": "calm, attentive, lightly uplifting",
-                "genre": "cinematic ambient + soft piano",
-                "tempo_bpm": 72,
-                "prompt": prompt,
+                "end_time": round(chunk_end, 2),
+                "timestamped_prompt": timestamped_prompt,
             })
-            cursor = seg_end
-        if not segments:
+            cursor = chunk_end
+            chunk_idx += 1
+        if not chunks:
             return None
         return {
             "overall_mood": "calm, attentive, lightly uplifting",
             "overall_genre": "cinematic ambient + soft piano",
-            "segments": segments,
+            "chunks": chunks,
         }
 
     def _is_background_music_enabled(self) -> bool:

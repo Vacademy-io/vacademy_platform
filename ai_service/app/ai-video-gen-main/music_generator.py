@@ -28,8 +28,13 @@ _log = logging.getLogger(__name__)
 _DEFAULT_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
 _DEFAULT_LOCATION = os.environ.get("LYRIA_LOCATION", "us-central1")
 _DEFAULT_MODEL = os.environ.get("LYRIA_MODEL_ID", "lyria-3-pro-preview")
-# Hard safety cap under Lyria's documented per-clip maximum.
-MAX_SEGMENT_SECONDS = 170.0
+# Hard safety cap under Lyria's per-call output cap (~180s for Lyria 3 Pro).
+# A single Lyria call produces one coherent piece up to this length; for longer
+# videos we tile multiple calls and concat. The Director is asked to size its
+# `chunks[]` accordingly.
+MAX_CHUNK_SECONDS = 180.0
+# Legacy alias kept for any external callers that imported the old name.
+MAX_SEGMENT_SECONDS = MAX_CHUNK_SECONDS
 
 _AWS_BUCKET = os.environ.get("AWS_BUCKET_NAME", "vacademy-media-storage")
 _AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
@@ -102,21 +107,56 @@ def _s3_upload_bytes(data: bytes, key: str, content_type: str = "audio/mpeg") ->
     return f"https://{_AWS_PUBLIC_HOST}/{key}"
 
 
-def _call_lyria(prompt: str, credentials, project_id: str,
-                negative_prompt: str = "vocals, lyrics, singing, narration, speech",
-                seed: Optional[int] = None) -> bytes:
-    """Call Lyria predict endpoint and return raw audio bytes (MP3 or WAV)."""
-    import requests  # type: ignore
+def _is_lyria3_family(model: str) -> bool:
+    """Lyria 3 (Pro/Full-Song) lives on a different REST surface than Lyria 2."""
+    return model.startswith("lyria-3")
+
+
+def _sniff_audio_format(data: bytes) -> tuple[str, str]:
+    """Detect audio format from the first few bytes.
+
+    Returns (extension, content_type). Defaults to ('mp3', 'audio/mpeg')
+    if nothing matches — most browsers can still play unknown audio when
+    served as audio/mpeg.
+    """
+    if len(data) < 12:
+        return "mp3", "audio/mpeg"
+    head = data[:12]
+    # WAV: "RIFF....WAVE"
+    if head[:4] == b"RIFF" and head[8:12] == b"WAVE":
+        return "wav", "audio/wav"
+    # FLAC: "fLaC"
+    if head[:4] == b"fLaC":
+        return "flac", "audio/flac"
+    # OGG: "OggS"
+    if head[:4] == b"OggS":
+        return "ogg", "audio/ogg"
+    # MP3: ID3 tag or MPEG frame sync (0xFF Ex/Fx)
+    if head[:3] == b"ID3" or (head[0] == 0xFF and (head[1] & 0xE0) == 0xE0):
+        return "mp3", "audio/mpeg"
+    # MP4/M4A container: 'ftyp' at offset 4
+    if head[4:8] == b"ftyp":
+        return "m4a", "audio/mp4"
+    return "mp3", "audio/mpeg"
+
+
+def _fresh_token(credentials) -> str:
     from google.auth.transport.requests import Request as _AuthRequest
-
-    # Refresh access token
     credentials.refresh(_AuthRequest())
-    token = credentials.token
+    return credentials.token
 
+
+def _call_lyria_v2(prompt: str, model: str, credentials, project_id: str,
+                   negative_prompt: str = "vocals, lyrics, singing, narration, speech",
+                   seed: Optional[int] = None) -> bytes:
+    """Lyria 2 (`lyria-002`) — regional :predict endpoint, instrumental output."""
+    import requests  # type: ignore
+
+    token = _fresh_token(credentials)
     endpoint = (
         f"https://{_DEFAULT_LOCATION}-aiplatform.googleapis.com/v1/"
         f"projects/{project_id}/locations/{_DEFAULT_LOCATION}/"
-        f"publishers/google/models/{_DEFAULT_MODEL}:predict"
+        f"publishers/google/models/{model}:predict"
     )
     instance: Dict[str, Any] = {
         "prompt": prompt,
@@ -125,72 +165,226 @@ def _call_lyria(prompt: str, credentials, project_id: str,
     }
     if seed is not None:
         instance["seed"] = int(seed)
-    payload = {"instances": [instance], "parameters": {}}
+
+    resp = requests.post(
+        endpoint,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={"instances": [instance], "parameters": {}},
+        timeout=180,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Lyria v2 predict failed ({resp.status_code}): {resp.text[:500]}")
+
+    preds = resp.json().get("predictions") or []
+    if not preds:
+        raise RuntimeError(f"Lyria v2 returned no predictions: {resp.text[:500]}")
+    b64 = preds[0].get("bytesBase64Encoded") or preds[0].get("audioContent")
+    if not b64:
+        raise RuntimeError(f"Lyria v2 missing audio field: keys={list(preds[0].keys())}")
+    return base64.b64decode(b64)
+
+
+def _call_lyria_v3(prompt: str, model: str, credentials, project_id: str) -> bytes:
+    """Lyria 3 (`lyria-3-pro-preview`) — global /interactions endpoint.
+
+    NOTE on output: Lyria 3 Pro is a *full-song* model — it generates
+    structured songs that include vocals and lyrics, not an instrumental bed.
+    For pure background music under narration, prefer `lyria-002` instead.
+    The response also returns lyrics + a textual description alongside the
+    audio; we extract only the audio bytes.
+    """
+    import requests  # type: ignore
+
+    token = _fresh_token(credentials)
+    endpoint = (
+        f"https://aiplatform.googleapis.com/v1beta1/"
+        f"projects/{project_id}/locations/global/interactions"
+    )
+    payload = {
+        "model": model,
+        "input": [{"type": "text", "text": prompt}],
+    }
 
     resp = requests.post(
         endpoint,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         json=payload,
-        timeout=180,
+        timeout=300,  # full-song generation can take longer than instrumental loops
     )
     if resp.status_code != 200:
-        raise RuntimeError(
-            f"Lyria predict failed ({resp.status_code}): {resp.text[:500]}"
-        )
+        raise RuntimeError(f"Lyria v3 interactions failed ({resp.status_code}): {resp.text[:500]}")
+
     data = resp.json()
-    preds = data.get("predictions") or []
-    if not preds:
-        raise RuntimeError(f"Lyria returned no predictions: {json.dumps(data)[:500]}")
-    # Response shape follows Vertex's convention: first prediction carries
-    # either `bytesBase64Encoded` (raw audio) or `audioContent` depending on
-    # model revision. Handle both.
-    pred = preds[0]
-    b64 = pred.get("bytesBase64Encoded") or pred.get("audioContent")
-    if not b64:
+    if data.get("status") and data["status"] not in ("completed", "succeeded"):
+        raise RuntimeError(f"Lyria v3 status={data['status']}: {json.dumps(data)[:300]}")
+
+    # Outputs is a heterogenous list — find the first audio entry.
+    outputs = data.get("outputs") or []
+    audio_b64 = None
+    for out in outputs:
+        if out.get("type") == "audio" and out.get("data"):
+            audio_b64 = out["data"]
+            break
+    if not audio_b64:
         raise RuntimeError(
-            f"Lyria prediction missing audio field: keys={list(pred.keys())}"
+            f"Lyria v3 returned no audio output. Output types: "
+            f"{[o.get('type') for o in outputs]}"
         )
-    return base64.b64decode(b64)
+    return base64.b64decode(audio_b64)
 
 
-def _validate_music_plan(music_plan: Dict[str, Any], audio_duration: float) -> List[Dict[str, Any]]:
-    """Defensive: ensure segments tile the full duration and are within Lyria's cap."""
-    segments = list(music_plan.get("segments") or [])
-    if not segments:
+def _call_lyria(prompt: str, credentials, project_id: str,
+                negative_prompt: str = "vocals, lyrics, singing, narration, speech",
+                seed: Optional[int] = None) -> bytes:
+    """Dispatch to the right Lyria backend based on the configured model id."""
+    model = _DEFAULT_MODEL
+    if _is_lyria3_family(model):
+        return _call_lyria_v3(prompt, model, credentials, project_id)
+    return _call_lyria_v2(prompt, model, credentials, project_id,
+                          negative_prompt=negative_prompt, seed=seed)
+
+
+def _format_mmss(seconds: float) -> str:
+    s = max(0, int(round(seconds)))
+    return f"[{s // 60:02d}:{s % 60:02d}]"
+
+
+def _compose_timestamped_prompt_from_segments(segments: List[Dict[str, Any]],
+                                              chunk_start: float) -> str:
+    """Stitch legacy `segments[]` items into one Lyria timestamped prompt.
+
+    Marker times are CHUNK-RELATIVE: subtract `chunk_start` from each segment's
+    start_time. Each segment contributes one `[mm:ss] {prompt}` block.
+    """
+    parts: List[str] = []
+    for seg in segments:
+        rel = max(0.0, float(seg.get("start_time", 0.0)) - chunk_start)
+        prompt = str(seg.get("prompt") or "").strip()
+        if not prompt:
+            mood = seg.get("mood", "ambient background")
+            genre = seg.get("genre", "cinematic instrumental")
+            tempo = seg.get("tempo_bpm")
+            bits = [genre, mood]
+            if tempo:
+                bits.append(f"{int(tempo)} bpm")
+            bits.append("no vocals, no lyrics")
+            prompt = ", ".join(p for p in bits if p)
+        parts.append(f"{_format_mmss(rel)} {prompt}")
+    return " ".join(parts)
+
+
+def _normalize_to_chunks(music_plan: Dict[str, Any],
+                         audio_duration: float) -> List[Dict[str, Any]]:
+    """Normalize either shape (`chunks[]` or legacy `segments[]`) into a
+    canonical list of `{start_time, end_time, timestamped_prompt}` chunks,
+    each ≤ MAX_CHUNK_SECONDS, tiling the full audio duration.
+
+    Returns an empty list if the plan is unusable or the duration is too short.
+    """
+    if audio_duration <= 1.0:
         return []
 
-    # Sort and clamp segment durations.
-    segments.sort(key=lambda s: float(s.get("start_time", 0.0)))
-    fixed: List[Dict[str, Any]] = []
-    for i, seg in enumerate(segments):
-        start = float(seg.get("start_time", 0.0))
-        end = float(seg.get("end_time", start + MAX_SEGMENT_SECONDS))
-        end = min(end, audio_duration)
-        if end - start > MAX_SEGMENT_SECONDS:
-            end = start + MAX_SEGMENT_SECONDS
-        if end - start <= 1.0:
-            continue  # skip unusably short segments
-        seg_fixed = dict(seg)
-        seg_fixed["start_time"] = start
-        seg_fixed["end_time"] = end
-        fixed.append(seg_fixed)
+    chunks_in = music_plan.get("chunks")
+    if chunks_in:
+        return _normalize_chunks_array(chunks_in, audio_duration)
 
-    # If the Director undercovered the video, pad with a repeat of the last prompt.
-    if fixed and fixed[-1]["end_time"] < audio_duration - 1.0:
-        last = fixed[-1]
-        cursor = last["end_time"]
+    # Legacy path — fold segments[] into chunks of ≤ MAX_CHUNK_SECONDS.
+    segments = list(music_plan.get("segments") or [])
+    if not segments:
+        # Last resort: synthesize a single chunk from overall_mood / genre.
+        return _synth_chunks_from_overall(music_plan, audio_duration)
+
+    segments.sort(key=lambda s: float(s.get("start_time", 0.0)))
+    chunks: List[Dict[str, Any]] = []
+    current: List[Dict[str, Any]] = []
+    chunk_start = float(segments[0].get("start_time", 0.0))
+    for seg in segments:
+        seg_start = float(seg.get("start_time", chunk_start))
+        seg_end = min(float(seg.get("end_time", seg_start)), audio_duration)
+        if seg_end <= seg_start:
+            continue
+        # If adding this segment overflows the current chunk, close it first.
+        if current and seg_end - chunk_start > MAX_CHUNK_SECONDS:
+            chunks.append({
+                "start_time": chunk_start,
+                "end_time": float(current[-1]["end_time"]),
+                "timestamped_prompt": _compose_timestamped_prompt_from_segments(current, chunk_start),
+            })
+            current = []
+            chunk_start = seg_start
+        current.append({"start_time": seg_start, "end_time": seg_end,
+                        **{k: seg[k] for k in ("prompt", "mood", "genre", "tempo_bpm") if k in seg}})
+    if current:
+        chunks.append({
+            "start_time": chunk_start,
+            "end_time": float(current[-1]["end_time"]),
+            "timestamped_prompt": _compose_timestamped_prompt_from_segments(current, chunk_start),
+        })
+
+    # Pad the tail if the Director undercovered the video.
+    if chunks and chunks[-1]["end_time"] < audio_duration - 1.0:
+        cursor = chunks[-1]["end_time"]
+        last_prompt = chunks[-1]["timestamped_prompt"]
         while cursor < audio_duration - 1.0:
-            seg_end = min(cursor + MAX_SEGMENT_SECONDS, audio_duration)
-            fixed.append({
+            seg_end = min(cursor + MAX_CHUNK_SECONDS, audio_duration)
+            chunks.append({
                 "start_time": cursor,
                 "end_time": seg_end,
-                "mood": last.get("mood", "consistent with previous segment"),
-                "genre": last.get("genre", ""),
-                "tempo_bpm": last.get("tempo_bpm"),
-                "prompt": last.get("prompt", "") + " (seamless continuation of previous segment)",
+                "timestamped_prompt": (
+                    f"[00:00] Seamless continuation of the previous chunk, "
+                    f"matching its instrumentation and mood — "
+                    f"{last_prompt[:200]}. Sustain to a gentle resolution. No vocals, no lyrics."
+                ),
             })
             cursor = seg_end
+    return chunks
+
+
+def _normalize_chunks_array(chunks_in: List[Dict[str, Any]],
+                            audio_duration: float) -> List[Dict[str, Any]]:
+    """Sanitize the Director-emitted `chunks[]` array."""
+    chunks_in = sorted(
+        (c for c in chunks_in if isinstance(c, dict)),
+        key=lambda c: float(c.get("start_time", 0.0)),
+    )
+    fixed: List[Dict[str, Any]] = []
+    for c in chunks_in:
+        start = float(c.get("start_time", 0.0))
+        end = min(float(c.get("end_time", start + MAX_CHUNK_SECONDS)), audio_duration)
+        if end - start > MAX_CHUNK_SECONDS:
+            end = start + MAX_CHUNK_SECONDS
+        if end - start <= 1.0:
+            continue
+        prompt = str(c.get("timestamped_prompt") or c.get("prompt") or "").strip()
+        if not prompt:
+            continue
+        # Defensive: ensure "no vocals" appears somewhere in the prompt.
+        if "no vocals" not in prompt.lower() and "instrumental" not in prompt.lower():
+            prompt = prompt + " — instrumental only, no vocals, no lyrics"
+        fixed.append({"start_time": start, "end_time": end, "timestamped_prompt": prompt})
     return fixed
+
+
+def _synth_chunks_from_overall(music_plan: Dict[str, Any],
+                               audio_duration: float) -> List[Dict[str, Any]]:
+    """Synthesize a minimal timestamped prompt when only `overall_*` fields exist."""
+    mood = music_plan.get("overall_mood") or "calm, attentive, lightly uplifting"
+    genre = music_plan.get("overall_genre") or "cinematic ambient with soft piano"
+    base_prompt = (
+        f"Soft warm cinematic instrumental — {genre}, {mood}, gentle pulse "
+        f"around 72 bpm, subtle evolution, no vocals, no lyrics."
+    )
+    chunks: List[Dict[str, Any]] = []
+    cursor = 0.0
+    while cursor < audio_duration - 1.0:
+        end = min(cursor + MAX_CHUNK_SECONDS, audio_duration)
+        chunks.append({
+            "start_time": cursor,
+            "end_time": end,
+            "timestamped_prompt": f"[00:00] {base_prompt}",
+        })
+        cursor = end
+    return chunks
 
 
 def _concat_via_render_worker(segment_urls: List[Dict[str, Any]],
@@ -234,31 +428,35 @@ def generate_background_music(
     """Generate background music for a video.
 
     Args:
-        music_plan: Director output — {overall_mood, overall_genre, segments:[...]}
+        music_plan: Director output. Preferred shape uses `chunks[]` where each
+            chunk has `{start_time, end_time, timestamped_prompt}` — the
+            timestamped_prompt is a single prose string with `[mm:ss]` markers
+            (chunk-relative) that drive Lyria's intra-track transitions.
+            Legacy `segments[]` shape is also accepted and folded into chunks.
         audio_duration: Total narration duration in seconds.
         video_id: Used as the S3 key prefix.
-        run_dir: Optional local run directory for debug copies of segments.
+        run_dir: Optional local run directory for debug copies.
         progress_callback: Optional callable(event_dict) for SSE progress.
 
-    Returns a dict with `url` (final merged MP3 S3 URL) and `segments` (list of
-    {start, end, url}) for observability, or None if generation is skipped.
+    Returns a dict with `url` (final merged audio S3 URL), `chunks` (list of
+    {start, end, url}) for observability, and `duration` — or None if skipped.
     """
-    segments = _validate_music_plan(music_plan, audio_duration)
-    if not segments:
-        _log.info("No music segments after validation — skipping background music.")
+    chunks = _normalize_to_chunks(music_plan, audio_duration)
+    if not chunks:
+        _log.info("No music chunks after normalization — skipping background music.")
         return None
 
     _log.info(
-        "🎼 Generating background music: %d segment(s) covering %.1fs",
-        len(segments), audio_duration,
+        "🎼 Generating background music: %d chunk(s) covering %.1fs",
+        len(chunks), audio_duration,
     )
     if progress_callback:
         try:
             progress_callback({
                 "type": "sub_stage",
                 "sub_stage": "background_music_start",
-                "message": f"Generating background music ({len(segments)} segment(s))",
-                "segments": len(segments),
+                "message": f"Generating background music ({len(chunks)} chunk(s))",
+                "chunks": len(chunks),
             })
         except Exception:
             pass
@@ -266,30 +464,19 @@ def generate_background_music(
     credentials = _load_google_credentials()
     project_id = _get_project_id(credentials)
 
-    segment_records: List[Dict[str, Any]] = []
-    for i, seg in enumerate(segments):
-        prompt = str(seg.get("prompt") or "").strip()
-        if not prompt:
-            # Minimal fallback prompt built from mood/genre/tempo.
-            mood = seg.get("mood", "ambient background")
-            genre = seg.get("genre", "cinematic instrumental")
-            tempo = seg.get("tempo_bpm")
-            parts = [genre, mood]
-            if tempo:
-                parts.append(f"{int(tempo)} bpm")
-            parts.append("no vocals, educational background score")
-            prompt = ", ".join(p for p in parts if p)
-
-        seg_dur = float(seg["end_time"]) - float(seg["start_time"])
-        _log.info("   Segment %d/%d (%.1fs): %s", i + 1, len(segments), seg_dur, prompt[:120])
+    chunk_records: List[Dict[str, Any]] = []
+    for i, chunk in enumerate(chunks):
+        prompt = str(chunk.get("timestamped_prompt") or "").strip()
+        chunk_dur = float(chunk["end_time"]) - float(chunk["start_time"])
+        _log.info("   Chunk %d/%d (%.1fs): %s", i + 1, len(chunks), chunk_dur, prompt[:160])
         if progress_callback:
             try:
                 progress_callback({
                     "type": "sub_stage",
                     "sub_stage": "background_music_segment",
-                    "message": f"Lyria generating segment {i + 1}/{len(segments)}",
+                    "message": f"Lyria generating chunk {i + 1}/{len(chunks)}",
                     "segment_index": i,
-                    "segment_total": len(segments),
+                    "segment_total": len(chunks),
                 })
             except Exception:
                 pass
@@ -308,32 +495,33 @@ def generate_background_music(
         if audio_bytes is None:
             raise RuntimeError(f"Lyria failed after retries: {last_err}")
 
-        key = f"ai-videos/{video_id}/background_music/segment_{i:02d}.mp3"
-        seg_url = _s3_upload_bytes(audio_bytes, key)
+        ext, content_type = _sniff_audio_format(audio_bytes)
+        key = f"ai-videos/{video_id}/background_music/chunk_{i:02d}.{ext}"
+        chunk_url = _s3_upload_bytes(audio_bytes, key, content_type=content_type)
         if run_dir is not None:
             try:
-                (run_dir / f"background_music_seg_{i:02d}.mp3").write_bytes(audio_bytes)
+                (run_dir / f"background_music_chunk_{i:02d}.{ext}").write_bytes(audio_bytes)
             except Exception:
                 pass
 
-        segment_records.append({
+        chunk_records.append({
             "index": i,
-            "start_time": float(seg["start_time"]),
-            "end_time": float(seg["end_time"]),
-            "url": seg_url,
+            "start_time": float(chunk["start_time"]),
+            "end_time": float(chunk["end_time"]),
+            "url": chunk_url,
             "prompt": prompt,
         })
 
-    if len(segment_records) == 1:
-        final_url = segment_records[0]["url"]
+    if len(chunk_records) == 1:
+        final_url = chunk_records[0]["url"]
     else:
         concat_payload = [
             {
                 "url": r["url"],
                 "fade_in": 1.5 if i == 0 else 0.0,
-                "fade_out": 2.5 if i == len(segment_records) - 1 else 0.0,
+                "fade_out": 2.5 if i == len(chunk_records) - 1 else 0.0,
             }
-            for i, r in enumerate(segment_records)
+            for i, r in enumerate(chunk_records)
         ]
         output_key = f"ai-videos/{video_id}/background_music/music.mp3"
         if progress_callback:
@@ -341,7 +529,7 @@ def generate_background_music(
                 progress_callback({
                     "type": "sub_stage",
                     "sub_stage": "background_music_concat",
-                    "message": f"Merging {len(segment_records)} segments via render worker",
+                    "message": f"Merging {len(chunk_records)} chunks via render worker",
                 })
             except Exception:
                 pass
@@ -358,4 +546,4 @@ def generate_background_music(
         except Exception:
             pass
 
-    return {"url": final_url, "segments": segment_records, "duration": audio_duration}
+    return {"url": final_url, "chunks": chunk_records, "duration": audio_duration}

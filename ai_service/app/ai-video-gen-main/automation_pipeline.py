@@ -473,6 +473,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "stock_preference": "stock_first",
         "preferred_script_model": "google/gemini-3-flash-preview",
         "preferred_shot_model": "google/gemini-3-flash-preview",
+        # Background music: standard does not run Director, so the music_plan is
+        # synthesized from a generic cinematic-ambient default in run().
+        "background_music_enabled": True,
+        "background_music_default_volume": 0.18,
     },
     "premium": {
         "script_temperature": 0.6,
@@ -586,6 +590,12 @@ def _validate_whisper_script(word_entries: list, lang_code: str) -> bool:
     return ratio >= 0.30
 
 
+# Module-level lock so concurrent video generations don't load multiple
+# faster-whisper models in parallel — each instance peaks at ~1–2 GB RAM and
+# loading two simultaneously is the most common cause of OOM kills.
+_WHISPER_LOCK = threading.Lock()
+
+
 def _whisper_align(audio_path: Path, language: str = "English") -> list:
     """Standalone Whisper forced alignment. Returns word-level timestamps.
 
@@ -597,24 +607,50 @@ def _whisper_align(audio_path: Path, language: str = "English") -> list:
     except ImportError:
         print("    ⚠️ faster-whisper not installed. Run: pip install faster-whisper")
         return []
+
+    lang_code = WHISPER_LANG_MAP.get(language.lower().strip(), "en")
+    # Default sizes per language. Allow override via env so we can step down
+    # without a code change if the host is memory-constrained.
+    _default_size = "medium" if lang_code != "en" else "base"
+    model_size = os.environ.get("WHISPER_MODEL_SIZE", _default_size)
+    # Concurrency knobs — keep memory peaks predictable on shared hosts.
+    # Default to 2 threads / 1 worker; override via env for beefier boxes.
     try:
-        lang_code = WHISPER_LANG_MAP.get(language.lower().strip(), "en")
-        # Use a larger model for non-English to get better accuracy
-        model_size = "medium" if lang_code != "en" else "base"
-        print(f"    🎯 Running Whisper forced alignment (lang={lang_code}, model={model_size})...")
-        model = WhisperModel(model_size, device="cpu", compute_type="int8")
-        segments, _ = model.transcribe(
-            str(audio_path), word_timestamps=True, language=lang_code
+        cpu_threads = int(os.environ.get("WHISPER_CPU_THREADS", "2"))
+    except ValueError:
+        cpu_threads = 2
+    try:
+        num_workers = int(os.environ.get("WHISPER_NUM_WORKERS", "1"))
+    except ValueError:
+        num_workers = 1
+
+    model = None
+    try:
+        print(
+            f"    🎯 Running Whisper forced alignment (lang={lang_code}, "
+            f"model={model_size}, threads={cpu_threads}, workers={num_workers})..."
         )
-        word_entries = []
-        for segment in segments:
-            if segment.words:
-                for wi in segment.words:
-                    word_entries.append({
-                        "word": wi.word.strip(),
-                        "start": round(wi.start, 3),
-                        "end": round(wi.end, 3),
-                    })
+        with _WHISPER_LOCK:
+            model = WhisperModel(
+                model_size,
+                device="cpu",
+                compute_type="int8",
+                cpu_threads=cpu_threads,
+                num_workers=num_workers,
+            )
+            segments, _ = model.transcribe(
+                str(audio_path), word_timestamps=True, language=lang_code
+            )
+            word_entries = []
+            for segment in segments:
+                if segment.words:
+                    for wi in segment.words:
+                        word_entries.append({
+                            "word": wi.word.strip(),
+                            "start": round(wi.start, 3),
+                            "end": round(wi.end, 3),
+                        })
+
         if not word_entries:
             print("    ⚠️ Whisper returned no word timestamps")
             return []
@@ -630,6 +666,18 @@ def _whisper_align(audio_path: Path, language: str = "English") -> list:
     except Exception as e:
         print(f"    ❌ Whisper alignment failed: {e}")
         return []
+    finally:
+        # Drop the model + decoded segments before returning. faster-whisper
+        # holds onto CTranslate2 buffers via the model handle, so explicit
+        # del + gc.collect() is what actually returns memory to the OS on
+        # CPython between back-to-back generation requests.
+        if model is not None:
+            del model
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
 
 
 class _ImageGenRateLimitError(Exception):
@@ -1405,6 +1453,39 @@ class VideoGenerationPipeline:
             return "marketing"
         else:
             return "education"
+
+    def _build_default_music_plan(self, audio_duration: float) -> Optional[Dict[str, Any]]:
+        """Synthesize a generic cinematic-ambient music plan for tiers that don't
+        run the Director (free / standard). Tiles segments under Lyria's 170 s cap.
+        Returns None if duration is unusable.
+        """
+        if audio_duration <= 1.0:
+            return None
+        seg_max = 170.0
+        prompt = (
+            "Soft warm cinematic ambient, gentle piano with slow string pads, "
+            "subtle, contemplative, 72 bpm, educational background score, no vocals"
+        )
+        segments: list[Dict[str, Any]] = []
+        cursor = 0.0
+        while cursor < audio_duration - 1.0:
+            seg_end = min(cursor + seg_max, audio_duration)
+            segments.append({
+                "start_time": round(cursor, 2),
+                "end_time": round(seg_end, 2),
+                "mood": "calm, attentive, lightly uplifting",
+                "genre": "cinematic ambient + soft piano",
+                "tempo_bpm": 72,
+                "prompt": prompt,
+            })
+            cursor = seg_end
+        if not segments:
+            return None
+        return {
+            "overall_mood": "calm, attentive, lightly uplifting",
+            "overall_genre": "cinematic ambient + soft piano",
+            "segments": segments,
+        }
 
     def _is_background_music_enabled(self) -> bool:
         """Resolve the final on/off state for Lyria background music.
@@ -2367,17 +2448,24 @@ class VideoGenerationPipeline:
             # meta.audio_tracks alongside any user-added tracks. Gated by
             # tier + request override; never fatal — music failures log and
             # let the video ship without a score.
+            # Tiers that don't run the Director (standard) get a synthesized
+            # default plan so they can still ship with a score.
+            _music_plan_to_use: Optional[Dict[str, Any]] = None
+            if _director_plan and _director_plan.get("music_plan"):
+                _music_plan_to_use = _director_plan["music_plan"]
+            elif self._is_background_music_enabled() and _seg_audio_dur > 0:
+                _music_plan_to_use = self._build_default_music_plan(float(_seg_audio_dur))
+
             if (
                 self._is_background_music_enabled()
                 and content_type == "VIDEO"
-                and _director_plan
-                and _director_plan.get("music_plan")
+                and _music_plan_to_use
                 and _seg_audio_dur > 0
             ):
                 try:
                     from music_generator import generate_background_music
                     _music_result = generate_background_music(
-                        music_plan=_director_plan["music_plan"],
+                        music_plan=_music_plan_to_use,
                         audio_duration=float(_seg_audio_dur),
                         video_id=run_name or run_dir.name,
                         run_dir=run_dir,
@@ -2405,7 +2493,7 @@ class VideoGenerationPipeline:
                 print(
                     f"ℹ️ Background music skipped "
                     f"(content_type={content_type}, has_music_plan="
-                    f"{bool(_director_plan and _director_plan.get('music_plan'))})"
+                    f"{bool(_music_plan_to_use)}, audio_dur={_seg_audio_dur:.1f}s)"
                 )
 
             print("🧾 Writing timeline JSON ...")

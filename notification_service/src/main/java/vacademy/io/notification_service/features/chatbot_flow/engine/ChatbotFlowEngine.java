@@ -82,6 +82,11 @@ public class ChatbotFlowEngine {
                         NodeExecutionResult condResult = executor.execute(currentNode, session,
                                 userText, context);
                         if (condResult.isSuccess()) {
+                            // Log outgoing message (esp. AI_RESPONSE replies) so they appear
+                            // in the WhatsApp Inbox / chat view. Without this, AI turns inside
+                            // an active session are sent to WhatsApp but never persisted.
+                            logOutgoingMessage(currentNode, context, condResult);
+
                             // Always merge output variables (e.g., AI conversation history)
                             mergeSessionContext(session, condResult.getOutputVariables());
 

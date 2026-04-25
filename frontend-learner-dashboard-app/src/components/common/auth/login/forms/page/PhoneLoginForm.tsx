@@ -201,6 +201,23 @@ export function PhoneLoginForm({
                             await fetchAndStoreInstituteDetails(instituteId, userId);
                             await fetchAndStoreStudentDetails(instituteId, userId);
 
+                            // Honor explicit deep-link redirect FIRST (highest priority).
+                            const explicitRedirect =
+                                typeof redirect === "string" && redirect && redirect !== "/login/"
+                                    ? redirect
+                                    : null;
+                            if (explicitRedirect) {
+                                if (
+                                    /^https?:\/\//.test(explicitRedirect) ||
+                                    explicitRedirect.includes("?")
+                                ) {
+                                    window.location.assign(explicitRedirect);
+                                } else {
+                                    navigate({ to: explicitRedirect as never });
+                                }
+                                return;
+                            }
+
                             let redirectUrl = "/dashboard";
                             if (type === "courseDetailsPage" && courseId) {
                                 redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;

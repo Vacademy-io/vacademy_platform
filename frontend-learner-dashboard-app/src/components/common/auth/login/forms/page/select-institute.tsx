@@ -176,6 +176,19 @@ export function InstituteSelection() {
                     });
                 return;
             }
+            // Honor explicit deep-link redirect (?redirect=/some/path?param=...)
+            // This is set when an unauthenticated user clicks a deep link that
+            // routes them through institute selection. TanStack navigate({to})
+            // strips query strings, so use window.location.assign for paths
+            // containing '?' to preserve the full URL.
+            if (redirect) {
+                if (/^https?:\/\//.test(redirect) || redirect.includes("?")) {
+                    window.location.assign(redirect);
+                } else {
+                    navigate({ to: redirect as never });
+                }
+                return;
+            }
             // Skip session selection and go directly to dashboard
             navigate({ to: "/dashboard" });
         } catch (error) {

@@ -269,6 +269,23 @@ export function EmailLogin({
               const loginStatus = 200;
 
               if (loginStatus == 200) {
+                // Honor explicit deep-link redirect FIRST (highest priority).
+                const explicitRedirect =
+                  typeof redirect === "string" && redirect && redirect !== "/login/"
+                    ? redirect
+                    : null;
+                if (explicitRedirect) {
+                  if (
+                    /^https?:\/\//.test(explicitRedirect) ||
+                    explicitRedirect.includes("?")
+                  ) {
+                    window.location.assign(explicitRedirect);
+                  } else {
+                    navigate({ to: explicitRedirect as never });
+                  }
+                  return;
+                }
+
                 // Determine redirect URL based on type and courseId
                 let redirectUrl = "/dashboard";
 

@@ -851,8 +851,11 @@ export const Route = createRootRouteWithContext<{
         // Domain routing error for protected route, continuing to fallback logic
       }
 
-      // Store the current path as redirect URL for after login
-      const redirectUrl = location.pathname + location.search;
+      // Store the current path as redirect URL for after login.
+      // location.href is pathname + searchStr + hash (already serialised).
+      // Do NOT use location.pathname + location.search — `search` is the
+      // parsed object, concat would produce "[object Object]".
+      const redirectUrl = location.href;
       throw redirect({
         to: "/login",
         search: { redirect: redirectUrl },

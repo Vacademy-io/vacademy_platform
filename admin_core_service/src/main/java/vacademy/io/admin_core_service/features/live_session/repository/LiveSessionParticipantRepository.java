@@ -183,6 +183,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     WHERE lsp.source_id = :batchSessionId
       AND ss.meeting_date BETWEEN :startDate AND :endDate
       AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
+      AND ss.status <> 'DELETED'
+      AND ls.status <> 'DELETED'
     """, nativeQuery = true)
     List<AttendanceReportProjection> getAttendanceReportWithinDateRange(
             @Param("batchSessionId") String batchSessionId,
@@ -200,11 +202,14 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             AND m.status = 'ACTIVE'
         JOIN student s ON s.user_id = m.user_id
         JOIN session_schedules ss ON ss.session_id = lsp.session_id
+        JOIN live_session ls ON ls.id = lsp.session_id
         WHERE ss.meeting_date BETWEEN :startDate AND :endDate
           AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
           AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
           AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
           AND (m.enrolled_date IS NULL OR m.enrolled_date <= :endDate)
+          AND ss.status <> 'DELETED'
+          AND ls.status <> 'DELETED'
         """,
             countQuery = """
         SELECT COUNT(DISTINCT s.user_id)
@@ -215,11 +220,14 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             AND m.status = 'ACTIVE'
         JOIN student s ON s.user_id = m.user_id
         JOIN session_schedules ss ON ss.session_id = lsp.session_id
+        JOIN live_session ls ON ls.id = lsp.session_id
         WHERE ss.meeting_date BETWEEN :startDate AND :endDate
           AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
           AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
           AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
           AND (m.enrolled_date IS NULL OR m.enrolled_date <= :endDate)
+          AND ss.status <> 'DELETED'
+          AND ls.status <> 'DELETED'
         """,
             nativeQuery = true
     )
@@ -282,6 +290,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     WHERE s.user_id IN (:studentIds)
     AND ss.meeting_date BETWEEN :startDate AND :endDate
     AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
+    AND ss.status <> 'DELETED'
+    AND ls.status <> 'DELETED'
     ORDER BY LOWER(s.full_name), ss.meeting_date
 """,nativeQuery = true)
     List<AttendanceReportProjection> getAttendanceReportForStudentIds(

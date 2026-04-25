@@ -771,6 +771,12 @@ export const Route = createRootRouteWithContext<{
     // Check authentication for all other routes
     const authenticated = await isAuthenticated();
     if (!authenticated) {
+      // For deep links (non-root paths), preserve the URL through the auth flow
+      // so the user lands back on the page after login. Domain routing redirects
+      // shouldn't strip the deep-link target.
+      const isDeepLink = location.pathname && location.pathname !== "/";
+      const deepLinkRedirectUrl = isDeepLink ? location.href : null;
+
       // New domain routing logic for unauthenticated users
       try {
         const { domain, subdomain } = await getCurrentDomainInfo();
@@ -787,6 +793,17 @@ export const Route = createRootRouteWithContext<{
         if (domainRoutingResult) {
           // API returned valid institute data, use the redirect field from API response
           const redirectPath = domainRoutingResult.redirect || "/courses";
+
+          // If the domain routing sends us to an auth/onboarding route AND the
+          // user originally hit a deep link, preserve that deep link as the
+          // post-login redirect target. Otherwise the user loses their context.
+          if (deepLinkRedirectUrl && /\/(login|signup|register|institute-selection)/i.test(redirectPath)) {
+            throw redirect({
+              to: redirectPath as never,
+              search: { redirect: deepLinkRedirectUrl },
+            });
+          }
+
           throw redirect({ to: redirectPath as never });
         }
 
@@ -812,10 +829,10 @@ export const Route = createRootRouteWithContext<{
         // Domain routing error for protected route, continuing to fallback logic
       }
 
-      // Store the current path as redirect URL for after login.
-      // location.href is pathname + searchStr + hash (already serialised).
-      // Do NOT use location.pathname + location.search — `search` is the
-      // parsed object, concat would produce "[object Object]".
+      // Fallback: no domain routing matched. Store the current path as redirect
+      // URL for after login. location.href is pathname + searchStr + hash
+      // (already serialised). Do NOT use location.pathname + location.search —
+      // `search` is the parsed object, concat would produce "[object Object]".
       const redirectUrl = location.href;
       throw redirect({
         to: "/login",

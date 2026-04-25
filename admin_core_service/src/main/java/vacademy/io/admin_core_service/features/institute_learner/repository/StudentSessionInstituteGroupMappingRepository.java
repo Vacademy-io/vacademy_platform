@@ -294,6 +294,17 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("userId") String userId,
       @Param("statuses") List<String> statuses);
 
+  @Query(value = """
+      SELECT DISTINCT institute_id FROM student_session_institute_group_mapping
+      WHERE user_id = :userId
+        AND status IN (:statuses)
+        AND institute_id IS NOT NULL
+      LIMIT 1
+      """, nativeQuery = true)
+  Optional<String> findInstituteIdByUserIdAndStatus(
+      @Param("userId") String userId,
+      @Param("statuses") List<String> statuses);
+
   // -------------------------------------------------------------------------
   // Unique Methods from 'autonation-fixes'
   // -------------------------------------------------------------------------

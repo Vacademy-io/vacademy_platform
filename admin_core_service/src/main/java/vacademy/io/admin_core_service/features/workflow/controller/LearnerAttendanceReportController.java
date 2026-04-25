@@ -64,12 +64,18 @@ public class LearnerAttendanceReportController {
             ));
         }
 
+        // Resolve instituteId — required so the query can fetch instituteName for the email-style footer.
+        // If not provided in the URL, derive from the user's SSIGM record.
+        String resolvedInstituteId = (instituteId != null && !instituteId.isBlank())
+                ? instituteId
+                : ssigmRepo.findInstituteIdByUserIdAndStatus(userId, List.of("ACTIVE")).orElse(null);
+
         // Use the same query as the workflow — single source of truth for report data
         Map<String, Object> params = new HashMap<>();
         params.put("batchId", String.join(",", userBatches));
         params.put("daysBack", daysBack);
-        if (instituteId != null && !instituteId.isBlank()) {
-            params.put("instituteId", instituteId);
+        if (resolvedInstituteId != null && !resolvedInstituteId.isBlank()) {
+            params.put("instituteId", resolvedInstituteId);
         }
 
         Map<String, Object> result = queryService.execute("fetch_batch_attendance_report", params);

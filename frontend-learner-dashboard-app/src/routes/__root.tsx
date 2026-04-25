@@ -174,6 +174,8 @@ const isPublicRoute = (pathname: string): boolean => {
     !pathname.startsWith("/user-profile") &&
     !pathname.startsWith("/planning") &&
     !pathname.startsWith("/my-files") &&
+    !pathname.startsWith("/reports") &&
+    !pathname.startsWith("/my-reports") &&
     !pathname.startsWith("/parent-portal");
 
   const result =

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
+import { Preferences } from "@capacitor/preferences";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,6 +10,39 @@ import {
   type FullAttendanceReportStudent,
 } from "@/services/attendance/getFullAttendanceReport";
 import { convertHtmlToPdf } from "@/utils/html-to-pdf";
+import { getPublicUrl } from "@/services/upload_file";
+
+interface InstituteBranding {
+  name: string;
+  logoUrl: string;
+  address: string;
+}
+
+/**
+ * Read InstituteDetails from Preferences (already cached at app boot) and
+ * resolve the logo file ID to a public URL. Returns null if not available.
+ */
+async function loadInstituteBranding(): Promise<InstituteBranding | null> {
+  try {
+    const stored = await Preferences.get({ key: "InstituteDetails" });
+    if (!stored.value) return null;
+    const details = JSON.parse(stored.value) as Record<string, unknown>;
+
+    const name = (details.institute_name as string) || "";
+    const logoFileId = (details.institute_logo_file_id as string) || "";
+    const addressLine = (details.address as string) || "";
+    const city = (details.city as string) || "";
+    const state = (details.state as string) || "";
+    const country = (details.country as string) || "";
+
+    const logoUrl = logoFileId ? await getPublicUrl(logoFileId).catch(() => "") : "";
+    const addressParts = [addressLine, city, state, country].filter(Boolean);
+    return { name, logoUrl, address: addressParts.join(", ") };
+  } catch (e) {
+    console.warn("[Report] Could not load institute branding:", e);
+    return null;
+  }
+}
 
 interface SearchParams {
   from?: string;
@@ -39,6 +73,14 @@ export default function AttendanceReportPage() {
         to: search.to,
       }),
     staleTime: 60 * 1000,
+  });
+
+  // Fetch institute branding (logo + address) lazily — used for the page header & PDF.
+  // Loaded from Preferences (already cached at app boot) + on-demand logo URL resolution.
+  const { data: branding } = useQuery({
+    queryKey: ["institute-branding-for-report"],
+    queryFn: loadInstituteBranding,
+    staleTime: 10 * 60 * 1000, // 10 min — branding doesn't change often
   });
 
   const student: FullAttendanceReportStudent | undefined = data?.students?.[0];
@@ -121,7 +163,68 @@ export default function AttendanceReportPage() {
           background: "#ffffff",
         }}
       >
-        <h2 style={{ color: "#1a1a1a" }}>Attendance Report</h2>
+        {/* Branded letterhead — institute logo + name + address.
+            Branding is fetched on the frontend (from Preferences + media service)
+            so the email response stays lightweight. */}
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            borderBottom: "2px solid #e2e8f0",
+            paddingBottom: 16,
+            marginBottom: 20,
+          }}
+        >
+          <tbody>
+            <tr>
+              {branding?.logoUrl && (
+                <td style={{ width: 80, verticalAlign: "middle", paddingRight: 16 }}>
+                  <img
+                    src={branding.logoUrl}
+                    alt={branding.name || student.instituteName}
+                    crossOrigin="anonymous"
+                    style={{
+                      width: 64,
+                      height: 64,
+                      objectFit: "contain",
+                      display: "block",
+                    }}
+                  />
+                </td>
+              )}
+              <td style={{ verticalAlign: "middle" }}>
+                <div
+                  style={{
+                    fontSize: 22,
+                    fontWeight: "bold",
+                    color: "#1a1a1a",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {branding?.name || student.instituteName}
+                </div>
+                {branding?.address && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#64748b",
+                      marginTop: 4,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {branding.address}
+                  </div>
+                )}
+              </td>
+              <td style={{ textAlign: "right", verticalAlign: "top", fontSize: 11, color: "#94a3b8" }}>
+                <div>Generated</div>
+                <div style={{ marginTop: 2 }}>{new Date().toLocaleDateString()}</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2 style={{ color: "#1a1a1a", marginTop: 0 }}>Attendance Report</h2>
         <p style={{ color: "#444", lineHeight: 1.6 }}>
           Hi <strong>{student.fullName}</strong>, here's your attendance summary for{" "}
           <strong>{student.startDate}</strong> to <strong>{student.endDate}</strong>:

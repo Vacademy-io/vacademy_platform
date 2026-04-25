@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { ArrowLeft, Wrench, Lightning, CheckCircle, ArrowRight, Sparkle } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { INIT_INSTITUTE, AUDIENCE_CAMPAIGNS_LIST, CREATE_MESSAGE_TEMPLATE } from '@/constants/urls';
+import { INIT_INSTITUTE, AUDIENCE_CAMPAIGNS_LIST, CREATE_MESSAGE_TEMPLATE, MESSAGE_TEMPLATE_EXISTS } from '@/constants/urls';
 import { getMessageTemplates } from '@/services/message-template-service';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
 import { getTemplatesForTrigger, type UseCaseTemplate, type WizardQuestion } from './use-case-templates';
@@ -144,27 +144,43 @@ function QuestionField({
                                 setCreatingSample(true);
                                 try {
                                     const instId = getInstituteId();
-                                    await authenticatedAxiosInstance.post(
-                                        CREATE_MESSAGE_TEMPLATE,
-                                        {
-                                            type: 'EMAIL',
-                                            vendorId: 'default',
-                                            instituteId: instId,
-                                            name: sample.name,
-                                            subject: sample.subject,
-                                            content: sample.html,
-                                            contentType: 'text/html',
-                                            settingJson: {
-                                                variables: sample.variables,
-                                                isDefault: false,
-                                                templateType: 'utility',
-                                            },
-                                            dynamicParameters: {},
-                                            canDelete: true,
-                                            createdBy: 'current-user',
-                                            updatedBy: 'current-user',
-                                        }
-                                    );
+
+                                    // Check if a template with this name already exists for this institute.
+                                    // If yes, just use it — avoid hitting the unique-constraint 400.
+                                    let alreadyExists = false;
+                                    try {
+                                        const existsResp = await authenticatedAxiosInstance.get(
+                                            MESSAGE_TEMPLATE_EXISTS(instId ?? '', sample.name)
+                                        );
+                                        alreadyExists = existsResp.data?.exists === true;
+                                    } catch {
+                                        // If exists check fails, attempt create anyway
+                                    }
+
+                                    if (!alreadyExists) {
+                                        await authenticatedAxiosInstance.post(
+                                            CREATE_MESSAGE_TEMPLATE,
+                                            {
+                                                type: 'EMAIL',
+                                                vendorId: 'default',
+                                                instituteId: instId,
+                                                name: sample.name,
+                                                subject: sample.subject,
+                                                content: sample.html,
+                                                contentType: 'text/html',
+                                                settingJson: {
+                                                    variables: sample.variables,
+                                                    isDefault: false,
+                                                    templateType: 'utility',
+                                                },
+                                                dynamicParameters: {},
+                                                canDelete: true,
+                                                createdBy: 'current-user',
+                                                updatedBy: 'current-user',
+                                            }
+                                        );
+                                    }
+
                                     onChange(sample.name);
                                 } catch (err) {
                                     console.error('Failed to create sample template:', err);

@@ -1599,14 +1599,20 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return Map.of("error", "Either batchId or instituteId is required");
             }
 
-            // Look up institute name once for all students (template variable {{instituteName}})
+            // Look up institute name + learner portal URL once for all students
+            // (template variables {{instituteName}} and {{reportUrl}})
             final String resolvedInstituteName;
+            final String resolvedLearnerPortalUrl;
             if (instituteId != null && !instituteId.isBlank()) {
-                resolvedInstituteName = instituteRepository.findById(instituteId)
-                        .map(inst -> inst.getInstituteName())
-                        .orElse("Your Institute");
+                var instOpt = instituteRepository.findById(instituteId);
+                resolvedInstituteName = instOpt.map(inst -> inst.getInstituteName()).orElse("Your Institute");
+                String rawUrl = instOpt.map(inst -> inst.getLearnerPortalBaseUrl()).orElse("learner.vacademy.io");
+                if (rawUrl == null || rawUrl.isBlank()) rawUrl = "learner.vacademy.io";
+                // Normalise — accept "learner.vacademy.io" or "https://learner.vacademy.io"
+                resolvedLearnerPortalUrl = rawUrl.startsWith("http") ? rawUrl : "https://" + rawUrl;
             } else {
                 resolvedInstituteName = "Your Institute";
+                resolvedLearnerPortalUrl = "https://learner.vacademy.io";
             }
 
             // Aggregate reports across all batches — includes engagement/concentration data
@@ -1681,6 +1687,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         s.put("startDate", start.toString());
                         s.put("endDate", end.toString());
                         s.put("instituteName", resolvedInstituteName);
+                        // Deep link to the learner's full report on the learner portal
+                        s.put("reportUrl", resolvedLearnerPortalUrl + "/reports/attendance?from="
+                                + start + "&to=" + end + "&batchId=" + bid);
 
                         // Per-session attendance details
                         List<Map<String, Object>> sessionDetails = new ArrayList<>();
